@@ -340,7 +340,6 @@ pub fn import_oneshot(
         .arg(&ghidra_project_name)
         .arg("-import")
         .arg(binary_path)
-        .arg("-noanalysis")
         .arg("-overwrite");
 
     apply_java_home(&mut cmd, ghidra_install_dir);
