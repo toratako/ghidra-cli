@@ -310,13 +310,14 @@ fn apply_java_home(cmd: &mut Command, ghidra_install_dir: &Path) {
 /// the persistent bridge with `-import` (which holds the imported program inside
 /// HeadlessAnalyzer's transaction for the bridge's whole life and only commits
 /// it during teardown — a commit we then race by killing the JVM), this run
-/// imports, saves, commits the project, and exits on its own. The persistent
-/// bridge can then open the already-committed program in `-process` mode, where
-/// saves are durable and no teardown commit is required.
+/// imports, optionally analyzes, saves, commits the project, and exits on its
+/// own. The persistent bridge can then open the already-committed program in
+/// `-process` mode, where saves are durable and no teardown commit is required.
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
     ghidra_install_dir: &Path,
+    analyze: bool,
 ) -> Result<String> {
     info!("Importing binary into new project (one-shot)...");
 
@@ -339,8 +340,11 @@ pub fn import_oneshot(
     cmd.arg(ghidra_project_dir)
         .arg(&ghidra_project_name)
         .arg("-import")
-        .arg(binary_path)
-        .arg("-overwrite");
+        .arg(binary_path);
+    if !analyze {
+        cmd.arg("-noanalysis");
+    }
+    cmd.arg("-overwrite");
 
     apply_java_home(&mut cmd, ghidra_install_dir);
 

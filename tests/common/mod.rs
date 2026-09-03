@@ -103,7 +103,7 @@ pub fn ensure_test_project(project: &str, program: &str) {
             let _ = std::fs::remove_dir_all(&rep_dir);
         }
 
-        eprintln!("=== Setting up test project (import + analyze) ===");
+        eprintln!("=== Setting up test project (durable import + analysis) ===");
         eprintln!("Project dir: {:?}", projects_dir);
 
         // Step 1: Import the binary
@@ -139,44 +139,13 @@ pub fn ensure_test_project(project: &str, program: &str) {
             Err(e) => eprintln!("Import error: {}", e),
         }
 
-        // Step 2: Analyze the binary (creates code units needed for comments)
-        eprintln!("Step 2: Running analysis...");
-        let analyze_status = run_cli_with_timeout(
-            ghidra_bin,
-            &[
-                "analyze",
-                "--project",
-                project,
-                "--program",
-                program,
-            ],
-            Duration::from_secs(600),
-        );
-        match analyze_status {
-            Ok(status) => {
-                eprintln!("Analyze finished with status: {}", status);
-                if !status.success() {
-                    eprintln!("Warning: Analyze may have failed, but continuing...");
-                } else {
-                    eprintln!("Analysis complete");
-                }
-            }
-            Err(e) => eprintln!("Analyze error: {}", e),
-        }
-
-        // Step 3: Cleanly stop the bridge so the imported+analyzed program is
-        // durably written to disk. A bridge launched via `analyzeHeadless
-        // -import` holds the program inside HeadlessAnalyzer's ambient
-        // transaction; the program is only flushed to the project when the
-        // script returns (i.e. on a clean shutdown). Without this stop the
-        // program lives only in the bridge's memory and is lost when the bridge
-        // is torn down (e.g. CI process-group teardown), leaving a fresh bridge
-        // to open an empty project ("Program not found").
-        //
-        // Subsequent tests reuse the project, not this bridge:
-        // DaemonTestHarness::new() starts a fresh bridge in Process mode that
-        // opens the now-durable program from disk.
-        eprintln!("Step 3: Stopping bridge to flush project to disk...");
+        // Step 2: Stop the persistent bridge started by `ghidra import`.
+        // The fresh-project one-shot importer already analyzed and durably
+        // committed the program before this bridge started, so an additional
+        // `ghidra analyze` here is both redundant and expensive. Stopping the
+        // bridge keeps test binaries isolated and lets DaemonTestHarness start a
+        // fresh Process-mode bridge against the committed project.
+        eprintln!("Step 2: Stopping bridge after durable import...");
         let stop_status = run_cli_with_timeout(
             ghidra_bin,
             &["stop", "--project", project],

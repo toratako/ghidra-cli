@@ -155,6 +155,7 @@ fn test_analyze_program() {
             &project,
             "--program",
             "sample_binary",
+            "--no-analyze",
         ],
         std::time::Duration::from_secs(300),
     )
@@ -217,6 +218,7 @@ fn test_import_existing_program() {
             &project,
             "--program",
             "sample_binary",
+            "--no-analyze",
         ],
         std::time::Duration::from_secs(300),
     )
@@ -233,6 +235,7 @@ fn test_import_existing_program() {
             &project,
             "--program",
             "sample_binary",
+            "--no-analyze",
         ],
         std::time::Duration::from_secs(300),
     )

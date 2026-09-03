@@ -598,16 +598,12 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 anyhow::bail!("Binary not found: {}", args.binary);
             }
 
-            // Acquire a bridge connection and the imported program's name. Three
-            // hang-proof cases (see docs/plans/prescript-fix.md §3.3):
-            //   1. Bridge already running    -> TCP import into the live project.
-            //   2. Project exists, no bridge -> fast launch (Project mode), TCP import.
-            //   3. Brand-new project         -> bootstrap via `-import -noanalysis`
-            //      (only `-import` can create a project; analysis is skipped at
-            //      launch and driven over TCP below).
-            // The launch is bounded (the bridge binds its socket before analysis);
-            // analysis afterwards runs as an unbounded TCP operation.
-            let (client, program_name) =
+            // Acquire a bridge connection, the imported program's name, and whether
+            // analysis still needs to run over TCP. Existing projects import through
+            // the live bridge and therefore analyze afterwards. A brand-new project
+            // uses the short-lived one-shot importer, which performs durable analysis
+            // before the persistent bridge starts (unless --no-analyze was requested).
+            let (client, program_name, needs_tcp_analysis) =
                 if let Some(port) = bridge::is_bridge_running(&project_path) {
                     // is_bridge_running() already proved the bridge process is alive
                     // and its socket is accepting; a busy bridge just queues this
@@ -625,7 +621,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                             .to_string()
                     });
                     client.open_program(&name)?;
-                    (client, name)
+                    (client, name, true)
                 } else if project_has_program_data(&project_path) {
                     if !cli.quiet {
                         eprintln!("Starting Ghidra bridge...");
@@ -645,7 +641,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                             .to_string()
                     });
                     client.open_program(&name)?;
-                    (client, name)
+                    (client, name, true)
                 } else {
                     if !cli.quiet {
                         eprintln!("Initializing project (importing {})...", args.binary);
@@ -657,8 +653,12 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     // whose program persistence depended on HeadlessAnalyzer's
                     // post-script teardown commit — a commit `stop` could kill
                     // mid-write (the macOS "program file(s) not found" failures).
-                    let name =
-                        bridge::import_oneshot(&project_path, &binary_path, &ghidra_install_dir)?;
+                    let name = bridge::import_oneshot(
+                        &project_path,
+                        &binary_path,
+                        &ghidra_install_dir,
+                        !args.no_analyze,
+                    )?;
                     if !cli.quiet {
                         eprintln!("Starting Ghidra bridge...");
                     }
@@ -671,18 +671,18 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     )?;
                     let client = BridgeClient::new(port);
                     client.open_program(&name)?;
-                    (client, name)
+                    (client, name, false)
                 };
 
-            // Run analysis as an UNBOUNDED operation unless the user opted out.
-            // handleAnalyze runs analyzeAll + program.save(), so the program
-            // persists without relying on a clean bridge shutdown.
+            // Existing projects import over TCP and still need explicit analysis.
+            // Fresh projects were already analyzed durably by import_oneshot(), so
+            // re-running analyzeAll here would duplicate the most expensive step.
             let analyze_data = if args.no_analyze {
                 if !cli.quiet {
                     eprintln!("Skipping analysis (--no-analyze).");
                 }
                 json!(null)
-            } else {
+            } else if needs_tcp_analysis {
                 if !cli.quiet {
                     eprintln!("Analyzing {}...", program_name);
                 }
@@ -691,6 +691,14 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     eprintln!("Analysis complete!");
                 }
                 d
+            } else {
+                let info = client.program_info()?;
+                json!({
+                    "status": "success",
+                    "program": program_name,
+                    "function_count": info.get("function_count").cloned().unwrap_or(json!(null)),
+                    "durable": true
+                })
             };
 
             if !cli.quiet {
