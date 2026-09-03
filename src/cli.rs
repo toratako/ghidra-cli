@@ -804,6 +804,9 @@ pub enum TypeCommands {
     Create(CreateTypeArgs),
     /// Apply type to address
     Apply(ApplyTypeArgs),
+    /// Import C type definitions
+    #[command(alias = "import", alias = "parse-c")]
+    ImportC(ImportCArgs),
     /// Delete a data type
     #[command(alias = "rm")]
     Delete(TypeDeleteArgs),
@@ -846,6 +849,19 @@ pub struct ApplyTypeArgs {
     /// Clear any conflicting data unit first instead of failing on it
     #[arg(long, alias = "clear-conflicting")]
     pub force: bool,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ImportCArgs {
+    /// C code containing type definitions
+    pub code: String,
+    /// Category path to store imported types in
+    #[arg(long)]
+    pub category: Option<String>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

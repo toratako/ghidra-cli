@@ -271,6 +271,7 @@ fn extract_project_from_command(command: &Commands) -> Option<String> {
             cli::TypeCommands::Get(args) => args.options.project.clone(),
             cli::TypeCommands::Create(args) => args.project.clone(),
             cli::TypeCommands::Apply(args) => args.project.clone(),
+            cli::TypeCommands::ImportC(args) => args.project.clone(),
             cli::TypeCommands::Delete(args) => args.project.clone(),
             cli::TypeCommands::Rename(args) => args.project.clone(),
             cli::TypeCommands::CreateEnum(args) => args.project.clone(),
@@ -414,6 +415,7 @@ fn extract_program_from_command(command: &Commands) -> Option<String> {
             cli::TypeCommands::Get(args) => args.options.program.clone(),
             cli::TypeCommands::Create(args) => args.program.clone(),
             cli::TypeCommands::Apply(args) => args.program.clone(),
+            cli::TypeCommands::ImportC(args) => args.program.clone(),
             cli::TypeCommands::Delete(args) => args.program.clone(),
             cli::TypeCommands::Rename(args) => args.program.clone(),
             cli::TypeCommands::CreateEnum(args) => args.program.clone(),
@@ -1383,6 +1385,9 @@ fn execute_via_bridge(
                 TypeCommands::Create(args) => client.type_create(&args.definition),
                 TypeCommands::Apply(args) => {
                     client.type_apply_force(&args.address, &args.type_name, args.force)
+                }
+                TypeCommands::ImportC(args) => {
+                    client.type_import_c(&args.code, args.category.as_deref())
                 }
                 TypeCommands::Delete(args) => {
                     client.send_command("type_delete", Some(json!({"name": args.name})))

@@ -16,6 +16,13 @@ The nonsleepr-derived changes include PCode access, analyzer control, and
 selected bug fixes, based on downstream work through commit
 3d1c7cd7d632919b51543d6514d85b90bdd46bca.
 
+It also incorporates selected modifications from:
+  https://github.com/encounter/ghidra-cli
+
+The encounter-derived changes include C data type import support and selected
+transaction rollback fixes, based on pull request #8 through commit
+857d0b5c2f0c41f8a27182bc3ab4f07ecfc1c939.
+
 The project is distributed under the GNU General Public License, version 3.
 The GNU GPL v3 license text below is reproduced verbatim.
 

@@ -500,6 +500,13 @@ impl BridgeClient {
         self.send_command("type_create", Some(json!({"definition": definition})))
     }
 
+    pub fn type_import_c(&self, code: &str, category: Option<&str>) -> Result<serde_json::Value> {
+        self.send_command(
+            "type_import_c",
+            Some(json!({"code": code, "category": category})),
+        )
+    }
+
     /// Apply a type at an address. With `force`, clears any conflicting data
     /// unit first instead of failing on it.
     pub fn type_apply_force(

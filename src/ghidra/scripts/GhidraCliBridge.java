@@ -33,6 +33,8 @@ import ghidra.program.model.pcode.LocalSymbolMap;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.app.util.importer.AutoImporter;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.cparser.C.CParser;
+import ghidra.app.util.cparser.C.ParseException;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.DomainObject;
@@ -768,6 +770,7 @@ public class GhidraCliBridge extends GhidraScript {
             case "type_get":        return handleTypeGet(args);
             case "type_create":     return handleTypeCreate(args);
             case "type_apply":      return handleTypeApply(args);
+            case "type_import_c":   return handleTypeImportC(args);
             case "type_delete":     return handleTypeDelete(args);
             case "type_rename":     return handleTypeRename(args);
             case "type_create_enum": return handleTypeCreateEnum(args);
@@ -3605,6 +3608,140 @@ public class GhidraCliBridge extends GhidraScript {
         return null;
     }
 
+    // --- Import C Types Handler ---
+
+    private JsonObject handleTypeImportC(JsonObject args) {
+        if (currentProgram == null) return errorResult("No program loaded");
+
+        String code = getArgString(args, "code");
+        if (code == null || code.trim().isEmpty()) {
+            return errorResult("C code required");
+        }
+
+        String categoryPath = getArgString(args, "category");
+
+        try {
+            DataTypeManager dtm = currentProgram.getDataTypeManager();
+
+            String processedCode = code.trim();
+            if (!processedCode.endsWith(";")) {
+                processedCode += ";";
+            }
+
+            int txId = currentProgram.startTransaction("Import C types");
+            try {
+                CParser parser = new CParser(dtm, true,
+                    new DataTypeManager[] { dtm });
+                parser.parse(processedCode);
+                String parseMessages = parser.getParseMessages();
+
+                Set<String> definedNames = new HashSet<>();
+                definedNames.addAll(parser.getComposites().keySet());
+                definedNames.addAll(parser.getEnums().keySet());
+                definedNames.addAll(parser.getTypes().keySet());
+                definedNames.addAll(parser.getFunctions().keySet());
+
+                Set<DataType> parsedTypes = new HashSet<>();
+                parsedTypes.addAll(parser.getComposites().values());
+                parsedTypes.addAll(parser.getEnums().values());
+                parsedTypes.addAll(parser.getTypes().values());
+                parsedTypes.addAll(parser.getFunctions().values());
+
+                CategoryPath lookupPath = CategoryPath.ROOT;
+                if (categoryPath != null) {
+                    String normalizedPath = categoryPath.startsWith("/")
+                        ? categoryPath : "/" + categoryPath;
+                    CategoryPath targetPath = new CategoryPath(normalizedPath);
+                    Category targetCat = dtm.createCategory(targetPath);
+
+                    for (DataType dt : parsedTypes) {
+                        if (!isUserFacingDataType(dt)) continue;
+                        if (dt.getCategoryPath().equals(targetPath)) continue;
+                        targetCat.moveDataType(dt, DataTypeConflictHandler.REPLACE_HANDLER);
+                    }
+                    lookupPath = targetPath;
+                }
+
+                currentProgram.endTransaction(txId, true);
+
+                JsonArray typesArray = new JsonArray();
+                for (String name : definedNames) {
+                    DataType best = findBestParsedDataType(name, parsedTypes, lookupPath);
+                    if (best == null) {
+                        best = findBestDataType(dtm, name, lookupPath);
+                    }
+                    if (best != null) {
+                        JsonObject typeInfo = new JsonObject();
+                        typeInfo.addProperty("name", best.getName());
+                        typeInfo.addProperty("path", best.getPathName());
+                        typeInfo.addProperty("size", best.getLength());
+                        typeInfo.addProperty("category",
+                            best.getCategoryPath().toString());
+                        typesArray.add(typeInfo);
+                    }
+                }
+
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "imported");
+                response.add("types", typesArray);
+                if (parseMessages != null && !parseMessages.trim().isEmpty()) {
+                    response.addProperty("messages", parseMessages.trim());
+                }
+                return response;
+            } catch (Exception e) {
+                currentProgram.endTransaction(txId, false);
+                throw e;
+            }
+        } catch (ParseException pe) {
+            return errorResult("C parse error: " + pe.getMessage());
+        } catch (Exception e) {
+            return errorResult("Failed to import C types: " + e.getMessage());
+        }
+    }
+
+    private List<DataType> findUserDataTypes(DataTypeManager dtm, String name) {
+        List<DataType> all = new ArrayList<>();
+        dtm.findDataTypes(name, all);
+        List<DataType> result = new ArrayList<>();
+        for (DataType dt : all) {
+            if (!dt.getName().equals(name)) continue;
+            if (!isUserFacingDataType(dt)) continue;
+            result.add(dt);
+        }
+        return result;
+    }
+
+    private boolean isUserFacingDataType(DataType dt) {
+        if (dt == null) return false;
+        return !dt.getCategoryPath().toString().equals("/functions");
+    }
+
+    private DataType findBestParsedDataType(String name, Set<DataType> parsed,
+            CategoryPath preferred) {
+        DataType best = null;
+        for (DataType dt : parsed) {
+            if (!isUserFacingDataType(dt)) continue;
+            if (!dt.getName().equals(name)) continue;
+            if (dt.getCategoryPath().equals(preferred)) {
+                return dt;
+            }
+            if (best == null) best = dt;
+        }
+        return best;
+    }
+
+    private DataType findBestDataType(DataTypeManager dtm, String name,
+            CategoryPath preferred) {
+        DataType best = null;
+        for (DataType dt : findUserDataTypes(dtm, name)) {
+            if (dt.getCategoryPath().equals(preferred)) {
+                return dt;
+            }
+            if (best == null) best = dt;
+        }
+        return best;
+    }
+
     private JsonObject handleTypeDelete(JsonObject args) {
         if (currentProgram == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "name");
@@ -4262,7 +4399,7 @@ public class GhidraCliBridge extends GhidraScript {
                 cmd.applyTo(currentProgram);
                 currentProgram.endTransaction(txId, true);
             } catch (Exception e) {
-                currentProgram.endTransaction(txId, true);
+                currentProgram.endTransaction(txId, false);
                 throw e;
             }
 
@@ -4302,7 +4439,7 @@ public class GhidraCliBridge extends GhidraScript {
                 func.setReturnType(returnType, SourceType.USER_DEFINED);
                 currentProgram.endTransaction(txId, true);
             } catch (Exception e) {
-                currentProgram.endTransaction(txId, true);
+                currentProgram.endTransaction(txId, false);
                 throw e;
             }
 
