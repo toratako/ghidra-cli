@@ -204,7 +204,9 @@ fn test_type_apply_force_on_function_entry_warns() {
         entry
     );
     assert!(
-        entry["warning"].as_str().is_some_and(|w| w.contains("main")),
+        entry["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("main")),
         "expected a warning naming the cleared function, got: {}",
         entry
     );
@@ -278,12 +280,9 @@ fn test_type_add_field_places_at_exact_offset() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value =
-        serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("bad JSON: {} in {}", e, stdout));
-    let obj = parsed
-        .as_array()
-        .and_then(|a| a.first())
-        .unwrap_or(&parsed);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|e| panic!("bad JSON: {} in {}", e, stdout));
+    let obj = parsed.as_array().and_then(|a| a.first()).unwrap_or(&parsed);
 
     assert_eq!(
         obj["size"].as_u64(),
@@ -373,7 +372,6 @@ fn test_type_get_nonexistent() {
         .assert()
         .failure();
 }
-
 
 #[test]
 #[serial]

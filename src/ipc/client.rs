@@ -646,7 +646,10 @@ impl BridgeClient {
     /// there yet. Returns `ok`/`landed` booleans plus the resulting
     /// instructions (up to `count`).
     pub fn disasm_at(&self, address: &str, count: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command("disasm_at", Some(json!({"address": address, "count": count})))
+        self.send_command(
+            "disasm_at",
+            Some(json!({"address": address, "count": count})),
+        )
     }
 
     /// Clear all code units overlapping `[start, end]`, optionally

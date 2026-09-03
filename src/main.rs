@@ -1840,7 +1840,10 @@ fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
 
         match actual {
             Some(actual) if actual == expected => {
-                println!("Saved (bridge restarted, function count verified: {}).", actual);
+                println!(
+                    "Saved (bridge restarted, function count verified: {}).",
+                    actual
+                );
             }
             Some(actual) => {
                 anyhow::bail!(
@@ -2345,10 +2348,16 @@ fn handle_doctor(projects_dir: &Option<PathBuf>) -> anyhow::Result<()> {
     println!("\nScript execution modes:");
     println!("  `ghidra script run PATH`  — compiles & runs a file on disk");
     println!("  `ghidra script run -`     — reads Java source from stdin for one-offs;");
-    println!("                              staged to a temp file, same compile/execute path as PATH");
+    println!(
+        "                              staged to a temp file, same compile/execute path as PATH"
+    );
     println!("  `ghidra script python/java <code>` — disabled by design, not a bug: every script,");
-    println!("                              including one-offs, is required to go through Ghidra's");
-    println!("                              normal script bundle/compile gate rather than a second,");
+    println!(
+        "                              including one-offs, is required to go through Ghidra's"
+    );
+    println!(
+        "                              normal script bundle/compile gate rather than a second,"
+    );
     println!("                              less-sandboxed eval path. Use `script run -` instead.");
 
     println!("\nDone!");
