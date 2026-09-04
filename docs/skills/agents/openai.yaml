@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hina Ghidra CLI"
+  short_description: "Reverse engineer native binaries through the bundled Ghidra CLI"
+  default_prompt: "Use $hina-ghidra to analyze this native binary with the bundled Ghidra CLI."
