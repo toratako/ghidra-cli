@@ -253,3 +253,90 @@ fn test_import_existing_program() {
         .assert()
         .success();
 }
+
+#[test]
+#[serial]
+fn test_import_raw_x86_blob_with_language_and_base_address() {
+    require_ghidra!();
+
+    let project = unique_project_name("raw-x86");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let blob = tmp.path().join("x86_raw.bin");
+    // x86 32-bit little-endian: xor eax, eax; ret
+    std::fs::write(&blob, [0x31, 0xc0, 0xc3]).expect("write raw fixture");
+
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    let status = common::run_cli_with_timeout(
+        ghidra_bin,
+        &[
+            "import",
+            blob.to_str().unwrap(),
+            "--project",
+            &project,
+            "--language",
+            "x86:LE:32:default",
+            "--base-address",
+            "0x8000",
+            "--block-name",
+            "ROM",
+            "--no-analyze",
+        ],
+        std::time::Duration::from_secs(300),
+    )
+    .expect("raw import command");
+    assert!(status.success(), "raw x86 import failed: {}", status);
+
+    let info = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args([
+            "program",
+            "info",
+            "--project",
+            &project,
+            "--program",
+            "x86_raw.bin",
+            "--json",
+        ])
+        .output()
+        .expect("program info");
+    assert!(info.status.success());
+    let info_json: serde_json::Value =
+        serde_json::from_slice(&info.stdout).expect("program info JSON");
+    let program = &info_json[0];
+    assert_eq!(program["executable_format"], "Raw Binary");
+    assert_eq!(program["language"], "x86/little/32/default");
+    assert_eq!(program["min_address"], "00008000");
+    assert_eq!(program["max_address"], "00008002");
+
+    let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args([
+            "disasm-at",
+            "0x8000",
+            "--count",
+            "2",
+            "--project",
+            &project,
+            "--program",
+            "x86_raw.bin",
+            "--json",
+        ])
+        .output()
+        .expect("raw disassembly");
+    assert!(disasm.status.success());
+    let disasm_json: serde_json::Value =
+        serde_json::from_slice(&disasm.stdout).expect("disassembly JSON");
+    let instructions = disasm_json[0]["instructions"]
+        .as_array()
+        .expect("instructions");
+    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions[0]["mnemonic"], "XOR");
+    assert_eq!(instructions[1]["mnemonic"], "RET");
+
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args(["stop", "--project", &project])
+        .assert()
+        .success();
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args(["project", "delete", &project])
+        .assert()
+        .success();
+}

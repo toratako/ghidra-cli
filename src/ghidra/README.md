@@ -35,8 +35,11 @@ The bridge always launches with `-preScript -noanalysis`, so it binds its socket
 right after the project (and optional program) loads — *before* any analysis —
 and reports ready fast. Analysis is not part of launch; it runs afterwards as an
 unbounded TCP `analyze` operation. Importing a new binary is a separate,
-short-lived `analyzeHeadless -import -noanalysis` run that commits the program to
-the project before the persistent bridge opens it in `-process` mode.
+short-lived `analyzeHeadless -import` run that commits the program to the project
+before the persistent bridge opens it in `-process` mode. Normal imports run
+headless auto-analysis there; `--no-analyze` adds `-noanalysis`. Explicit loader,
+language, compiler-spec, and loader arguments are also applied to this one-shot
+path, which is how raw blobs are imported with `BinaryLoader`.
 
 ### PID File Write Sequence
 
@@ -138,9 +141,14 @@ This allows multiple bridges to run simultaneously for different projects.
 | `Process { program_name }` | `-process <program_name> -noanalysis` | Open a specific existing program |
 | `Project` | `-process -noanalysis` | Open the project without loading a program (e.g. `program list`, auto-start) |
 
-Importing a binary is not a start mode. It happens in a separate short-lived
-`analyzeHeadless -import -noanalysis` run that commits the program to the project;
-the persistent bridge then opens it in `Process` mode and analysis runs over TCP.
+Importing a binary is not a start mode. Fresh imports happen in a separate
+short-lived `analyzeHeadless -import` run that commits the program to the project;
+`--no-analyze` adds `-noanalysis`. Imports with explicit loader/language/compiler
+settings always use this path as well (stopping a live bridge first if necessary),
+so options such as `BinaryLoader`, `x86:LE:32:default`, and `baseAddr` reach Ghidra's
+headless loader directly. The persistent bridge then opens the committed program
+in `Process` mode. Best-guess imports into an already-open project may still use
+the bridge's `AutoImporter` path and analyze over TCP.
 
 ## Stale File Cleanup
 

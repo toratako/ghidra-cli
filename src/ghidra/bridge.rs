@@ -302,6 +302,33 @@ fn apply_java_home(cmd: &mut Command, ghidra_install_dir: &Path) {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct OneShotImportOptions {
+    pub analyze: bool,
+    pub loader: Option<String>,
+    pub language: Option<String>,
+    pub compiler_spec: Option<String>,
+    pub loader_options: Vec<(String, String)>,
+}
+
+fn append_import_options(cmd: &mut Command, options: &OneShotImportOptions) {
+    if !options.analyze {
+        cmd.arg("-noanalysis");
+    }
+    if let Some(language) = &options.language {
+        cmd.arg("-processor").arg(language);
+    }
+    if let Some(cspec) = &options.compiler_spec {
+        cmd.arg("-cspec").arg(cspec);
+    }
+    if let Some(loader) = &options.loader {
+        cmd.arg("-loader").arg(loader);
+    }
+    for (name, value) in &options.loader_options {
+        cmd.arg(format!("-loader-{}", name)).arg(value);
+    }
+}
+
 /// Import a binary into the project using a clean, short-lived `analyzeHeadless
 /// -import` run (no long-lived preScript), then return the imported program's
 /// name.
@@ -317,7 +344,7 @@ pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
     ghidra_install_dir: &Path,
-    analyze: bool,
+    options: &OneShotImportOptions,
 ) -> Result<String> {
     info!("Importing binary into new project (one-shot)...");
 
@@ -341,9 +368,7 @@ pub fn import_oneshot(
         .arg(&ghidra_project_name)
         .arg("-import")
         .arg(binary_path);
-    if !analyze {
-        cmd.arg("-noanalysis");
-    }
+    append_import_options(&mut cmd, options);
     cmd.arg("-overwrite");
 
     apply_java_home(&mut cmd, ghidra_install_dir);
@@ -1004,6 +1029,42 @@ mod tests {
         assert_eq!(
             parse_shutdown_timeout(Some("invalid")),
             Some(Duration::from_secs(DEFAULT_SHUTDOWN_TIMEOUT_SECS))
+        );
+    }
+
+    #[test]
+    fn raw_import_options_map_to_headless_arguments() {
+        let mut cmd = Command::new("analyzeHeadless");
+        let options = OneShotImportOptions {
+            analyze: false,
+            loader: Some("BinaryLoader".to_string()),
+            language: Some("x86:LE:32:default".to_string()),
+            compiler_spec: Some("default".to_string()),
+            loader_options: vec![
+                ("baseAddr".to_string(), "0x8000".to_string()),
+                ("blockName".to_string(), "ROM".to_string()),
+            ],
+        };
+        append_import_options(&mut cmd, &options);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "-noanalysis",
+                "-processor",
+                "x86:LE:32:default",
+                "-cspec",
+                "default",
+                "-loader",
+                "BinaryLoader",
+                "-loader-baseAddr",
+                "0x8000",
+                "-loader-blockName",
+                "ROM",
+            ]
         );
     }
 

@@ -1554,6 +1554,30 @@ pub struct ImportArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
+    /// Force a specific Ghidra loader (for raw blobs, use BinaryLoader)
+    #[arg(long)]
+    pub loader: Option<String>,
+    /// Ghidra language ID, e.g. x86:LE:32:default
+    #[arg(long, visible_alias = "processor")]
+    pub language: Option<String>,
+    /// Ghidra compiler spec ID for the selected language
+    #[arg(long, visible_alias = "cspec")]
+    pub compiler_spec: Option<String>,
+    /// BinaryLoader base address (implies --loader BinaryLoader if omitted)
+    #[arg(long)]
+    pub base_address: Option<String>,
+    /// BinaryLoader memory block name (implies --loader BinaryLoader if omitted)
+    #[arg(long)]
+    pub block_name: Option<String>,
+    /// BinaryLoader file offset (implies --loader BinaryLoader if omitted)
+    #[arg(long)]
+    pub file_offset: Option<String>,
+    /// BinaryLoader length in bytes (implies --loader BinaryLoader if omitted)
+    #[arg(long)]
+    pub length: Option<String>,
+    /// Additional loader argument as NAME=VALUE; repeat for multiple arguments
+    #[arg(long = "loader-option", value_name = "NAME=VALUE")]
+    pub loader_options: Vec<String>,
     /// Import only — skip auto-analysis (the program is still persisted)
     #[arg(long, default_value = "false")]
     pub no_analyze: bool,
