@@ -568,6 +568,56 @@ fn test_xref_list() {
     );
 }
 
+#[test]
+#[serial]
+fn test_xref_to_external_import_resolves_thunk() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().expect("bridge client");
+
+    let imports = client.list_imports(Some(100)).expect("list imports");
+    let imports = imports
+        .get("imports")
+        .and_then(|v| v.as_array())
+        .expect("imports array");
+
+    // Pick any import that actually has a reference in this platform's fixture.
+    // This avoids hard-coding libc vs Darwin import names while exercising the
+    // EXTERNAL-address -> local thunk resolution path.
+    for import in imports {
+        let Some(address) = import.get("address").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(name) = import.get("name").and_then(|v| v.as_str()) else {
+            continue;
+        };
+
+        let by_address = client
+            .xrefs_to(address.to_string())
+            .expect("xref external address");
+        let address_refs = by_address
+            .get("xrefs")
+            .and_then(|v| v.as_array())
+            .expect("xrefs array");
+        if address_refs.is_empty() {
+            continue;
+        }
+
+        let by_name = client.xrefs_to(name.to_string()).expect("xref import name");
+        let name_refs = by_name
+            .get("xrefs")
+            .and_then(|v| v.as_array())
+            .expect("xrefs array");
+        assert!(
+            !name_refs.is_empty(),
+            "used import {name} ({address}) should resolve by name as well as EXTERNAL address"
+        );
+        return;
+    }
+
+    panic!("fixture has no imported symbol with incoming references");
+}
+
 // ============================================================================
 // Find Tests
 // ============================================================================

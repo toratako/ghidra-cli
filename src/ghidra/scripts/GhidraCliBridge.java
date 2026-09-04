@@ -906,28 +906,41 @@ public class GhidraCliBridge extends GhidraScript {
             }
         }
 
-        // Try as symbol/function name via SymbolTable
+        // Try as symbol/function name via SymbolTable. Prefer concrete program
+        // addresses, but remember an external-space address as a fallback so
+        // import names (e.g. CreateThread/puts) can be used directly with xref
+        // commands. External symbols previously resolved to null, forcing
+        // callers to look up the import address manually first.
         SymbolTable st = currentProgram.getSymbolTable();
+        Address externalCandidate = null;
         SymbolIterator syms = st.getSymbols(target);
         while (syms.hasNext()) {
             Symbol sym = syms.next();
             Address symAddr = sym.getAddress();
-            // Skip external/fake addresses - prefer real addresses
-            if (symAddr != null && !symAddr.isExternalAddress()) {
+            if (symAddr == null) continue;
+            if (!symAddr.isExternalAddress()) {
                 return symAddr;
+            }
+            if (externalCandidate == null) {
+                externalCandidate = symAddr;
             }
         }
 
-        // Try global symbols (may include exports)
+        // Try global symbols (may include exports/imports). Again prefer a real
+        // program address over an external-space symbol with the same name.
         List<Symbol> globalSyms = st.getGlobalSymbols(target);
         for (Symbol sym : globalSyms) {
             Address symAddr = sym.getAddress();
-            if (symAddr != null && !symAddr.isExternalAddress()) {
+            if (symAddr == null) continue;
+            if (!symAddr.isExternalAddress()) {
                 return symAddr;
+            }
+            if (externalCandidate == null) {
+                externalCandidate = symAddr;
             }
         }
 
-        // Fallback: scan functions by name (O(n) but handles edge cases)
+        // Fallback: scan functions by name (O(n) but handles edge cases).
         FunctionManager fm = currentProgram.getFunctionManager();
         FunctionIterator iter = fm.getFunctions(true);
         while (iter.hasNext()) {
@@ -937,7 +950,58 @@ public class GhidraCliBridge extends GhidraScript {
             }
         }
 
-        return null;
+        return externalCandidate;
+    }
+
+    /**
+     * Resolve every address that can represent an xref target. Import names may
+     * have both an EXTERNAL-space symbol and one or more local thunk/IAT
+     * functions. References usually point at the local thunk, so resolving only
+     * the external symbol misses the actual call sites.
+     */
+    private LinkedHashSet<Address> resolveXrefTargets(String target) {
+        LinkedHashSet<Address> targets = new LinkedHashSet<>();
+        if (currentProgram == null || target == null || target.trim().isEmpty()) {
+            return targets;
+        }
+
+        Address primary = resolveAddress(target);
+        if (primary != null) {
+            targets.add(primary);
+        }
+
+        SymbolTable st = currentProgram.getSymbolTable();
+        SymbolIterator syms = st.getSymbols(target.trim());
+        while (syms.hasNext()) {
+            Address a = syms.next().getAddress();
+            if (a != null) targets.add(a);
+        }
+        for (Symbol sym : st.getGlobalSymbols(target.trim())) {
+            Address a = sym.getAddress();
+            if (a != null) targets.add(a);
+        }
+
+        // Add local thunk functions that ultimately dispatch to any resolved
+        // external function. This is the address call references normally target
+        // in PE/ELF imports.
+        Set<Address> externalEntries = new HashSet<>();
+        for (Address a : targets) {
+            if (a.isExternalAddress()) externalEntries.add(a);
+        }
+        if (!externalEntries.isEmpty()) {
+            FunctionManager fm = currentProgram.getFunctionManager();
+            FunctionIterator funcs = fm.getFunctions(true);
+            while (funcs.hasNext()) {
+                Function f = funcs.next();
+                if (!f.isThunk()) continue;
+                Function thunked = f.getThunkedFunction(true);
+                if (thunked != null && externalEntries.contains(thunked.getEntryPoint())) {
+                    targets.add(f.getEntryPoint());
+                }
+            }
+        }
+
+        return targets;
     }
 
     // --- Helper to safely get string from JsonObject ---
@@ -1931,35 +1995,47 @@ public class GhidraCliBridge extends GhidraScript {
             return errorResult("No address provided");
         }
 
-        Address addr = resolveAddress(addrStr);
-        if (addr == null) {
+        LinkedHashSet<Address> targetAddrs = resolveXrefTargets(addrStr);
+        if (targetAddrs.isEmpty()) {
             return errorResult(buildFunctionTargetHint(addrStr));
         }
 
         JsonArray xrefs = new JsonArray();
         ReferenceManager refMgr = currentProgram.getReferenceManager();
         FunctionManager fm = currentProgram.getFunctionManager();
+        SymbolTable st = currentProgram.getSymbolTable();
+        Set<String> seen = new HashSet<>();
 
-        for (Reference ref : refMgr.getReferencesTo(addr)) {
-            Address fromAddr = ref.getFromAddress();
-            Function fromFunc = fm.getFunctionContaining(fromAddr);
-            Function toFunc = fm.getFunctionContaining(addr);
+        for (Address addr : targetAddrs) {
+            for (Reference ref : refMgr.getReferencesTo(addr)) {
+                Address fromAddr = ref.getFromAddress();
+                String dedupKey = fromAddr + "|" + addr + "|" + ref.getReferenceType();
+                if (!seen.add(dedupKey)) continue;
 
-            JsonObject xrefData = new JsonObject();
-            xrefData.addProperty("from", fromAddr.toString());
-            xrefData.addProperty("to", addr.toString());
-            xrefData.addProperty("ref_type", ref.getReferenceType().toString());
-            if (fromFunc != null) {
-                xrefData.addProperty("from_function", fromFunc.getName());
-            } else {
-                xrefData.add("from_function", JsonNull.INSTANCE);
+                Function fromFunc = fm.getFunctionContaining(fromAddr);
+                Function toFunc = fm.getFunctionContaining(addr);
+
+                JsonObject xrefData = new JsonObject();
+                xrefData.addProperty("from", fromAddr.toString());
+                xrefData.addProperty("to", addr.toString());
+                xrefData.addProperty("ref_type", ref.getReferenceType().toString());
+                if (fromFunc != null) {
+                    xrefData.addProperty("from_function", fromFunc.getName());
+                } else {
+                    xrefData.add("from_function", JsonNull.INSTANCE);
+                }
+                if (toFunc != null) {
+                    xrefData.addProperty("to_function", toFunc.getName());
+                } else {
+                    Symbol toSym = st.getPrimarySymbol(addr);
+                    if (toSym != null) {
+                        xrefData.addProperty("to_function", toSym.getName());
+                    } else {
+                        xrefData.add("to_function", JsonNull.INSTANCE);
+                    }
+                }
+                xrefs.add(xrefData);
             }
-            if (toFunc != null) {
-                xrefData.addProperty("to_function", toFunc.getName());
-            } else {
-                xrefData.add("to_function", JsonNull.INSTANCE);
-            }
-            xrefs.add(xrefData);
         }
 
         JsonObject result = new JsonObject();
