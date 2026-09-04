@@ -1,10 +1,9 @@
 # ghidra-cli working reference
 
-Use this as a map of useful command families, not as a fixed analysis sequence.
-Global `--project`, `--program`, `--projects-dir`, `--json`, and `--pretty` flags
-may appear with subcommands.
+Use this as a compact command catalog. Global `--project`, `--program`,
+`--projects-dir`, `--json`, and `--pretty` flags may appear with subcommands.
 
-## Project, program, and bridge state
+## Project, import, program, and bridge state
 
 ```bash
 ghidra project list
@@ -18,31 +17,23 @@ ghidra program save --project target --program target.bin
 ghidra stop --project target
 ```
 
-One bridge is associated with each project. `jobs [JOB_ID]` exposes active,
-queued, and recent work. `cancel [JOB_ID]` requests cooperative cancellation and
-does not imply an immediate JVM kill.
+Fresh imports are analyzed and committed before the persistent bridge starts.
+`--no-analyze` skips analysis. `program save` restarts the bridge to make pending
+mutations durable and visible to another Ghidra process.
 
-Fresh imports are analyzed and committed durably before the persistent bridge is
-started. Use `ghidra import ... --no-analyze` when analysis is intentionally
-skipped.
-
-For raw/headerless binaries, specify the load model explicitly:
+For a known raw/headerless image, specify its load model explicitly:
 
 ```bash
 ghidra import /samples/firmware.bin --project firmware \
-  --language x86:LE:32:default --base-address 0x8000 --no-analyze
+  --language x86:LE:32:default --base-address 0x8000 \
+  --block-name ROM --no-analyze
 ```
 
 `--base-address`, `--block-name`, `--file-offset`, and `--length` imply
-`BinaryLoader`; use `--loader-option NAME=VALUE` for other loader options.
-Raw import does not establish an entry point, so use known addresses with
-`disasm-at` / `function create` as needed.
+`BinaryLoader`; `--processor` aliases `--language`. Raw import does not establish
+an entry point.
 
-Write operations are not immediately visible to another Ghidra process. Use
-`program save` after important mutations when durability or GUI visibility is
-required. It restarts the bridge as part of the save operation.
-
-## Functions, code, and analysis repair
+## Functions and code
 
 ```bash
 ghidra function list --fields name,address,size --limit 100 --project target
@@ -52,7 +43,7 @@ ghidra disasm 0x401000 -n 40 --project target
 ghidra disasm-at 0x401234 -n 20 --project target
 ghidra function calls main --project target
 ghidra function x-refs main --project target
-ghidra function x-refs malloc --project target   # external/import names resolve too
+ghidra function x-refs malloc --project target
 ghidra function rename FUN_00401000 parse_header --project target
 ghidra function create 0x401234 parse_entry --project target
 ghidra function set-signature parse_header \
@@ -62,19 +53,15 @@ ghidra function set-var-type parse_header --var local_10 \
 ghidra function set-noreturn abort_path --project target
 ```
 
-Use `disasm-at` when auto-analysis never reached a computed-jump target. If
-Ghidra incorrectly disassembled through inline data, clear the bad code units and
-optionally restart disassembly at the correct boundary:
+Use `disasm-at` when auto-analysis missed a known target. If analysis ran through
+inline data or chose the wrong boundary:
 
 ```bash
 ghidra clear 0x401200:0x40121f --to-data --project target
 ghidra clear 0x401200:0x40121f --disasm-at 0x401210 --project target
 ```
 
-Targets accept names or addresses where the command exposes a target argument.
-Use `find function` when symbols are incomplete.
-
-When result volume is unknown, count before fetching details:
+Query controls worth keeping visible:
 
 ```bash
 ghidra function list --count --project target
@@ -83,8 +70,6 @@ ghidra function list --filter "size > 100" --fields name,address,size \
 ```
 
 ## Search, strings, xrefs, and graphs
-
-Names are often unknown at first. Search before guessing:
 
 ```bash
 ghidra find function "*crypt*" --project target
@@ -103,19 +88,18 @@ ghidra graph callees main --depth 2 --limit 100 --project target
 ghidra graph export dot --project target
 ```
 
-For `graph callers` / `graph callees`, a plain `--limit N` is a bridge-side
-traversal bound rather than only an output truncation. `--limit 0` requests an
-unbounded result. If filter, sort, count, or offset is also requested, the CLI may
-need a complete traversal to preserve query semantics.
+String names and external/import names resolve directly. For plain `graph
+callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
+count, or offset may require a broader traversal.
 
-Filter expressions support comparisons and composition, for example:
+Filter examples:
 
 ```bash
 ghidra function list --filter "size >= 100 AND name ~ 'crypt'" --project target
 ghidra symbol list --filter "name ^ 'FUN_'" --count --project target
 ```
 
-## Symbols and types
+## Data, symbols, and types
 
 ```bash
 ghidra symbol list --limit 100 --project target
@@ -132,11 +116,8 @@ ghidra type import-c --category /Recovered \
   --project target
 ```
 
-`type import-c` uses Ghidra's C parser.
-`type apply --force` clears a conflicting data unit before applying the requested type.
-
-Types and symbol edits affect the Ghidra project. Re-decompile consumers after
-material changes rather than assuming prior pseudocode still reflects them.
+`type apply --force` clears a conflicting data unit before applying the type.
+Re-decompile after material type or symbol edits.
 
 ## PCode and analyzer control
 
@@ -148,22 +129,18 @@ ghidra analyzer list --project target
 ghidra analyzer run --project target --program target.bin
 ```
 
-The current bundled revision exposes analyzer enable/disable support internally,
-but the `analyzer set` CLI parser has a known positional-boolean bug; see
-[workarounds.md](workarounds.md) before trying to toggle an analyzer.
+See [workarounds.md](workarounds.md) before using `analyzer set`.
 
 ## Comments, scripts, batch work, and export
 
-For arbitrary prose, prefer stdin or a file so shell metacharacters cannot alter
-the comment before ghidra-cli sees it:
+Prefer stdin or a file for arbitrary comment text so shell metacharacters are not
+rewritten before ghidra-cli sees them:
 
 ```bash
 printf '%s' 'possible vtable load; verify callers' | \
   ghidra comment set 0x401000 --stdin --project target
 ghidra comment set 0x401000 --text-file /reports/note.txt --project target
 ```
-
-Scripts may be files or one-off Java supplied on stdin:
 
 ```bash
 ghidra script run /reports/scripts/Inspect.java --project target -- --arg value
@@ -177,6 +154,3 @@ ghidra patch export -o /reports/target.patched.bin --project target
 ```
 
 A batch file contains one subcommand per line without the `ghidra` prefix.
-Treat patch commands as edits to the project view until an explicit patch export
-creates a standalone binary. Use `program save` if the in-project mutation must
-also survive a fresh bridge or become visible in the GUI.

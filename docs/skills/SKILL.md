@@ -5,49 +5,34 @@ description: Analyze native binaries with the ghidra-cli revision bundled in the
 
 # Hina Ghidra CLI
 
-Use `/usr/local/bin/ghidra`, the bundled Rust ghidra-cli rather than Ghidra's
-desktop launcher. `GHIDRA_INSTALL_DIR` and persistent project storage under
-`/reports` are configured by the image.
+Use `/usr/local/bin/ghidra`, the bundled Rust ghidra-cli. `GHIDRA_INSTALL_DIR` and
+persistent project storage under `/reports` are configured by the image;
+`/samples` is read-only.
 
 One localhost JVM bridge is kept per project and reused by later commands.
 Program operations are serialized, while status, queued-job inspection, and
 cooperative cancellation remain available.
 
-A fresh `ghidra import` performs auto-analysis in the short-lived import process
-and durably commits the analyzed program before the persistent bridge opens it.
-Do not immediately run `ghidra analyze` unless reanalysis is intentional. Use
-`--no-analyze` when an import-only operation is desired.
+A fresh `ghidra import` auto-analyzes and durably commits before the persistent
+bridge opens the program. Do not immediately run `ghidra analyze` unless
+reanalysis is intentional; use `--no-analyze` to skip analysis.
 
-For raw/headerless binaries, use explicit loader/language/base-address options;
-do not guess the load model from bytes alone. See the command reference.
+For raw/headerless binaries, provide the known language and load model explicitly;
+do not infer ISA, endian, or base address from plausible disassembly.
 
 ```bash
 ghidra doctor
 ghidra import /samples/target.bin --project target --program target.bin
 ghidra summary --project target --program target.bin
-ghidra decompile main --with-vars --with-params \
-  --project target --program target.bin
+ghidra decompile main --with-vars --with-params --project target --program target.bin
 ```
 
-Prefer the concrete command families and use cases in
-[references/commands.md](references/commands.md). Use `ghidra <command> --help`
-when exact flags matter.
+Use [references/commands.md](references/commands.md) as the command catalog and
+`ghidra <command> --help` for exact flags.
 
-For focused list/query operations, use filters, fields, and limits. In particular,
-`graph callers` and `graph callees` enforce a simple `--limit N` inside the Java
-bridge and stop recursive traversal once the cap is reached. When filter, sort,
-count, or offset semantics require the complete result set, ghidra-cli may still
-fetch/traverse more before applying client-side processing.
-
-Apply useful names, types, signatures, comments, and code corrections to the
-project, then re-query affected functions. Mutations remain in the running
-bridge until they are flushed. Run `ghidra program save --project NAME` when a
-fresh bridge or the GUI must see important edits; it deliberately stops and
-restarts the bridge to make the changes durable. `ghidra stop --project NAME`
-also flushes on clean shutdown and is appropriate when ending the session.
-
-Export patched binaries and standalone artifacts to `/reports`; `/samples` is
-read-only.
+Mutations remain in the running bridge until flushed. Use `ghidra program save
+--project NAME` when another Ghidra process must see them, or `ghidra stop
+--project NAME` when ending the session.
 
 Read [references/workarounds.md](references/workarounds.md) for limitations that
-still apply to the bundled revision. 
+still apply to the bundled revision.
