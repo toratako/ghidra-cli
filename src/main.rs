@@ -1523,10 +1523,26 @@ fn execute_via_bridge(
             match cmd {
                 GraphCommands::Calls(opts) => client.graph_calls(opts.limit.or(default_limit)),
                 GraphCommands::Callers(args) => {
-                    client.graph_callers(args.resolved_target(), args.depth)
+                    let (limit, _) = bridge_list_params(
+                        args.options.limit,
+                        args.options.filter.clone(),
+                        args.options.sort.as_deref(),
+                        args.options.count,
+                        args.options.offset,
+                        default_limit,
+                    );
+                    client.graph_callers(args.resolved_target(), args.depth, limit)
                 }
                 GraphCommands::Callees(args) => {
-                    client.graph_callees(args.resolved_target(), args.depth)
+                    let (limit, _) = bridge_list_params(
+                        args.options.limit,
+                        args.options.filter.clone(),
+                        args.options.sort.as_deref(),
+                        args.options.count,
+                        args.options.offset,
+                        default_limit,
+                    );
+                    client.graph_callees(args.resolved_target(), args.depth, limit)
                 }
                 GraphCommands::Export(args) => client.graph_export(&args.format),
             }

@@ -5251,6 +5251,7 @@ public class GhidraCliBridge extends GhidraScript {
         String funcName = getArgString(args, "function");
         if (funcName == null) return errorResult("Function name required");
         int depth = getArgInt(args, "depth", 1);
+        int limit = getArgInt(args, "limit", 0);
 
         Function targetFunc = findFunctionByNameOrAddress(funcName);
         if (targetFunc == null) return errorResult(buildFunctionTargetHint(funcName));
@@ -5260,7 +5261,7 @@ public class GhidraCliBridge extends GhidraScript {
         JsonArray callers = new JsonArray();
         Set<String> visited = new HashSet<>();
 
-        findCallersRecursive(targetFunc, 0, depth, callers, visited, refMgr, fm);
+        findCallersRecursive(targetFunc, 0, depth, limit, callers, visited, refMgr, fm);
 
         JsonObject result = new JsonObject();
         result.addProperty("function", funcName);
@@ -5269,14 +5270,20 @@ public class GhidraCliBridge extends GhidraScript {
         return result;
     }
 
-    private void findCallersRecursive(Function func, int currentDepth, int maxDepth,
+    private boolean graphLimitReached(JsonArray rows, int limit) {
+        return limit > 0 && rows.size() >= limit;
+    }
+
+    private void findCallersRecursive(Function func, int currentDepth, int maxDepth, int limit,
             JsonArray callers, Set<String> visited, ReferenceManager refMgr, FunctionManager fm) {
+        if (graphLimitReached(callers, limit)) return;
         if (maxDepth > 0 && currentDepth >= maxDepth) return;
         String funcAddrStr = func.getEntryPoint().toString();
         if (visited.contains(funcAddrStr)) return;
         visited.add(funcAddrStr);
 
         for (Reference ref : refMgr.getReferencesTo(func.getEntryPoint())) {
+            if (graphLimitReached(callers, limit)) return;
             RefType refType = ref.getReferenceType();
             if (refType.isCall() || refType == RefType.PARAM || refType == RefType.INDIRECTION) {
                 Address fromAddr = ref.getFromAddress();
@@ -5289,8 +5296,12 @@ public class GhidraCliBridge extends GhidraScript {
                     callerInfo.addProperty("depth", currentDepth);
                     callers.add(callerInfo);
 
+                    if (graphLimitReached(callers, limit)) return;
                     if (maxDepth == 0 || currentDepth + 1 < maxDepth) {
-                        findCallersRecursive(callerFunc, currentDepth + 1, maxDepth, callers, visited, refMgr, fm);
+                        findCallersRecursive(
+                            callerFunc, currentDepth + 1, maxDepth, limit,
+                            callers, visited, refMgr, fm);
+                        if (graphLimitReached(callers, limit)) return;
                     }
                 }
             }
@@ -5303,6 +5314,7 @@ public class GhidraCliBridge extends GhidraScript {
         String funcName = getArgString(args, "function");
         if (funcName == null) return errorResult("Function name required");
         int depth = getArgInt(args, "depth", 1);
+        int limit = getArgInt(args, "limit", 0);
 
         Function targetFunc = findFunctionByNameOrAddress(funcName);
         if (targetFunc == null) return errorResult(buildFunctionTargetHint(funcName));
@@ -5312,7 +5324,7 @@ public class GhidraCliBridge extends GhidraScript {
         JsonArray callees = new JsonArray();
         Set<String> visited = new HashSet<>();
 
-        findCalleesRecursive(targetFunc, 0, depth, callees, visited, refMgr, fm);
+        findCalleesRecursive(targetFunc, 0, depth, limit, callees, visited, refMgr, fm);
 
         JsonObject result = new JsonObject();
         result.addProperty("function", funcName);
@@ -5321,8 +5333,9 @@ public class GhidraCliBridge extends GhidraScript {
         return result;
     }
 
-    private void findCalleesRecursive(Function func, int currentDepth, int maxDepth,
+    private void findCalleesRecursive(Function func, int currentDepth, int maxDepth, int limit,
             JsonArray callees, Set<String> visited, ReferenceManager refMgr, FunctionManager fm) {
+        if (graphLimitReached(callees, limit)) return;
         if (maxDepth > 0 && currentDepth >= maxDepth) return;
         String funcAddrStr = func.getEntryPoint().toString();
         if (visited.contains(funcAddrStr)) return;
@@ -5331,8 +5344,10 @@ public class GhidraCliBridge extends GhidraScript {
         ghidra.program.model.address.AddressIterator refSrcIter =
             refMgr.getReferenceSourceIterator(func.getBody(), true);
         while (refSrcIter.hasNext()) {
+            if (graphLimitReached(callees, limit)) return;
             Address fromAddr = refSrcIter.next();
             for (Reference ref : refMgr.getReferencesFrom(fromAddr)) {
+                if (graphLimitReached(callees, limit)) return;
                 if (ref.getReferenceType().isCall()) {
                     Address toAddr = ref.getToAddress();
                     Function calleeFunc = fm.getFunctionAt(toAddr);
@@ -5344,8 +5359,12 @@ public class GhidraCliBridge extends GhidraScript {
                         calleeInfo.addProperty("depth", currentDepth);
                         callees.add(calleeInfo);
 
+                        if (graphLimitReached(callees, limit)) return;
                         if (maxDepth == 0 || currentDepth + 1 < maxDepth) {
-                            findCalleesRecursive(calleeFunc, currentDepth + 1, maxDepth, callees, visited, refMgr, fm);
+                            findCalleesRecursive(
+                                calleeFunc, currentDepth + 1, maxDepth, limit,
+                                callees, visited, refMgr, fm);
+                            if (graphLimitReached(callees, limit)) return;
                         }
                     }
                 }

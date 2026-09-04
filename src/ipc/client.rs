@@ -560,17 +560,27 @@ impl BridgeClient {
         self.send_command("graph_calls", Some(json!({"limit": limit})))
     }
 
-    pub fn graph_callers(&self, function: &str, depth: Option<usize>) -> Result<serde_json::Value> {
+    pub fn graph_callers(
+        &self,
+        function: &str,
+        depth: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
         self.send_command(
             "graph_callers",
-            Some(json!({"function": function, "depth": depth})),
+            Some(json!({"function": function, "depth": depth, "limit": limit})),
         )
     }
 
-    pub fn graph_callees(&self, function: &str, depth: Option<usize>) -> Result<serde_json::Value> {
+    pub fn graph_callees(
+        &self,
+        function: &str,
+        depth: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
         self.send_command(
             "graph_callees",
-            Some(json!({"function": function, "depth": depth})),
+            Some(json!({"function": function, "depth": depth, "limit": limit})),
         )
     }
 

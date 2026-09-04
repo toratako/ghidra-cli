@@ -857,6 +857,42 @@ fn test_graph_callees() {
 
 #[test]
 #[serial]
+fn test_graph_callees_limit_is_enforced_by_bridge() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().expect("bridge client");
+
+    // depth=0 means recursive/unbounded depth; a tiny bridge-side limit must
+    // stop traversal before the full graph is constructed.
+    let result = client
+        .graph_callees("main", Some(0), Some(2))
+        .expect("bounded callees graph");
+    let callees = result
+        .get("callees")
+        .and_then(|v| v.as_array())
+        .expect("callees array");
+    assert_eq!(
+        callees.len(),
+        2,
+        "fixture main should hit the bridge traversal cap exactly"
+    );
+
+    // Exercise the callers path too. The fixture may naturally have fewer than
+    // two callers for main on some platforms, so only assert the hard ceiling.
+    let callers = client
+        .graph_callers("main", Some(0), Some(2))
+        .expect("bounded callers graph");
+    assert!(
+        callers
+            .get("callers")
+            .and_then(|v| v.as_array())
+            .is_some_and(|rows| rows.len() <= 2),
+        "callers bridge response must respect the traversal cap"
+    );
+}
+
+#[test]
+#[serial]
 fn test_graph_export_dot() {
     require_ghidra!();
     let harness = harness();
