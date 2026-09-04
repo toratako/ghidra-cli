@@ -26,6 +26,18 @@ Fresh imports are analyzed and committed durably before the persistent bridge is
 started. Use `ghidra import ... --no-analyze` when analysis is intentionally
 skipped.
 
+For raw/headerless binaries, specify the load model explicitly:
+
+```bash
+ghidra import /samples/firmware.bin --project firmware \
+  --language x86:LE:32:default --base-address 0x8000 --no-analyze
+```
+
+`--base-address`, `--block-name`, `--file-offset`, and `--length` imply
+`BinaryLoader`; use `--loader-option NAME=VALUE` for other loader options.
+Raw import does not establish an entry point, so use known addresses with
+`disasm-at` / `function create` as needed.
+
 Write operations are not immediately visible to another Ghidra process. Use
 `program save` after important mutations when durability or GUI visibility is
 required. It restarts the bridge as part of the save operation.

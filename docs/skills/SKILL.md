@@ -18,6 +18,9 @@ and durably commits the analyzed program before the persistent bridge opens it.
 Do not immediately run `ghidra analyze` unless reanalysis is intentional. Use
 `--no-analyze` when an import-only operation is desired.
 
+For raw/headerless binaries, use explicit loader/language/base-address options;
+do not guess the load model from bytes alone. See the command reference.
+
 ```bash
 ghidra doctor
 ghidra import /samples/target.bin --project target --program target.bin
