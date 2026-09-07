@@ -6,10 +6,17 @@ Manages the Java bridge process lifecycle and Ghidra installation/setup.
 
 | File | Purpose |
 |------|---------|
-| `bridge.rs` | Bridge process management: start, stop, status, liveness check |
+| `bridge.rs` | Persistent bridge lifecycle, discovery files, startup locking, readiness, and shutdown |
+| `bridge/import.rs` | Private one-shot headless import lifecycle and loader arguments |
+| `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `setup.rs` | Ghidra download, installation, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
 | `scripts/GhidraCliBridge.java` | Java bridge server (TCP, 80+ command handlers, runs inside Ghidra JVM) |
+
+`bridge.rs` re-exports `OneShotImportOptions`, `import_oneshot`, `compile_check`,
+and `find_headless_script`, preserving existing public import paths. Persistent
+startup and one-shot imports share launcher/JDK selection; their process and
+stream lifetimes remain owned by their respective workflows.
 
 ## Bridge Lifecycle
 
