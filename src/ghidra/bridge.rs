@@ -17,6 +17,7 @@ use crate::ipc::client::BridgeClient;
 
 mod headless;
 mod import;
+mod sources;
 use headless::{apply_java_home, bridge_failure_hint};
 pub use headless::{compile_check, find_headless_script};
 pub use import::{import_oneshot, OneShotImportOptions};
@@ -28,9 +29,6 @@ pub enum BridgeStartMode {
     /// Open the project without loading a specific program
     Project,
 }
-
-/// Embedded Java bridge script
-const JAVA_BRIDGE_SCRIPT: &str = include_str!("scripts/GhidraCliBridge.java");
 
 /// Grace period for a bridge to drain accepted program jobs and let Ghidra
 /// close the project cleanly before the CLI falls back to process termination.
@@ -288,14 +286,7 @@ pub fn start_bridge(
 ) -> Result<u16> {
     info!("Starting Ghidra bridge...");
 
-    // Write the Java bridge script to disk
-    let scripts_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?
-        .join("ghidra-cli")
-        .join("scripts");
-    std::fs::create_dir_all(&scripts_dir)?;
-    let java_script_path = scripts_dir.join("GhidraCliBridge.java");
-    std::fs::write(&java_script_path, JAVA_BRIDGE_SCRIPT)?;
+    let scripts_dir = sources::install()?;
 
     // Find analyzeHeadless
     let headless_script = find_headless_script(ghidra_install_dir)?;

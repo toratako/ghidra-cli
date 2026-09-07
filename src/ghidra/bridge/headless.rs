@@ -1,6 +1,6 @@
 //! Headless launcher discovery, Java environment selection, and compile diagnostics.
 
-use super::JAVA_BRIDGE_SCRIPT;
+use super::sources;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -53,8 +53,8 @@ pub fn compile_check(
     }
 
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
-    let src = tmp.path().join("GhidraCliBridge.java");
-    std::fs::write(&src, JAVA_BRIDGE_SCRIPT).map_err(|e| e.to_string())?;
+    let source_dir = tmp.path().join("sources");
+    let sources = sources::write_to(&source_dir).map_err(|e| e.to_string())?;
 
     let mut classpath = String::new();
     for entry in walkdir::WalkDir::new(ghidra_install_dir)
@@ -76,7 +76,9 @@ pub fn compile_check(
         .arg(&classpath)
         .arg("-d")
         .arg(tmp.path().join("out"))
-        .arg(&src)
+        .arg("-sourcepath")
+        .arg(&source_dir)
+        .args(&sources)
         .output()
         .map_err(|e| format!("Failed to run javac: {}", e))?;
 

@@ -340,3 +340,81 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
         .expect("analysis client thread")
         .expect("analysis job should complete");
 }
+
+#[test]
+#[serial]
+fn test_active_script_cancel_does_not_cancel_next_job() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let worker = harness.client().unwrap();
+    let script = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class WaitForBridgeCancel extends GhidraScript {
+    public void run() throws Exception {
+        monitor.setMessage("waiting-for-bridge-cancel");
+        long deadline = System.currentTimeMillis() + 30000;
+        while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        monitor.checkCancelled();
+        throw new IllegalStateException("Cancellation never arrived");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+    });
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(25);
+    let id = loop {
+        let status = client.status().unwrap();
+        let active = &status["active_job"];
+        if active["progress_message"] == "waiting-for-bridge-cancel" {
+            break active["id"].as_u64().unwrap();
+        }
+        assert!(!script.is_finished(), "script exited before cancellation");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "script never became cancellable: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    client.cancel_job(Some(id)).unwrap();
+    assert!(script
+        .join()
+        .unwrap()
+        .unwrap_err()
+        .to_string()
+        .contains("Script cancelled"));
+    assert_eq!(
+        client.job_status(Some(id)).unwrap()["job"]["state"],
+        "cancelled"
+    );
+
+    let next = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CheckFreshBridgeMonitor extends GhidraScript {
+    public void run() throws Exception {
+        monitor.checkCancelled();
+        println("fresh-monitor:" + currentProgram.getName());
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert!(next["stdout"]
+        .as_str()
+        .unwrap()
+        .contains(&format!("fresh-monitor:{TEST_PROGRAM}")));
+}
