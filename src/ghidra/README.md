@@ -100,7 +100,7 @@ the 100 most recent jobs and exposes active progress, queued work, cancellation 
 elapsed time. Cancellation uses a per-job `TaskMonitorAdapter`; active cancellation is
 cooperative, while a job that has not started can be removed from the queue immediately.
 
-See `ipc/client.rs`: `connect_with_retry()` waits out transient connect failures (bridge
+See `ipc/client/transport.rs`: `connect_with_retry()` waits out transient connect failures (bridge
 (re)start / saturated client capacity) with backoff up to
 `GHIDRA_CLI_CONNECT_DEADLINE` (default 60s). A program request waits up to
 `GHIDRA_CLI_READ_TIMEOUT` (default 300s; `0` = indefinite), while long analyze/import

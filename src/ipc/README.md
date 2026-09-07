@@ -6,7 +6,8 @@ Single TCP implementation for CLI-to-bridge communication. All command sending g
 
 | File | Purpose |
 |------|---------|
-| `client.rs` | `BridgeClient` -- the canonical client for all bridge commands |
+| `client.rs` | `BridgeClient` state and command-specific request construction |
+| `client/transport.rs` | Private transport module: connection retry, socket timeout policy, request/response exchange, and transport tests |
 | `protocol.rs` | `BridgeRequest` / `BridgeResponse` wire format structs |
 
 ## BridgeClient
@@ -17,6 +18,11 @@ Single TCP implementation for CLI-to-bridge communication. All command sending g
 let client = BridgeClient::new(port);
 let result = client.list_functions(Some(100), None)?;
 ```
+
+The transport module implements the existing `BridgeClient::send_command()` and
+`send_command_with_timeout()` methods. Command adapters call these methods; public
+client paths and signatures remain unchanged. Decompiler execution timeout stays
+with its command adapter because it is a Ghidra request parameter, not a socket budget.
 
 ### Connection Model
 

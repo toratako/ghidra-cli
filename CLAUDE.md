@@ -16,7 +16,8 @@ See @AGENTS.md for agent-specific instructions.
 | `src/format/mod.rs` | Implementing new output formats or changing format detection logic |
 | `src/ghidra/bridge.rs` | Bridge process management (start/stop/status/connect via TCP) |
 | `src/ghidra/scripts/GhidraCliBridge.java` | Java bridge server (TCP, command handlers, Ghidra API) |
-| `src/ipc/client.rs` | BridgeClient (TCP connection, command methods) |
+| `src/ipc/client.rs` | BridgeClient command methods |
+| `src/ipc/client/transport.rs` | TCP connections, timeouts, and response/error decoding |
 | `src/ipc/protocol.rs` | BridgeRequest/BridgeResponse wire format |
 | `PLAN-java-plugin.md` | Architecture decisions and migration rationale |
 | `README.md` | Understanding project architecture or user-facing command documentation |
