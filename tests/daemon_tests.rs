@@ -343,6 +343,49 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
 
 #[test]
 #[serial]
+fn test_failed_mutation_preserves_prior_edits_after_restart() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let function = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
+        .unwrap();
+    let address = function["address"].as_str().expect("function address");
+    let text = format!("persist-before-failure-{}", uuid::Uuid::new_v4());
+    client.comment_set(address, &text, Some("EOL")).unwrap();
+
+    // The address parses, but is outside every memory block. This fails inside
+    // patch_bytes' transaction, after the earlier comment has succeeded.
+    let error = client
+        .send_command(
+            "patch_bytes",
+            Some(serde_json::json!({"address": "0", "hex": "00"})),
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to patch bytes"),
+        "{error}"
+    );
+    drop(harness);
+
+    let restarted = start_daemon();
+    let comments = restarted.client().unwrap().comment_get(address).unwrap();
+    assert!(
+        comments["comments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|comment| comment["text"] == text),
+        "prior edit lost after failed mutation: {comments}"
+    );
+}
+
+#[test]
+#[serial]
 fn test_active_script_cancel_does_not_cancel_next_job() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
