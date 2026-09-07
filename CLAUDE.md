@@ -6,9 +6,11 @@ See @AGENTS.md for agent-specific instructions.
 
 | What | When |
 |------|------|
-| `src/main.rs` | Modifying CLI entry point, bridge lifecycle, or output format detection |
-| `src/main.rs` `verify_bridge()` | Changing bridge ping verification after connecting to an existing bridge |
-| `src/main.rs` `extract_program_from_command()` | Adding new command variants that support `--program` switching |
+| `src/main.rs` | Modifying CLI startup, logging, or exit/error reporting |
+| `src/app/mod.rs` | Command orchestration and stale-bridge recovery |
+| `src/app/execute.rs` | Mapping commands to bridge requests and resolving mutation targets |
+| `src/app/output.rs` | Output format precedence, response envelopes, and query processing |
+| `src/app/options.rs` `extract_program_from_command()` | Adding new command variants that support `--program` switching |
 | `src/cli.rs` | Adding/modifying CLI arguments and subcommands |
 | `src/ghidra/scripts/GhidraCliBridge.java` `resolveDataType()` | Resolving type names to DataType (path, name scan, pointer syntax) |
 | `src/format/mod.rs` | Implementing new output formats or changing format detection logic |
@@ -23,6 +25,7 @@ See @AGENTS.md for agent-specific instructions.
 
 | What | When |
 |------|------|
+| `src/app/` | CLI workflows; see `src/app/README.md` for responsibility boundaries |
 | `src/ghidra/` | Bridge management, Ghidra setup/installation, Java bridge script |
 | `src/ipc/` | TCP client, protocol definitions, transport helpers |
 | `src/format/` | Handling output format conversion (Table, Compact, JSON, CSV, etc.) |
