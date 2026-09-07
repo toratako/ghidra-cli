@@ -129,6 +129,7 @@ final class ProgramCommands {
 
     JsonObject handleAnalyze(JsonObject args) {
         String programName = getArgString(args, "program");
+        boolean selectProgram = programName != null && !programName.isEmpty();
         if (programName == null || programName.isEmpty()) {
             if (session.program() == null) {
                 return errorResult("No program loaded. Use 'open_program' or 'import' first.");
@@ -140,8 +141,8 @@ final class ProgramCommands {
             return errorResult("No program currently loaded");
         }
 
-        // If requested program differs from current, switch to it
-        if (!session.program().getName().equals(programName)) {
+        // Resolve an explicit selection by project file, not the internal name.
+        if (selectProgram) {
             JsonObject switchArgs = new JsonObject();
             switchArgs.addProperty("program", programName);
             JsonObject switchResult = handleOpenProgram(switchArgs);
@@ -189,8 +190,7 @@ final class ProgramCommands {
             JsonArray programs = new JsonArray();
 
             for (DomainFile domainFile : rootFolder.getFiles()) {
-                boolean isCurrent = (session.program() != null &&
-                    domainFile.getName().equals(session.program().getName()));
+                boolean isCurrent = session.isCurrent(domainFile);
 
                 JsonObject prog = new JsonObject();
                 prog.addProperty("name", domainFile.getName());
@@ -251,14 +251,6 @@ final class ProgramCommands {
         String programName = getArgString(args, "program");
         if (programName == null || programName.isEmpty()) {
             return errorResult("Program name required");
-        }
-
-        // Already the current program? No-op.
-        if (session.program() != null && session.program().getName().equals(programName)) {
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "success");
-            result.addProperty("program", programName);
-            return result;
         }
 
         Project project = session.state().getProject();

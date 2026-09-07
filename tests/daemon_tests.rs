@@ -461,3 +461,90 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
         .unwrap()
         .contains(&format!("fresh-monitor:{TEST_PROGRAM}")));
 }
+
+#[test]
+#[serial]
+fn test_handlers_follow_program_switch_and_close() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let folder = format!("switch-{}", uuid::Uuid::new_v4());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class CopyBridgeProgram extends GhidraScript {
+    public void run() throws Exception {
+        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
+        currentProgram.getDomainFile().copyTo(folder, monitor).setName("alternate");
+    }
+}
+"#, &[folder.clone()], &[], false).unwrap();
+    let alternate = format!("/{folder}/alternate");
+    client.open_program(&alternate).unwrap();
+    // Copying/renaming the project file retains the original internal Program
+    // name. Switching back must compare project files, not that internal name.
+    assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
+    let programs = client.send_command("list_programs", None).unwrap();
+    assert!(programs["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|program| program["current"] == false));
+    let function = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
+        .unwrap();
+    let address = function["address"].as_str().unwrap();
+    let marker = format!("alternate-only-{}", uuid::Uuid::new_v4());
+    client.comment_set(address, &marker, Some("EOL")).unwrap();
+    assert!(client.comment_get(address).unwrap()["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|comment| comment["text"] == marker));
+    client.open_program(TEST_PROGRAM).unwrap();
+    assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
+    let programs = client.send_command("list_programs", None).unwrap();
+    assert!(programs["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|program| program["name"] == TEST_PROGRAM && program["current"] == true));
+    assert!(!client.comment_get(address).unwrap()["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|comment| comment["text"] == marker));
+    client.open_program(&alternate).unwrap();
+    common::ghidra(&harness)
+        .arg("comment")
+        .arg("get")
+        .arg(address)
+        .with_project(test_project(), TEST_PROGRAM)
+        .json_format()
+        .run()
+        .assert_success()
+        .assert_stdout_not_contains(&marker);
+    client.open_program(&alternate).unwrap();
+    client
+        .send_command(
+            "analyze",
+            Some(serde_json::json!({"program": TEST_PROGRAM})),
+        )
+        .unwrap();
+    assert!(!client.comment_get(address).unwrap()["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|comment| comment["text"] == marker));
+    client.program_close().unwrap();
+    assert!(client
+        .comment_get(address)
+        .unwrap_err()
+        .to_string()
+        .contains("No program loaded"));
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.comment_get(address).unwrap();
+}

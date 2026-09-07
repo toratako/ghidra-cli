@@ -29,8 +29,16 @@ final class ProgramSession {
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
     void logError(String message) { script.logError(message); }
 
+    boolean isCurrent(DomainFile domainFile) {
+        return program() != null
+            && program().getDomainFile().getPathname().equals(domainFile.getPathname());
+    }
+
     /** Switch a program using the project's existing consumer identity. */
     void open(DomainFile domainFile, Project project) throws Exception {
+        // Program names are stored inside the database and can be identical in
+        // different project files (for example after copying a program).
+        if (isCurrent(domainFile)) return;
         Object consumer = project;
         TaskMonitor mon = monitor();
 

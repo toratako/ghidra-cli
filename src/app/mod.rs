@@ -114,18 +114,13 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 BridgeClient::new(port)
             };
 
-            // Switch to requested program if it differs from the bridge's current program
+            // Let the bridge compare project files. Internal Program names can
+            // be identical across different files, so program_info is not an
+            // identity check. Opening the selected file again is a no-op.
             if let Some(requested_program) =
                 extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
             {
-                if let Ok(info) = client.program_info() {
-                    let current = info.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                    if current != requested_program {
-                        client.open_program(&requested_program)?;
-                    }
-                } else {
-                    client.open_program(&requested_program)?;
-                }
+                client.open_program(&requested_program)?;
             }
 
             let first_attempt =
@@ -167,14 +162,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     if let Some(requested_program) =
                         extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
                     {
-                        if let Ok(info) = retry_client.program_info() {
-                            let current = info.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                            if current != requested_program {
-                                retry_client.open_program(&requested_program)?;
-                            }
-                        } else {
-                            retry_client.open_program(&requested_program)?;
-                        }
+                        retry_client.open_program(&requested_program)?;
                     }
 
                     // One restart per invocation: the retry result is accepted
