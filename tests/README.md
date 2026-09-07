@@ -77,7 +77,7 @@ cargo test --test command_tests test_version
 
 Run tests that don't need Ghidra:
 ```bash
-cargo test --test e2e --test output_format_integration
+cargo test --test e2e --test output_format_integration --test harness_tests
 ```
 
 ## Test Requirements
@@ -88,14 +88,16 @@ Tests assume Ghidra is installed. Use `require_ghidra!()` in tests that need a f
 
 ### Test Fixtures
 
-Sample binary fixture required: `tests/fixtures/sample_binary`
+`fixture_binary()` compiles `tests/fixtures/sample_binary.rs` automatically with
+`rustc` into a temporary directory, once per test executable. Only the source is
+tracked in Git. The fixture keeps function symbols and exercises its exported functions. Debug
+information is stripped to avoid expensive Rust standard-library DWARF analysis.
+It uses the host executable format (including `.exe` on Windows).
+No manual build step is required.
 
-Build fixture:
-```bash
-rustc --edition 2021 -o tests/fixtures/sample_binary tests/fixtures/sample_binary.rs
-```
-
-Fixture contains functions: add, multiply, factorial, fibonacci, process_string, xor_encrypt, simple_hash, init_data, main
+Each suite uses `common::test_project()` to select a fresh project name for every
+run. Projects are never reused from a mutation suite or a previous run. Import
+and bridge startup failures fail the tests rather than returning success.
 
 ## Adding New Tests
 
@@ -126,15 +128,15 @@ Add to the appropriate test file (e.g., `symbol_tests.rs`, `readonly_tests.rs`):
 fn test_my_query() {
     require_ghidra!();
 
-    ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
+    ensure_test_project(common::test_project(), TEST_PROGRAM);
 
     let harness =
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start bridge");
+        DaemonTestHarness::new(common::test_project(), TEST_PROGRAM).expect("Failed to start bridge");
 
     Command::cargo_bin("ghidra")
         .unwrap()
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(common::test_project())
         .arg("my-query")
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -163,12 +165,9 @@ Ghidra cold start can be slow. Ensure:
 - Sufficient disk space for temporary Ghidra project
 - Not running on extremely constrained CI resources
 
-### "Test fixture not found"
+### Fixture compilation fails
 
-Compile sample_binary:
-```bash
-rustc --edition 2021 -o tests/fixtures/sample_binary tests/fixtures/sample_binary.rs
-```
+Check that `rustc` is on PATH. Compilation failures include the compiler's stderr.
 
 ### "Port already in use" / stale port files
 
@@ -202,3 +201,6 @@ Tests use 300s timeout for import/analyze operations. On slow systems:
 **Project-name-based port files vs random ports**: Each test suite uses a unique project name which maps to a unique port file via MD5 hash, preventing collisions.
 
 **Testing unimplemented commands**: Adds maintenance burden but documents gaps and ensures graceful failures for stub commands.
+
+Suite exit cleanup stops the bridge and removes the generated project and fixture.
+Forced process termination can leave artifacts behind; cleanup is best effort.

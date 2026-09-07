@@ -10,15 +10,15 @@ use common::{
     ensure_test_project, get_function_address, get_function_addresses, DaemonTestHarness,
 };
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -32,7 +32,7 @@ fn test_symbol_list() {
         .arg("symbol")
         .arg("list")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output()
@@ -56,7 +56,7 @@ fn test_symbol_create_and_get() {
     require_ghidra!();
     let harness = harness();
 
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("symbol")
@@ -64,7 +64,7 @@ fn test_symbol_create_and_get() {
         .arg(&addr)
         .arg("test_symbol")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -75,7 +75,7 @@ fn test_symbol_create_and_get() {
         .arg("get")
         .arg("test_symbol")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -89,7 +89,7 @@ fn test_symbol_rename() {
     require_ghidra!();
     let harness = harness();
 
-    let addrs = get_function_addresses(harness, TEST_PROJECT, TEST_PROGRAM, 2);
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
     let addr = &addrs[1];
 
     // Use unique names to avoid collisions with cached project state
@@ -102,7 +102,7 @@ fn test_symbol_rename() {
         .arg(addr)
         .arg(&old_name)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -114,7 +114,7 @@ fn test_symbol_rename() {
         .arg(&old_name)
         .arg(&new_name)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -126,7 +126,7 @@ fn test_symbol_rename() {
         .arg("get")
         .arg(&new_name)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -145,7 +145,7 @@ fn test_symbol_get_nonexistent() {
         .arg("get")
         .arg("nonexistent_symbol_12345")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -166,14 +166,14 @@ fn test_function_create_recreates_deleted_function_body() {
     // rejected the address with "Function body must contain the entrypoint".
     // The fix routes through CreateFunctionCmd, which follows flow like
     // GhidraScript.createFunction()/the UI's "Create Function" action do.
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "add_numbers");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
 
     let before = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("function")
         .arg("get")
         .arg(&addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--format")
@@ -190,7 +190,7 @@ fn test_function_create_recreates_deleted_function_body() {
         .arg("delete")
         .arg(&addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -202,7 +202,7 @@ fn test_function_create_recreates_deleted_function_body() {
         .arg(&addr)
         .arg("add_numbers")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -213,7 +213,7 @@ fn test_function_create_recreates_deleted_function_body() {
         .arg("get")
         .arg(&addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--format")

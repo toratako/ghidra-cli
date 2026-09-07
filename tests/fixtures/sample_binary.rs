@@ -147,6 +147,13 @@ fn main() {
     let hash = simple_hash(SECRET_KEY.as_ptr(), SECRET_KEY.len());
     println!("hash = {:x}", hash);
     
+    let mut data = *b"fixture";
+    xor_encrypt(data.as_mut_ptr(), data.len(), 0x42);
+    println!("processed: {}", process_string(data.as_ptr(), data.len()));
+    let mut ts = TestStruct { value: 0, name: [0; 32] };
+    init_struct(&mut ts, 42);
+    println!("struct value: {}", ts.value);
+
     let helper_result = internal_helper(42);
     println!("internal: {}", helper_result);
     

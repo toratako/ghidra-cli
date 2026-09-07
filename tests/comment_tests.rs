@@ -10,15 +10,15 @@ use common::{
     ensure_test_project, get_function_address, get_function_addresses, DaemonTestHarness,
 };
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -29,7 +29,7 @@ fn test_comment_set_and_get() {
     let harness = harness();
 
     // Dynamically resolve an address with a code unit
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("comment")
@@ -37,7 +37,7 @@ fn test_comment_set_and_get() {
         .arg(&addr)
         .arg("test comment from integration test")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -49,7 +49,7 @@ fn test_comment_set_and_get() {
         .arg("get")
         .arg(&addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -64,7 +64,7 @@ fn test_comment_list() {
     let harness = harness();
 
     // Use a dynamically resolved function address
-    let addrs = get_function_addresses(harness, TEST_PROJECT, TEST_PROGRAM, 2);
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
     let addr = &addrs[0];
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra")
@@ -73,7 +73,7 @@ fn test_comment_list() {
         .arg(addr)
         .arg("another comment")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -89,7 +89,7 @@ fn test_comment_list() {
         .arg("--limit")
         .arg("100000")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -104,7 +104,7 @@ fn test_comment_delete() {
     let harness = harness();
 
     // Use a dynamically resolved function address
-    let addrs = get_function_addresses(harness, TEST_PROJECT, TEST_PROGRAM, 3);
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 3);
     let addr = &addrs[addrs.len() - 1];
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra")
@@ -113,7 +113,7 @@ fn test_comment_delete() {
         .arg(addr)
         .arg("to be deleted")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -124,7 +124,7 @@ fn test_comment_delete() {
         .arg("delete")
         .arg(addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -136,7 +136,7 @@ fn test_comment_delete() {
         .arg("get")
         .arg(addr)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output()

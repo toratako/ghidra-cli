@@ -11,21 +11,20 @@ Manages bridge lifecycle for test suites requiring Ghidra bridge interaction.
 ```rust
 use common::{DaemonTestHarness, ensure_test_project};
 
-const TEST_PROJECT: &str = "my-test";
-const TEST_PROGRAM: &str = "sample_binary";
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 #[test]
 #[serial]
 fn test_with_bridge() {
-    ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
+    ensure_test_project(common::test_project(), TEST_PROGRAM);
 
-    let harness = DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM)
+    let harness = DaemonTestHarness::new(common::test_project(), TEST_PROGRAM)
         .expect("Failed to start bridge");
 
     Command::cargo_bin("ghidra")
         .unwrap()
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(common::test_project())
         .arg("my-command")
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -63,21 +62,16 @@ let binary = fixture_binary();
 assert!(binary.exists());
 ```
 
-Binary must be compiled before tests:
-```bash
-rustc --edition 2021 -o tests/fixtures/sample_binary tests/fixtures/sample_binary.rs
-```
+The helper compiles `tests/fixtures/sample_binary.rs` with `rustc` into a temporary
+directory automatically, once per test executable. Compilation errors fail the
+test and include stderr. No executable fixture is tracked in Git.
 
-### ensure_test_project()
+### test_project() and ensure_test_project()
 
-Idempotent project setup using `Once::call_once`. Imports and analyzes sample_binary if needed.
-
-```rust
-ensure_test_project("my-project", "sample_binary");
-// Second call does nothing - project already exists
-```
-
-Handles "already exists" errors gracefully. Safe to call from multiple tests.
+Use `test_project()` for a fresh project name shared within the test executable.
+`ensure_test_project(test_project(), common::FIXTURE_PROGRAM)` imports and analyzes the
+fixture once. It does not reuse cached projects: mutation tests must not alter
+another suite's input. Import and stop failures fail setup immediately.
 
 ## require_ghidra! Macro
 
@@ -120,3 +114,6 @@ The `ghidra(&harness)` helper pre-configures `--project` args from the harness. 
 ### Why 5s Shutdown Timeout
 
 Most bridges shut down in <1s. 5s allows graceful cleanup without blocking tests indefinitely. If bridge hangs, hard kill via PID prevents test suite deadlock.
+
+Suite exit cleanup stops the bridge and removes the generated project and fixture.
+Forced process termination can leave artifacts behind; cleanup is best effort.

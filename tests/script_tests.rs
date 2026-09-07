@@ -9,15 +9,15 @@ use std::sync::OnceLock;
 mod common;
 use common::{ensure_test_project, DaemonTestHarness};
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -118,7 +118,7 @@ fn test_script_run() {
         .arg("run")
         .arg(script_path.to_str().unwrap())
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output()
@@ -161,7 +161,7 @@ fn test_script_run_java_args() {
         .arg("run")
         .arg(script_path.to_str().unwrap())
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--")
@@ -197,7 +197,7 @@ fn test_script_python_inline() {
         .arg("python")
         .arg("output = 'Hello from Python'")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output()
@@ -238,7 +238,7 @@ fn test_script_run_artifact_contract() {
         .arg("run")
         .arg(script.to_str().unwrap())
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--expect")
@@ -279,7 +279,7 @@ fn test_script_run_artifact_contract() {
         .arg("run")
         .arg(script.to_str().unwrap())
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--expect")
@@ -319,7 +319,7 @@ fn test_script_run_nonexistent() {
         .arg("run")
         .arg("/nonexistent/script.py")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()

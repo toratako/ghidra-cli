@@ -10,15 +10,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod common;
 use common::{ensure_test_project, get_function_address, ghidra, DaemonTestHarness};
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -39,7 +39,7 @@ fn test_type_list() {
         .arg("type")
         .arg("list")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -57,7 +57,7 @@ fn test_type_get_primitive() {
         .arg("get")
         .arg("int")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -76,7 +76,7 @@ fn test_type_create() {
         .arg("create")
         .arg("MyTestStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -88,7 +88,7 @@ fn test_type_create() {
         .arg("get")
         .arg("MyTestStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -102,7 +102,7 @@ fn test_type_apply() {
     require_ghidra!();
     let harness = harness();
 
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("type")
@@ -110,7 +110,7 @@ fn test_type_apply() {
         .arg(&addr)
         .arg("int")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output()
@@ -127,10 +127,8 @@ fn test_type_apply() {
     );
 }
 
-/// `main` in the shared, cross-test `ci-test`/`sample_binary` fixture is relied
-/// on (read-only) by dozens of tests across the suite. Add `delta` bytes to a
-/// hex address string, preserving width, so this test can clear/redisassemble
-/// a small window around it without hardcoding a magic offset.
+/// Add bytes to a hex address while preserving its width, for the instruction
+/// window restored by this suite's type-application test.
 fn hex_addr_plus(addr: &str, delta: u64) -> String {
     let val = u64::from_str_radix(addr, 16).expect("hex address");
     format!("{:0width$x}", val + delta, width = addr.len())
@@ -148,32 +146,21 @@ fn restore_disassembly(harness: &DaemonTestHarness, addr: &str) {
         .arg("--disasm-at")
         .arg(addr)
         .arg("--json")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run()
         .assert_success();
 }
 
 #[test]
 #[serial]
-// `#[serial]` only serializes within this binary; cargo runs test *files* as
-// separate processes in parallel by default, and `main`'s entry is read by
-// dozens of tests across other files (readonly_tests.rs, patch_tests.rs,
-// etc.) with no cross-process lock protecting it. This test's clear/restore
-// steps below are correct and leave `main` intact on exit, but a
-// concurrently-running test in another file can still observe it broken in
-// the window in between. Run explicitly (`cargo test -- --ignored`) or
-// alone; skip it in a full parallel `cargo test` run.
-#[ignore]
+// This suite owns its project, so clearing main cannot affect another suite.
 fn test_type_apply_force_on_function_entry_warns() {
     require_ghidra!();
     let harness = harness();
 
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
-    // Armor against `main` having been left mid-disassembled by another test
-    // sharing this cached fixture (e.g. `test_type_apply` above can itself
-    // silently succeed rather than conflict, if a prior run left the entry
-    // only partially defined) -- this test needs a clean function entry to
-    // exercise the case it's actually testing.
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    // Earlier type tests in this suite can clear instructions. Start from a
+    // defined function entry so this test exercises the intended conflict.
     restore_disassembly(harness, &addr);
 
     // --force on a function's own entry point clears its code (not a
@@ -186,7 +173,7 @@ fn test_type_apply_force_on_function_entry_warns() {
         .arg("int")
         .arg("--force")
         .arg("--json")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     // Restore `main`'s disassembly for the many other tests sharing this
@@ -230,7 +217,7 @@ fn test_type_add_field_places_at_exact_offset() {
         .arg("delete")
         .arg("OffsetPlacementStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .output();
@@ -240,7 +227,7 @@ fn test_type_add_field_places_at_exact_offset() {
         .arg("create")
         .arg("OffsetPlacementStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -258,7 +245,7 @@ fn test_type_add_field_places_at_exact_offset() {
             .arg("--offset")
             .arg(offset.to_string())
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .arg("--program")
             .arg(TEST_PROGRAM)
             .assert()
@@ -270,7 +257,7 @@ fn test_type_add_field_places_at_exact_offset() {
         .arg("get")
         .arg("OffsetPlacementStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .arg("--format")
@@ -318,7 +305,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
         .arg("create")
         .arg("CTypeNameStruct")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -347,7 +334,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
             .arg("--type")
             .arg(ty)
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .arg("--program")
             .arg(TEST_PROGRAM)
             .assert()
@@ -366,7 +353,7 @@ fn test_type_get_nonexistent() {
         .arg("get")
         .arg("NonexistentType12345")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .assert()
@@ -392,7 +379,7 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .arg("--category")
         .arg(&category_a)
         .arg(&def_a)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run()
         .assert_success();
 
@@ -402,7 +389,7 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .arg("--category")
         .arg(&category_b)
         .arg(&def_b)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run()
         .assert_success();
 
@@ -410,8 +397,8 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .arg("type")
         .arg("list")
         .arg("--filter")
-        .arg(&type_name)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .arg(format!("name={type_name}"))
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 

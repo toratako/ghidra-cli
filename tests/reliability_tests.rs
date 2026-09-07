@@ -7,28 +7,13 @@ use std::time::Duration;
 mod common;
 use common::{ensure_test_project, DaemonTestHarness};
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
-/// Try to create a DaemonTestHarness. Returns None (and prints skip message) if
-/// the bridge fails to start due to "program file(s) not found" - a known
-/// macOS issue where Ghidra can't find the imported program.
-fn try_start_harness(context: &str) -> Option<DaemonTestHarness> {
-    match DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM) {
-        Ok(h) => Some(h),
-        Err(e) => {
-            let msg = format!("{}", e);
-            if msg.contains("program file(s) not found") {
-                eprintln!(
-                    "Skipping ({}): bridge can't find program (known macOS issue)",
-                    context
-                );
-                None
-            } else {
-                panic!("Failed to start bridge ({}): {}", context, e);
-            }
-        }
-    }
+/// Start the bridge; missing programs and startup failures must fail the test.
+fn start_harness(context: &str) -> DaemonTestHarness {
+    DaemonTestHarness::new(test_project(), TEST_PROGRAM)
+        .unwrap_or_else(|e| panic!("Failed to start bridge ({context}): {e}"))
 }
 
 /// Test that stale port files are cleaned up on bridge restart.
@@ -39,19 +24,17 @@ fn try_start_harness(context: &str) -> Option<DaemonTestHarness> {
 fn test_stale_files_cleaned_on_restart() {
     require_ghidra!();
 
-    ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
+    ensure_test_project(test_project(), TEST_PROGRAM);
 
     // First bridge - start and stop cleanly
     {
-        let Some(_harness) = try_start_harness("first bridge") else {
-            return;
-        };
+        let _harness = start_harness("first bridge");
 
         // Verify bridge is working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra")
             .arg("ping")
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .timeout(Duration::from_secs(30))
             .assert()
             .success();
@@ -64,15 +47,13 @@ fn test_stale_files_cleaned_on_restart() {
 
     // Second bridge - should start without issues (no stale port file conflict)
     {
-        let Some(_harness) = try_start_harness("second bridge after restart") else {
-            return;
-        };
+        let _harness = start_harness("second bridge after restart");
 
         // Verify bridge is working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra")
             .arg("ping")
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .timeout(Duration::from_secs(30))
             .assert()
             .success();
@@ -87,19 +68,17 @@ fn test_stale_files_cleaned_on_restart() {
 fn test_recovery_after_crash() {
     require_ghidra!();
 
-    ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
+    ensure_test_project(test_project(), TEST_PROGRAM);
 
     // Start bridge and verify it works
     {
-        let Some(_harness) = try_start_harness("initial bridge") else {
-            return;
-        };
+        let _harness = start_harness("initial bridge");
 
         // Verify it's working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra")
             .arg("ping")
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .timeout(Duration::from_secs(30))
             .assert()
             .success();
@@ -112,15 +91,13 @@ fn test_recovery_after_crash() {
 
     // New bridge should start successfully after crash cleanup
     {
-        let Some(_harness) = try_start_harness("bridge after crash") else {
-            return;
-        };
+        let _harness = start_harness("bridge after crash");
 
         // Verify new bridge is working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra")
             .arg("ping")
             .arg("--project")
-            .arg(TEST_PROJECT)
+            .arg(test_project())
             .timeout(Duration::from_secs(30))
             .assert()
             .success();
@@ -133,17 +110,15 @@ fn test_recovery_after_crash() {
 fn test_bridge_not_ready_error() {
     require_ghidra!();
 
-    ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
+    ensure_test_project(test_project(), TEST_PROGRAM);
 
-    let Some(harness) = try_start_harness("bridge") else {
-        return;
-    };
+    let harness = start_harness("bridge");
 
     // Ping should work
     assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("ping")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .timeout(Duration::from_secs(30))
         .assert()
         .success();

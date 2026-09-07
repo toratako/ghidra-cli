@@ -19,89 +19,97 @@ pub use schemas::Validate;
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::sync::Once;
+use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
-/// Get path to the sample_binary test fixture.
-pub fn fixture_binary() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("sample_binary")
+/// Fresh Ghidra imports use the fixture's filename as their program name.
+pub const FIXTURE_PROGRAM: &str = if cfg!(windows) {
+    "sample_binary.exe"
+} else {
+    "sample_binary"
+};
+
+static FIXTURE: OnceLock<tempfile::TempDir> = OnceLock::new();
+static PROJECT: OnceLock<PathBuf> = OnceLock::new();
+
+fn register_cleanup() {
+    static REGISTER: Once = Once::new();
+    REGISTER.call_once(|| {
+        // SAFETY: The callback has C ABI, remains valid for the process lifetime,
+        // and catches panics so none can unwind across the FFI boundary.
+        assert_eq!(
+            unsafe { libc::atexit(cleanup_suite) },
+            0,
+            "Cannot register suite cleanup"
+        );
+    });
 }
 
-/// Ensure test project exists with analyzed sample binary.
-/// Uses Once::call_once for idempotent setup across multiple tests.
-/// Skips import+analyze if the project already exists (supports CI caching).
+extern "C" fn cleanup_suite() {
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(project) = PROJECT.get() {
+            // Rust statics are not dropped. Explicitly stop the suite's bridge
+            // before removing its unique project, including on test failures.
+            if ghidra_cli::ghidra::bridge::stop_bridge(project).is_ok() {
+                let _ = std::fs::remove_file(project.with_extension("gpr"));
+                let _ = std::fs::remove_dir_all(project.with_extension("rep"));
+            }
+        }
+        if let Some(fixture) = FIXTURE.get() {
+            let _ = std::fs::remove_dir_all(fixture.path());
+        }
+    });
+}
+
+/// Build the host-native fixture once per test executable, outside the source tree.
+pub fn fixture_binary() -> PathBuf {
+    register_cleanup();
+    let dir = FIXTURE.get_or_init(|| {
+        let dir = tempfile::Builder::new()
+            .prefix("ghidra-fixture-")
+            .tempdir()
+            .expect("Failed to create fixture directory");
+        let output = std::process::Command::new("rustc")
+            .args(["--edition", "2021", "-C", "strip=debuginfo"])
+            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample_binary.rs"))
+            .arg("-o")
+            .arg(dir.path().join(FIXTURE_PROGRAM))
+            .output()
+            .expect("Failed to run rustc for test fixture");
+        assert!(
+            output.status.success(),
+            "Fixture compilation failed: {}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        dir
+    });
+    dir.path().join(FIXTURE_PROGRAM)
+}
+
+/// Each test executable and run gets a fresh project, so mutations never affect
+/// another suite or a later run. Absolute paths also isolate CLI config changes.
+pub fn test_project() -> &'static str {
+    register_cleanup();
+    PROJECT
+        .get_or_init(|| {
+            ghidra_cli::config::Config::load()
+                .and_then(|config| config.get_project_dir())
+                .expect("Could not determine project dir")
+                .join(format!("ghidra-test-{}", uuid::Uuid::new_v4()))
+        })
+        .to_str()
+        .expect("Test project path is not UTF-8")
+}
+
+/// Import and analyze once for this suite. Setup failures must fail the tests.
 pub fn ensure_test_project(project: &str, program: &str) {
     static SETUP: Once = Once::new();
     SETUP.call_once(|| {
         let binary = fixture_binary();
-        if !binary.exists() {
-            panic!(
-                "Test fixture not found: {:?}\nRun: rustc --edition 2021 -o tests/fixtures/sample_binary tests/fixtures/sample_binary.rs",
-                binary
-            );
-        }
-
-        // Check if project already exists with program data (supports CI caching).
-        // Verify both .gpr (project descriptor) and .rep (repository data) exist
-        // to avoid using incomplete cached projects.
-        //
-        // Ghidra stores project files at: <projects_dir>/<project_name>.gpr
-        // NOT at <projects_dir>/<project_name>/<project_name>.gpr
-        // because start_bridge passes (project_path.parent(), project_path.file_name())
-        // to analyzeHeadless.
-        let projects_dir = ghidra_cli::config::Config::default_project_dir()
-            .expect("Could not determine default project dir");
-        let gpr_file = projects_dir.join(format!("{}.gpr", project));
-        let rep_dir = projects_dir.join(format!("{}.rep", project));
-
-        // Validate the cached project has actual program data, not just metadata
-        // stubs. Ghidra's local filesystem stores program data in bucketed
-        // subdirectories (`00/`, `01/`, ...) under `.rep/idata/`, alongside index
-        // files (`~index.dat`, `~index.bak`, `~journal.*`). The real signal of a
-        // populated project is therefore the presence of a *subdirectory* — index
-        // files alone (which is all an empty project has) do NOT count.
-        //
-        // (An earlier check accepted any entry != "~index.dat", so a bare
-        // `~index.bak` made an empty project look valid — the cause of Windows
-        // "Requested project program file(s) not found".)
-        //
-        // NOTE: We do NOT require a non-empty `.gpr`. A correctly committed
-        // Ghidra 12.x project legitimately has a 0-byte `.gpr` descriptor (the
-        // project data lives under `.rep`). Requiring `.gpr` > 0 made EVERY run
-        // treat the cache as invalid, so every test binary deleted and
-        // re-imported the shared project — and since the mutation suite runs
-        // several test binaries concurrently, they raced to delete/re-import the
-        // same project, wiping it mid-use ("Could not find project: ci-test").
-        let idata_dir = rep_dir.join("idata");
-        let idata_has_data = idata_dir.is_dir()
-            && std::fs::read_dir(&idata_dir)
-                .map(|entries| entries.filter_map(|e| e.ok()).any(|e| e.path().is_dir()))
-                .unwrap_or(false);
-        let project_valid = gpr_file.exists() && idata_has_data;
-
-        if project_valid {
-            eprintln!("=== Using cached test project: {:?} ===", gpr_file);
-            return;
-        }
-
-        if gpr_file.exists() {
-            eprintln!("=== Project cache invalid (missing program data), re-importing ===");
-            // A bridge from a previous test binary may still be running (the
-            // static HARNESS OnceLock is never dropped, so its bridge leaks
-            // across test binaries). Stop it BEFORE deleting the project files:
-            // deleting them from under a live bridge makes the import below go
-            // over TCP into the doomed in-memory project, which then persists
-            // nothing on stop — and every test in this binary fails with
-            // "Could not find project".
-            let project_path = projects_dir.join(project);
-            let _ = ghidra_cli::ghidra::bridge::stop_bridge(&project_path);
-            // Remove stale project files to avoid conflicts during import
-            let _ = std::fs::remove_file(&gpr_file);
-            let _ = std::fs::remove_dir_all(&rep_dir);
-        }
+        let projects_dir = ghidra_cli::config::Config::load()
+            .and_then(|config| config.get_project_dir())
+            .expect("Could not determine project dir");
 
         eprintln!("=== Setting up test project (durable import + analysis) ===");
         eprintln!("Project dir: {:?}", projects_dir);
@@ -127,17 +135,11 @@ pub fn ensure_test_project(project: &str, program: &str) {
             ],
             Duration::from_secs(300),
         );
-        match import_status {
-            Ok(status) => {
-                eprintln!("Import finished with status: {}", status);
-                if !status.success() {
-                    eprintln!("Warning: Import may have failed, but continuing...");
-                } else {
-                    eprintln!("Binary imported successfully");
-                }
-            }
-            Err(e) => eprintln!("Import error: {}", e),
-        }
+        let import_status = import_status.expect("Test fixture import failed");
+        assert!(
+            import_status.success(),
+            "Test fixture import failed: {import_status}"
+        );
 
         // Step 2: Stop the persistent bridge started by `ghidra import`.
         // The fresh-project one-shot importer already analyzed and durably
@@ -151,10 +153,11 @@ pub fn ensure_test_project(project: &str, program: &str) {
             &["stop", "--project", project],
             Duration::from_secs(120),
         );
-        match stop_status {
-            Ok(status) => eprintln!("Stop finished with status: {}", status),
-            Err(e) => eprintln!("Stop error: {}", e),
-        }
+        let stop_status = stop_status.expect("Failed to stop fixture import bridge");
+        assert!(
+            stop_status.success(),
+            "Failed to stop fixture import bridge: {stop_status}"
+        );
 
         eprintln!("=== Test project setup complete ===");
     });
@@ -182,7 +185,8 @@ impl DaemonTestHarness {
         let data_dir = get_unique_data_dir();
 
         // Resolve the project path (must match the CLI's default via get_project_dir)
-        let project_path = ghidra_cli::config::Config::default_project_dir()
+        let project_path = ghidra_cli::config::Config::load()?
+            .get_project_dir()
             .context("Could not determine default project dir")?
             .join(project);
 
@@ -336,14 +340,20 @@ macro_rules! require_ghidra {
             .output()
             .expect("Failed to run ghidra doctor");
 
-        let output = String::from_utf8_lossy(&doctor.stdout);
-
-        if !output.contains("OK") || output.contains("NOT FOUND") || output.contains("FAILED") {
-            panic!(
-                "Ghidra not properly installed — tests MUST fail without Ghidra.\n\
-                 Doctor output: {}",
-                output
-            );
-        }
+        $crate::common::assert_doctor_ready(&doctor);
     };
+}
+
+pub fn assert_doctor_ready(doctor: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&doctor.stdout);
+    let stderr = String::from_utf8_lossy(&doctor.stderr);
+    assert!(
+        doctor.status.success()
+            && stdout.contains("analyzeHeadless: OK")
+            && stdout.contains("Checking bridge script compiles... OK")
+            && !stdout.contains("NOT FOUND")
+            && !stdout.contains("FAILED"),
+        "Ghidra not properly installed — tests MUST fail without Ghidra.\nStatus: {}\nstdout: {}\nstderr: {}",
+        doctor.status, stdout, stderr
+    );
 }

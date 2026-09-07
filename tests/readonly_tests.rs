@@ -17,8 +17,8 @@ use common::{
     DaemonTestHarness, GhidraCommand,
 };
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 /// Known exported function names from sample_binary
 const KNOWN_FUNCTIONS: &[&str] = &[
@@ -37,8 +37,8 @@ static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -66,7 +66,7 @@ fn test_function_list_schema_validation() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -92,7 +92,7 @@ fn test_function_list_contains_expected_functions() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -115,18 +115,14 @@ fn test_function_list_contains_expected_functions() {
         functions.len()
     );
 
-    // Check how many known functions we can find (informational, not hard failure)
-    let mut found_count = 0;
     for expected in KNOWN_FUNCTIONS {
-        if names.iter().any(|n| matches_function_name(n, expected)) {
-            found_count += 1;
-        }
+        assert!(
+            names
+                .iter()
+                .any(|name| matches_function_name(name, expected)),
+            "Missing fixture function: {expected}"
+        );
     }
-    eprintln!(
-        "Found {}/{} known functions from sample_binary",
-        found_count,
-        KNOWN_FUNCTIONS.len()
-    );
 }
 
 #[test]
@@ -138,7 +134,7 @@ fn test_function_list_limit() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--limit")
         .arg("3")
@@ -163,7 +159,7 @@ fn test_function_list_filter() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--filter")
         .arg("name~main")
@@ -200,7 +196,7 @@ fn test_function_list_address_range_filter() {
     // `Ok(false)` for every row -- exit 0, empty result, no error -- instead
     // of comparing addresses. Derive real bounds from the binary so this
     // isn't tied to one platform's address layout.
-    let mut addrs: Vec<u64> = get_function_addresses(harness, TEST_PROJECT, TEST_PROGRAM, 50)
+    let mut addrs: Vec<u64> = get_function_addresses(harness, test_project(), TEST_PROGRAM, 50)
         .iter()
         .map(|a| {
             let hex = a.rsplit(':').next().unwrap_or(a);
@@ -215,7 +211,7 @@ fn test_function_list_address_range_filter() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--filter")
         .arg(&filter)
@@ -257,7 +253,7 @@ fn test_function_list_bare_word_filter_rejected() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--filter")
         .arg("main")
@@ -279,7 +275,7 @@ fn test_strings_list_schema_validation() {
     let result = ghidra(harness)
         .arg("strings")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--limit")
         .arg("50")
@@ -318,7 +314,7 @@ fn test_memory_map_schema_validation() {
     let result = ghidra(harness)
         .arg("memory")
         .arg("map")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -356,7 +352,7 @@ fn test_summary_contains_expected_fields() {
 
     let result = ghidra(harness)
         .arg("summary")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -381,7 +377,7 @@ fn test_decompile_by_name() {
     let result = ghidra(harness)
         .arg("decompile")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -403,12 +399,12 @@ fn test_decompile_by_address() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("decompile")
         .arg(&main_addr)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -424,13 +420,13 @@ fn test_decompile_by_fun_style_target() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let fun_target = to_fun_style_target(&main_addr);
 
     let result = ghidra(harness)
         .arg("decompile")
         .arg(&fun_target)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -449,7 +445,7 @@ fn test_decompile_nonexistent_function() {
     let result = ghidra(harness)
         .arg("decompile")
         .arg("this_function_definitely_does_not_exist_xyz123")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     if result.exit_code == 0 {
@@ -472,13 +468,13 @@ fn test_xref_to() {
     require_ghidra!();
     let harness = harness();
 
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "add_numbers");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
 
     let result = ghidra(harness)
         .arg("xref")
         .arg("to")
         .arg(&addr)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -501,13 +497,13 @@ fn test_xref_from() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("xref")
         .arg("from")
         .arg(&main_addr)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -536,13 +532,13 @@ fn test_xref_list() {
     require_ghidra!();
     let harness = harness();
 
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "add_numbers");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
 
     let result = ghidra(harness)
         .arg("xref")
         .arg("list")
         .arg(&addr)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -638,7 +634,7 @@ fn test_find_string() {
         .arg("find")
         .arg("string")
         .arg("Ghidra CLI")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -655,7 +651,7 @@ fn test_find_bytes() {
         .arg("find")
         .arg("bytes")
         .arg("4883ec08")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -671,7 +667,7 @@ fn test_find_function() {
         .arg("find")
         .arg("function")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -688,7 +684,7 @@ fn test_find_function_glob() {
         .arg("find")
         .arg("function")
         .arg("m*")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -705,7 +701,7 @@ fn test_find_calls() {
         .arg("find")
         .arg("calls")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -720,7 +716,7 @@ fn test_find_crypto() {
     let result = ghidra(harness)
         .arg("find")
         .arg("crypto")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -738,7 +734,7 @@ fn test_find_interesting() {
     let result = ghidra(harness)
         .arg("find")
         .arg("interesting")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -757,7 +753,7 @@ fn test_find_string_no_matches() {
         .arg("find")
         .arg("string")
         .arg("nonexistent_string_xyz123")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -786,7 +782,7 @@ fn test_graph_calls() {
     let result = ghidra(harness)
         .arg("graph")
         .arg("calls")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -805,7 +801,7 @@ fn test_graph_callers() {
         .arg("graph")
         .arg("callers")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -826,7 +822,7 @@ fn test_graph_callees() {
         .arg("graph")
         .arg("callees")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -901,7 +897,7 @@ fn test_graph_export_dot() {
         .arg("graph")
         .arg("export")
         .arg("dot")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -920,7 +916,7 @@ fn test_stats_normal() {
 
     let result = ghidra(harness)
         .arg("stats")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -937,7 +933,7 @@ fn test_stats_has_all_fields() {
 
     let result = ghidra(harness)
         .arg("stats")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -982,7 +978,7 @@ fn test_stats_json_format() {
 
     let result = ghidra(harness)
         .arg("stats")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -1035,33 +1031,24 @@ fn test_disasm_at_main() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("disasm")
         .arg(&main_addr)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
     result.assert_success();
 
-    if let Some(disasm) = result.try_json::<DisasmResult>() {
-        assert!(
-            !disasm.results.is_empty(),
-            "Should have at least one instruction"
-        );
-        for instr in &disasm.results {
-            instr.assert_valid();
-        }
-    } else if let Some(instructions) = result.try_json::<Vec<common::schemas::Instruction>>() {
-        assert!(
-            !instructions.is_empty(),
-            "Should have at least one instruction"
-        );
-        for instr in &instructions {
-            instr.assert_valid();
-        }
+    let disasm: DisasmResult = result.json();
+    assert!(
+        !disasm.results.is_empty(),
+        "Should have at least one instruction"
+    );
+    for instr in &disasm.results {
+        instr.assert_valid();
     }
 }
 
@@ -1071,7 +1058,7 @@ fn test_disasm_with_instruction_limit() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let limit = 5;
 
     let result = ghidra(harness)
@@ -1079,29 +1066,21 @@ fn test_disasm_with_instruction_limit() {
         .arg(&main_addr)
         .arg("--instructions")
         .arg(limit.to_string())
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
     result.assert_success();
 
-    if let Some(disasm) = result.try_json::<DisasmResult>() {
-        assert!(
-            disasm.results.len() <= limit,
-            "Should return at most {} instructions, got {}",
-            limit,
-            disasm.results.len()
-        );
-        for instr in &disasm.results {
-            instr.assert_valid();
-        }
-    } else if let Some(instructions) = result.try_json::<Vec<common::schemas::Instruction>>() {
-        assert!(
-            instructions.len() <= limit,
-            "Should return at most {} instructions, got {}",
-            limit,
-            instructions.len()
-        );
+    let disasm: DisasmResult = result.json();
+    assert!(
+        disasm.results.len() <= limit,
+        "Should return at most {} instructions, got {}",
+        limit,
+        disasm.results.len()
+    );
+    for instr in &disasm.results {
+        instr.assert_valid();
     }
 }
 
@@ -1111,26 +1090,25 @@ fn test_disasm_small_count() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("disasm")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("1")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
     result.assert_success();
 
-    if let Some(disasm) = result.try_json::<DisasmResult>() {
-        assert!(
-            disasm.results.len() <= 1,
-            "Should return at most 1 instruction, got {}",
-            disasm.results.len()
-        );
-    }
+    let disasm: DisasmResult = result.json();
+    assert!(
+        disasm.results.len() <= 1,
+        "Should return at most 1 instruction, got {}",
+        disasm.results.len()
+    );
 }
 
 #[test]
@@ -1139,52 +1117,51 @@ fn test_disasm_instruction_fields() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("disasm")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("10")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
     result.assert_success();
 
-    if let Some(disasm) = result.try_json::<DisasmResult>() {
-        assert!(!disasm.results.is_empty(), "Should have instructions");
+    let disasm: DisasmResult = result.json();
+    assert!(!disasm.results.is_empty(), "Should have instructions");
 
-        let first = &disasm.results[0];
-        assert!(!first.mnemonic.is_empty(), "Mnemonic should not be empty");
-        assert!(!first.address.is_empty(), "Address should not be empty");
+    let first = &disasm.results[0];
+    assert!(!first.mnemonic.is_empty(), "Mnemonic should not be empty");
+    assert!(!first.address.is_empty(), "Address should not be empty");
 
-        let addr_hex = first
-            .address
-            .strip_prefix("0x")
-            .or_else(|| first.address.strip_prefix("0X"))
-            .unwrap_or(&first.address);
-        assert!(
-            !addr_hex.is_empty() && addr_hex.bytes().all(|b| b.is_ascii_hexdigit()),
-            "Address should be hex format, got: {}",
-            first.address
+    let addr_hex = first
+        .address
+        .strip_prefix("0x")
+        .or_else(|| first.address.strip_prefix("0X"))
+        .unwrap_or(&first.address);
+    assert!(
+        !addr_hex.is_empty() && addr_hex.bytes().all(|b| b.is_ascii_hexdigit()),
+        "Address should be hex format, got: {}",
+        first.address
+    );
+
+    let common_first_instr = [
+        "PUSH", "SUB", "MOV", "ENDBR", "LEA", "XOR", "JMP", // x86
+        "STP", "STR", "BL", "NOP", "ADRP", "ADD", "RET", // ARM64
+    ];
+    let mnemonic_upper = first.mnemonic.to_uppercase();
+
+    if !common_first_instr
+        .iter()
+        .any(|&m| mnemonic_upper.starts_with(m))
+    {
+        eprintln!(
+            "Note: First instruction is '{}' - unusual but not necessarily wrong",
+            first.mnemonic
         );
-
-        let common_first_instr = [
-            "PUSH", "SUB", "MOV", "ENDBR", "LEA", "XOR", "JMP", // x86
-            "STP", "STR", "BL", "NOP", "ADRP", "ADD", "RET", // ARM64
-        ];
-        let mnemonic_upper = first.mnemonic.to_uppercase();
-
-        if !common_first_instr
-            .iter()
-            .any(|&m| mnemonic_upper.starts_with(m))
-        {
-            eprintln!(
-                "Note: First instruction is '{}' - unusual but not necessarily wrong",
-                first.mnemonic
-            );
-        }
     }
 }
 
@@ -1197,7 +1174,7 @@ fn test_disasm_invalid_address() {
     let result = ghidra(harness)
         .arg("disasm")
         .arg("0xFFFFFFFFFFFFFFFF")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     if result.exit_code == 0 {
@@ -1229,14 +1206,14 @@ fn test_disasm_zero_instructions() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("disasm")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("0")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     if result.exit_code == 0 {
@@ -1265,7 +1242,7 @@ fn test_diff_programs() {
         .arg(TEST_PROGRAM)
         .arg(TEST_PROGRAM)
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .run();
 
     result.assert_success();
@@ -1294,7 +1271,7 @@ fn test_diff_functions() {
         .arg("main")
         .arg("main")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .run();
 
     result.assert_success();
@@ -1314,7 +1291,7 @@ fn test_diff_functions_different() {
         .arg("main")
         .arg("main")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .run();
 
     result.assert_success();
@@ -1327,7 +1304,7 @@ fn test_diff_functions_with_fun_style_targets() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let fun_target = to_fun_style_target(&main_addr);
 
     let result = ghidra(harness)
@@ -1335,7 +1312,7 @@ fn test_diff_functions_with_fun_style_targets() {
         .arg("functions")
         .arg(&fun_target)
         .arg(&fun_target)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -1354,7 +1331,7 @@ fn test_program_info() {
     let result = ghidra(harness)
         .arg("program")
         .arg("info")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -1377,7 +1354,7 @@ fn test_program_export_json() {
         .arg("program")
         .arg("export")
         .arg("json")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     if result.exit_code == 0 {
@@ -1398,7 +1375,7 @@ fn test_program_close() {
     let result = ghidra(harness)
         .arg("program")
         .arg("close")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     assert!(
@@ -1413,7 +1390,7 @@ fn test_program_close() {
     let _ = ghidra(harness)
         .arg("program")
         .arg("info")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 }
 
@@ -1460,7 +1437,7 @@ query --function main
     let result = GhidraCommand::new()
         .arg("batch")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg(batch_file.to_str().unwrap())
         .run();
 
@@ -1489,7 +1466,7 @@ fn test_batch_empty_file() {
     let result = GhidraCommand::new()
         .arg("batch")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg(batch_file.to_str().unwrap())
         .run();
 
@@ -1518,7 +1495,7 @@ query --address 0x100000
     let result = GhidraCommand::new()
         .arg("batch")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg(batch_file.to_str().unwrap())
         .run();
 
@@ -1538,7 +1515,7 @@ fn test_batch_invalid_file() {
     let result = GhidraCommand::new()
         .arg("batch")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg("/nonexistent/batch/file.txt")
         .run();
 
@@ -1569,7 +1546,7 @@ query --address 0x100000
     let result = GhidraCommand::new()
         .arg("batch")
         .arg("--project")
-        .arg(TEST_PROJECT)
+        .arg(test_project())
         .arg(batch_file.to_str().unwrap())
         .run();
 
@@ -1594,7 +1571,7 @@ fn test_snapshot_function_list_structure() {
     let result = ghidra(harness)
         .arg("function")
         .arg("list")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .arg("--limit")
         .arg("1")
@@ -1623,7 +1600,7 @@ fn test_snapshot_stats_structure() {
 
     let result = ghidra(harness)
         .arg("stats")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -1653,7 +1630,7 @@ fn test_snapshot_memory_map_structure() {
     let result = ghidra(harness)
         .arg("memory")
         .arg("map")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -1674,14 +1651,14 @@ fn test_snapshot_disasm_structure() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("disasm")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("3")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 
@@ -1713,7 +1690,7 @@ fn test_snapshot_graph_callees_structure() {
         .arg("graph")
         .arg("callees")
         .arg("main")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
 

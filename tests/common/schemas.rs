@@ -90,8 +90,7 @@ pub struct MemoryBlock {
 pub struct Instruction {
     pub address: String,
     pub mnemonic: String,
-    #[serde(default)]
-    pub operands: Option<String>,
+    pub operands: Vec<String>,
     #[serde(default)]
     pub bytes: Option<String>,
     #[serde(default)]
@@ -144,14 +143,11 @@ pub struct ResultWrapper<T> {
     pub truncated: Option<bool>,
 }
 
-/// Disassembly result from `ghidra disasm` command.
+/// CLI disassembly is a JSON array of instructions.
 #[derive(Debug, Deserialize)]
+#[serde(transparent)]
 pub struct DisasmResult {
     pub results: Vec<Instruction>,
-    #[serde(default)]
-    pub start_address: Option<String>,
-    #[serde(default)]
-    pub end_address: Option<String>,
 }
 
 /// Patch operation result.
@@ -432,14 +428,6 @@ impl<T: Validate> Validate for Vec<T> {
 
 impl Validate for DisasmResult {
     fn validate(&self) -> Vec<String> {
-        let mut errors = self.results.validate();
-
-        if let Some(ref addr) = self.start_address {
-            if !is_hex_address(addr) {
-                errors.push(format!("start_address '{}' should be hex format", addr));
-            }
-        }
-
-        errors
+        self.results.validate()
     }
 }

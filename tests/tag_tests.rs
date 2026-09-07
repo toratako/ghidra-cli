@@ -1,6 +1,6 @@
 //! Tests for function tag operations (issue #17).
 //!
-//! Tags persist in the shared ci-test project across runs, so every test
+//! Tags share one project within this suite, so every test
 //! cleans up its own uniquely-prefixed tags (and tolerates leftovers by
 //! deleting them up front).
 
@@ -14,15 +14,15 @@ use common::{
     DaemonTestHarness,
 };
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -32,7 +32,7 @@ fn cleanup_tag(harness: &DaemonTestHarness, name: &str) {
         .arg("tag")
         .arg("delete")
         .arg(name)
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
 }
 
@@ -43,7 +43,7 @@ fn tag_json(harness: &DaemonTestHarness, args: &[&str]) -> Vec<serde_json::Value
     let result = ghidra(harness)
         .args(args.iter().copied())
         .arg("--json")
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
     result.json()
@@ -100,7 +100,7 @@ fn test_tag_create_existing_reports_existed() {
 fn test_tag_add_reports_created_and_already_present() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt3_pre");
     cleanup_tag(harness, "tt3_auto");
 
@@ -130,7 +130,7 @@ fn test_tag_add_reports_created_and_already_present() {
 fn test_tag_add_dedupes_argv() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt4_dup");
 
     let rows = tag_json(harness, &["tag", "add", &addr, "tt4_dup", "tt4_dup"]);
@@ -145,7 +145,7 @@ fn test_tag_add_dedupes_argv() {
 fn test_tag_get_and_list_function() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt5_member");
 
     tag_json(harness, &["tag", "add", &addr, "tt5_member"]);
@@ -167,7 +167,7 @@ fn test_tag_get_and_list_function() {
 fn test_function_list_tag_filter_and_semantics() {
     require_ghidra!();
     let harness = harness();
-    let addrs = get_function_addresses(harness, TEST_PROJECT, TEST_PROGRAM, 2);
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
     assert!(addrs.len() >= 2, "need two functions for AND test");
     cleanup_tag(harness, "tt6_both");
     cleanup_tag(harness, "tt6_only1");
@@ -208,7 +208,7 @@ fn test_function_list_unknown_tag_errors_with_hint() {
     // Unknown tag is an error (nonzero exit), never a silent empty result.
     let result = ghidra(harness)
         .args(["function", "list", "--tag", "tt7_zzzz"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
     result.assert_stderr_contains("No tag named");
@@ -216,7 +216,7 @@ fn test_function_list_unknown_tag_errors_with_hint() {
     // Case-insensitive near-match hint
     let result = ghidra(harness)
         .args(["tag", "get", "TT7_REAL"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
     result.assert_stderr_contains("Did you mean 'tt7_real'?");
@@ -229,7 +229,7 @@ fn test_function_list_unknown_tag_errors_with_hint() {
 fn test_function_list_untagged() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt8_tagged");
 
     tag_json(harness, &["tag", "add", &addr, "tt8_tagged"]);
@@ -248,7 +248,7 @@ fn test_function_list_untagged() {
 fn test_tag_remove_and_all() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt9_a");
     cleanup_tag(harness, "tt9_b");
 
@@ -297,7 +297,7 @@ fn test_tag_rename_and_collision() {
     // Renaming onto an existing name errors — no implicit merge.
     let result = ghidra(harness)
         .args(["tag", "rename", "tt10_new", "tt10_taken"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
     result.assert_stderr_contains("already exists");
@@ -337,7 +337,7 @@ fn test_tag_set_comment_and_clear() {
 fn test_tag_delete_reports_counts_then_get_errors() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt12_del");
 
     tag_json(harness, &["tag", "add", &addr, "tt12_del"]);
@@ -349,7 +349,7 @@ fn test_tag_delete_reports_counts_then_get_errors() {
 
     let result = ghidra(harness)
         .args(["tag", "get", "tt12_del"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
     result.assert_stderr_contains("No tag named");
@@ -360,12 +360,12 @@ fn test_tag_delete_reports_counts_then_get_errors() {
 fn test_tag_add_no_create_errors_without_mutating() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt13_nc");
 
     let result = ghidra(harness)
         .args(["tag", "add", &addr, "tt13_nc", "--no-create"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
     result.assert_stderr_contains("no-create");
@@ -384,7 +384,7 @@ fn test_tag_invalid_names_rejected_at_creation() {
     for bad in ["", "a,b", "a;b"] {
         let result = ghidra(harness)
             .args(["tag", "create", bad])
-            .with_project(TEST_PROJECT, TEST_PROGRAM)
+            .with_project(test_project(), TEST_PROGRAM)
             .run();
         result.assert_failure();
         result.assert_stderr_contains("Tag name cannot");
@@ -396,7 +396,7 @@ fn test_tag_invalid_names_rejected_at_creation() {
 fn test_tag_case_sensitivity() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt14_Case");
     cleanup_tag(harness, "tt14_case");
 
@@ -405,7 +405,7 @@ fn test_tag_case_sensitivity() {
     // Server-side --tag is exact: wrong case errors (tag does not exist).
     let result = ghidra(harness)
         .args(["function", "list", "--tag", "tt14_case"])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
 
@@ -445,7 +445,7 @@ fn test_tag_case_sensitivity() {
 fn test_function_outputs_include_tags_field() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt15_b");
     cleanup_tag(harness, "tt15_a");
 
@@ -476,7 +476,7 @@ fn test_function_outputs_include_tags_field() {
 fn test_csv_tags_join_with_semicolon() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt16_x");
     cleanup_tag(harness, "tt16_y");
 
@@ -495,7 +495,7 @@ fn test_csv_tags_join_with_semicolon() {
             "--limit",
             "0",
         ])
-        .with_project(TEST_PROJECT, TEST_PROGRAM)
+        .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
 

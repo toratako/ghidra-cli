@@ -13,15 +13,15 @@ use std::sync::OnceLock;
 mod common;
 use common::{ensure_test_project, get_function_address, ghidra, DaemonTestHarness};
 
-const TEST_PROJECT: &str = "ci-test";
-const TEST_PROGRAM: &str = "sample_binary";
+use common::test_project;
+const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
-        ensure_test_project(TEST_PROJECT, TEST_PROGRAM);
-        DaemonTestHarness::new(TEST_PROJECT, TEST_PROGRAM).expect("Failed to start daemon")
+        ensure_test_project(test_project(), TEST_PROGRAM);
+        DaemonTestHarness::new(test_project(), TEST_PROGRAM).expect("Failed to start daemon")
     })
 }
 
@@ -38,7 +38,7 @@ fn test_patch_bytes_success() {
     let harness = harness();
 
     // Dynamically get a valid code address
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("patch")
@@ -66,7 +66,7 @@ fn test_patch_nop_success() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("patch")
@@ -133,7 +133,7 @@ fn test_patch_at_function_boundary() {
     let harness = harness();
 
     // Get any function's entry point
-    let func_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let func_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     // Patch with RET instruction (c3 on x86)
     let result = ghidra(harness)
@@ -196,7 +196,7 @@ fn test_patch_invalid_hex_fails() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("patch")
@@ -218,7 +218,7 @@ fn test_patch_odd_hex_length() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let _result = ghidra(harness)
         .arg("patch")
@@ -245,7 +245,7 @@ fn test_patch_without_program_arg() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("patch")
@@ -274,7 +274,7 @@ fn test_patch_output_format_structure() {
     require_ghidra!();
     let harness = harness();
 
-    let main_addr = get_function_address(harness, TEST_PROJECT, TEST_PROGRAM, "main");
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("patch")

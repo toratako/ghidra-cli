@@ -45,20 +45,8 @@ jobs:
             ~/AppData/Roaming/ghidra-cli
           key: ghidra-${{ matrix.os }}-v5
 
-      - name: Cache Ghidra projects
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/ghidra-cli-projects
-            ~/Library/Caches/ghidra-cli/projects
-            ~/AppData/Local/ghidra-cli/projects
-          key: ghidra-projects-${{ matrix.os }}-v6-${{ hashFiles('tests/fixtures/sample_binary.rs') }}
-
       - name: Build
         run: cargo build --verbose
-
-      - name: Build test fixture
-        run: rustc --edition 2021 -o tests/fixtures/sample_binary tests/fixtures/sample_binary.rs
 
       - name: Setup Ghidra
         run: |
@@ -74,18 +62,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create test project
-        run: |
-          cargo run -- import tests/fixtures/sample_binary --project ci-test --program sample_binary || true
-          cargo run -- analyze --project ci-test --program sample_binary || true
-        shell: bash
-        timeout-minutes: 20
-
       - name: Run unit tests
         run: cargo test --lib --verbose
 
       - name: Run CLI tests
-        run: cargo test --test e2e --test output_format_integration --verbose
+        run: cargo test --test e2e --test output_format_integration --test harness_tests --verbose
 
       - name: Run read-only integration tests
         run: cargo test --test readonly_tests --test command_tests --verbose -- --nocapture
@@ -93,19 +74,11 @@ jobs:
         env:
           RUST_LOG: info
 
-      - name: Stop bridge before mutation tests
-        run: cargo run -- stop --project ci-test || true
-        shell: bash
-
       - name: Run mutation integration tests
-        run: cargo test --test comment_tests --test symbol_tests --test patch_tests --test type_tests --test script_tests --verbose -- --nocapture
+        run: cargo test --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
         timeout-minutes: 30
         env:
           RUST_LOG: info
-
-      - name: Stop bridge before infrastructure tests
-        run: cargo run -- stop --project ci-test || true
-        shell: bash
 
       - name: Run infrastructure tests
         run: cargo test --test daemon_tests --test reliability_tests --test project_tests --verbose -- --nocapture
