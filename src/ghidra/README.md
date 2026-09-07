@@ -9,9 +9,11 @@ Manages the Java bridge process lifecycle and Ghidra installation/setup.
 | `bridge.rs` | Persistent bridge lifecycle, discovery files, startup locking, readiness, and shutdown |
 | `bridge/import.rs` | Private one-shot headless import lifecycle and loader arguments |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
+| `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
 | `setup.rs` | Ghidra download, installation, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
-| `scripts/GhidraCliBridge.java` | Java bridge server (TCP, 80+ command handlers, runs inside Ghidra JVM) |
+| `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
+| `scripts/ghidracli/` | Java runtime, transport, scheduling, program session, and command handlers; see [Java bridge map](scripts/ghidracli/README.md) |
 
 `bridge.rs` re-exports `OneShotImportOptions`, `import_oneshot`, `compile_check`,
 and `find_headless_script`, preserving existing public import paths. Persistent
@@ -30,8 +32,8 @@ CLI calls ensure_bridge_running()
   v
 start_bridge()
   |
-  1. Write GhidraCliBridge.java to ~/.config/ghidra-cli/scripts/
-  2. Spawn: analyzeHeadless <project_dir> <project_name> -process [<program>] -noanalysis -preScript GhidraCliBridge.java <port_file_path>
+  1. Publish the embedded source bundle to ~/.config/ghidra-cli/bridge-sources/<content-hash>/
+  2. Spawn: analyzeHeadless <project_dir> <project_name> -process [<program>] -noanalysis -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path>
   3. Write PID file immediately from Rust (child.id())       <-- enables orphan cleanup
   4. Read stdout line by line, wait for {"status":"ready"}
   5. Java bridge: binds ServerSocket(0), writes port file, overwrites PID file
@@ -47,6 +49,19 @@ before the persistent bridge opens it in `-process` mode. Normal imports run
 headless auto-analysis there; `--no-analyze` adds `-noanalysis`. Explicit loader,
 language, compiler-spec, and loader arguments are also applied to this one-shot
 path, which is how raw blobs are imported with `BinaryLoader`.
+
+Java source files are embedded in the Rust binary and compiled by Ghidra's OSGi
+source-bundle loader at runtime. Startup stages the entire tree in a private
+directory and publishes it with a directory rename. Identical bundles are reused
+without rewriting files; different contents get different paths, so concurrent
+projects and updated CLI builds cannot mix Java source revisions. Older bundles
+are left intact because a running JVM may still use them. The former single-file
+`scripts/` directory is no longer read by bridge startup.
+
+`doctor` compiles every file from the same source inventory in a temporary tree.
+Its `javac` check detects compilation failures, while integration tests exercise
+OSGi resolution and runtime loading. Adding a Java file requires adding it to
+`bridge/sources.rs`; a unit test checks the inventory against the source tree.
 
 ### PID File Write Sequence
 

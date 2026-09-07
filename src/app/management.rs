@@ -114,17 +114,12 @@ fn handle_bridge_stop(
 
 /// `ghidra program save`: flush pending changes to disk.
 ///
-/// The bridge cannot save in place while it keeps running: Ghidra's headless
-/// script-execution harness holds its own transaction open for the whole
-/// life of the postScript (confirmed empirically -- `currentProgram.save()`
-/// always fails with "Unable to lock due to active transaction", even with
-/// zero pending edits), so nothing short of the process actually exiting
-/// commits to disk. A clean `ghidra stop` already does that; this wraps
-/// exactly that stop with an immediate restart against the same program, so
-/// a "save" reads as a few seconds of downtime rather than losing the
-/// session. Every write command (rename, comment, patch, type/symbol/tag
-/// ops) is only visible to the Ghidra GUI, or a fresh bridge, after this
-/// (or `ghidra stop`) has run.
+/// Ghidra's headless harness holds a transaction for the initially loaded
+/// program throughout the bridge preScript. Saving that program in place fails
+/// with "Unable to lock due to active transaction"; returning from the script
+/// lets the harness commit and save. This command obtains that durable flush
+/// by stopping the bridge and restarting it against the same program. Programs
+/// explicitly opened during a session can have a different transaction lifetime.
 pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     let Commands::Program(cli::ProgramCommands::Save(args)) = &cli.command else {
         unreachable!("handle_program_save dispatched for a non-Save Program command");

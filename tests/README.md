@@ -27,6 +27,12 @@ tests/
 └── e2e.rs               # Lightweight smoke test
 ```
 
+`daemon_tests` also verifies that an active script cancellation does not cancel
+the next job, handlers follow Program switches/close, and a failed mutation
+cannot erase earlier successful edits on restart. Java source publication and
+inventory tests live in `src/ghidra/bridge/sources.rs`; the lifecycle tests cover
+OSGi loading of the complete embedded source bundle.
+
 ## Per-Suite Bridge Lifecycle
 
 Tests requiring bridge interaction use `DaemonTestHarness` from `common/mod.rs`. Each test suite starts its own bridge instance to amortize 5-30s startup overhead across all tests in that file.
@@ -74,6 +80,17 @@ Run single test:
 ```bash
 cargo test --test command_tests test_version
 ```
+
+Five Insta snapshot tests in `readonly_tests.rs` are marked `#[ignore]` pending
+snapshot bootstrapping; their reference `.snap` files are not tracked. To execute
+them without creating or accepting reference snapshots:
+
+```bash
+INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
+```
+
+These assertions fail until reference snapshots have been reviewed and added.
+The normal read-only suite also checks response schemas without snapshots.
 
 Run tests that don't need Ghidra:
 ```bash
