@@ -135,8 +135,6 @@ final class CommentCommands {
         String addressStr = getArgString(args, "address");
         String text = getArgString(args, "text");
         String commentTypeStr = getArgString(args, "comment_type");
-        // Older clients sent the type under "type"; accept it as a fallback.
-        if (commentTypeStr == null) commentTypeStr = getArgString(args, "type");
         if (commentTypeStr == null) commentTypeStr = "EOL";
 
         if (addressStr == null) return errorResult("Address required");
