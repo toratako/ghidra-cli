@@ -2,7 +2,8 @@
 
 | File | Purpose |
 |------|---------|
-| `bridge.rs` | Persistent bridge lifecycle, discovery files, startup locking, readiness, and shutdown |
+| `bridge.rs` | Persistent bridge reuse, discovery files, startup locking, liveness, and shutdown |
+| `bridge/startup.rs` | Persistent child launch, output-reader lifetime, readiness, and failed-start cleanup |
 | `bridge/import.rs` | Private one-shot headless import lifecycle and loader arguments |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
@@ -11,10 +12,15 @@
 | `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
 | `scripts/ghidracli/` | Java runtime, transport, scheduling, program session, and command handlers; see [Java bridge map](scripts/ghidracli/README.md) |
 
-`bridge.rs` re-exports `OneShotImportOptions`, `import_oneshot`, `compile_check`,
-and `find_headless_script`, preserving existing public import paths. Persistent
-startup and one-shot imports share launcher/JDK selection; their process and
-stream lifetimes remain owned by their respective workflows.
+`bridge.rs` re-exports `start_bridge`, `OneShotImportOptions`, `import_oneshot`,
+`compile_check`, and `find_headless_script`, preserving existing public import
+paths. Persistent startup and one-shot imports share launcher/JDK selection;
+their process and stream lifetimes remain owned by their respective workflows.
+
+`ensure_bridge_running()` holds the startup lock across its liveness recheck,
+stale-file cleanup, and call to `startup::start_bridge()`. The startup module owns
+the child and both output readers until readiness or completed failure cleanup;
+stopping an already-running bridge uses the discovery PID in `bridge.rs`.
 
 ## Startup and import
 

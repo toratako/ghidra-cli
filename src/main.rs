@@ -185,7 +185,7 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
 }
 
 /// Fold global CLI flags that must reach code which independently reloads
-/// `Config` (e.g. the bridge launcher in `bridge.rs`) into process env vars.
+/// `Config` (e.g. the bridge launcher in `ghidra/bridge/startup.rs`) into process env vars.
 ///
 /// Only flags that cross such a boundary belong here. `--projects-dir`, by
 /// contrast, is applied in-process via `app::project::load_config` and deliberately does

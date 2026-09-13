@@ -1,6 +1,6 @@
 //! Durable one-shot headless import, completed before a persistent bridge opens the project.
 
-use super::{apply_java_home, find_headless_script};
+use super::headless::{apply_java_home, find_headless_script};
 use anyhow::{Context, Result};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
