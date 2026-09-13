@@ -2,50 +2,30 @@
 
 A Rust CLI for AI agents automating native-binary reverse engineering with
 Ghidra: decompilation, queries, types, scripts, and patches. One persistent Java
-bridge per project keeps analysis state in Ghidra's JVM and avoids starting it
-for every command. No separate Rust daemon or Python/PyGhidra is required.
+bridge per project keeps analysis state in Ghidra's JVM between commands.
 
 ## Install
 
-Build with a current stable Rust toolchain:
+Requires a stable Rust toolchain and a full JDK compatible with your Ghidra
+version (JDK 21 for Ghidra 12.x).
 
 ```bash
-git clone https://github.com/akiselev/ghidra-cli
+git clone https://github.com/toratako/ghidra-cli
 cd ghidra-cli
 cargo install --path .
-```
-
-Install Ghidra 11+ with `ghidra setup`, or set `GHIDRA_INSTALL_DIR` to an existing
-installation. A full JDK is required (`javac` and `jdk.compiler`, not a JRE);
-Ghidra 12.x requires JDK 21 (older releases accept JDK 17). The CLI selects a
-suitable JDK automatically; `--java-home` overrides it. `ghidra doctor` checks the
-installation and compiles the embedded bridge bundle.
-
-## Start an analysis
-
-```bash
+ghidra setup
 ghidra doctor
-ghidra import ./binary --project analysis --program binary
-ghidra --project analysis --program binary function list --limit 20
-ghidra --project analysis --program binary decompile main
-# Flush edits before another process reads the project.
-ghidra program save --project analysis --program binary
-ghidra stop --project analysis
 ```
 
-Fresh import analyzes and commits the program before opening the persistent
-bridge; use `--no-analyze` to skip analysis. Program operations are serialized;
-`status`, `jobs`, and `cancel` remain responsive during long jobs.
+For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
+`ghidra setup`. Check the doctor output: failed checks can still exit with code 0.
 
-Output defaults to human-readable on a terminal and compact JSON when piped.
-Use `--json` or `--pretty` explicitly in automation.
+## Usage
 
-## Documentation
+- [ghidra-cli skill](docs/skills/SKILL.md): commands and operational semantics for RE agents.
+- [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
 
-- [Command catalog](docs/commands.md) and `ghidra <command> --help`.
-- [Configuration, timeouts, and recovery](docs/usage.md).
-- [Documentation map](docs/README.md), including the private Hina skill mirror.
-- [Contributor constraints](AGENTS.md) and [tests](tests/README.md).
-- [Release history](CHANGELOG.md).
+For development, see [AGENTS.md](AGENTS.md), [tests](tests/README.md), and the
+[documentation map](docs/README.md). [Release history](CHANGELOG.md) records past changes.
 
 Licensed under [GPL-3.0](LICENSE).
