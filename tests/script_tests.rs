@@ -89,7 +89,7 @@ fn test_script_list() {
 
     // script list does not accept --project/--program arguments,
     // so it may fail with "no project specified" unless a default is configured
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("list")
         .output()
@@ -113,7 +113,7 @@ fn test_script_run() {
 
     let _harness = harness();
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("run")
         .arg(script_path.to_str().unwrap())
@@ -156,7 +156,7 @@ fn test_script_run_java_args() {
     assert!(fixture.exists(), "fixture missing: {}", fixture.display());
     let script_path = stage_script(&fixture);
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("run")
         .arg(script_path.to_str().unwrap())
@@ -192,7 +192,7 @@ fn test_script_python_inline() {
     require_ghidra!();
     let _harness = harness();
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("python")
         .arg("output = 'Hello from Python'")
@@ -233,7 +233,7 @@ fn test_script_run_artifact_contract() {
     let _ = fs::remove_file(&out);
 
     // Success: script writes 5 rows, we require >= 3.
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("run")
         .arg(script.to_str().unwrap())
@@ -274,7 +274,7 @@ fn test_script_run_artifact_contract() {
         std::env::temp_dir().join(format!("ghidra_cli_missing_{}.jsonl", std::process::id()));
     let out2 =
         std::env::temp_dir().join(format!("ghidra_cli_artifact2_{}.jsonl", std::process::id()));
-    let output2 = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output2 = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("run")
         .arg(script.to_str().unwrap())
@@ -314,7 +314,7 @@ fn test_script_run_nonexistent() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
         .arg("run")
         .arg("/nonexistent/script.py")
@@ -332,7 +332,7 @@ fn java_source_on_stdin_runs_without_interactive_prompt() {
     require_ghidra!();
     let _harness = harness();
     let source = std::fs::read_to_string(echo_args_script_path()).unwrap();
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "--quiet",
             "script",

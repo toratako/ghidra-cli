@@ -18,7 +18,7 @@ fn test_project_create() {
 
     let project = unique_project_name("create");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("create")
         .arg(&project)
@@ -27,7 +27,7 @@ fn test_project_create() {
         .stdout(predicate::str::contains("created").or(predicate::str::contains("Created")));
 
     // Cleanup
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -39,7 +39,7 @@ fn test_project_create() {
 fn test_project_list() {
     require_ghidra!();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("list")
         .assert()
@@ -52,14 +52,14 @@ fn test_project_info() {
 
     let project = unique_project_name("info");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("create")
         .arg(&project)
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("info")
         .arg(&project)
@@ -67,7 +67,7 @@ fn test_project_info() {
         .success();
 
     // Cleanup
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -81,21 +81,21 @@ fn test_project_lifecycle() {
 
     let project = unique_project_name("lifecycle");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("create")
         .arg(&project)
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("list")
         .assert()
         .success()
         .stdout(predicate::str::contains(&project));
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -112,8 +112,8 @@ fn test_import_binary() {
     let binary = common::fixture_binary();
 
     // Use run_cli_with_timeout to avoid Windows pipe handle inheritance.
-    // `ghidra import` spawns a JVM whose inherited pipe handles block output() forever.
-    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    // `ghidra-cli import` spawns a JVM whose inherited pipe handles block output() forever.
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -129,7 +129,7 @@ fn test_import_binary() {
     .expect("Failed to run import");
     assert!(status.success(), "Import failed with status: {}", status);
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -145,7 +145,7 @@ fn test_analyze_program() {
     let project = unique_project_name("analyze");
     let binary = common::fixture_binary();
 
-    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -176,7 +176,7 @@ fn test_analyze_program() {
     .expect("Failed to run analyze");
     assert!(status.success(), "Analyze failed with status: {}", status);
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -190,7 +190,7 @@ fn test_project_delete_nonexistent() {
 
     let project = unique_project_name("missing");
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -211,7 +211,7 @@ fn test_import_existing_program() {
     let binary = common::fixture_binary();
 
     // Use run_cli_with_timeout to avoid Windows pipe handle inheritance.
-    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -249,7 +249,7 @@ fn test_import_existing_program() {
         status
     );
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
@@ -268,7 +268,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     // x86 32-bit little-endian: xor eax, eax; ret
     std::fs::write(&blob, [0x31, 0xc0, 0xc3]).expect("write raw fixture");
 
-    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -289,7 +289,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     .expect("raw import command");
     assert!(status.success(), "raw x86 import failed: {}", status);
 
-    let info = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let info = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "program",
             "info",
@@ -310,7 +310,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     assert_eq!(program["min_address"], "00008000");
     assert_eq!(program["max_address"], "00008002");
 
-    let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "disasm-at",
             "0x8000",
@@ -334,11 +334,11 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     assert_eq!(instructions[0]["mnemonic"], "XOR");
     assert_eq!(instructions[1]["mnemonic"], "RET");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args(["stop", "--project", &project])
         .assert()
         .success();
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args(["project", "delete", &project])
         .assert()
         .success();

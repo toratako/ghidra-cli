@@ -104,7 +104,7 @@ fn connect_with_retry(addr: &std::net::SocketAddr) -> Result<TcpStream> {
                 let e = last_err.unwrap_or(e);
                 anyhow::bail!(
                     "Failed to connect to bridge on port {} after waiting {}s: {}. \
-                     Is the bridge running? Check `ghidra status`.",
+                     Is the bridge running? Check `ghidra-cli status`.",
                     addr.port(),
                     budget.as_secs(),
                     e
@@ -165,7 +165,7 @@ impl BridgeClient {
             // EOF before any response: bridge closed the socket without replying.
             Ok(0) => anyhow::bail!(
                 "Bridge closed the connection without responding to '{}' \
-                 (it may have crashed or been restarted). Retry, or check `ghidra status`.",
+                 (it may have crashed or been restarted). Retry, or check `ghidra-cli status`.",
                 command
             ),
             Ok(_) => {}

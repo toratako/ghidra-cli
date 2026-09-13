@@ -28,7 +28,7 @@ fn test_symbol_list() {
     require_ghidra!();
     let _harness = harness();
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("list")
         .arg("--project")
@@ -58,7 +58,7 @@ fn test_symbol_create_and_get() {
 
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("create")
         .arg(&addr)
@@ -70,7 +70,7 @@ fn test_symbol_create_and_get() {
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("get")
         .arg("test_symbol")
@@ -96,7 +96,7 @@ fn test_symbol_rename() {
     let old_name = format!("old_sym_{}", std::process::id());
     let new_name = format!("new_sym_{}", std::process::id());
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("create")
         .arg(addr)
@@ -108,7 +108,7 @@ fn test_symbol_rename() {
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("rename")
         .arg(&old_name)
@@ -121,7 +121,7 @@ fn test_symbol_rename() {
         .success();
 
     // Verify new symbol exists
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("get")
         .arg(&new_name)
@@ -140,7 +140,7 @@ fn test_symbol_get_nonexistent() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("get")
         .arg("nonexistent_symbol_12345")
@@ -168,7 +168,7 @@ fn test_function_create_recreates_deleted_function_body() {
     // GhidraScript.createFunction()/the UI's "Create Function" action do.
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
 
-    let before = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let before = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("function")
         .arg("get")
         .arg(&addr)
@@ -185,7 +185,7 @@ fn test_function_create_recreates_deleted_function_body() {
         serde_json::from_slice(&before.stdout).expect("valid JSON");
     let original_size = before_json[0]["size"].as_u64().expect("size field");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("function")
         .arg("delete")
         .arg(&addr)
@@ -196,7 +196,7 @@ fn test_function_create_recreates_deleted_function_body() {
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("function")
         .arg("create")
         .arg(&addr)
@@ -208,7 +208,7 @@ fn test_function_create_recreates_deleted_function_body() {
         .assert()
         .success();
 
-    let after = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let after = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("function")
         .arg("get")
         .arg(&addr)

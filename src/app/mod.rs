@@ -73,7 +73,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         .or_else(|| config.get_ghidra_install_dir().ok())
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "Ghidra installation directory not configured. Run 'ghidra setup' first."
+                "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
             )
         })?;
 

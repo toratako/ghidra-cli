@@ -717,7 +717,7 @@ pub(super) fn execute_via_bridge(
 
             let mut results = Vec::new();
             for line in &lines {
-                let words: Vec<&str> = std::iter::once("ghidra")
+                let words: Vec<&str> = std::iter::once("ghidra-cli")
                     .chain(line.split_whitespace())
                     .collect();
                 let sub_result = match Cli::try_parse_from(&words) {

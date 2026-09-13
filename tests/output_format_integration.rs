@@ -3,10 +3,10 @@
 
 /// Helper to verify Ghidra is installed before running tests
 fn require_ghidra() {
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("doctor")
         .output()
-        .expect("Failed to run ghidra doctor");
+        .expect("Failed to run ghidra-cli doctor");
 
     if !output.status.success() {
         panic!("Ghidra is not installed. Tests require Ghidra installation per AGENTS.md");
@@ -18,7 +18,7 @@ fn test_format_detection_tty() {
     require_ghidra();
 
     // Test that --help shows both --json and --pretty flags
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--help");
     cmd.assert().success();
 
@@ -36,7 +36,7 @@ fn test_json_flag() {
     require_ghidra();
 
     // Test --json flag is recognized
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--json").arg("--help");
     cmd.assert().success();
 }
@@ -46,13 +46,13 @@ fn test_pretty_flag() {
     require_ghidra();
 
     // Test --pretty flag is recognized
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--pretty").arg("--help");
     cmd.assert().success();
 }
 
 fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
-    let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra");
+    let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     command
         .env("GHIDRA_CLI_CONFIG", temp.path().join("config.yaml"))
         .env("XDG_DATA_HOME", temp.path().join("data"))
@@ -166,7 +166,7 @@ fn closed_stdout_pipe_does_not_panic() {
     let (reader, writer) = UnixStream::pair().unwrap();
     drop(reader); // No reader exists before the child can attempt a write.
     let writer: OwnedFd = writer.into();
-    let output = Command::new(assert_cmd::cargo::cargo_bin!("ghidra"))
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
         .env("GHIDRA_CLI_CONFIG", temp.path().join("config.yaml"))
         .env("XDG_DATA_HOME", temp.path().join("data"))
         .args(["config", "list"])
@@ -203,7 +203,7 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
         );
         let mut master = unsafe { std::fs::File::from_raw_fd(master) };
         let slave = unsafe { std::fs::File::from_raw_fd(slave) };
-        let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra"));
+        let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
         command
             .env("GHIDRA_CLI_CONFIG", temp.path().join("config.yaml"))
             .env("XDG_DATA_HOME", temp.path().join("data"))
@@ -229,7 +229,7 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
         } else {
             assert!(stdout.starts_with("Configuration saved to:"), "{stdout}");
             if flags.is_empty() {
-                assert!(String::from_utf8_lossy(&output.stderr).contains("Run 'ghidra doctor'"));
+                assert!(String::from_utf8_lossy(&output.stderr).contains("Run 'ghidra-cli doctor'"));
             } else {
                 assert!(output.stderr.is_empty());
             }

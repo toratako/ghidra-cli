@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the executable from `ghidra` to `ghidra-cli`, with no compatibility
+  alias. Update command invocations in scripts and automation. Command examples
+  below use the new executable name.
+
 ## [0.3.0]
 
 Changes since upstream 0.2.2 ([`10019ba`](https://github.com/toratako/ghidra-cli/commit/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79)),
@@ -14,13 +20,13 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 
 ### Added
 
-- `ghidra pcode at ADDRESS` and `pcode function TARGET [--high]` expose raw
+- `ghidra-cli pcode at ADDRESS` and `pcode function TARGET [--high]` expose raw
   instruction PCode and decompiler high PCode, including operands, outputs,
   address spaces, and register names.
-- `ghidra analyzer list|set|run` lists analyzer settings, enables or disables a
+- `ghidra-cli analyzer list|set|run` lists analyzer settings, enables or disables a
   named analyzer, and explicitly re-runs analysis. Changing a setting with
   `analyzer set NAME true|false` does not itself start analysis.
-- `ghidra type import-c CODE [--category PATH]` (aliases `type import` and
+- `ghidra-cli type import-c CODE [--category PATH]` (aliases `type import` and
   `type parse-c`) parses C declarations, including structs, unions, enums,
   typedefs, and function definitions. Results include type names, paths, sizes,
   categories, and parser messages. Category placement applies to the parsed
@@ -31,26 +37,26 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   `--block-name`, `--file-offset`, and `--length` imply `BinaryLoader` when no
   loader is specified. Explicit loader imports stop any running project bridge,
   import through `analyzeHeadless`, and reopen the imported program.
-- `ghidra disasm-at ADDRESS [--count N]` creates instructions at an unanalyzed
+- `ghidra-cli disasm-at ADDRESS [--count N]` creates instructions at an unanalyzed
   address and reports both Ghidra's `ok` result and whether an instruction
   actually `landed` at the target.
-- `ghidra clear START:END [--to-data | --disasm-at ADDRESS]` clears overlapping
+- `ghidra-cli clear START:END [--to-data | --disasm-at ADDRESS]` clears overlapping
   code units, optionally re-disassembling at a specified address in the same
   request.
-- `ghidra function set-noreturn TARGET [--value true|false]` controls a
+- `ghidra-cli function set-noreturn TARGET [--value true|false]` controls a
   function's no-return flag. `function get` and `function list` now include
   `no_return`.
 - Function-scoped tag commands: `function tag add|remove TARGET TAG_NAME` and
   `function tag list TARGET`, complementing the top-level `tag` commands and
   function tag filters introduced in 0.2.2.
-- `ghidra script run -` reads Java source from stdin and stages it for the same
+- `ghidra-cli script run -` reads Java source from stdin and stages it for the same
   compilation and execution path used by script files.
-- `ghidra comment set ADDRESS --stdin` and `--text-file PATH` accept comment
+- `ghidra-cli comment set ADDRESS --stdin` and `--text-file PATH` accept comment
   text without exposing it to shell argument expansion.
-- `ghidra type apply ADDRESS TYPE --force` (alias `--clear-conflicting`) clears
+- `ghidra-cli type apply ADDRESS TYPE --force` (alias `--clear-conflicting`) clears
   overlapping instructions or data before applying a type. Replacing a function
   entry point reports a warning that its code was cleared.
-- `ghidra program save` flushes pending edits by stopping the bridge, reopening
+- `ghidra-cli program save` flushes pending edits by stopping the bridge, reopening
   the same program, and checking its function count. This works around the
   headless harness's lifetime transaction, which prevents an in-place save.
 
@@ -155,7 +161,7 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   `--help` without panicking. Missing or invalid values produce argument errors.
 - Socket read timeouts report `Timeout:` with exit code 75 (`EX_TEMPFAIL`),
   distinct from bridge failures with exit code 1. A client timeout does not
-  cancel the server-side job; inspect `ghidra jobs` before retrying.
+  cancel the server-side job; inspect `ghidra-cli jobs` before retrying.
 
 ### Removed
 
@@ -168,8 +174,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 ### Added
 
 - **Function tags** (#17) — expose Ghidra's `FunctionTagManager` for organizing
-  large codebases: `ghidra tag list|get|create|delete|rename|set-comment|add|remove`,
-  plus `ghidra function list --tag NAME` (repeatable, AND semantics, filtered
+  large codebases: `ghidra-cli tag list|get|create|delete|rename|set-comment|add|remove`,
+  plus `ghidra-cli function list --tag NAME` (repeatable, AND semantics, filtered
   server-side) and `--untagged`. `tag add` auto-creates missing tags (strict mode
   via `--no-create`) and reports `added`/`created`/`already_present`; `tag
   remove` is likewise idempotent. `tag delete` reports both Ghidra's raw
@@ -183,9 +189,9 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 - Responsive `ping`, `status`, `bridge_info`, `jobs`, and `cancel` use snapshots
   independently of the single Ghidra program lane. Program requests receive job
   IDs and wait in a bounded FIFO (256), replacing the invisible socket backlog.
-- `ghidra jobs [JOB_ID]` — inspect the active job, the queue, and recent history
+- `ghidra-cli jobs [JOB_ID]` — inspect the active job, the queue, and recent history
   (the bridge keeps the last 100 jobs), or one job by ID.
-- `ghidra cancel [JOB_ID]` — cooperatively cancel the active job (or a specific
+- `ghidra-cli cancel [JOB_ID]` — cooperatively cancel the active job (or a specific
   one). A job that hasn't started is dropped from the queue immediately; a running
   job is cancelled via a per-job `TaskMonitor`.
 
@@ -197,12 +203,12 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 - `function list` rows gained a `tags` column, changing CSV/table headers for
   existing consumers.
 - `BridgeClient::list_functions` grew `tags`/`untagged` parameters.
-- `ghidra script run` runs a checked-in script by absolute path with real
+- `ghidra-cli script run` runs a checked-in script by absolute path with real
   positional arguments (everything after `--`) and captured stdout, returning
   `{script, path, stdout, args}`. New `--expect PATH[:MIN_ROWS]` (repeatable) fails
   the job when an output artifact is missing, empty, or short; `--allow-empty`
   permits an expected-but-empty file. Scripts run on the cancellable job lane, so
-  `ghidra cancel` works on them.
+  `ghidra-cli cancel` works on them.
 
 ### Fixed
 
@@ -256,13 +262,13 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   `JAVA_HOME` rather than relying on Ghidra's PATH-based pick. Override with the
   `--java-home <PATH>` global flag, `java_home` config, or `GHIDRA_CLI_JAVA_HOME`.
 - Global `--project` / `--program` flags — usable before any subcommand
-  (e.g. `ghidra --project P --program bin function list`); previously these were
+  (e.g. `ghidra-cli --project P --program bin function list`); previously these were
   accepted only per-subcommand.
 - Global `--projects-dir <DIR>` flag (with `ghidra_project_dir` config and
   `GHIDRA_PROJECT_DIR` env) to choose where Ghidra projects are stored.
-- `ghidra import --no-analyze` — import a binary without running auto-analysis
+- `ghidra-cli import --no-analyze` — import a binary without running auto-analysis
   (the program is still persisted).
-- `ghidra program export` now supports the built-in Ghidra exporters in addition
+- `ghidra-cli program export` now supports the built-in Ghidra exporters in addition
   to JSON: `xml`, `c`/`cpp`, `binary`/`bin`, `gzf`, `ascii`/`asm`, `hex`, and
   `html`. Exporters are resolved by class name and 4-arg arity so they keep
   working across Ghidra versions.
@@ -272,9 +278,9 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 
 ### Changed
 
-- `ghidra import` now runs auto-analysis by default (over TCP) and reports the
+- `ghidra-cli import` now runs auto-analysis by default (over TCP) and reports the
   resulting `function_count`. Use `--no-analyze` to skip it.
-- `ghidra doctor` and `ghidra setup` now require and verify a **full JDK** (not
+- `ghidra-cli doctor` and `ghidra-cli setup` now require and verify a **full JDK** (not
   just any Java on `PATH`): `doctor` reports the selected JDK and compiles the
   embedded bridge script as a real health check, surfacing the actual error on
   failure.
@@ -283,7 +289,7 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 
 ### Fixed
 
-- **`ghidra import` no longer hangs on non-trivial binaries.** The bridge now
+- **`ghidra-cli import` no longer hangs on non-trivial binaries.** The bridge now
   launches via `-preScript -noanalysis` (was `-postScript` with full analysis),
   so its TCP socket binds right after the binary loads — before analysis — and
   readiness is fast. Analysis runs afterwards as an unbounded TCP `analyze`
@@ -296,9 +302,9 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   output reader threads. Previously the readiness wait capped at 120s while
   analysis kept running, then killed only the `analyzeHeadless` wrapper (not the
   JVM grandchild) and blocked forever joining pipes the surviving JVM held open.
-- `ghidra stop` now force-kills the whole bridge process group as a fallback,
+- `ghidra-cli stop` now force-kills the whole bridge process group as a fallback,
   not just the JVM PID.
-- `ghidra program close`, `program delete`, and `program export` now work — the
+- `ghidra-cli program close`, `program delete`, and `program export` now work — the
   Rust client was sending command names (`close_program`, `delete_program`,
   `export_program`) the Java bridge never registered, so they always errored.
 - `--filter`, `--sort`, `--count`, and `--offset` are now honored on all list
@@ -317,10 +323,10 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   (e.g. `~/.cache`). The default now falls back to `~/ghidra-cli-projects` when
   the cache path has a hidden component (macOS/Windows keep their cache-dir
   location).
-- `ghidra project delete` now actually deletes the project. It removes the
+- `ghidra-cli project delete` now actually deletes the project. It removes the
   Ghidra `<name>.gpr` / `<name>.rep` artifacts (previously it looked for a
   non-existent `<name>` directory and silently deleted nothing) and stops any
-  running bridge first so the project lock is released. `ghidra project info`
+  running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
 [unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...HEAD

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use super::schemas::{Function, Validate};
 use super::DaemonTestHarness;
 
-/// Result of running a ghidra CLI command.
+/// Result of running a ghidra-cli command.
 ///
 /// Provides fluent assertion methods for verifying command behavior.
 #[derive(Debug)]
@@ -127,7 +127,7 @@ impl GhidraResult {
     }
 }
 
-/// Builder for running ghidra CLI commands with proper configuration.
+/// Builder for running ghidra-cli commands with proper configuration.
 pub struct GhidraCommand {
     args: Vec<String>,
     project: Option<String>,
@@ -198,7 +198,7 @@ impl GhidraCommand {
 
     /// Run the command and return result.
     pub fn run(self) -> GhidraResult {
-        let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra");
+        let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
 
         for (key, value) in &self.env_vars {
             cmd.env(key, value);
@@ -218,7 +218,7 @@ impl GhidraCommand {
 
         cmd.timeout(std::time::Duration::from_secs(self.timeout_secs));
 
-        let output = cmd.output().expect("Failed to run ghidra command");
+        let output = cmd.output().expect("Failed to run ghidra-cli command");
 
         GhidraResult {
             exit_code: output.status.code().unwrap_or(-1),
@@ -234,7 +234,7 @@ impl Default for GhidraCommand {
     }
 }
 
-/// Helper to run a ghidra command with common setup.
+/// Helper to run a ghidra-cli command with common setup.
 pub fn ghidra(harness: &DaemonTestHarness) -> GhidraCommand {
     GhidraCommand::new().with_daemon(harness)
 }

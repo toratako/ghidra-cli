@@ -112,7 +112,7 @@ pub(super) fn bridge_failure_hint(output: &str) -> String {
         "\n\nThe Ghidra bridge script failed to compile/load. Common causes:\n  \
          - The Java Ghidra used is a JRE without a compiler (no `javac` / `jdk.compiler` module).\n  \
          - A Ghidra API incompatibility in the bridge script.\n\
-         Run `ghidra doctor` to diagnose: it verifies a full JDK and compiles the bridge to show the real error."
+         Run `ghidra-cli doctor` to diagnose: it verifies a full JDK and compiles the bridge to show the real error."
             .to_string()
     } else {
         String::new()

@@ -312,7 +312,7 @@ final class ProgramCommands {
         JsonObject result = new JsonObject();
         result.addProperty("status", "closed");
         result.addProperty("program", programName);
-        result.addProperty("note", "not saved to disk -- run `ghidra program save` or `ghidra stop` to persist pending changes");
+        result.addProperty("note", "not saved to disk -- run `ghidra-cli program save` or `ghidra-cli stop` to persist pending changes");
         return result;
     }
 

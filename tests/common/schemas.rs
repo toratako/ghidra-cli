@@ -7,7 +7,7 @@
 
 use serde::Deserialize;
 
-/// Function information from `ghidra function list`.
+/// Function information from `ghidra-cli function list`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Function {
     pub name: String,
@@ -47,7 +47,7 @@ pub struct LocalVariable {
     pub stack_offset: Option<i32>,
 }
 
-/// String data from `ghidra strings list`.
+/// String data from `ghidra-cli strings list`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StringData {
     pub address: String,
@@ -59,7 +59,7 @@ pub struct StringData {
     pub references: Vec<String>,
 }
 
-/// Symbol from `ghidra symbol list`.
+/// Symbol from `ghidra-cli symbol list`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Symbol {
     pub name: String,
@@ -71,7 +71,7 @@ pub struct Symbol {
     pub source: Option<String>,
 }
 
-/// Memory block from `ghidra memory map`.
+/// Memory block from `ghidra-cli memory map`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryBlock {
     pub name: String,
@@ -99,7 +99,7 @@ pub struct Instruction {
     pub flow_type: Option<String>,
 }
 
-/// Comment from `ghidra comment` commands.
+/// Comment from `ghidra-cli comment` commands.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Comment {
     pub address: String,
@@ -107,7 +107,7 @@ pub struct Comment {
     pub text: String,
 }
 
-/// Data type from `ghidra type` commands.
+/// Data type from `ghidra-cli type` commands.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DataType {
     pub name: String,
@@ -119,7 +119,7 @@ pub struct DataType {
     pub description: Option<String>,
 }
 
-/// Cross-reference from `ghidra xref` commands.
+/// Cross-reference from `ghidra-cli xref` commands.
 #[derive(Debug, Clone, Deserialize)]
 pub struct XRef {
     pub from: String,
@@ -162,7 +162,7 @@ pub struct PatchResult {
     pub original_bytes: Option<String>,
 }
 
-/// Export result from `ghidra patch export`.
+/// Export result from `ghidra-cli patch export`.
 #[derive(Debug, Deserialize)]
 pub struct ExportResult {
     pub status: String,
@@ -172,7 +172,7 @@ pub struct ExportResult {
     pub size: Option<u64>,
 }
 
-/// Stats result from `ghidra stats`.
+/// Stats result from `ghidra-cli stats`.
 #[derive(Debug, Deserialize)]
 pub struct StatsResult {
     #[serde(default)]

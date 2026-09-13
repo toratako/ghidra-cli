@@ -36,7 +36,7 @@ fn test_analyzer_enable_disable_in_bridge() {
     // Exercise both explicit values and verify actual Ghidra state, not only
     // the command's response. End with the original setting restored.
     for enabled in [!original, original] {
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .args([
                 "analyzer",
                 "set",
@@ -66,7 +66,7 @@ fn test_daemon_start() {
 
     let harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("status")
         .arg("--project")
         .arg(test_project())
@@ -85,7 +85,7 @@ fn test_daemon_status() {
 
     let harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("status")
         .arg("--project")
         .arg(test_project())
@@ -105,7 +105,7 @@ fn test_daemon_ping() {
 
     let harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("ping")
         .arg("--project")
         .arg(test_project())
@@ -124,7 +124,7 @@ fn test_daemon_lifecycle() {
 
     let _harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("status")
         .arg("--project")
         .arg(test_project())
@@ -132,14 +132,14 @@ fn test_daemon_lifecycle() {
         .success()
         .stdout(predicate::str::contains("running"));
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("ping")
         .arg("--project")
         .arg(test_project())
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("stop")
         .arg("--project")
         .arg(test_project())
@@ -156,14 +156,14 @@ fn test_daemon_stop() {
 
     let harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("stop")
         .arg("--project")
         .arg(test_project())
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("status")
         .arg("--project")
         .arg(test_project())
@@ -184,9 +184,9 @@ fn test_daemon_restart() {
     let harness = start_daemon();
 
     // Use run_cli_with_timeout to avoid Windows pipe handle inheritance.
-    // `ghidra restart` stops the old bridge and starts a new JVM. With piped
+    // `ghidra-cli restart` stops the old bridge and starts a new JVM. With piped
     // stdout/stderr, the new JVM inherits pipe handles, blocking forever.
-    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
+    let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -202,7 +202,7 @@ fn test_daemon_restart() {
 
     assert!(status.success(), "Restart failed with status: {status}");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("stop")
         .arg("--project")
         .arg(test_project())
@@ -221,7 +221,7 @@ fn test_daemon_start_when_running() {
 
     let harness = start_daemon();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("start")
         .arg("--project")
         .arg(test_project())
@@ -597,7 +597,7 @@ fn management_results_are_single_json_documents() {
     let harness = start_daemon();
     for flag in ["--json", "--pretty"] {
         for command in ["start", "status", "ping", "jobs"] {
-            let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+            let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
                 .args([flag, "--quiet", command, "--project", test_project()])
                 .output()
                 .unwrap();
@@ -622,7 +622,7 @@ fn management_results_are_single_json_documents() {
         .unwrap();
     let address = function["address"].as_str().unwrap();
     for flag in ["--json", "--pretty"] {
-        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .args([
                 flag,
                 "function",
@@ -639,7 +639,7 @@ fn management_results_are_single_json_documents() {
         assert!(error["detail"].is_object(), "{error}");
     }
     for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
-        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .args(["--json", "--quiet"])
             .args(&args)
             .args(["--project", test_project(), "--program", TEST_PROGRAM])

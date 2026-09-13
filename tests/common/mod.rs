@@ -298,7 +298,7 @@ impl DoctorCheck {
     ) {
         match self.0.get_or_init(check) {
             Ok(output) => assert_doctor_ready(output),
-            Err(error) => panic!("Failed to run ghidra doctor: {error}"),
+            Err(error) => panic!("Failed to run ghidra-cli doctor: {error}"),
         }
     }
 }
@@ -309,7 +309,7 @@ pub fn require_ghidra() {
     static CHECK: DoctorCheck = DoctorCheck(OnceLock::new());
     CHECK.require_with(|| {
         let started = std::time::Instant::now();
-        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("doctor")
             .output()
             .map_err(|error| error.to_string());

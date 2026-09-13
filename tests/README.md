@@ -9,7 +9,7 @@ cargo clippy -- -D warnings
 ```
 
 Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
-checks `ghidra doctor` once per test executable and retains failures with their
+checks `ghidra-cli doctor` once per test executable and retains failures with their
 diagnostics; never turn a failed prerequisite into a skip. The parent test
 process must keep its Ghidra/JDK configuration fixed. Tests of doctor itself or
 changed child environments invoke doctor directly.
@@ -30,7 +30,7 @@ cargo test-run --test comment_tests --test type_tests
 For a targeted run:
 
 ```bash
-cargo test --lib --bin ghidra
+cargo test --lib --bin ghidra-cli
 cargo test --test daemon_tests
 # These suites do not require Ghidra:
 cargo test --test e2e --test output_format_integration --test harness_tests
@@ -85,7 +85,7 @@ the runner reports total elapsed time after Cargo exits.
 
 See [common helpers and a test example](common/README.md) when adding tests.
 Harness Drop and suite-exit cleanup are best effort; forced termination can leave
-processes/projects behind. For slow startup, start with `ghidra doctor`; for
+processes/projects behind. For slow startup, start with `ghidra-cli doctor`; for
 stale discovery files, inspect the owning project/process before cleanup.
 CLI import/analysis tests currently have a 300s budget that can be tight under load;
 see the [open TODO](../docs/TODO.md). Reducing parallel suites can reduce pressure.

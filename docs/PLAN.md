@@ -70,13 +70,13 @@ src/corpus/
 Suggested commands:
 
 ```text
-ghidra corpus plan MANIFEST
-ghidra corpus analyze MANIFEST [--jobs auto|N] [--cpu-budget N] [--mem-budget GB]
-ghidra corpus status [RUN_ID]
-ghidra corpus logs RUN_ID [--follow]
-ghidra corpus cancel RUN_ID|JOB_ID
-ghidra corpus retry RUN_ID|JOB_ID
-ghidra corpus resume RUN_ID
+ghidra-cli corpus plan MANIFEST
+ghidra-cli corpus analyze MANIFEST [--jobs auto|N] [--cpu-budget N] [--mem-budget GB]
+ghidra-cli corpus status [RUN_ID]
+ghidra-cli corpus logs RUN_ID [--follow]
+ghidra-cli corpus cancel RUN_ID|JOB_ID
+ghidra-cli corpus retry RUN_ID|JOB_ID
+ghidra-cli corpus resume RUN_ID
 ```
 
 Manifest: binary path/expected SHA-256, analysis profile/options, optional

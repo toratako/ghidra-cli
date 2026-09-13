@@ -233,9 +233,15 @@ mod tests {
 
     #[test]
     fn explicit_text_format_keeps_human_errors() {
-        let cli =
-            Cli::try_parse_from(["ghidra", "--json", "function", "list", "--format", "table"])
-                .unwrap();
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "--json",
+            "function",
+            "list",
+            "--format",
+            "table",
+        ])
+        .unwrap();
         let output = app::Output::new(&cli);
         let (_, text) = format_error(&anyhow::anyhow!("failed operation"), output, 0);
         assert_eq!(text, "Error: failed operation");

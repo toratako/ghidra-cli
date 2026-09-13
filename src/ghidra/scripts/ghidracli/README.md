@@ -48,7 +48,7 @@ requested commit/rollback behavior. Handler mutations must use
 
 The headless harness holds an outer transaction for the initially loaded program
 while the bridge script runs. Returning from the script lets the harness commit
-and save that program. `ghidra program save` stops and restarts the bridge to
+and save that program. `ghidra-cli program save` stops and restarts the bridge to
 obtain this durable flush. A program explicitly opened by `ProgramSession` can
 have a different transaction lifetime; do not assume every Program has the
 harness's outer transaction.

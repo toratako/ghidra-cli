@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GhidraError {
-    #[error("Ghidra installation not found. Set GHIDRA_INSTALL_DIR or run 'ghidra init'")]
+    #[error("Ghidra installation not found. Set GHIDRA_INSTALL_DIR or run 'ghidra-cli init'")]
     GhidraNotFound,
 
     #[error("Failed to parse filter: {0}")]

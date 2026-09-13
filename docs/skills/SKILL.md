@@ -5,8 +5,8 @@ description: Use ghidra-cli for native-binary reverse engineering with Ghidra, i
 
 # Ghidra CLI
 
-The executable is `ghidra`. Read [commands.md](references/commands.md) to select an operation;
-use `ghidra <command> --help` for exact arguments.
+The executable is `ghidra-cli`. Read [commands.md](references/commands.md) to select an operation;
+use `ghidra-cli <command> --help` for exact arguments.
 
 Global `--project PROJECT --program PROGRAM` select the target. Each project
 reuses a JVM bridge; program operations are serialized while `status`, `jobs`,
@@ -19,14 +19,14 @@ immediately after a normal import.
 
 ## Basic commands
 
-Use `ghidra doctor` to check readiness or diagnose startup failures.
+Use `ghidra-cli doctor` to check readiness or diagnose startup failures.
 
 For a new executable or library:
 
 ```bash
-ghidra import ./target.bin --project target --program target.bin
-ghidra summary --project target --program target.bin
-ghidra decompile main --with-vars --with-params --project target --program target.bin
+ghidra-cli import ./target.bin --project target --program target.bin
+ghidra-cli summary --project target --program target.bin
+ghidra-cli decompile main --with-vars --with-params --project target --program target.bin
 ```
 
 `summary` reports the loaded program's format, language, image base, and function

@@ -35,7 +35,7 @@ fn test_type_list() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("list")
         .arg("--project")
@@ -52,7 +52,7 @@ fn test_type_get_primitive() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("get")
         .arg("int")
@@ -71,7 +71,7 @@ fn test_type_create() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
         .arg("MyTestStruct")
@@ -83,7 +83,7 @@ fn test_type_create() {
         .success();
 
     // Verify created type exists
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("get")
         .arg("MyTestStruct")
@@ -104,7 +104,7 @@ fn test_type_apply() {
 
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("apply")
         .arg(&addr)
@@ -212,7 +212,7 @@ fn test_type_add_field_places_at_exact_offset() {
     // offsets require. Uses "byte" (always 1 byte, unlike "pointer" whose
     // size depends on the target's bitness) so the offsets below stay
     // non-overlapping on any platform running this test.
-    let _ = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let _ = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("delete")
         .arg("OffsetPlacementStruct")
@@ -222,7 +222,7 @@ fn test_type_add_field_places_at_exact_offset() {
         .arg(TEST_PROGRAM)
         .output();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
         .arg("OffsetPlacementStruct")
@@ -234,7 +234,7 @@ fn test_type_add_field_places_at_exact_offset() {
         .success();
 
     for (name, offset) in [("field_a", 36), ("field_b", 40), ("field_c", 60)] {
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("type")
             .arg("add-field")
             .arg("OffsetPlacementStruct")
@@ -252,7 +252,7 @@ fn test_type_add_field_places_at_exact_offset() {
             .success();
     }
 
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("get")
         .arg("OffsetPlacementStruct")
@@ -300,7 +300,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
         .arg("CTypeNameStruct")
@@ -325,7 +325,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
         ("f_u32", "u32"),
         ("f_ulong", "ulong"),
     ] {
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("type")
             .arg("add-field")
             .arg("CTypeNameStruct")
@@ -348,7 +348,7 @@ fn test_type_get_nonexistent() {
     require_ghidra!();
     let _harness = harness();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("get")
         .arg("NonexistentType12345")

@@ -16,20 +16,20 @@ mod common;
 #[test]
 fn test_smoke() {
     // Version command should always work
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("version")
         .assert()
         .success()
         .stdout(predicate::str::contains("ghidra-cli"));
 
     // Doctor command verifies installation
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("doctor")
         .assert()
         .success();
 
     // Config list should work
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("config")
         .arg("list")
         .assert()

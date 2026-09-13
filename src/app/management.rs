@@ -62,7 +62,7 @@ fn handle_bridge_start(
         .or_else(|| config.get_ghidra_install_dir().ok())
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "Ghidra installation directory not configured. Run 'ghidra setup' first."
+                "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
             )
         })?;
 
@@ -115,7 +115,7 @@ fn handle_bridge_stop(
     Ok(json!({"state": "stopped", "project": project_path, "message": message}))
 }
 
-/// `ghidra program save`: flush pending changes to disk.
+/// `ghidra-cli program save`: flush pending changes to disk.
 ///
 /// Ghidra's headless harness holds a transaction for the initially loaded
 /// program throughout the bridge preScript. Saving that program in place fails
@@ -204,7 +204,7 @@ pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
                     "Save verification FAILED: function count before save was {}, but is {} \
                      after restart. The bridge restarted cleanly but Ghidra rolled back pending \
                      changes on shutdown -- this save did NOT persist your edits. Re-check state \
-                     with `ghidra function list --count` and `ghidra program save` again; if this \
+                     with `ghidra-cli function list --count` and `ghidra-cli program save` again; if this \
                      persists, checkpoint in smaller batches.",
                     expected,
                     actual
@@ -213,7 +213,7 @@ pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
             None => {
                 anyhow::bail!(
                     "Save verification FAILED: could not query the restarted bridge to confirm \
-                     the save took (expected function count was {}). Check `ghidra status` before \
+                     the save took (expected function count was {}). Check `ghidra-cli status` before \
                      trusting this save.",
                     expected
                 );
@@ -284,14 +284,14 @@ fn handle_bridge_ping(
     let project_path = resolve_project_path(&project, &config)?;
     let port = bridge::is_bridge_running(&project_path).ok_or_else(|| {
         anyhow::anyhow!(
-            "No bridge running for project: {}. Run 'ghidra start --project {}'.",
+            "No bridge running for project: {}. Run 'ghidra-cli start --project {}'.",
             project_path.display(),
             project_path.display()
         )
     })?;
     anyhow::ensure!(
         BridgeClient::new(port).ping()?,
-        "Bridge is not responding. Check 'ghidra status' and restart the bridge."
+        "Bridge is not responding. Check 'ghidra-cli status' and restart the bridge."
     );
     Ok(
         json!({"responsive": true, "project": project_path, "port": port, "message": "Bridge is responsive"}),

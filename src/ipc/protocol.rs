@@ -51,7 +51,7 @@ impl std::error::Error for BridgeCommandError {}
 /// timeout, distinct from the bridge actually reporting a failure: the
 /// program job this request queued may still be running server-side and can
 /// go on to complete normally after the client has already exited (see
-/// `ghidra jobs`). Kept as a distinct error type (rather than a plain
+/// `ghidra-cli jobs`). Kept as a distinct error type (rather than a plain
 /// `anyhow::bail!`) so callers -- `main`'s exit-code selection, or a wrapper
 /// script via `downcast_ref` -- can tell "I gave up waiting" apart from "this
 /// genuinely failed" without string-matching the message.
@@ -66,7 +66,7 @@ impl std::fmt::Display for BridgeTimeoutError {
         write!(
             f,
             "Bridge did not respond within {}s while running '{}' — the program job is \
-             still queued or running. Inspect `ghidra jobs`, raise the wait via \
+             still queued or running. Inspect `ghidra-cli jobs`, raise the wait via \
              GHIDRA_CLI_READ_TIMEOUT (seconds; 0 = wait indefinitely), or use \
              GHIDRA_CLI_OP_TIMEOUT for long analyze/import operations.",
             self.timeout_secs, self.command

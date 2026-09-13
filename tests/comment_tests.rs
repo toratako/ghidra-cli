@@ -31,7 +31,7 @@ fn test_comment_set_and_get() {
     // Dynamically resolve an address with a code unit
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("set")
         .arg(&addr)
@@ -44,7 +44,7 @@ fn test_comment_set_and_get() {
         .success();
 
     // Get the comment back
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("get")
         .arg(&addr)
@@ -67,7 +67,7 @@ fn test_comment_list() {
     let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
     let addr = &addrs[0];
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("set")
         .arg(addr)
@@ -83,7 +83,7 @@ fn test_comment_list() {
     // addresses; `comment list` is address-ordered and limited (default 1000),
     // so a user comment at a high function address can fall outside the default
     // window. Pass an explicit large limit so the assertion is deterministic.
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("list")
         .arg("--limit")
@@ -107,7 +107,7 @@ fn test_comment_delete() {
     let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 3);
     let addr = &addrs[addrs.len() - 1];
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("set")
         .arg(addr)
@@ -119,7 +119,7 @@ fn test_comment_delete() {
         .assert()
         .success();
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("delete")
         .arg(addr)
@@ -131,7 +131,7 @@ fn test_comment_delete() {
         .success();
 
     // Verify comment is actually gone
-    let get_result = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let get_result = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("get")
         .arg(addr)
@@ -157,7 +157,7 @@ fn comment_stdin_preserves_multiline_text_without_prompting_pipelines() {
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let text = "stdin comment\nsecond line with `literal` $text\n";
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "--quiet",
             "comment",
@@ -174,7 +174,7 @@ fn comment_stdin_preserves_multiline_text_without_prompting_pipelines() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "comment",
             "get",
@@ -223,7 +223,7 @@ fn comment_terminal_stdin_explains_eof_even_when_quiet() {
     );
     let mut master = unsafe { std::fs::File::from_raw_fd(master) };
     let slave = unsafe { std::fs::File::from_raw_fd(slave) };
-    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("ghidra"))
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
         .args([
             "--quiet",
             "comment",

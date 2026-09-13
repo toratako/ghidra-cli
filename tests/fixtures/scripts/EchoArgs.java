@@ -1,4 +1,4 @@
-// Integration-test fixture for `ghidra script run`.
+// Integration-test fixture for `ghidra-cli script run`.
 // Echoes the positional arguments it receives so the test can prove that
 // argument passing and stdout capture work end-to-end.
 // @category Test

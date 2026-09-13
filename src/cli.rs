@@ -2,7 +2,7 @@ use clap::{ArgAction, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
-#[command(name = "ghidra")]
+#[command(name = "ghidra-cli")]
 #[command(version, about = "Rust CLI for Ghidra reverse engineering", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -332,7 +332,7 @@ pub enum ProgramCommands {
     /// than failing outright. Every write command — rename, comment, patch,
     /// type/symbol/tag ops — stays in the bridge's memory, invisible to the
     /// GUI and lost if the bridge dies uncleanly, until either this or
-    /// `ghidra stop` runs.
+    /// `ghidra-cli stop` runs.
     Save(ProgramTargetArgs),
 }
 
@@ -1119,7 +1119,7 @@ pub struct TagAttachArgs {
     pub target: String,
     /// One or more tag names to attach
     // `required = true` is mandatory: num_args = 1.. alone does NOT make a
-    // positional required — `ghidra tag add crypto` would parse with the tag
+    // positional required — `ghidra-cli tag add crypto` would parse with the tag
     // name consumed as TARGET and an empty tag list.
     #[arg(value_name = "TAG", required = true, num_args = 1..)]
     pub tags: Vec<String>,
@@ -1468,11 +1468,11 @@ pub enum ScriptCommands {
     Run(ScriptRunArgs),
     /// Disabled by design: use `script run -` (stdin) for a Python-authored
     /// one-off ported to Java, or `script run PATH` for a checked-in file.
-    /// See `ghidra doctor` for why inline eval isn't offered as a shortcut.
+    /// See `ghidra-cli doctor` for why inline eval isn't offered as a shortcut.
     Python(ScriptInlineArgs),
     /// Disabled by design: use `script run -` to pipe Java source on stdin
     /// instead -- it goes through the same compile/execute path as a file on
-    /// disk rather than a second, less-sandboxed eval path. See `ghidra doctor`.
+    /// disk rather than a second, less-sandboxed eval path. See `ghidra-cli doctor`.
     Java(ScriptInlineArgs),
     /// List available scripts
     List,
@@ -1659,8 +1659,9 @@ mod tests {
     #[test]
     fn analyzer_set_parses_explicit_boolean() {
         for (value, expected) in [("true", true), ("false", false)] {
-            let cli = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings", value])
-                .expect("analyzer set should accept an explicit boolean");
+            let cli =
+                Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings", value])
+                    .expect("analyzer set should accept an explicit boolean");
             match cli.command {
                 Commands::Analyzer(AnalyzerCommands::Set(args)) => {
                     assert_eq!(args.name, "ASCII Strings");
@@ -1673,22 +1674,23 @@ mod tests {
 
     #[test]
     fn analyzer_set_requires_valid_boolean() {
-        let missing = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings"])
+        let missing = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings"])
             .err()
             .expect("expected argument error");
         assert_eq!(
             missing.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
-        let invalid = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings", "maybe"])
-            .err()
-            .expect("expected argument error");
+        let invalid =
+            Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings", "maybe"])
+                .err()
+                .expect("expected argument error");
         assert_eq!(invalid.kind(), clap::error::ErrorKind::InvalidValue);
     }
 
     #[test]
     fn analyzer_set_help_is_available() {
-        let help = Cli::try_parse_from(["ghidra", "analyzer", "set", "--help"])
+        let help = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "--help"])
             .err()
             .expect("expected argument error");
         assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
@@ -1697,7 +1699,7 @@ mod tests {
 
     #[test]
     fn parses_decompile_target_flag() {
-        let cli = Cli::try_parse_from(["ghidra", "decompile", "--target", "FUN_00401000"])
+        let cli = Cli::try_parse_from(["ghidra-cli", "decompile", "--target", "FUN_00401000"])
             .expect("decompile --target should parse");
         match cli.command {
             Commands::Decompile(args) => assert_eq!(args.resolved_target(), "FUN_00401000"),
@@ -1707,7 +1709,7 @@ mod tests {
 
     #[test]
     fn parses_function_get_positional_target() {
-        let cli = Cli::try_parse_from(["ghidra", "function", "get", "main"])
+        let cli = Cli::try_parse_from(["ghidra-cli", "function", "get", "main"])
             .expect("function get positional target should parse");
         match cli.command {
             Commands::Function(FunctionCommands::Get(args)) => {

@@ -13,12 +13,12 @@ version (JDK 21 for Ghidra 12.x).
 git clone https://github.com/toratako/ghidra-cli
 cd ghidra-cli
 cargo install --path .
-ghidra setup
-ghidra doctor
+ghidra-cli setup
+ghidra-cli doctor
 ```
 
 For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
-`ghidra setup`. Doctor exits with code 1 if a readiness check fails.
+`ghidra-cli setup`. Doctor exits with code 1 if a readiness check fails.
 
 ## Usage
 

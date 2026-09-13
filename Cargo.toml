@@ -89,7 +89,7 @@ name = "ghidra_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ghidra"
+name = "ghidra-cli"
 path = "src/main.rs"
 
 [[example]]

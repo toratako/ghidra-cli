@@ -146,7 +146,7 @@ fn scalar_equals(elem: &JsonValue, val: &Value) -> bool {
 /// or -- for address-shaped fields -- tolerant of a `0x`/`0X` prefix on the
 /// filter's value. Ghidra addresses are stored and returned as bare hex
 /// (e.g. "ff90"), but every other place in this CLI's own docs/output uses
-/// `0xADDR` freely (`ghidra decompile 0x0331`, `ghidra x-ref to 0xff90`),
+/// `0xADDR` freely (`ghidra-cli decompile 0x0331`, `ghidra-cli x-ref to 0xff90`),
 /// so a quoted `--filter "address = '0xff90'"` used to silently match
 /// nothing instead of comparing the same way those other commands do.
 fn strings_equal_lenient(field: &str, field_val: &str, filter_val: &str) -> bool {

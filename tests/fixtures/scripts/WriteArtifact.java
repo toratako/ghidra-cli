@@ -1,4 +1,4 @@
-// Integration-test fixture for the `ghidra script run` artifact contract.
+// Integration-test fixture for the `ghidra-cli script run` artifact contract.
 // Writes `count` JSONL records to the path given as the first argument.
 // Args: <output_path> <count>
 // @category Test

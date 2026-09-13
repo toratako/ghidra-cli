@@ -13,8 +13,9 @@ pub(super) fn handle_init(output: Output) -> anyhow::Result<()> {
 
     if config.ghidra_install_dir.is_none() {
         output.progress("Ghidra installation not found automatically.");
-        output
-            .progress("Please set GHIDRA_INSTALL_DIR environment variable or run 'ghidra setup'.");
+        output.progress(
+            "Please set GHIDRA_INSTALL_DIR environment variable or run 'ghidra-cli setup'.",
+        );
     }
 
     // Set default project directory. Must avoid dot-prefixed path components,
@@ -26,7 +27,7 @@ pub(super) fn handle_init(output: Output) -> anyhow::Result<()> {
     config.save()?;
 
     let path = Config::config_path()?;
-    output.progress("Run 'ghidra doctor' to verify your installation.");
+    output.progress("Run 'ghidra-cli doctor' to verify your installation.");
     output.result(
         &json!({"config_path": path, "project_dir": project_dir}),
         &format!(
@@ -65,7 +66,7 @@ pub(super) fn handle_config_command(
                 output.result(value, serde_yaml::to_string(value)?.trim_end())?;
             } else {
                 anyhow::bail!(
-                    "Key not found: {}. Use 'ghidra config list' to see available keys.",
+                    "Key not found: {}. Use 'ghidra-cli config list' to see available keys.",
                     key
                 );
             }

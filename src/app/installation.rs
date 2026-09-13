@@ -76,7 +76,7 @@ pub(crate) async fn run_setup(cli: Cli) -> anyhow::Result<()> {
 
 fn verify_setup(path: &std::path::Path) -> anyhow::Result<()> {
     ghidra::bridge::find_headless_script(path).map(|_| ()).map_err(|err|
-        anyhow::anyhow!("Installation verification failed: {err}. The installation may be incomplete; rerun 'ghidra setup'."))
+        anyhow::anyhow!("Installation verification failed: {err}. The installation may be incomplete; rerun 'ghidra-cli setup'."))
 }
 
 pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> anyhow::Result<()> {
@@ -239,11 +239,11 @@ pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> a
     writeln!(report, "\nScript execution modes:")?;
     writeln!(
         report,
-        "  `ghidra script run PATH`  — compiles & runs a file on disk"
+        "  `ghidra-cli script run PATH`  — compiles & runs a file on disk"
     )?;
     writeln!(
         report,
-        "  `ghidra script run -`     — reads Java source from stdin for one-offs;"
+        "  `ghidra-cli script run -`     — reads Java source from stdin for one-offs;"
     )?;
     writeln!(
         report,
@@ -251,7 +251,7 @@ pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> a
     )?;
     writeln!(
         report,
-        "  `ghidra script python/java <code>` — disabled by design, not a bug: every script,"
+        "  `ghidra-cli script python/java <code>` — disabled by design, not a bug: every script,"
     )?;
     writeln!(
         report,

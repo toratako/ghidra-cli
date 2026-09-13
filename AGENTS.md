@@ -14,7 +14,7 @@ advice, and repeated navigation. Brevity is not a reason to remove domain knowle
 or recovery guidance.
 
 - Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
-  `ghidra doctor` fails. See [test commands and coverage](tests/README.md).
+  `ghidra-cli doctor` fails. See [test commands and coverage](tests/README.md).
 - Preserve output defaults: human-readable on TTY, `JsonCompact` on non-TTY;
   `--json` and `--pretty` explicitly select JSON. Agent focus does not change this.
 - The persistent server is a Java bridge inside Ghidra, one per project; no Rust

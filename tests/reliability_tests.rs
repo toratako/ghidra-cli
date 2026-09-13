@@ -31,7 +31,7 @@ fn test_stale_files_cleaned_on_restart() {
         let _harness = start_harness("first bridge");
 
         // Verify bridge is working
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("ping")
             .arg("--project")
             .arg(test_project())
@@ -50,7 +50,7 @@ fn test_stale_files_cleaned_on_restart() {
         let _harness = start_harness("second bridge after restart");
 
         // Verify bridge is working
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("ping")
             .arg("--project")
             .arg(test_project())
@@ -75,7 +75,7 @@ fn test_recovery_after_crash() {
         let _harness = start_harness("initial bridge");
 
         // Verify it's working
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("ping")
             .arg("--project")
             .arg(test_project())
@@ -94,7 +94,7 @@ fn test_recovery_after_crash() {
         let _harness = start_harness("bridge after crash");
 
         // Verify new bridge is working
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("ping")
             .arg("--project")
             .arg(test_project())
@@ -115,7 +115,7 @@ fn test_bridge_not_ready_error() {
     let harness = start_harness("bridge");
 
     // Ping should work
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("ping")
         .arg("--project")
         .arg(test_project())

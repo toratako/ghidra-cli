@@ -41,7 +41,7 @@ final class ScriptCommands {
         File scriptFile;
         File tempDir = null;
         if (inlineSource != null && !inlineSource.isEmpty()) {
-            // Stdin-sourced one-offs (`ghidra script run -`): stage the source into a
+            // Stdin-sourced one-offs (`ghidra-cli script run -`): stage the source into a
             // temp file and run it through the exact same compile/execute path as a
             // file on disk, rather than eval'ing it directly -- this is what keeps
             // inline snippets going through Ghidra's normal script bundle/compile gate
@@ -229,14 +229,14 @@ final class ScriptCommands {
         return errorResult("Inline Java execution (`script java`) is disabled by design: every script, "
             + "including one-offs, is required to go through Ghidra's normal script bundle/compile gate "
             + "(GhidraScriptProvider.getScriptInstance) rather than a second, less-sandboxed eval path. "
-            + "For a throwaway snippet without a checked-in file, use `ghidra script run -` and pipe the "
+            + "For a throwaway snippet without a checked-in file, use `ghidra-cli script run -` and pipe the "
             + "Java source on stdin -- it is staged to a temp file and compiled through the same path.");
     }
 
     JsonObject handleScriptPython(JsonObject args) {
         return errorResult("Python execution is not available: the Java bridge replaces the old Python "
             + "bridge.py entirely, and there is no embedded Python interpreter in this process. Port the "
-            + "logic to a Java GhidraScript and use `ghidra script run PATH`, or `ghidra script run -` "
+            + "logic to a Java GhidraScript and use `ghidra-cli script run PATH`, or `ghidra-cli script run -` "
             + "for a one-off piped via stdin.");
     }
 

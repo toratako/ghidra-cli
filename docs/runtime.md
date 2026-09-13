@@ -4,10 +4,10 @@
 
 For the basic install, see [README](../README.md#install).
 
-Install Ghidra 11+ with `ghidra setup`, or set `GHIDRA_INSTALL_DIR` to an existing
+Install Ghidra 11+ with `ghidra-cli setup`, or set `GHIDRA_INSTALL_DIR` to an existing
 installation. A full JDK is required (`javac` and `jdk.compiler`, not a JRE);
 Ghidra 12.x requires JDK 21 (older releases accept JDK 17). The CLI selects a
-suitable JDK automatically; `--java-home` overrides it. `ghidra doctor` checks the
+suitable JDK automatically; `--java-home` overrides it. `ghidra-cli doctor` checks the
 installation and compiles the embedded bridge bundle.
 
 ## Project configuration
@@ -24,8 +24,8 @@ the default falls back from the cache directory to `~/ghidra-cli-projects`.
 | `GHIDRA_PROJECT_DIR` | Base project directory |
 | `GHIDRA_CLI_JAVA_HOME` | Full JDK override; also `--java-home` or config `java_home` |
 | `GHIDRA_CLI_CONFIG` | Config file path override |
-| `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra query` |
-| `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra query` and auto-selection |
+| `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra-cli query` |
+| `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra-cli query` and auto-selection |
 
 Timeout values are seconds. A socket timeout does not cancel a server-side job.
 
@@ -41,13 +41,13 @@ Timeout values are seconds. A socket timeout does not cancel a server-side job.
 ## Jobs and persistence
 
 ```bash
-ghidra start --project P --program bin
-ghidra status --project P
-ghidra jobs --project P
-ghidra jobs 42 --project P
-ghidra cancel 42 --project P
-ghidra restart --project P --program otherbin
-ghidra stop --project P
+ghidra-cli start --project P --program bin
+ghidra-cli status --project P
+ghidra-cli jobs --project P
+ghidra-cli jobs 42 --project P
+ghidra-cli cancel 42 --project P
+ghidra-cli restart --project P --program otherbin
+ghidra-cli stop --project P
 ```
 
 Commands that need the bridge start it on demand. Each project has its own JVM;
@@ -70,7 +70,7 @@ opened later can have different transaction lifetimes.
 Use `-v`/`-vv`/`-vvv` for warn/info/debug logs; `--quiet` suppresses
 non-essential output.
 
-Run `ghidra doctor` to check Ghidra, analyzeHeadless, project/config paths, the
+Run `ghidra-cli doctor` to check Ghidra, analyzeHeadless, project/config paths, the
 selected full JDK, and compilation of the embedded Java bundle. A successful
 `javac` check alone does not establish runtime OSGi compatibility.
 

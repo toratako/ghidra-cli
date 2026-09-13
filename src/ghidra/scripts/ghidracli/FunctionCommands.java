@@ -122,7 +122,7 @@ final class FunctionCommands {
 
         Function func = session.program().getFunctionManager().getFunctionContaining(addr);
         if (func == null) {
-            return errorResult("No function at target " + target + ". Try: ghidra function list --filter " + target);
+            return errorResult("No function at target " + target + ". Try: ghidra-cli function list --filter " + target);
         }
         return functionQueries.functionToJson(func);
     }
