@@ -208,8 +208,16 @@ final class CommandDispatcher {
 
             if (result.has("error")) {
                 JsonObject detail = (result.has("detail") && result.get("detail").isJsonObject())
-                    ? result.getAsJsonObject("detail") : null;
-                return errorResponse(result.get("error").getAsString(), detail);
+                    ? result.getAsJsonObject("detail").deepCopy() : new JsonObject();
+                // Handlers may attach diagnostics beside the error message.
+                // Carry them into the wire detail without replacing structured conflicts.
+                for (java.util.Map.Entry<String, com.google.gson.JsonElement> field : result.entrySet()) {
+                    if (!field.getKey().equals("error") && !field.getKey().equals("detail")
+                            && !detail.has(field.getKey())) {
+                        detail.add(field.getKey(), field.getValue());
+                    }
+                }
+                return errorResponse(result.get("error").getAsString(), detail.size() == 0 ? null : detail);
             }
 
             return successResponse(result);

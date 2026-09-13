@@ -354,3 +354,64 @@ fn java_source_on_stdin_runs_without_interactive_prompt() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(value.to_string().contains("ARG0=from-stdin"), "{value}");
 }
+
+/// Failures retain script output, artifact diagnostics, and the request's save outcome.
+#[test]
+#[serial]
+fn test_script_failure_diagnostics() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let marker = format!("diagnostics-{}", uuid::Uuid::new_v4());
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class FailWithOutput extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.getOptions("DiagnosticTest").setString("marker", getScriptArgs()[0]);
+        println("before failure");
+        throw new IllegalStateException("intentional diagnostic failure");
+    }
+}
+"#,
+            &[marker],
+            &[],
+            false,
+        )
+        .unwrap_err();
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert!(detail["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("before failure"));
+    assert_eq!(detail["partial_changes_saved"], true);
+
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing.jsonl");
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class MissingArtifactOutput extends GhidraScript {
+    public void run() { println("artifact diagnostic output"); }
+}
+"#,
+            &[],
+            &[serde_json::json!({"path":missing})],
+            false,
+        )
+        .unwrap_err();
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert!(detail["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("artifact diagnostic output"));
+    assert_eq!(detail["artifacts"][0]["exists"], false);
+    assert_eq!(detail["artifacts"][0]["path"], missing.to_str().unwrap());
+}

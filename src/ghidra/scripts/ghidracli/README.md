@@ -81,7 +81,10 @@ the selection. Never release another consumer or terminate its checkout.
 | `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Shared lookup and diagnostic logic; no handler-to-handler dependencies |
 
 Handlers construct their domain results; the dispatcher applies the wire
-envelope. Shared helpers contain lookup/serialization logic, not command routing.
+envelope. Error results use `error` for the message and `detail` for structured
+diagnostics. Additional handler fields (such as script `stdout` and `artifacts`)
+are merged into wire `detail`; existing detail fields take precedence. Shared
+helpers contain lookup/serialization logic, not command routing.
 Most implementation classes are package-private; only `BridgeRuntime` and
 `ScriptAccess` cross the default-package entry point's boundary.
 
