@@ -1,9 +1,12 @@
 # Agent Instructions
 
-This CLI primarily serves AI agents. Keep the README a short setup/usage entry
-point; route detail through the [documentation map](docs/README.md).
-`docs/skills` is currently a private Hina skill mirror, not the project-wide
-source of truth. Keep implemented behavior separate from future plans.
+This CLI primarily serves AI agents. [The skill](docs/skills/SKILL.md) owns the
+RE command reference and agent-facing operational guidance. Installation,
+configuration, and environment recovery belong in ordinary docs; implementation
+and test documentation stay with their modules. Maintain each for its audience,
+not a shared size target. External docs may link to `SKILL.md` as an entry point,
+but must not depend on its internal reference layout. Keep future plans separate
+from implemented behavior. See the [documentation map](docs/README.md).
 
 - Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
   `ghidra doctor` fails. See [test commands and coverage](tests/README.md).

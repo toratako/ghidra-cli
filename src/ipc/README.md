@@ -16,7 +16,7 @@ Ghidra program lane; see [Java execution ownership](../ghidra/scripts/ghidracli/
 Retry transient connection failures with backoff only **before sending**; replaying
 a sent mutation could duplicate it. Read waits include time in the program queue.
 The write timeout is 30s; configurable read/connect/long-operation budgets are in
-[the runtime reference](../../docs/usage.md). Decompiler execution timeout stays
+[the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
 in its command adapter because it is a Ghidra parameter, not a socket budget.
 EOF without a reply is an error. A read timeout has a distinct error/exit status
 and does not cancel the running job.

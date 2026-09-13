@@ -72,4 +72,4 @@ Only lightweight liveness probes use raw TCP here; command traffic goes through
 [BridgeClient](../ipc/README.md). A busy program lane is not evidence of a dead
 bridge. Networking, responsive controls, and the serialized GhidraScript lane
 are described in the [Java bridge map](scripts/ghidracli/README.md); timeout knobs
-and operational recovery are in the [runtime reference](../../docs/usage.md).
+and operational recovery are in the [runtime reference](../../docs/runtime.md).

@@ -1,4 +1,10 @@
-# Docs
+# Documentation
 
-`skills` is a private agent skills.
-For convenience, the skill documentation is mirrored here. Please ignore it if you are public user.
+| Need | Read |
+|---|---|
+| Use the CLI | [ghidra-cli skill](skills/SKILL.md), RE commands and agent-facing operational guidance |
+| Install, configure, or troubleshoot the environment | [Runtime administration](runtime.md) |
+| Work on the implementation | [AGENTS.md](../AGENTS.md), [CLI](../src/app/README.md), [bridge](../src/ghidra/README.md), [Java](../src/ghidra/scripts/ghidracli/README.md), [IPC](../src/ipc/README.md) |
+| Validate changes | [Tests](../tests/README.md) and [shared helpers](../tests/common/README.md) |
+| Plan unfinished work | [Architecture direction](NEXT.md), [implementation/acceptance](PLAN.md), [owner TODOs](TODO.md) |
+| Check released changes | [Changelog](../CHANGELOG.md) |

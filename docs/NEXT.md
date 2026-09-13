@@ -1,7 +1,7 @@
 # ghidra-cli next architecture
 
 Future direction, not implemented guarantees. Current behavior is documented in
-[the bridge map](../src/ghidra/README.md) and [runtime reference](usage.md);
+[the bridge map](../src/ghidra/README.md) and [runtime reference](runtime.md);
 [PLAN.md](PLAN.md) owns implementation requirements and acceptance criteria.
 
 ## Current baseline
