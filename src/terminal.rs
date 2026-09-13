@@ -4,7 +4,15 @@ use std::io::{self, IsTerminal, Write};
 /// A consumer closing its pipe is normal. Do not interrupt an in-progress
 /// mutation or panic because its result no longer has a reader.
 pub(crate) fn write_stdout(text: &str) -> anyhow::Result<()> {
-    match writeln!(io::stdout().lock(), "{text}") {
+    let mut stdout = io::stdout().lock();
+    let result = stdout.write_all(text.as_bytes()).and_then(|_| {
+        if text.ends_with('\n') {
+            Ok(())
+        } else {
+            stdout.write_all(b"\n")
+        }
+    });
+    match result {
         Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(()),
         result => Ok(result?),
     }

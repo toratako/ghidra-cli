@@ -87,12 +87,8 @@ impl Query {
         let has_offset = opts.offset.is_some();
         let has_limit = opts.limit.is_some();
 
-        // No query processing needed if no filter/fields/sort/count/offset/limit.
-        // Offset and limit must be handled here because some bridge list handlers
-        // (e.g. imports/exports) never paginate — when either is set,
-        // `bridge_list_params` (app/execute.rs) may fetch the full dataset and this Query
-        // must apply the real offset/limit itself. Applying the limit again on a
-        // dataset the bridge already capped is idempotent, so this is safe.
+        // Pagination also needs client-side processing when the caller fetches
+        // all rows. Reapplying a limit to already capped data is idempotent.
         if !has_filter && !has_fields && !has_sort && !has_count && !has_offset && !has_limit {
             return Ok(None);
         }
@@ -152,8 +148,8 @@ impl Query {
 
     /// Process query results from pre-fetched data.
     ///
-    /// Note: Data fetching is now handled by the daemon via IPC.
-    /// This method only handles filtering, field selection, sorting, and formatting.
+    /// The caller owns fetching via IPC; this method filters, sorts, paginates,
+    /// selects output fields, and formats the resulting page.
     pub fn process_results(&self, data: Vec<JsonValue>) -> Result<String> {
         // Apply filter
         let filtered = if let Some(filter) = &self.filter {
@@ -162,18 +158,11 @@ impl Query {
             data
         };
 
-        // Apply field selection
-        let selected = if let Some(fields) = &self.fields {
-            self.select_fields(&filtered, fields)?
+        // Sort original rows: projection must not erase sort keys.
+        let sorted = if let Some(sort) = &self.sort {
+            self.apply_sort(&filtered, sort)?
         } else {
             filtered
-        };
-
-        // Apply sorting
-        let sorted = if let Some(sort) = &self.sort {
-            self.apply_sort(&selected, sort)?
-        } else {
-            selected
         };
 
         // Apply pagination
@@ -184,9 +173,14 @@ impl Query {
             return Ok(paginated.len().to_string());
         }
 
-        // Format output
+        let selected = if let Some(fields) = &self.fields {
+            self.select_fields(&paginated, fields)?
+        } else {
+            paginated
+        };
+
         let formatter = DefaultFormatter;
-        formatter.format(&paginated, self.format)
+        formatter.format(&selected, self.format)
     }
 
     fn apply_filter(&self, data: &[JsonValue], filter: &Filter) -> Result<Vec<JsonValue>> {
@@ -424,5 +418,45 @@ mod tests {
         query.limit = Some(0);
         query.offset = Some(2);
         assert_eq!(query.apply_pagination(&rows(5)).len(), 3);
+    }
+
+    #[test]
+    fn projection_does_not_change_filter_sort_or_page_selection() {
+        let data = vec![
+            serde_json::json!({"name": "small", "size": 1}),
+            serde_json::json!({"name": "z", "size": 100}),
+            serde_json::json!({"name": "a", "size": 100}),
+            serde_json::json!({"name": "medium", "size": 50}),
+        ];
+        for fields in ["name", "-size"] {
+            let opts = QueryOptions {
+                program: None,
+                project: None,
+                filter: Some("size>1".to_string()),
+                fields: Some(fields.to_string()),
+                format: None,
+                json: false,
+                sort: Some("-size,name".to_string()),
+                offset: Some(1),
+                limit: Some(1),
+                count: false,
+            };
+            let mut query = Query::from_options(&opts, OutputFormat::JsonCompact)
+                .unwrap()
+                .unwrap();
+            let result: JsonValue =
+                serde_json::from_str(&query.process_results(data.clone()).unwrap()).unwrap();
+            assert_eq!(result, serde_json::json!([{"name": "z"}]), "{fields}");
+            query.count_only = true;
+            assert_eq!(query.process_results(data.clone()).unwrap(), "1");
+            query.count_only = false;
+            query.limit = Some(0);
+            let result: JsonValue =
+                serde_json::from_str(&query.process_results(data.clone()).unwrap()).unwrap();
+            assert_eq!(
+                result,
+                serde_json::json!([{"name": "z"}, {"name": "medium"}])
+            );
+        }
     }
 }

@@ -138,34 +138,28 @@ fn format_csv<T: Serialize>(data: &[T], delimiter: char) -> Result<String> {
         return Ok(String::new());
     };
 
-    let mut result = String::new();
+    // Cell rendering owns array/object representation; the CSV writer owns
+    // quoting (including headers and a single empty cell) and record framing.
+    let mut writer = csv::WriterBuilder::new()
+        .delimiter(delimiter as u8)
+        .from_writer(Vec::new());
+    writer.write_record(&keys).map_err(std::io::Error::other)?;
 
-    // Header
-    result.push_str(&keys.join(&delimiter.to_string()));
-    result.push('\n');
-
-    // Rows
     for item in &json_data {
         if let JsonValue::Object(map) = item {
-            let row: Vec<String> = keys
+            let row = keys
                 .iter()
-                .map(|k| {
-                    map.get(k)
-                        .map(format_csv_value)
-                        .unwrap_or_else(|| "".to_string())
-                })
-                .collect();
-            result.push_str(&row.join(&delimiter.to_string()));
-            result.push('\n');
+                .map(|key| map.get(key).map(format_csv_value).unwrap_or_default());
+            writer.write_record(row).map_err(std::io::Error::other)?;
         }
     }
 
-    Ok(result)
+    let bytes = writer.into_inner().map_err(|error| error.into_error())?;
+    String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error).into())
 }
 
-/// CSV cell rendering. Arrays join with `;` (never with `, `): format_csv does
-/// no field quoting, so a `, `-joined array (e.g. `tags`, `operands`) would
-/// inject the delimiter and shift every subsequent column.
+/// Preserve the established semicolon-separated representation of array cells.
 fn format_csv_value(value: &JsonValue) -> String {
     match value {
         JsonValue::Array(arr) => arr
@@ -248,7 +242,11 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 if let Some(v) = value_str {
                     // Truncate long strings
                     if v.len() > 80 {
-                        parts.push(format!("\"{}...\"", &v[..77]));
+                        let mut end = 77;
+                        while !v.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        parts.push(format!("\"{}...\"", &v[..end]));
                     } else {
                         parts.push(format!("\"{}\"", v));
                     }
@@ -476,5 +474,113 @@ mod tests {
         let formatter = DefaultFormatter;
         let result = formatter.format(&data, OutputFormat::Count).unwrap();
         assert_eq!(result, "2");
+    }
+
+    #[test]
+    fn compact_truncation_preserves_utf8_and_existing_byte_budget() {
+        for (value, displayed) in [
+            ("x".repeat(80), "x".repeat(80)),
+            ("x".repeat(81), format!("{}...", "x".repeat(77))),
+            ("あ".repeat(30), format!("{}...", "あ".repeat(25))),
+            ("😀".repeat(21), format!("{}...", "😀".repeat(19))),
+            (
+                format!("{}ああ", "x".repeat(76)),
+                format!("{}...", "x".repeat(76)),
+            ),
+        ] {
+            let output = DefaultFormatter
+                .format(&[json!({"value": value})], OutputFormat::Compact)
+                .unwrap();
+            assert_eq!(output, format!("\"{displayed}\"\n"));
+        }
+    }
+
+    #[test]
+    fn delimited_output_round_trips_special_cells_and_array_representation() {
+        for (format, delimiter) in [(OutputFormat::Csv, b','), (OutputFormat::Tsv, b'\t')] {
+            let values = [
+                "void f(int a, int b)",
+                "a\tb",
+                "say \"hello\"",
+                "first\nsecond",
+                "first\rsecond",
+                "",
+                "日本語",
+            ];
+            let data: Vec<_> = values
+                .iter()
+                .map(|value| json!({"tags": ["crypto", "reviewed"], "value": value}))
+                .collect();
+            let output = DefaultFormatter.format(&data, format).unwrap();
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(delimiter)
+                .from_reader(output.as_bytes());
+            assert_eq!(
+                reader.headers().unwrap(),
+                &csv::StringRecord::from(vec!["tags", "value"])
+            );
+            let records: Vec<_> = reader
+                .records()
+                .collect::<std::result::Result<_, _>>()
+                .unwrap();
+            assert_eq!(records.len(), values.len());
+            for (record, expected) in records.iter().zip(values) {
+                assert_eq!(&record[0], "crypto;reviewed");
+                assert_eq!(&record[1], expected);
+            }
+        }
+    }
+
+    #[test]
+    fn delimited_headers_arrays_and_objects_are_escaped_as_complete_cells() {
+        let key = "field,\t\"\n";
+        for (format, delimiter) in [(OutputFormat::Csv, b','), (OutputFormat::Tsv, b'\t')] {
+            for (value, expected) in [
+                (
+                    json!(["a,b", "c\td", "e\nf", "\"g\""]),
+                    "a,b;c\td;e\nf;\"g\"".to_string(),
+                ),
+                (
+                    json!({"name": "a,b\tc"}),
+                    r#"{"name":"a,b\tc"}"#.to_string(),
+                ),
+            ] {
+                let output = DefaultFormatter
+                    .format(&[json!({key: value})], format)
+                    .unwrap();
+                let mut reader = csv::ReaderBuilder::new()
+                    .delimiter(delimiter)
+                    .from_reader(output.as_bytes());
+                assert_eq!(reader.headers().unwrap().get(0), Some(key));
+                let records: Vec<_> = reader
+                    .records()
+                    .collect::<std::result::Result<_, _>>()
+                    .unwrap();
+                assert_eq!(records.len(), 1);
+                assert_eq!(records[0].get(0), Some(expected.as_str()));
+            }
+        }
+    }
+
+    #[test]
+    fn delimited_single_empty_cells_remain_records() {
+        for (format, delimiter) in [(OutputFormat::Csv, b','), (OutputFormat::Tsv, b'\t')] {
+            let output = DefaultFormatter
+                .format(&[json!({"value": ""}), json!({})], format)
+                .unwrap();
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(delimiter)
+                .from_reader(output.as_bytes());
+            let records: Vec<_> = reader
+                .records()
+                .collect::<std::result::Result<_, _>>()
+                .unwrap();
+            assert_eq!(records.len(), 2);
+            assert!(records.iter().all(|record| record.get(0) == Some("")));
+            assert_eq!(
+                DefaultFormatter.format::<JsonValue>(&[], format).unwrap(),
+                ""
+            );
+        }
     }
 }
