@@ -56,6 +56,12 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
 
 ### Changed
 
+- Temporarily paused macOS CI jobs and release builds while decompiler and
+  fixture symbol failures are investigated. CI and release binaries now target
+  Linux and Windows.
+- Updated the GitHub Release action and use the tagged version's changelog
+  section as release notes. crates.io publishing requires the repository
+  variable `PUBLISH_CRATES_IO=true` and a configured `CARGO_REGISTRY_TOKEN`.
 - `function create ADDRESS [NAME]` attempts disassembly first when the target
   has no instruction.
 - `find calls TARGET` now returns calls made by the target function, scanning

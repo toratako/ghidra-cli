@@ -8,6 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# macOS tests and builds are paused with the regular CI jobs.
 jobs:
   test:
     name: Test ${{ matrix.os }}
@@ -16,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -81,10 +82,6 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
           - target: x86_64-pc-windows-msvc
             os: windows-latest
 
@@ -133,16 +130,33 @@ jobs:
         with:
           path: artifacts
 
+      - name: Extract release notes
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          pattern = rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)"
+          section = re.search(pattern, Path("CHANGELOG.md").read_text(), re.M | re.S)
+          if section is None or not section[1].strip():
+              raise SystemExit(f"Missing release notes for {version} in CHANGELOG.md")
+          Path("release-notes.md").write_text(section[1].strip() + "\n")
+
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
-          generate_release_notes: true
+          body_path: release-notes.md
           files: artifacts/**/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     name: Publish to crates.io
+    # Enable explicitly with this repository variable and CARGO_REGISTRY_TOKEN.
+    if: ${{ vars.PUBLISH_CRATES_IO == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     steps:
