@@ -67,3 +67,10 @@ and the harness data directory. Suite-exit cleanup also stops the bridge and
 removes the suite project and any locally owned fixture; shared sources belong
 to the runner. Statics do not receive normal Rust Drop.
 Cleanup remains best effort under forced process termination.
+
+For CLI commands that start or restart a persistent bridge, use
+`run_command_with_output()` when asserting stdout/stderr. It captures to temporary
+files and bounds the CLI process wait; the harness still owns bridge cleanup.
+On Windows, descendants can inherit output pipe handles, so `assert_cmd::output()`
+may wait for EOF even after its process timeout. `run_cli_with_timeout()` remains
+available when output assertions are unnecessary.

@@ -800,13 +800,16 @@ fn management_results_are_single_json_documents() {
         .unwrap()
         .unwrap();
     for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
-        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-            .args(["--json", "--quiet"])
-            .args(&args)
-            .args(["--project", test_project(), "--program", TEST_PROGRAM])
-            .timeout(Duration::from_secs(300))
-            .output()
-            .unwrap();
+        // restart leaves a JVM running; inherited Windows pipe handles would
+        // make assert_cmd's output readers wait past its process timeout.
+        let output = common::run_command_with_output(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .args(["--json", "--quiet"])
+                .args(&args)
+                .args(["--project", test_project(), "--program", TEST_PROGRAM]),
+            Duration::from_secs(300),
+        )
+        .unwrap();
         assert!(output.status.success(), "{args:?}: {output:?}");
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         if args == ["program", "save"] {

@@ -2,6 +2,116 @@
 mod common;
 
 #[test]
+fn command_output_returns_while_descendant_holds_streams() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    const MODE: &str = "GHIDRA_OUTPUT_TEST_MODE";
+    const ROOT: &str = "GHIDRA_OUTPUT_TEST_ROOT";
+    let executable = std::env::current_exe().unwrap();
+    let command = || {
+        let mut command = Command::new(&executable);
+        command.args([
+            "--exact",
+            "command_output_returns_while_descendant_holds_streams",
+            "--nocapture",
+        ]);
+        command
+    };
+    if let Ok(mode) = std::env::var(MODE) {
+        let root = std::path::PathBuf::from(std::env::var_os(ROOT).unwrap());
+        if mode == "descendant" {
+            println!("descendant stdout");
+            eprintln!("descendant stderr");
+            std::fs::write(root.join("ready"), "").unwrap();
+            let started = Instant::now();
+            while !root.join("release").exists() && started.elapsed() < Duration::from_secs(15) {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            std::fs::write(root.join("done"), "").unwrap();
+            return;
+        }
+        println!("parent stdout");
+        eprintln!("parent stderr");
+        let mut descendant = command()
+            .env(MODE, "descendant")
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !root.join("ready").exists() {
+            if started.elapsed() > Duration::from_secs(10) {
+                let _ = descendant.kill();
+                let _ = descendant.wait();
+                panic!("Descendant did not start");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // Intentionally leave the descendant holding both output handles.
+        std::process::exit(7);
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    let result = common::run_command_with_output(
+        command().env(MODE, "parent").env(ROOT, root.path()),
+        Duration::from_secs(10),
+    );
+    let returned_before_descendant = !root.path().join("done").exists();
+    std::fs::write(root.path().join("release"), "").unwrap();
+    let started = Instant::now();
+    while !root.path().join("done").exists() {
+        assert!(started.elapsed() < Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let output = result.unwrap();
+    assert!(returned_before_descendant, "Waited for descendant EOF");
+    assert_eq!(output.status.code(), Some(7));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stdout.contains("parent stdout"), "{stdout}");
+    assert!(stdout.contains("descendant stdout"), "{stdout}");
+    assert!(stderr.contains("parent stderr"), "{stderr}");
+    assert!(stderr.contains("descendant stderr"), "{stderr}");
+}
+
+#[test]
+fn command_output_timeout_reaps_child_and_keeps_diagnostics() {
+    use std::time::{Duration, Instant};
+
+    const REPORT: &str = "GHIDRA_OUTPUT_TIMEOUT_REPORT";
+    if let Some(report) = std::env::var_os(REPORT) {
+        println!("stdout before timeout");
+        eprintln!("stderr before timeout");
+        std::fs::write(report, std::process::id().to_string()).unwrap();
+        std::thread::sleep(Duration::from_secs(30));
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("pid");
+    let started = Instant::now();
+    let error = common::run_command_with_output(
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "command_output_timeout_reaps_child_and_keeps_diagnostics",
+                "--nocapture",
+            ])
+            .env(REPORT, &report),
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(20));
+    let diagnostic = format!("{error:#}");
+    assert!(diagnostic.contains("timed out after 5s"), "{diagnostic}");
+    assert!(diagnostic.contains("stdout before timeout"), "{diagnostic}");
+    assert!(diagnostic.contains("stderr before timeout"), "{diagnostic}");
+    let pid = std::fs::read_to_string(report).unwrap().parse().unwrap();
+    assert!(!ghidra_cli::ghidra::bridge::is_pid_alive(pid));
+}
+
+#[test]
 fn fixture_is_generated_once_and_runs_on_host() {
     let path = common::fixture_binary();
     assert!(path.is_file());
