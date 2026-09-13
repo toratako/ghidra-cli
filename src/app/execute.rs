@@ -182,8 +182,8 @@ pub(super) fn execute_via_bridge(
                 "data": result
             }))
         }
-        Commands::Query(args) => match args.data_type.as_str() {
-            "functions" => {
+        Commands::Query(args) => match args.data_type {
+            cli::QueryDataType::Functions => {
                 let (lim, filt) = bridge_list_params(
                     args.limit,
                     args.filter.clone(),
@@ -194,7 +194,7 @@ pub(super) fn execute_via_bridge(
                 );
                 client.list_functions(lim, filt, &[], false)
             }
-            "strings" => {
+            cli::QueryDataType::Strings => {
                 let (lim, filt) = bridge_list_params(
                     args.limit,
                     args.filter.clone(),
@@ -205,10 +205,9 @@ pub(super) fn execute_via_bridge(
                 );
                 client.list_strings(lim, filt)
             }
-            "imports" => client.list_imports(args.limit.or(default_limit)),
-            "exports" => client.list_exports(args.limit.or(default_limit)),
-            "memory" => client.memory_map(),
-            other => anyhow::bail!("Query type '{}' not supported", other),
+            cli::QueryDataType::Imports => client.list_imports(args.limit.or(default_limit)),
+            cli::QueryDataType::Exports => client.list_exports(args.limit.or(default_limit)),
+            cli::QueryDataType::Memory => client.memory_map(),
         },
         Commands::Decompile(args) => client.decompile(
             args.resolved_target().to_string(),

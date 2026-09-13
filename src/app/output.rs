@@ -159,13 +159,7 @@ fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
 fn output_format(cli: &Cli) -> OutputFormat {
     // Determine output format: explicit -o flag > --json/--pretty > TTY detection
     let opts = extract_query_options(&cli.command);
-    let explicit_format = opts
-        .as_ref()
-        .and_then(|o| o.format.as_ref())
-        .map(|f| OutputFormat::from_str(f))
-        .transpose()
-        .ok()
-        .flatten();
+    let explicit_format = opts.as_ref().and_then(|o| o.format);
 
     if let Some(fmt) = explicit_format {
         fmt
@@ -213,6 +207,29 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
 mod tests {
     use super::*;
     use crate::filter;
+    use clap::Parser;
+
+    #[test]
+    fn output_format_preserves_explicit_flag_precedence() {
+        for command in [["query", "functions"], ["function", "list"]] {
+            for (flags, expected) in [
+                (vec!["--json"], OutputFormat::JsonCompact),
+                (vec!["--pretty"], OutputFormat::Json),
+                (vec!["--json", "--pretty"], OutputFormat::Json),
+                (vec!["--json", "-o", "table"], OutputFormat::Table),
+                (
+                    vec!["--pretty", "-o", "JSON-COMPACT"],
+                    OutputFormat::JsonCompact,
+                ),
+                (vec!["--pretty", "-o", "NDJSON"], OutputFormat::JsonStream),
+            ] {
+                let cli =
+                    Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain(flags))
+                        .unwrap();
+                assert_eq!(output_format(&cli), expected);
+            }
+        }
+    }
 
     #[test]
     fn describe_query_error_mentions_filter_usage() {

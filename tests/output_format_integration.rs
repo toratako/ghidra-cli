@@ -100,6 +100,49 @@ fn failures_have_nonzero_status_and_json_diagnostics() {
 }
 
 #[test]
+fn invalid_choices_list_valid_values_before_loading_config() {
+    let temp = tempfile::tempdir().unwrap();
+    // These argument errors must not depend on a usable config or bridge.
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
+        for (args, choices) in [
+            (
+                vec!["query", "symbols"],
+                "functions, strings, imports, exports, memory",
+            ),
+            (vec!["set-default", "potato", "foo"], "program, project"),
+            (
+                vec!["query", "functions", "--format", "potato"],
+                "json, json-compact, json-stream",
+            ),
+            (vec!["function", "list", "-o", "auto"], "csv, tsv, table"),
+        ] {
+            let output = isolated_command(&temp)
+                .args(&flags)
+                .args(&args)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{flags:?} {args:?}: {output:?}"
+            );
+            assert!(output.stdout.is_empty(), "{output:?}");
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["status"], "error");
+            assert_eq!(error["exit_code"], 2);
+            let message = error["message"].as_str().unwrap();
+            assert!(message.contains("possible values:"), "{message}");
+            assert!(message.contains(choices), "{message}");
+        }
+    }
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("config.yaml")).unwrap(),
+        "invalid: [yaml"
+    );
+}
+
+#[test]
 fn quiet_mutations_keep_results_and_apply_changes() {
     let temp = tempfile::tempdir().unwrap();
     let output = isolated_command(&temp)

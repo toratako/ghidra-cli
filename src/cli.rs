@@ -1,4 +1,5 @@
-use clap::{ArgAction, Args, Parser, Subcommand};
+use crate::format::OutputFormat;
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -46,7 +47,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum Commands {
-    /// Universal query command for any data type
+    /// Query functions, strings, imports, exports, or memory
     Query(QueryArgs),
 
     /// Project management commands
@@ -243,10 +244,23 @@ pub enum Commands {
     Rename(RenameArgs),
 }
 
+// Only types routed by execute_via_bridge belong here; query::DataType also
+// contains types that the query command does not implement.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum QueryDataType {
+    Functions,
+    Strings,
+    Imports,
+    Exports,
+    Memory,
+}
+
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct QueryArgs {
-    /// Data type to query (functions, strings, imports, etc.)
-    pub data_type: String,
+    /// Data type to query
+    #[arg(value_enum)]
+    pub data_type: QueryDataType,
 
     /// Target program
     #[arg(long, env = "GHIDRA_DEFAULT_PROGRAM")]
@@ -266,9 +280,9 @@ pub struct QueryArgs {
     #[arg(long)]
     pub fields: Option<String>,
 
-    /// Output format
-    #[arg(long, short = 'o')]
-    pub format: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    pub format: Option<OutputFormat>,
 
     /// Maximum number of results (0 = unlimited; default 1000)
     #[arg(long)]
@@ -286,7 +300,7 @@ pub struct QueryArgs {
     #[arg(long)]
     pub count: bool,
 
-    /// Output as JSON (shorthand for --format=json)
+    /// Output compact JSON (shorthand for --format=json-compact)
     #[arg(long)]
     pub json: bool,
 }
@@ -733,7 +747,9 @@ pub enum MemoryCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct MemReadArgs {
+    /// Start address in hex (e.g. 0x401000), or a symbol name (e.g. main)
     pub address: String,
+    /// Number of bytes to read in decimal (e.g. 64)
     pub size: usize,
     #[command(flatten)]
     pub options: QueryOptions,
@@ -1214,6 +1230,7 @@ pub struct FindStringArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FindBytesArgs {
+    /// Hex bytes, contiguous or quoted with spaces (e.g. 488b05 or "48 8b 05")
     pub hex: String,
     #[command(flatten)]
     pub options: QueryOptions,
@@ -1519,14 +1536,36 @@ pub enum ConfigCommands {
     /// Get configuration value
     Get { key: String },
     /// Set configuration value
-    Set { key: String, value: String },
+    #[command(
+        after_help = "Examples:\n  ghidra-cli config set default_limit 100\n  ghidra-cli config set ghidra_install_dir /opt/ghidra\n  ghidra-cli config set launch_timeout_secs 240"
+    )]
+    Set {
+        /// Key to set: ghidra_install_dir, ghidra_project_dir, default_program,
+        /// default_project, default_output_format, default_limit, launch_timeout_secs
+        key: String,
+        /// Value for the key (e.g. 100 for default_limit, /opt/ghidra for ghidra_install_dir)
+        value: String,
+    },
     /// Reset configuration
     Reset,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum DefaultKind {
+    Program,
+    Project,
+}
+
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(
+    after_help = "Examples:\n  ghidra-cli set-default program sample_binary\n  ghidra-cli set-default project target"
+)]
 pub struct SetDefaultArgs {
-    pub kind: String,
+    /// Default to update
+    #[arg(value_enum)]
+    pub kind: DefaultKind,
+    /// Program name (e.g. sample_binary) or project name/path (e.g. target)
     pub value: String,
 }
 
@@ -1595,9 +1634,11 @@ pub struct AnalyzeArgs {
 /// Common query options used across commands
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct QueryOptions {
+    /// Target program
     #[arg(long)]
     pub program: Option<String>,
 
+    /// Project name
     #[arg(long)]
     pub project: Option<String>,
 
@@ -1607,25 +1648,31 @@ pub struct QueryOptions {
     #[arg(short, long)]
     pub filter: Option<String>,
 
+    /// Field selection (comma-separated)
     #[arg(long)]
     pub fields: Option<String>,
 
-    #[arg(long, short = 'o')]
-    pub format: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    pub format: Option<OutputFormat>,
 
     /// Maximum number of results (0 = unlimited; default 1000)
     #[arg(long)]
     pub limit: Option<usize>,
 
+    /// Skip first N results
     #[arg(long)]
     pub offset: Option<usize>,
 
+    /// Sort by field(s) (comma-separated, prefix with - for descending)
     #[arg(long, allow_hyphen_values = true)]
     pub sort: Option<String>,
 
+    /// Only return count
     #[arg(long)]
     pub count: bool,
 
+    /// Output compact JSON (shorthand for --format=json-compact)
     #[arg(long)]
     pub json: bool,
 }
@@ -1649,6 +1696,97 @@ pub struct SetupArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_help_lists_only_routed_types() {
+        for help_flag in ["-h", "--help"] {
+            let help = Cli::try_parse_from(["ghidra-cli", "query", help_flag])
+                .err()
+                .expect("expected help");
+            assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+            assert!(help
+                .to_string()
+                .contains("[possible values: functions, strings, imports, exports, memory]"));
+        }
+        for data_type in ["functions", "strings", "imports", "exports", "memory"] {
+            Cli::try_parse_from(["ghidra-cli", "query", data_type]).unwrap();
+        }
+        for unsupported in ["symbols", "xrefs", "sections", "function", "FUNCTIONS"] {
+            let error = Cli::try_parse_from(["ghidra-cli", "query", unsupported])
+                .err()
+                .expect("unsupported query type must fail before bridge startup");
+            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+        }
+    }
+
+    #[test]
+    fn output_formats_keep_existing_spellings_and_aliases() {
+        for (name, expected) in [
+            ("full", OutputFormat::Full),
+            ("compact", OutputFormat::Compact),
+            ("minimal", OutputFormat::Minimal),
+            ("json", OutputFormat::Json),
+            ("json-compact", OutputFormat::JsonCompact),
+            ("json-stream", OutputFormat::JsonStream),
+            ("ndjson", OutputFormat::JsonStream),
+            ("csv", OutputFormat::Csv),
+            ("tsv", OutputFormat::Tsv),
+            ("table", OutputFormat::Table),
+            ("ids", OutputFormat::Ids),
+            ("count", OutputFormat::Count),
+            ("tree", OutputFormat::Tree),
+            ("hex", OutputFormat::Hex),
+            ("asm", OutputFormat::Asm),
+            ("c", OutputFormat::C),
+        ] {
+            for spelling in [name.to_string(), name.to_uppercase()] {
+                assert_eq!(OutputFormat::from_str(&spelling).unwrap(), expected);
+                for command in [["query", "functions"], ["function", "list"]] {
+                    for flag in ["-o", "--format"] {
+                        let cli = Cli::try_parse_from([
+                            "ghidra-cli",
+                            command[0],
+                            command[1],
+                            flag,
+                            &spelling,
+                        ])
+                        .unwrap();
+                        let format = match cli.command {
+                            Commands::Query(args) => args.format,
+                            Commands::Function(FunctionCommands::List(args)) => args.options.format,
+                            _ => panic!("unexpected command"),
+                        };
+                        assert_eq!(format, Some(expected));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shared_format_help_lists_choices_and_legacy_rendering() {
+        for command in [["query"].as_slice(), ["memory", "read"].as_slice()] {
+            for flag in ["-h", "--help"] {
+                let help = Cli::try_parse_from(
+                    ["ghidra-cli"]
+                        .into_iter()
+                        .chain(command.iter().copied())
+                        .chain([flag]),
+                )
+                .err()
+                .expect("expected help")
+                .to_string();
+                for value in OutputFormat::value_variants() {
+                    let possible = value.to_possible_value().unwrap();
+                    assert!(help.contains(possible.get_name()), "{help}");
+                }
+                if flag == "--help" {
+                    assert!(help.contains("alias: ndjson"), "{help}");
+                    assert!(help.contains("Currently rendered as JSON"), "{help}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn analyzer_set_parses_explicit_boolean() {

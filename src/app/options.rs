@@ -326,7 +326,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             project: args.project.clone(),
             filter: args.filter.clone(),
             fields: args.fields.clone(),
-            format: args.format.clone(),
+            format: args.format,
             limit: args.limit,
             offset: args.offset,
             sort: args.sort.clone(),

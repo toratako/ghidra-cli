@@ -122,8 +122,8 @@ pub(super) fn handle_config_command(
 pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> anyhow::Result<()> {
     let mut config = Config::load()?;
 
-    match args.kind.as_str() {
-        "program" => {
+    match args.kind {
+        cli::DefaultKind::Program => {
             config.default_program = Some(args.value.clone());
             config.save()?;
             output.result(
@@ -131,16 +131,13 @@ pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> a
                 &format!("Default program set to: {}", args.value),
             )?;
         }
-        "project" => {
+        cli::DefaultKind::Project => {
             config.default_project = Some(args.value.clone());
             config.save()?;
             output.result(
                 &json!({"message": "Default project set", "project": args.value}),
                 &format!("Default project set to: {}", args.value),
             )?;
-        }
-        _ => {
-            anyhow::bail!(format!("Unknown default kind: {}", args.kind));
         }
     }
 

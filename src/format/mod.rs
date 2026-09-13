@@ -1,47 +1,39 @@
 use crate::error::{GhidraError, Result};
+use clap::ValueEnum;
 use comfy_table::{presets::UTF8_FULL, Table};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 pub enum OutputFormat {
     Full,
     Compact,
     Minimal,
     Json,
     JsonCompact,
+    #[value(alias = "ndjson", help = "One JSON object per line (alias: ndjson)")]
+    #[serde(alias = "ndjson")]
     JsonStream,
     Csv,
     Tsv,
     Table,
     Ids,
     Count,
+    #[value(help = "Currently rendered as JSON")]
     Tree,
+    #[value(help = "Currently rendered as JSON")]
     Hex,
+    #[value(help = "Currently rendered as JSON")]
     Asm,
+    #[value(help = "Currently rendered as JSON")]
     C,
 }
 
 impl OutputFormat {
     pub fn from_str(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "full" => Ok(Self::Full),
-            "compact" => Ok(Self::Compact),
-            "minimal" => Ok(Self::Minimal),
-            "json" => Ok(Self::Json),
-            "json-compact" => Ok(Self::JsonCompact),
-            "json-stream" | "ndjson" => Ok(Self::JsonStream),
-            "csv" => Ok(Self::Csv),
-            "tsv" => Ok(Self::Tsv),
-            "table" => Ok(Self::Table),
-            "ids" => Ok(Self::Ids),
-            "count" => Ok(Self::Count),
-            "tree" => Ok(Self::Tree),
-            "hex" => Ok(Self::Hex),
-            "asm" => Ok(Self::Asm),
-            "c" => Ok(Self::C),
-            _ => Err(GhidraError::InvalidFormat(format!("Unknown format: {}", s))),
-        }
+        <Self as ValueEnum>::from_str(s, true)
+            .map_err(|_| GhidraError::InvalidFormat(format!("Unknown format: {}", s)))
     }
 }
 
