@@ -2,7 +2,7 @@
 
 use super::BridgeClient;
 use crate::ipc::protocol::{BridgeCommandError, BridgeRequest, BridgeResponse, BridgeTimeoutError};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -88,28 +88,51 @@ fn is_transient_connect_error(e: &std::io::Error) -> bool {
 /// non-idempotent commands (rename/comment/patch).
 fn connect_with_retry(addr: &std::net::SocketAddr) -> Result<TcpStream> {
     let budget = connect_deadline();
-    let deadline = std::time::Instant::now() + budget;
+    let started = std::time::Instant::now();
+    retry_connect(
+        budget,
+        |timeout| TcpStream::connect_timeout(addr, timeout),
+        || started.elapsed(),
+        std::thread::sleep,
+    )
+    .map_err(|error| {
+        let message = format!(
+            "Failed to connect to bridge on port {} within {}s: {}. \
+             Is the bridge running? Check `ghidra-cli status`.",
+            addr.port(),
+            budget.as_secs(),
+            error
+        );
+        anyhow::Error::new(error).context(message)
+    })
+}
+
+// Keep time and connection attempts injectable so deadline boundaries can be
+// checked without wall-clock races or changing the process environment.
+fn retry_connect<T>(
+    budget: Duration,
+    mut connect: impl FnMut(Duration) -> std::io::Result<T>,
+    mut elapsed: impl FnMut() -> Duration,
+    mut sleep: impl FnMut(Duration),
+) -> std::io::Result<T> {
     let mut backoff = Duration::from_millis(100);
     let mut last_err: Option<std::io::Error> = None;
     loop {
-        match TcpStream::connect_timeout(addr, Duration::from_secs(10)) {
-            Ok(stream) => return Ok(stream),
-            Err(e) if is_transient_connect_error(&e) && std::time::Instant::now() < deadline => {
-                debug!("bridge connect transient ({e}); retrying in {backoff:?}");
+        let remaining = budget.saturating_sub(elapsed());
+        if remaining.is_zero() {
+            return Err(last_err.unwrap_or_else(|| std::io::ErrorKind::TimedOut.into()));
+        }
+        match connect(remaining.min(Duration::from_secs(10))) {
+            Ok(stream) if elapsed() < budget => return Ok(stream),
+            Ok(_) => return Err(std::io::ErrorKind::TimedOut.into()),
+            Err(e) if is_transient_connect_error(&e) => {
+                let wait = backoff.min(budget.saturating_sub(elapsed()));
+                debug!("bridge connect transient ({e}); retrying in {wait:?}");
                 last_err = Some(e);
-                std::thread::sleep(backoff);
+                sleep(wait);
                 backoff = (backoff * 2).min(Duration::from_secs(2));
             }
-            Err(e) => {
-                let e = last_err.unwrap_or(e);
-                anyhow::bail!(
-                    "Failed to connect to bridge on port {} after waiting {}s: {}. \
-                     Is the bridge running? Check `ghidra-cli status`.",
-                    addr.port(),
-                    budget.as_secs(),
-                    e
-                );
-            }
+            Err(e) => return Err(e),
         }
     }
 }
@@ -145,8 +168,12 @@ impl BridgeClient {
         let mut stream = connect_with_retry(&addr)?;
         // `None` => blocking reads (no timeout). A long analysis can exceed any
         // fixed cap, so callers route those ops through here with `None`.
-        stream.set_read_timeout(read_timeout).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(30))).ok();
+        stream
+            .set_read_timeout(read_timeout)
+            .context("Failed to set bridge read timeout before sending request")?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(30)))
+            .context("Failed to set bridge write timeout before sending request")?;
 
         let request = BridgeRequest {
             command: command.to_string(),
@@ -165,7 +192,9 @@ impl BridgeClient {
             // EOF before any response: bridge closed the socket without replying.
             Ok(0) => anyhow::bail!(
                 "Bridge closed the connection without responding to '{}' \
-                 (it may have crashed or been restarted). Retry, or check `ghidra-cli status`.",
+                 (it may have crashed or been restarted). The command outcome is unknown; \
+                 changes may already have been applied and saved. Check `ghidra-cli status`, \
+                 `ghidra-cli jobs`, and the program state before deciding whether to repeat it.",
                 command
             ),
             Ok(_) => {}
@@ -214,9 +243,156 @@ impl BridgeClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_transient_connect_error, parse_secs};
-    use std::io::{Error, ErrorKind};
+    use super::{is_transient_connect_error, parse_secs, retry_connect, BridgeClient};
+    use std::cell::Cell;
+    use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
+    use std::net::TcpListener;
     use std::time::Duration;
+
+    #[test]
+    fn connect_attempts_and_backoff_share_one_deadline() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut attempts = Vec::new();
+        let mut waits = Vec::new();
+        let error = retry_connect::<()>(
+            Duration::from_millis(250),
+            |timeout| {
+                attempts.push(timeout);
+                Err(ErrorKind::ConnectionRefused.into())
+            },
+            || elapsed.get(),
+            |wait| {
+                waits.push(wait);
+                elapsed.set(elapsed.get() + wait);
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
+        assert_eq!(
+            attempts,
+            [Duration::from_millis(250), Duration::from_millis(150)]
+        );
+        assert_eq!(
+            waits,
+            [Duration::from_millis(100), Duration::from_millis(150)]
+        );
+        assert_eq!(elapsed.get(), Duration::from_millis(250));
+    }
+
+    #[test]
+    fn connect_does_not_attempt_after_oversleep() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut attempts = 0;
+        let error = retry_connect::<()>(
+            Duration::from_secs(20),
+            |timeout| {
+                attempts += 1;
+                assert_eq!(timeout, Duration::from_secs(10));
+                Err(ErrorKind::ConnectionRefused.into())
+            },
+            || elapsed.get(),
+            |_| elapsed.set(Duration::from_secs(21)),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn connect_rejects_success_returned_after_deadline() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let error = retry_connect(
+            Duration::from_secs(1),
+            |timeout| {
+                assert_eq!(timeout, Duration::from_secs(1));
+                elapsed.set(Duration::from_secs(1));
+                Ok(())
+            },
+            || elapsed.get(),
+            |_| panic!("successful connect must not be retried"),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn connect_preserves_permanent_error_after_transient_failure() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut attempts = 0;
+        let error = retry_connect::<()>(
+            Duration::from_secs(1),
+            |_| {
+                attempts += 1;
+                Err(if attempts == 1 {
+                    ErrorKind::ConnectionRefused
+                } else {
+                    ErrorKind::PermissionDenied
+                }
+                .into())
+            },
+            || elapsed.get(),
+            |wait| elapsed.set(elapsed.get() + wait),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn invalid_read_timeout_fails_before_sending_request() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            if !request.is_empty() {
+                // Let a regressed client finish rather than hang indefinitely.
+                writeln!(stream, "{{\"status\":\"success\"}}").unwrap();
+            }
+            request
+        });
+        let result = client.send_command_with_timeout("comment_set", None, Some(Duration::ZERO));
+        let request = server.join().unwrap();
+        assert!(
+            request.is_empty(),
+            "Sent request despite invalid timeout: {request}"
+        );
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::InvalidInput
+        );
+        assert!(error.to_string().contains("before sending request"));
+    }
+
+    #[test]
+    fn eof_after_send_reports_unknown_outcome_without_replay() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            assert!(request.contains("comment_set"));
+            // The request was accepted, but its response is lost.
+        });
+        let error = client
+            .send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)))
+            .unwrap_err();
+        server.join().unwrap();
+        let message = error.to_string();
+        assert!(message.contains("outcome is unknown"), "{message}");
+        assert!(message.contains("applied and saved"), "{message}");
+        assert!(message.contains("program state"), "{message}");
+        assert!(!message.contains("Retry"), "{message}");
+    }
 
     #[test]
     fn parse_secs_zero_means_no_timeout() {
