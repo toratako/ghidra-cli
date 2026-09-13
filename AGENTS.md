@@ -1,19 +1,23 @@
 # Agent Instructions
 
-## Critical Rules
+This CLI primarily serves AI agents. Keep the README a short setup/usage entry
+point; route detail through the [documentation map](docs/README.md).
+`docs/skills` is currently a private Hina skill mirror, not the project-wide
+source of truth. Keep implemented behavior separate from future plans.
 
-1. **NEVER SKIP TESTS!** If Ghidra is not installed, the tests MUST fail. `require_ghidra!()` panics when `ghidra doctor` fails.
-2. **DEFAULT OUTPUT FORMAT** should be human and agent readable, NOT JSON. Use `--json` and `--pretty` for JSON output. Exception: when stdout is not a TTY (piped/scripted), the default auto-detects to `JsonCompact` for machine consumption — this is standard Unix pipe convention.
+- Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
+  `ghidra doctor` fails. See [test commands and coverage](tests/README.md).
+- Preserve output defaults: human-readable on TTY, `JsonCompact` on non-TTY;
+  `--json` and `--pretty` explicitly select JSON. Agent focus does not change this.
+- The persistent server is a Java bridge inside Ghidra, one per project; no Rust
+  daemon. Launch uses `analyzeHeadless -preScript -noanalysis`.
+- Register every new Java source in `src/ghidra/bridge/sources.rs`; startup and
+  doctor must use the same complete bundle.
+- Run program operations on the original GhidraScript thread. Handlers retain
+  `ProgramSession`, never a cached Program or job monitor.
+- Mutations use `ProgramSession.transaction()`: nested aborts can erase earlier
+  successful requests. Failed nested handlers may retain partial changes.
 
-## Architecture
-
-ghidra-cli uses a **direct bridge architecture**:
-- CLI connects directly to a Java bridge running inside Ghidra's JVM via TCP
-- The entry point is `GhidraCliBridge.java`, started via `analyzeHeadless -preScript -noanalysis`; implementation classes live in `src/ghidra/scripts/ghidracli/`
-- Bridge binds `ServerSocket(0)` on localhost, writes port/PID files for discovery
-- One bridge per project, identified by `~/.local/share/ghidra-cli/bridge-{md5}.port`
-- Import/Analyze commands auto-start the bridge if not running
-- No separate Rust daemon process — the Java bridge IS the persistent server
-- `bridge/sources.rs` embeds the complete Java source bundle for both startup and doctor; register new Java files there
-- Program operations run on the original GhidraScript thread. `ProgramSession` reads live script state; never cache a Program or job monitor in a handler
-- Use `ProgramSession.transaction()` for handler mutations: aborting a nested Ghidra transaction can roll back earlier successful requests
+See [CLI routing](src/app/README.md), [bridge lifecycle](src/ghidra/README.md),
+[Java ownership/transactions](src/ghidra/scripts/ghidracli/README.md), and
+[wire protocol](src/ipc/README.md) for scoped implementation constraints.

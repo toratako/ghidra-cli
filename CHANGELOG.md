@@ -1,9 +1,8 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Release history follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
+[runtime documentation](docs/usage.md) for current behavior.
 
 ## [0.2.2]
 
@@ -55,21 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   throws (diagnoses no-instruction vs. inside-existing-function vs.
   mid-code-unit causes), and `type apply` "Conflicting data exists" (the
   conflicting unit's kind/type/range). Printed as JSON with `-vv`/`--json`.
-- `ghidra program save` — flushes pending changes (rename/comment/patch/
-  type/symbol/tag ops, etc.) to disk so the Ghidra GUI or a fresh bridge can
-  see them. The bridge cannot save in place while running (Ghidra's headless
-  script-execution harness holds a transaction open for its whole lifetime),
-  so this stops and immediately restarts the bridge against the same
-  program. `ghidra stop` also persists (without restarting); `program close`
-  no longer attempts an in-place save it can't perform — a response `note`
-  now says so explicitly instead of silently discarding the intent.
+- `program save` flushes edits by stopping/restarting the same program: the
+  headless harness's lifetime transaction prevents an in-place save. `stop`
+  persists without restarting; `program close` now reports that it cannot
+  perform the requested in-place save instead of silently discarding that intent.
 
-- **Responsive control plane with a real job queue.** Socket handling is now split
-  from Ghidra program execution. `ping`, `status`, `bridge_info`, `jobs`, and
-  `cancel` answer immediately from thread-safe snapshots while a long
-  `analyze`/`import`/decompile holds the single Ghidra-owned program lane. Program
-  operations get job IDs and wait in a bounded FIFO (256 deep) instead of an
-  invisible socket backlog.
+- Responsive `ping`, `status`, `bridge_info`, `jobs`, and `cancel` use snapshots
+  independently of the single Ghidra program lane. Program requests receive job
+  IDs and wait in a bounded FIFO (256), replacing the invisible socket backlog.
 - `ghidra jobs [JOB_ID]` — inspect the active job, the queue, and recent history
   (the bridge keeps the last 100 jobs), or one job by ID.
 - `ghidra cancel [JOB_ID]` — cooperatively cancel the active job (or a specific
@@ -137,41 +129,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same symbol as `--filter "address = 'ADDR'"`. Address-shaped filter fields
   (`address`, `entry_point`, `from`, `to`, `min_address`, `max_address`)
   tolerate an optional `0x`/`0X` prefix on the compared value.
-- `function rename OLD NEW --address ADDR` no longer silently ignores
-  `--address`. It now scopes the rename to the function whose entry point is
-  exactly `ADDR`, and errors loudly (instead of renaming an unrelated
-  function) if `OLD` doesn't match the function actually found there. Same
-  root cause as the `symbol rename` fix above: Ghidra reuses auto-generated
-  names across unrelated addresses, so a bare name isn't a safe rename target
-  without `--address`.
-- `memory read ADDR SIZE` no longer fails on overlay-qualified addresses
-  (e.g. `rom20::69f0`) with `Failed to read memory: For input string ...
-  under radix 16`. The address argument now goes through the same
-  `resolveAddress` helper `disasm-at`/`function get`/etc. already use instead
-  of a bare hex parse restricted to the default address space.
+- `function rename OLD NEW --address ADDR` now honors the exact entry address
+  and rejects an `OLD` name mismatch. Reused auto-generated names made ignoring
+  the address unsafe, as with the symbol mutation fix above.
+- `memory read` now resolves overlay-qualified addresses (e.g. `rom20::69f0`)
+  through `resolveAddress`, replacing the default-space-only hex parser.
 - `clear RANGE` no longer fails to parse overlay-qualified ranges (e.g.
   `rom1::5512:551d` or `rom1::5512:rom1::551d`) with `Invalid start address:
   rom1`. `RANGE` was split on the first `:`, which took everything before the
   `::` bank separator as the whole start address; it now splits on the `:`
   that actually separates start from end, treating `::` as a unit, and a bare
   end address inherits the start address's overlay space.
-- A `script run` job that outlives `GHIDRA_CLI_READ_TIMEOUT` no longer prints
-  an error indistinguishable from a real failure. The client giving up on the
-  read is now a distinct `Timeout:`-prefixed message with exit code 75
-  (`EX_TEMPFAIL`), separate from the generic `Error:`/exit 1 used when the
-  bridge actually reports failure — the job itself is unaffected and keeps
-  running server-side (poll it via `ghidra jobs <id>`).
+- Socket read timeout now reports `Timeout:`/exit 75 (`EX_TEMPFAIL`), distinct
+  from bridge failure (`Error:`/exit 1). The job continues server-side; poll
+  `ghidra jobs <id>` before retrying.
 
 ## [0.2.1]
 
 ### Fixed
 
-- **`--limit 0` now means "all rows"** (was: returned 0 rows). Both the
-  client-side paginator and the bridge request treat `--limit 0` as unlimited,
-  matching the bridge's own convention, and it no longer falls back to the
-  1000-row default. This makes complete exports
-  (`ghidra dump exports --limit 0`, `function list --limit 0`, …) work as
-  documented instead of silently writing `[]`.
+- `--limit 0` now means all rows in both client pagination and bridge requests,
+  fixing empty exports and accidental fallback to the 1000-row default.
 - **Malformed `--filter` expressions now fail with a clear error** (was:
   the parse error was swallowed and the CLI dumped the *entire unfiltered,
   unlimited* dataset while exiting 0). A bare word like `--filter PK` is

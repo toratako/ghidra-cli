@@ -1,21 +1,16 @@
 # ghidra-cli implementation plan
 
-Status: first-pass pruning candidate. This is the active implementation plan for unfinished work only. Architectural rationale and invariants are in `NEXT.md`; current implementation details are authoritative in code and module READMEs.
+Unfinished work only. [NEXT.md](NEXT.md) owns architectural invariants and open
+decisions; code and module READMEs describe implemented behavior.
 
 ## 1. Fresh-process verification
 
-Goal: make durable success testable rather than inferred from an in-memory command result.
-
-Implement a reusable verification primitive used by analysis and write workflows.
-
-Requirements:
-
-- reopen the project/program in a fresh Ghidra process;
-- verify expected program/binary identity;
-- support caller-supplied invariants such as minimum function/symbol counts;
-- distinguish verification failure from execution failure;
-- never mark an unverifiable write/analysis as complete;
-- expose structured counts/errors suitable for corpus scheduling.
+Add `project verify` or an equivalent reusable primitive for analysis/writes:
+reopen in a fresh Ghidra process, check project/program/binary identity and caller-supplied
+invariants (e.g. minimum function/symbol counts). Verification and execution
+failures must be distinct; unverifiable work cannot be complete. Publish artifacts
+atomically with explicit partial/failure counts and consistent structured
+lifecycle/result envelopes suitable for corpus scheduling.
 
 Acceptance:
 
@@ -25,7 +20,7 @@ Acceptance:
 
 ## 2. Multi-source module runtime
 
-Single-file `script run` already supports positional args, absolute paths/stdin source, captured stdout, cancellation, and expected-artifact validation. Do not duplicate that path.
+Extend the existing single-file `script run` path; see [current baseline](NEXT.md#current-baseline).
 
 Add a checked-in module root, for example:
 
@@ -37,13 +32,8 @@ module/
   lib/... optional JARs ...
 ```
 
-Minimum metadata:
-
-- entry source;
-- `effect = read|write`;
-- supported Ghidra range;
-- declared dependencies;
-- expected artifacts.
+Metadata: entry source, `effect = read|write`, supported Ghidra range, declared
+dependencies, and expected artifacts.
 
 Implementation constraints:
 
@@ -89,32 +79,21 @@ ghidra corpus retry RUN_ID|JOB_ID
 ghidra corpus resume RUN_ID
 ```
 
-Manifest requirements:
+Manifest: binary path/expected SHA-256, analysis profile/options, optional
+loader/language/compiler overrides and pre/post scripts/modules, verification
+invariants, and per-job resource limits. Persist state in a transactional local
+database; derive project identity from binary content hash.
 
-- binary path and expected SHA-256;
-- analysis profile/options;
-- optional loader/language/compiler overrides;
-- optional pre/post scripts or modules;
-- verification invariants;
-- per-job resource limits.
+Dedup identity includes binary SHA-256, Ghidra version, loader/language/compiler,
+analyzer profile/options, and script/module hashes.
 
-Identity/dedup key must include:
-
-```text
-binary SHA-256
-Ghidra version
-loader/language/compiler
-analyzer profile/options
-script/module hashes
-```
-
-State machine must persist at least queued, running, saving, verifying, complete, failed, cancelled, and quarantined states. An exact verified key may be skipped on resume; an unverified or corrupted project may not.
+State machine must persist at least queued, running, saving, verifying, complete, failed, cancelled, and quarantined states. An exact verified key may be skipped on resume; an unverified or corrupted project must be quarantined, never silently reused.
 
 Scheduling constraints:
 
 - parallelism is across independent projects/JVMs;
 - never schedule two program executors for one project identity;
-- enforce CPU and memory budgets;
+- enforce CPU and memory token budgets;
 - execution timeout excludes queue wait;
 - scheduler restart must not lose ownership/result state.
 
@@ -137,7 +116,8 @@ Requirements:
 - compatibility fallback only when the connected bridge lacks the capability;
 - explicit protocol capability advertisement.
 
-Add a structured per-function JSONL export that can optionally include decompile output, addresses, signature/calling convention, direct calls/references, p-code/basic blocks, elapsed time, and per-function failures. Reuse one `DecompInterface` per executor/program.
+Add a structured per-function JSONL export that can optionally include decompile output, addresses, signature/calling convention, direct calls/references, p-code/basic blocks, elapsed time, and per-function failures. Reuse one `DecompInterface` per executor/program. Explicitly distinguish direct
+call edges from incomplete indirect-call/reference coverage.
 
 ## 5. Transactional bulk apply
 
@@ -153,7 +133,7 @@ For bulk rename/comment/type/signature/patch operations add:
 
 ## 6. Protocol capabilities
 
-Extend `bridge_info` into a versioned capability contract covering protocol version, Ghidra/Java versions, command/features, job control, module support, streaming/query support, and current project/program identity.
+Extend `bridge_info` into a versioned capability contract covering protocol version, Ghidra/Java versions, command/features, job control, module/bundle support, streaming/frame limits, server-side query support, and current project/program identity.
 
 Client behavior on capability mismatch must be explicit; do not silently fall back to a semantically different path.
 
@@ -165,5 +145,3 @@ Client behavior on capability mismatch must be explicit; do not silently fall ba
 4. Durable corpus scheduler.
 5. Server-side query/streaming and structured bulk export.
 6. Transactional bulk apply.
-
-Slices should land independently with focused tests; no big-bang migration is required.

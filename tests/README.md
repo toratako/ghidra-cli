@@ -1,223 +1,67 @@
-# E2E Test Suite
+# Tests
 
-Comprehensive end-to-end test coverage for ghidra-cli commands.
+## Run
 
-## Architecture
-
-Tests are organized by functional area into separate files:
-
-```
-tests/
-├── common/
-│   ├── mod.rs           # DaemonTestHarness, fixtures, helpers
-│   ├── helpers.rs       # GhidraCommand builder, GhidraResult assertions
-│   └── schemas.rs       # Response validation schemas
-├── daemon_tests.rs      # Bridge lifecycle: start/stop/restart/status/ping
-├── project_tests.rs     # Project: create/list/delete/info
-├── reliability_tests.rs # Bridge restart recovery, stale file cleanup
-├── command_tests.rs     # Basic commands: version/doctor/config/init
-├── comment_tests.rs     # Comment operations
-├── patch_tests.rs       # Binary patching operations
-├── readonly_tests.rs    # Read-only query tests
-├── script_tests.rs      # Script execution
-├── symbol_tests.rs      # Symbol operations
-├── tag_tests.rs         # Function tag operations
-├── type_tests.rs        # Type operations
-├── output_format_integration.rs  # Output format detection
-└── e2e.rs               # Lightweight smoke test
-```
-
-`daemon_tests` also verifies that an active script cancellation does not cancel
-the next job, handlers follow Program switches/close, and a failed mutation
-cannot erase earlier successful edits on restart. Java source publication and
-inventory tests live in `src/ghidra/bridge/sources.rs`; the lifecycle tests cover
-OSGi loading of the complete embedded source bundle.
-
-## Per-Suite Bridge Lifecycle
-
-Tests requiring bridge interaction use `DaemonTestHarness` from `common/mod.rs`. Each test suite starts its own bridge instance to amortize 5-30s startup overhead across all tests in that file.
-
-**Why per-suite instead of per-test**: Starting a bridge for every test would add 5-30 minutes to CI time for 60+ tests. Per-suite bridges run tests serially within the suite but allow parallel execution across different test files.
-
-**Why not shared global bridge**: State leakage between suites causes flaky tests and debugging nightmares. Each suite gets isolation.
-
-## Data Flow
-
-```
-Test Suite Start
-      |
-      v
-DaemonTestHarness::new()
-      |
-      +---> Start bridge (analyzeHeadless + GhidraCliBridge.java)
-      +---> Wait for port file
-      +---> Verify with ping
-      |
-      v
-Run tests (serial within suite)
-      |
-      v
-DaemonTestHarness::drop()
-      |
-      +---> Send shutdown command via TCP
-      +---> Cleanup port/PID files
-```
-
-## Running Tests
-
-Run all tests:
 ```bash
-cargo test
+cargo test --no-fail-fast
+cargo fmt --all -- --check
+cargo clippy -- -D warnings
 ```
 
-Run specific test suite:
+Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
+checks `ghidra doctor` and panics with its output; never turn that into a skip.
+Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK.
+
+For a targeted run:
+
 ```bash
+cargo test --lib --bin ghidra
 cargo test --test daemon_tests
-cargo test --test command_tests
+# These suites do not require Ghidra:
+cargo test --test e2e --test output_format_integration --test harness_tests
 ```
 
-Run single test:
-```bash
-cargo test --test command_tests test_version
-```
-
-Five Insta snapshot tests in `readonly_tests.rs` are marked `#[ignore]` pending
-snapshot bootstrapping; their reference `.snap` files are not tracked. To execute
-them without creating or accepting reference snapshots:
+Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
+reference `.snap` files are not tracked. To run without accepting snapshots:
 
 ```bash
 INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
 ```
 
-These assertions fail until reference snapshots have been reviewed and added.
-The normal read-only suite also checks response schemas without snapshots.
+These fail until reviewed snapshots are added. The normal suite also validates
+response schemas without snapshots. CI suite groupings are in
+[the test workflow](../.github/workflows/test.yml).
 
-Run tests that don't need Ghidra:
-```bash
-cargo test --test e2e --test output_format_integration --test harness_tests
-```
+## Coverage and fixtures
 
-## Test Requirements
+| Suite/source | Scope |
+|---|---|
+| `daemon_tests`, `reliability_tests`, `project_tests` | Lifecycle, restart/stale-state recovery, project management |
+| `readonly_tests` | Read queries and response schemas |
+| `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
+| `command_tests` | Version, doctor, config, init |
+| `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
+| `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
 
-### Ghidra Installation
+`daemon_tests` also checks cancellation does not poison the next job, handlers
+follow program switch/close, and a failed mutation cannot erase earlier edits
+on restart. Real bridge tests cover OSGi loading of the whole source bundle.
 
-Tests assume Ghidra is installed. Use `require_ghidra!()` in tests that need a fast, explicit availability check; it panics (fails the test) if `ghidra doctor` fails.
+`common::test_project()` gives each test executable a fresh project. Read-only
+suites reuse a bridge to amortize JVM startup; lifecycle/mutation suites may
+create and drop harnesses. Follow the owning suite's pattern and use `#[serial]`
+for shared-state tests. Never share projects across suites/runs or assume fixed
+function addresses; look them up by name.
 
-### Test Fixtures
+`fixture_binary()` compiles [sample_binary.rs](fixtures/sample_binary.rs) with
+`rustc` once per executable into temporary storage. It keeps function symbols,
+exercises exports, and strips debug information to avoid expensive standard-library
+DWARF analysis. It uses the host format (`.exe` on Windows); no binary fixture
+or manual build is needed. Setup/import failures fail the tests.
 
-`fixture_binary()` compiles `tests/fixtures/sample_binary.rs` automatically with
-`rustc` into a temporary directory, once per test executable. Only the source is
-tracked in Git. The fixture keeps function symbols and exercises its exported functions. Debug
-information is stripped to avoid expensive Rust standard-library DWARF analysis.
-It uses the host executable format (including `.exe` on Windows).
-No manual build step is required.
-
-Each suite uses `common::test_project()` to select a fresh project name for every
-run. Projects are never reused from a mutation suite or a previous run. Import
-and bridge startup failures fail the tests rather than returning success.
-
-## Adding New Tests
-
-### Non-Bridge Tests
-
-Add to appropriate file (`command_tests.rs`, `project_tests.rs`):
-
-```rust
-#[test]
-fn test_my_command() {
-    require_ghidra!();
-
-    Command::cargo_bin("ghidra")
-        .unwrap()
-        .arg("my-command")
-        .assert()
-        .success();
-}
-```
-
-### Bridge-Dependent Tests
-
-Add to the appropriate test file (e.g., `symbol_tests.rs`, `readonly_tests.rs`):
-
-```rust
-#[test]
-#[serial]
-fn test_my_query() {
-    require_ghidra!();
-
-    ensure_test_project(common::test_project(), TEST_PROGRAM);
-
-    let harness =
-        DaemonTestHarness::new(common::test_project(), TEST_PROGRAM).expect("Failed to start bridge");
-
-    Command::cargo_bin("ghidra")
-        .unwrap()
-        .arg("--project")
-        .arg(common::test_project())
-        .arg("my-query")
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .assert()
-        .success();
-
-    drop(harness);
-}
-```
-
-Mark with `#[serial]` to prevent bridge state races within suite.
-
-## Invariants
-
-- Bridge must be fully started before any query test runs
-- Each test suite gets its own bridge instance (no sharing)
-- Port/PID files must be cleaned up even on test failure (Drop impl)
-- Tests must not assume specific function addresses (use name-based lookups)
-
-## Troubleshooting
-
-### "Bridge failed to start within timeout"
-
-Ghidra cold start can be slow. Ensure:
-- Ghidra installation is valid (`ghidra doctor`)
-- Sufficient disk space for temporary Ghidra project
-- Not running on extremely constrained CI resources
-
-### Fixture compilation fails
-
-Check that `rustc` is on PATH. Compilation failures include the compiler's stderr.
-
-### "Port already in use" / stale port files
-
-Each test suite uses project-name-based port file paths to prevent collisions. This error suggests:
-- Previous test run leaked bridge process (kill manually)
-- Stale port/PID files in `~/.local/share/ghidra-cli/`
-
-Find leaked processes:
-```bash
-ps aux | grep ghidra
-kill <pid>
-```
-
-### Tests hang or timeout
-
-- Check if bridge is stuck (check process list)
-- Verify TCP connectivity on localhost
-- Increase timeout in test (bridge startup can vary)
-
-### Import/analysis takes too long
-
-Tests use 300s timeout for import/analyze operations. On slow systems:
-- Run fewer parallel test suites
-- Ensure Ghidra has adequate heap memory
-- Check disk I/O performance
-
-## Tradeoffs
-
-**Per-suite vs per-test bridge**: Chose speed over maximum isolation. Tests within suite are serial, but suite-to-suite parallelism maintained.
-
-**Project-name-based port files vs random ports**: Each test suite uses a unique project name which maps to a unique port file via MD5 hash, preventing collisions.
-
-**Testing unimplemented commands**: Adds maintenance burden but documents gaps and ensures graceful failures for stub commands.
-
-Suite exit cleanup stops the bridge and removes the generated project and fixture.
-Forced process termination can leave artifacts behind; cleanup is best effort.
+See [common helpers and a test example](common/README.md) when adding tests.
+Harness Drop and suite-exit cleanup are best effort; forced termination can leave
+processes/projects behind. For slow startup, start with `ghidra doctor`; for
+stale discovery files, inspect the owning project/process before cleanup.
+Import/analysis setup currently has a 300s budget that can be tight under load;
+see the [open TODO](../docs/TODO.md). Reducing parallel suites can reduce pressure.

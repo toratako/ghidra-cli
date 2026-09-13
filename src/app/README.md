@@ -1,9 +1,7 @@
 # CLI Application (`src/app/`)
 
-Private modules for the binary's command workflows. `src/main.rs` owns argument
-parsing, global environment overrides, logging initialization, async runtime
-creation for setup, and error/exit reporting. The application modules use the
-existing configuration, query, formatting, and bridge APIs.
+`src/main.rs` owns parsing, environment overrides, logging, the setup async
+runtime, and error/exit reporting. These private modules own command workflows.
 
 | File | Responsibility |
 |------|----------------|
@@ -23,6 +21,4 @@ retries at most once. Import and save retain their stop/start/open/analyze order
 Output precedence remains explicit format, pretty JSON, compact JSON, then TTY
 detection; query processing follows response-envelope extraction.
 
-Unit tests stay with their owning helpers. Validate with `cargo test --lib --bin
-ghidra` and `cargo test --tests --no-fail-fast`. Integration tests require Ghidra;
-its absence must cause failures, not skips.
+Unit tests stay with their owning helpers; see [validation commands](../../tests/README.md).

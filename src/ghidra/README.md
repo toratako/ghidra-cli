@@ -1,8 +1,4 @@
-# Ghidra Bridge Module (`src/ghidra/`)
-
-Manages the Java bridge process lifecycle and Ghidra installation/setup.
-
-## Files
+# Ghidra bridge lifecycle
 
 | File | Purpose |
 |------|---------|
@@ -20,163 +16,60 @@ and `find_headless_script`, preserving existing public import paths. Persistent
 startup and one-shot imports share launcher/JDK selection; their process and
 stream lifetimes remain owned by their respective workflows.
 
-## Bridge Lifecycle
+## Startup and import
 
-```
-CLI calls ensure_bridge_running()
-  |
-  +-- is bridge already running? (port file + PID alive + TCP probe)
-  |     yes -> return existing port
-  |     no  -> clean up stale files, call start_bridge()
-  |
-  v
-start_bridge()
-  |
-  1. Publish the embedded source bundle to ~/.config/ghidra-cli/bridge-sources/<content-hash>/
-  2. Spawn: analyzeHeadless <project_dir> <project_name> -process [<program>] -noanalysis -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path>
-  3. Write PID file immediately from Rust (child.id())       <-- enables orphan cleanup
-  4. Read stdout line by line, wait for {"status":"ready"}
-  5. Java bridge: binds ServerSocket(0), writes port file, overwrites PID file
-  6. Return port number to caller
-```
-
-The bridge always launches with `-preScript -noanalysis`, so it binds its socket
-right after the project (and optional program) loads — *before* any analysis —
-and reports ready fast. Analysis is not part of launch; it runs afterwards as an
-unbounded TCP `analyze` operation. Importing a new binary is a separate,
-short-lived `analyzeHeadless -import` run that commits the program to the project
-before the persistent bridge opens it in `-process` mode. Normal imports run
-headless auto-analysis there; `--no-analyze` adds `-noanalysis`. Explicit loader,
-language, compiler-spec, and loader arguments are also applied to this one-shot
-path, which is how raw blobs are imported with `BinaryLoader`.
-
-Java source files are embedded in the Rust binary and compiled by Ghidra's OSGi
-source-bundle loader at runtime. Startup stages the entire tree in a private
-directory and publishes it with a directory rename. Identical bundles are reused
-without rewriting files; different contents get different paths, so concurrent
-projects and updated CLI builds cannot mix Java source revisions. Older bundles
-are left intact because a running JVM may still use them. The former single-file
-`scripts/` directory is no longer read by bridge startup.
-
-`doctor` compiles every file from the same source inventory in a temporary tree.
-Its `javac` check detects compilation failures, while integration tests exercise
-OSGi resolution and runtime loading. Adding a Java file requires adding it to
-`bridge/sources.rs`; a unit test checks the inventory against the source tree.
-
-### PID File Write Sequence
-
-Two writes happen to the PID file:
-
-1. **Rust writes immediately** after `child.spawn()` -- uses the OS-level child PID. This ensures the PID file exists even if Java crashes before binding the ServerSocket, enabling cleanup of orphaned JVM processes.
-2. **Java overwrites later** once the bridge binds its ServerSocket and is ready to accept connections. The Java PID value is the same process, but the write confirms the bridge reached its ready state.
-
-The Rust write uses `.ok()` (ignores errors) because it is best-effort. The Java write is the authoritative one.
-
-### Failure Cleanup
-
-If the bridge fails to start (ready signal not received):
-
-1. Check if child process is still running via `child.try_wait()`
-2. If running: `child.kill()` then `child.wait()` to prevent orphaned JVM
-3. Call `cleanup_stale_files()` to remove any port/PID files
-4. Return error with diagnostic details from stderr/stdout
-
-## Liveness Detection
-
-### `is_bridge_running(project_path) -> Option<u16>`
-
-Returns `Some(port)` if the bridge is alive, `None` otherwise. Checks in order:
-
-1. Port file exists and contains a valid u16
-2. PID file exists and contains a valid u32
-3. PID is alive (`kill(pid, 0)` on Unix)
-4. TCP connect to `127.0.0.1:{port}` succeeds
-
-Returns the port directly so callers never need a separate `read_port_file()` call. This eliminates TOCTOU races where the port file could change between a liveness check and a subsequent read.
-
-### `bridge_status(project_path) -> BridgeStatus`
-
-Stronger verification than `is_bridge_running`: uses `BridgeClient::new(port).ping()` instead of raw TCP connect. Returns `BridgeStatus::Running { port, pid }` or `BridgeStatus::Stopped`.
-
-### Responsive control plane and serialized program lane
-
-Command dispatch no longer treats a failed pre-flight ping as proof that the bridge is
-dead. More importantly, socket handling is now separate from Ghidra program execution:
+`ensure_bridge_running()` reuses a live bridge or removes stale discovery files
+and starts one. `BridgeStartMode::Process { program_name }` opens an existing
+program; `Project` uses bare `-process` to open the project without selecting one.
+Both launch with:
 
 ```text
-TCP acceptor -> bounded client pool -> control commands (immediate)
-                                  \-> bounded FIFO -> GhidraScript thread
+analyzeHeadless <project_dir> <project_name> -process [<program>] -noanalysis
+  -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path>
 ```
 
-`ping`, `status`, `bridge_info`, `job_status`, `job_cancel`, and `shutdown` run on the
-control plane using thread-safe snapshots. Every command that can touch `currentProgram`,
-`state`, a transaction, or another Ghidra object is assigned a job ID and executed on the
-original `GhidraScript.run()` thread. This keeps the conservative one-owner program model
-without making a long analysis look like a dead bridge.
+Launch readiness is bounded and excludes analysis. Fresh imports use a separate
+short-lived `analyzeHeadless -import` run that analyzes and commits before the
+persistent bridge opens the program; `--no-analyze` disables that analysis.
+Explicit loader/language/compiler options always take this one-shot path,
+stopping a live bridge first, so `BinaryLoader`, `x86:LE:32:default`, and
+`baseAddr` reach the headless loader. Best-guess imports into an already-open
+project may use bridge `AutoImporter` followed by TCP analysis.
 
-The explicit queue is bounded at 256 program jobs. Connection handlers only parse and
-enqueue; they do not block while a program future is pending. Completed futures hand socket
-writes to a separate bounded response pool, preserving the existing synchronous
-request/response protocol without starving controls behind waiting clients. Status retains
-the 100 most recent jobs and exposes active progress, queued work, cancellation state, and
-elapsed time. Cancellation uses a per-job `TaskMonitorAdapter`; active cancellation is
-cooperative, while a job that has not started can be removed from the queue immediately.
+Rust writes the child PID immediately after spawn (best effort), enabling orphan
+cleanup even if Java fails before binding. Java binds `ServerSocket(0)` on
+localhost, writes the port/PID files authoritatively, and signals
+`{"status":"ready"}`. On failure/timeout, kill and reap the whole process group
+before joining output-reader threads: a surviving JVM grandchild can keep pipes
+open indefinitely. Preserve stdout/stderr diagnostics and remove stale files.
 
-See `ipc/client/transport.rs`: `connect_with_retry()` waits out transient connect failures (bridge
-(re)start / saturated client capacity) with backoff up to
-`GHIDRA_CLI_CONNECT_DEADLINE` (default 60s). A program request waits up to
-`GHIDRA_CLI_READ_TIMEOUT` (default 300s; `0` = indefinite), while long analyze/import
-operations use `GHIDRA_CLI_OP_TIMEOUT` (`0` or unset = indefinite). Use `ghidra jobs` to
-inspect work and `ghidra cancel [JOB_ID]` to request cancellation.
+## Java source publication
 
-`shutdown` stops accepting new work and drains every program job accepted before it. The
-Rust lifecycle waits up to `GHIDRA_CLI_SHUTDOWN_TIMEOUT` (default 300s; `0` = indefinite)
-before force termination. This replaces the old three-second window that could kill a
-healthy bridge while it was finishing work or closing the project.
+`bridge/sources.rs` embeds the complete tree. Startup stages it privately then
+publishes by directory rename to
+`~/.config/ghidra-cli/bridge-sources/<content-hash>/`. Identical bundles are reused;
+content changes get new paths so concurrent projects/builds cannot mix revisions.
+Keep old bundles while JVMs may still use them. Startup no longer reads the old
+single-file `scripts/` directory.
 
-## BridgeClient Adoption
+Register every new Java file in that inventory. `doctor` compiles the same
+inventory in a temporary tree. The inventory unit test checks source coverage;
+real Ghidra integration tests check OSGi resolution, which plain `javac` cannot.
 
-`bridge.rs` sends no commands over TCP directly. All command communication goes through `BridgeClient` (in `src/ipc/client.rs`):
+## Discovery, liveness, and shutdown
 
-- `stop_bridge()` uses `BridgeClient::new(port).shutdown()` for graceful shutdown
-- `bridge_status()` uses `BridgeClient::new(port).ping()` for liveness verification
-- `is_bridge_running()` still uses raw `TcpStream::connect` for the lightweight probe (no command round-trip needed)
+Each project path hashes to `bridge-{md5}.port` / `.pid` in the platform data
+directory (`~/.local/share/ghidra-cli/` on Linux).
 
-Rationale: `bridge.rs` originally had its own `BridgeRequest`/`BridgeResponse` structs and `send_command()`/`send_typed_command()` functions that duplicated the types and logic in `ipc/protocol.rs` and `ipc/client.rs`. Consolidating to BridgeClient eliminated ~80 lines of duplicate TCP code and the duplicate type definitions.
+- `is_bridge_running()` checks a valid port, valid/live PID, and TCP connectivity,
+  returning the port from that check to avoid a separate discovery-file read.
+- `bridge_status()` uses `BridgeClient::ping()` for protocol-level verification.
+- `stop_bridge()` uses `BridgeClient::shutdown()`, waits for accepted jobs to
+  drain, then force-terminates the process group if the grace period expires.
+- Startup, failed liveness/status checks, and shutdown remove stale port/PID files.
 
-## Per-Project Isolation
-
-Each project gets unique port/PID files via MD5 hash of the project path:
-
-- **Port file**: `~/.local/share/ghidra-cli/bridge-{md5}.port`
-- **PID file**: `~/.local/share/ghidra-cli/bridge-{md5}.pid`
-
-This allows multiple bridges to run simultaneously for different projects.
-
-## Start Modes
-
-`BridgeStartMode` selects how the persistent bridge opens the project. Both use
-`-preScript -noanalysis`; neither analyzes at launch.
-
-| Mode | analyzeHeadless Args | Use Case |
-|------|---------------------|----------|
-| `Process { program_name }` | `-process <program_name> -noanalysis` | Open a specific existing program |
-| `Project` | `-process -noanalysis` | Open the project without loading a program (e.g. `program list`, auto-start) |
-
-Importing a binary is not a start mode. Fresh imports happen in a separate
-short-lived `analyzeHeadless -import` run that commits the program to the project;
-`--no-analyze` adds `-noanalysis`. Imports with explicit loader/language/compiler
-settings always use this path as well (stopping a live bridge first if necessary),
-so options such as `BinaryLoader`, `x86:LE:32:default`, and `baseAddr` reach Ghidra's
-headless loader directly. The persistent bridge then opens the committed program
-in `Process` mode. Best-guess imports into an already-open project may still use
-the bridge's `AutoImporter` path and analyze over TCP.
-
-## Stale File Cleanup
-
-`cleanup_stale_files(project_path)` removes both port and PID files. Called:
-
-- When `ensure_bridge_running` detects stale files (dead PID or unreachable port)
-- When `start_bridge` fails (ready signal not received)
-- When `bridge_status` finds stale files
-- When `stop_bridge` completes (normal cleanup)
+Only lightweight liveness probes use raw TCP here; command traffic goes through
+[BridgeClient](../ipc/README.md). A busy program lane is not evidence of a dead
+bridge. Networking, responsive controls, and the serialized GhidraScript lane
+are described in the [Java bridge map](scripts/ghidracli/README.md); timeout knobs
+and operational recovery are in the [runtime reference](../../docs/usage.md).

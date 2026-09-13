@@ -1,6 +1,6 @@
 # ghidra-cli TODO
 
-Status: first-pass pruning candidate. Completed bug history was removed; Git history and regression tests are the canonical record for fixed issues.
+Open owner notes. Fixed issues are recorded in Git history and regression tests.
 
 - `tests/project_tests.rs` still gives full import/analyze operations a 300 s timeout. A full import with analysis has been observed near that budget under load; consider raising the integration-test budget (for example to 600 s) or deriving it from the long-operation timeout policy.
 

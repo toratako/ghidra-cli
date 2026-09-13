@@ -20,10 +20,13 @@ GhidraCliBridge -> BridgeRuntime
 ```
 
 `BridgeServer` owns network resources and receives callbacks for request handling
-and shutdown. `JobScheduler` owns queue state, job retention, cancellation, and
-published status snapshots. It never waits for socket writes on the program
-thread. Shutdown closes the listener, rejects new program jobs, and drains
-accepted jobs before returning to Ghidra.
+and shutdown. `JobScheduler` owns the bounded FIFO (256 jobs), recent history
+(100 jobs), cancellation, and published status snapshots. Queued cancellation
+removes the job immediately; active cancellation uses its per-job monitor
+cooperatively. It never waits for socket writes on the program thread. Shutdown closes the listener, rejects new program jobs, and drains
+accepted jobs before returning to Ghidra. Connection handlers enqueue without
+waiting on program futures; completed futures hand writes to a separate bounded
+response pool so waiting clients cannot starve controls.
 
 `ProgramSession` centralizes program switching/release and reads the current
 Program, GhidraState, and monitor from the owning script. It does not keep a second
@@ -76,10 +79,6 @@ successful plain `javac` invocation does not validate this class-loader boundary
 
 ## Validation
 
-Source publication/inventory tests are in `bridge/sources.rs`. Integration tests
-use the real Ghidra bridge: `daemon_tests` covers startup, restart, control
-responsiveness, queued/active cancellation, Program switching/close, and edits
-surviving a failed mutation and restart. Domain suites cover command behavior.
-Run `cargo test` with `GHIDRA_INSTALL_DIR` pointing to an installed Ghidra; absence
-of Ghidra is a test failure, never a skip. Final checks also include
-`cargo fmt --all -- --check` and `cargo clippy -- -D warnings`.
+`bridge/sources.rs` tests source inventory/publication; `daemon_tests` exercises
+runtime loading, control responsiveness, cancellation isolation, program switching,
+and edits surviving failed mutations and restart. See [test commands](../../../../tests/README.md).

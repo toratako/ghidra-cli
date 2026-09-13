@@ -1,108 +1,40 @@
-# IPC Module (`src/ipc/`)
+# IPC
 
-Single TCP implementation for CLI-to-bridge communication. All command sending goes through `BridgeClient`.
+All CLI-to-bridge command traffic uses `BridgeClient` in [client.rs](client.rs).
+Typed adapters construct arguments; unsupported adapters can use
+`send_command(command, args)` directly. [protocol.rs](protocol.rs) defines the
+wire structs; [client/transport.rs](client/transport.rs) owns transport and its
+tests. Raw TCP elsewhere is only a liveness probe.
 
-## Files
+## Connection and timeout boundaries
 
-| File | Purpose |
-|------|---------|
-| `client.rs` | `BridgeClient` state and command-specific request construction |
-| `client/transport.rs` | Private transport module: connection retry, socket timeout policy, request/response exchange, and transport tests |
-| `protocol.rs` | `BridgeRequest` / `BridgeResponse` wire format structs |
+Each request opens its own localhost TCP connection, writes one newline-terminated
+JSON request, and reads one newline-terminated JSON response. There is no
+persistent client connection. Socket handlers run independently of the serialized
+Ghidra program lane; see [Java execution ownership](../ghidra/scripts/ghidracli/README.md).
 
-## BridgeClient
+Retry transient connection failures with backoff only **before sending**; replaying
+a sent mutation could duplicate it. Read waits include time in the program queue.
+The write timeout is 30s; configurable read/connect/long-operation budgets are in
+[the runtime reference](../../docs/usage.md). Decompiler execution timeout stays
+in its command adapter because it is a Ghidra parameter, not a socket budget.
+EOF without a reply is an error. A read timeout has a distinct error/exit status
+and does not cancel the running job.
 
-`BridgeClient` is the single entry point for sending commands to the Java bridge. It holds a port number and creates a new TCP connection per command (connection-per-request model).
-
-```rust
-let client = BridgeClient::new(port);
-let result = client.list_functions(Some(100), None)?;
-```
-
-The transport module implements the existing `BridgeClient::send_command()` and
-`send_command_with_timeout()` methods. Command adapters call these methods; public
-client paths and signatures remain unchanged. Decompiler execution timeout stays
-with its command adapter because it is a Ghidra request parameter, not a socket budget.
-
-### Connection Model
-
-Each `send_command()` call:
-
-1. Opens a new `TcpStream` to `127.0.0.1:{port}`
-2. Sets read timeout (300s) and write timeout (30s)
-3. Serializes `BridgeRequest` to JSON, writes as a single line (`writeln!`)
-4. Reads one line of response, deserializes as `BridgeResponse`
-5. Returns `Ok(data)` for success, `Err` for error status
-
-This is connection-per-request, not persistent. The Java bridge's `ServerSocket.accept()` loop handles one connection at a time, processes the command, and returns to accept. Ghidra `Program` objects are not thread-safe, so sequential processing is required.
-
-### Response Handling
-
-| Status | Client Behavior |
-|--------|----------------|
-| `"success"` | Return `data` field (or empty `{}`) |
-| `"error"` | Return `Err` with `message` field |
-| `"shutdown"` | Return `Ok({"status":"shutdown"})` |
-| Other | Return `data` field (or empty `{}`) |
-
-### Available Commands
-
-BridgeClient wraps all bridge commands as typed methods:
-
-| Category | Methods |
-|----------|---------|
-| Core | `ping()`, `shutdown()`, `status()`, `bridge_info()`, `job_status()`, `cancel_job()` |
-| Program | `program_info()`, `list_programs()`, `open_program()`, `program_close()`, `program_delete()`, `program_export()` |
-| Import/Analysis | `import_binary()`, `analyze()` |
-| Functions | `list_functions()`, `decompile()` |
-| Data | `list_strings()`, `list_imports()`, `list_exports()`, `memory_map()` |
-| Xrefs | `xrefs_to()`, `xrefs_from()` |
-| Symbols | `symbol_list()`, `symbol_get()`, `symbol_create()`, `symbol_delete()`, `symbol_rename()` |
-| Types | `type_list()`, `type_get()`, `type_create()`, `type_apply()` |
-| Tags | `tag_list()`, `tag_get()` (mutations go through `send_command`) |
-| Comments | `comment_list()`, `comment_get()`, `comment_set()`, `comment_delete()` |
-| Search | `find_string()`, `find_bytes()`, `find_function()`, `find_calls()`, `find_crypto()`, `find_interesting()` |
-| Graph | `graph_calls()`, `graph_callers()`, `graph_callees()`, `graph_export()` |
-| Diff | `diff_programs()`, `diff_functions()` |
-| Patch | `patch_bytes()`, `patch_nop()`, `patch_export()` |
-| Disasm | `disasm()` |
-| Stats | `stats()` |
-| Scripts | `script_run()`, `script_python()`, `script_java()`, `script_list()` |
-| Batch | `batch()` |
-
-All methods delegate to `send_command(command_name, args)`. For commands not covered by a typed method, use `send_command()` directly.
-
-## Wire Format
-
-### Request (`BridgeRequest`)
+## Wire format
 
 ```json
-{"command":"list_functions","args":{"limit":100,"filter":"main"}}
+{"command":"list_functions","args":{"limit":100}}
+{"status":"success","data":{"functions":[]},"message":null}
 ```
 
-- `command`: string, required -- the command name
-- `args`: object, optional -- command-specific arguments (omitted from JSON when `None`)
+Request `command` is required; optional `args` is omitted when `None`.
+Response `data` and `message` are optional. The CLI unwraps the response and
+chooses its output format; the bridge always sends compact JSON.
 
-Sent as a single newline-terminated JSON line over TCP.
-
-### Response (`BridgeResponse`)
-
-```json
-{"status":"success","data":{"functions":[...]},"message":null}
-```
-
-- `status`: string -- `"success"`, `"error"`, or `"shutdown"`
-- `data`: optional -- command result payload (absent on error)
-- `message`: optional string -- error description (absent on success)
-
-Read as a single newline-terminated JSON line from TCP.
-
-## Single Implementation Rationale
-
-`bridge.rs` originally contained its own `BridgeRequest`/`BridgeResponse` structs and `send_command()`/`send_typed_command()` functions. This duplicated the types in `protocol.rs` and the logic in `client.rs`. The duplication was eliminated by:
-
-1. Deleting `BridgeRequest`, `BridgeResponse<T>`, `send_command()`, and `send_typed_command()` from `bridge.rs`
-2. Having `bridge.rs` import and use `BridgeClient` from `ipc/client.rs` for `stop_bridge()` and `bridge_status()`
-3. `protocol.rs` is now the single source of truth for the wire format types
-
-The only raw `TcpStream` usage remaining outside this module is in `bridge.rs` -- both `is_bridge_running()` and `ensure_bridge_running()` use a TCP connect probe (no request/response) for lightweight liveness detection.
+| Response status | Client result |
+|---|---|
+| `success` | `data`, or `{}` if absent |
+| `error` | Error with `message` and available structured detail |
+| `shutdown` | `{"status":"shutdown"}` |
+| Other | `data`, or `{}` if absent |

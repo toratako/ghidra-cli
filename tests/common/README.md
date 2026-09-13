@@ -1,119 +1,49 @@
-# Common Test Utilities
+# Common test utilities
 
-Shared infrastructure for E2E tests.
+| Source | Responsibility |
+|---|---|
+| [mod.rs](mod.rs) | `DaemonTestHarness`, per-executable project/fixture setup, availability checks, cleanup |
+| [helpers.rs](helpers.rs) | `GhidraCommand`, `GhidraResult`, name matching and assertions |
+| [schemas.rs](schemas.rs) | Response validation |
 
-## DaemonTestHarness
+## Adding a bridge test
 
-Manages bridge lifecycle for test suites requiring Ghidra bridge interaction.
-
-### Usage
+Reuse the owning suite's harness where available. For a test that owns its bridge:
 
 ```rust
-use common::{DaemonTestHarness, ensure_test_project};
-
-const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
-
 #[test]
 #[serial]
-fn test_with_bridge() {
-    ensure_test_project(common::test_project(), TEST_PROGRAM);
-
-    let harness = DaemonTestHarness::new(common::test_project(), TEST_PROGRAM)
-        .expect("Failed to start bridge");
-
-    Command::cargo_bin("ghidra")
-        .unwrap()
-        .arg("--project")
-        .arg(common::test_project())
-        .arg("my-command")
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .assert()
-        .success();
-
-    // Bridge automatically shuts down when harness drops
-}
-```
-
-### Port File Discovery
-
-Each harness discovers the bridge via port file:
-```
-~/.local/share/ghidra-cli/bridge-{md5_hash}.port
-```
-
-Where `{md5_hash}` is derived from the canonical project path. The harness reads the port number from this file and connects via TCP.
-
-### Cleanup Guarantees
-
-Drop implementation ensures best-effort cleanup:
-1. Send shutdown command via TCP (ignores errors)
-2. Bridge deletes its own port/PID files on clean shutdown
-3. Kill process via PID if still running
-
-## Fixtures
-
-### fixture_binary()
-
-Returns path to compiled sample_binary fixture.
-
-```rust
-let binary = fixture_binary();
-assert!(binary.exists());
-```
-
-The helper compiles `tests/fixtures/sample_binary.rs` with `rustc` into a temporary
-directory automatically, once per test executable. Compilation errors fail the
-test and include stderr. No executable fixture is tracked in Git.
-
-### test_project() and ensure_test_project()
-
-Use `test_project()` for a fresh project name shared within the test executable.
-`ensure_test_project(test_project(), common::FIXTURE_PROGRAM)` imports and analyzes the
-fixture once. It does not reuse cached projects: mutation tests must not alter
-another suite's input. Import and stop failures fail setup immediately.
-
-## require_ghidra! Macro
-
-Tests should call this macro to assert Ghidra availability up front:
-
-```rust
-#[test]
-fn test_something() {
+fn test_function_list() {
     require_ghidra!();
-
-    // Test code runs only if ghidra doctor succeeds
+    let project = common::test_project();
+    let program = common::FIXTURE_PROGRAM;
+    common::ensure_test_project(project, program);
+    let harness = common::DaemonTestHarness::new(project, program)
+        .expect("Failed to start bridge");
+    let result = common::helpers::ghidra(&harness)
+        .arg("function").arg("list")
+        .with_project(project, program)
+        .json_format().run();
+    result.assert_success();
 }
 ```
 
-Runs `ghidra doctor` and fails the test if Ghidra is unavailable, including doctor output.
+`ghidra(&harness)` supplies the project; builder options include `with_project`,
+`json_format`, and `timeout`. Use response schemas/domain assertions for the
+behavior under test. [Suite guidance](../README.md) covers fixture compilation,
+serial execution, test commands, and unbootstrapped snapshots.
 
-## GhidraCommand Builder (helpers.rs)
+## Lifecycle boundaries
 
-Fluent builder for constructing CLI commands in tests:
+`test_project()` allocates a fresh absolute project path per test executable.
+`ensure_test_project()` imports/analyzes the fixture once; import and stop failures
+fail setup immediately. Projects from previous runs or other suites are not reused.
 
-```rust
-use common::helpers::{ghidra, GhidraCommand};
-
-let result = ghidra(&harness)
-    .arg("function")
-    .arg("list")
-    .run();
-
-result.assert_success();
-```
-
-The `ghidra(&harness)` helper pre-configures `--project` args from the harness. Additional helpers include `with_project()`, `json_format()`, and `timeout()`.
-
-## Design Decisions
-
-### Exponential Backoff Parameters
-
-`wait_for_port()` uses backoff to wait for the bridge port file to appear after launching `analyzeHeadless`. Typical fast start exits in <5s.
-
-### Why 5s Shutdown Timeout
-
-Most bridges shut down in <1s. 5s allows graceful cleanup without blocking tests indefinitely. If bridge hangs, hard kill via PID prevents test suite deadlock.
-
-Suite exit cleanup stops the bridge and removes the generated project and fixture.
-Forced process termination can leave artifacts behind; cleanup is best effort.
+`DaemonTestHarness::new()` calls the bridge lifecycle API directly so startup
+errors reach callers intact. It records the PID as well as the discovered port.
+Drop calls `stop_bridge()` for drain/force termination, then waits for both the
+original and current PIDs (restart may change them) to release project locks:
+up to 15s per PID, or 30s on Windows, after stop. It removes stale discovery files
+and the harness data directory. Suite-exit cleanup also stops the bridge and
+removes the generated project/fixture; statics do not receive normal Rust Drop.
+Cleanup remains best effort under forced process termination.
