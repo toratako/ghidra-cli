@@ -40,6 +40,11 @@ final class MemoryCommands {
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             String hexClean = hexData.replace("0x", "").replace(" ", "");
+            if (hexClean.isEmpty() || (hexClean.length() % 2) != 0
+                    || !hexClean.matches("[0-9a-fA-F]+")) {
+                return errorResult("Hex data must contain complete byte pairs (two hex digits per byte); "
+                    + "provide non-empty, even-length hex data");
+            }
             byte[] patchData = new byte[hexClean.length() / 2];
             for (int i = 0; i < patchData.length; i++) {
                 patchData[i] = (byte) Integer.parseInt(hexClean.substring(i * 2, i * 2 + 2), 16);
@@ -90,7 +95,12 @@ final class MemoryCommands {
             MemoryBlock block = memory.getBlock(addr);
             boolean restoreReadOnly = block != null && !block.isWrite();
             String processor = session.program().getLanguage().getProcessor().toString();
-            byte nopByte = processor.toLowerCase().contains("x86") ? (byte) 0x90 : (byte) 0x00;
+            if (!processor.equalsIgnoreCase("x86")) {
+                return errorResult("patch nop supports only x86; processor " + processor
+                    + " is unsupported. Use `ghidra-cli patch bytes` with verified instruction bytes "
+                    + "for this processor instead.");
+            }
+            byte nopByte = (byte) 0x90;
 
             JsonArray nopped = new JsonArray();
             int totalBytes = 0;
@@ -171,14 +181,20 @@ final class MemoryCommands {
 
             File outputFile = new File(outputPath);
             TaskMonitor mon = session.monitor();
-            exportMethod.invoke(exporter, outputFile, session.program(), null, mon);
+            Object exported = exportMethod.invoke(exporter, outputFile, session.program(), null, mon);
+            if (!Boolean.TRUE.equals(exported)) {
+                Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
+                return errorResult("Failed to export binary: " + log);
+            }
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "exported");
             result.addProperty("output", outputPath);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to export binary: " + e.getMessage());
+            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                && e.getCause() != null ? e.getCause() : e;
+            return errorResult("Failed to export binary: " + cause.getMessage());
         }
     }
 

@@ -222,6 +222,5 @@ Use `script run PATH` or `script run -` with Java source on stdin.
 variable-length instructions. A missing first instruction is an error; a later
 gap ends successfully with a smaller returned `count`. Check that count. Failed
 nested mutations can retain partial changes; see [persistence semantics](../SKILL.md).
-The current implementation fills with `0x90` on x86 and `0x00` elsewhere; it does
-not assemble ISA-specific NOPs. For other ISAs, use `patch bytes` with the intended
-instruction encoding.
+`patch nop` supports x86 (`0x90`) and rejects other processors before editing.
+For other ISAs, use `patch bytes` with the intended instruction encoding.

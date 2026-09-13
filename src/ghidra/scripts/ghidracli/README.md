@@ -85,6 +85,12 @@ envelope. Shared helpers contain lookup/serialization logic, not command routing
 Most implementation classes are package-private; only `BridgeRuntime` and
 `ScriptAccess` cross the default-package entry point's boundary.
 
+Patch validation rejects empty, odd-length, or invalid hex before clearing code
+units or changing block permissions. NOP patching supports only x86; other
+processors must supply verified bytes through `patch_bytes`. Export success
+requires completed file writes and a true Ghidra exporter result; exporter logs
+are included when it returns false. File outputs are outside Program transactions.
+
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A
 successful plain `javac` invocation does not validate this class-loader boundary.

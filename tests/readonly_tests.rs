@@ -1348,22 +1348,40 @@ fn test_program_info() {
 #[serial]
 fn test_program_export_json() {
     require_ghidra!();
-    let harness = harness();
+    let client = harness().client().unwrap();
+    let inline = client.program_export("json", None).unwrap();
+    assert!(!inline["functions"].as_array().unwrap().is_empty());
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("program.json");
+    let exported = client
+        .program_export("json", Some(path.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(exported["status"], "exported");
+    let written: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(written, inline);
+    let error = client
+        .program_export("json", Some(directory.path().to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to write file"),
+        "{error}"
+    );
+}
 
-    let result = ghidra(harness)
-        .arg("program")
-        .arg("export")
-        .arg("json")
-        .with_project(test_project(), TEST_PROGRAM)
-        .run();
-
-    if result.exit_code == 0 {
-        assert!(
-            result.stdout.contains("functions") || !result.stdout.is_empty(),
-            "Export should produce output"
-        );
-    }
-    // Accept "Unknown command" gracefully
+#[cfg(target_os = "linux")]
+#[test]
+#[serial]
+fn test_program_export_json_write_failure() {
+    require_ghidra!();
+    let error = harness()
+        .client()
+        .unwrap()
+        .program_export("json", Some("/dev/full"))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to write file"),
+        "{error}"
+    );
 }
 
 #[test]

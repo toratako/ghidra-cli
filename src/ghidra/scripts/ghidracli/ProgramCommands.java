@@ -26,7 +26,6 @@ import ghidra.util.task.TaskMonitor;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -369,9 +368,10 @@ final class ProgramCommands {
             data.add("functions", functions);
 
             if (outputPath != null && !outputPath.isEmpty()) {
-                try (PrintWriter pw = new PrintWriter(new FileWriter(outputPath))) {
+                try (FileWriter writer = new FileWriter(outputPath)) {
                     Gson prettyGson = new GsonBuilder().setPrettyPrinting().create();
-                    pw.println(prettyGson.toJson(data));
+                    writer.write(prettyGson.toJson(data));
+                    writer.write(System.lineSeparator());
 
                     JsonObject result = new JsonObject();
                     result.addProperty("status", "exported");
@@ -428,7 +428,11 @@ final class ProgramCommands {
                 }
 
                 TaskMonitor mon = session.monitor();
-                exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+                Object exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+                if (!Boolean.TRUE.equals(exported)) {
+                    Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
+                    return errorResult("Failed to export (" + exportFormat + "): " + log);
+                }
 
                 JsonObject result = new JsonObject();
                 result.addProperty("status", "exported");
@@ -436,7 +440,9 @@ final class ProgramCommands {
                 result.addProperty("output", outputPath);
                 return result;
             } catch (Exception e) {
-                return errorResult("Failed to export (" + exportFormat + "): " + e.getMessage());
+                Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                    && e.getCause() != null ? e.getCause() : e;
+                return errorResult("Failed to export (" + exportFormat + "): " + cause.getMessage());
             }
         }
     }

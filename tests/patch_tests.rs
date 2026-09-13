@@ -59,37 +59,94 @@ fn test_patch_bytes_success() {
     );
 }
 
-/// Test patching with NOP instruction.
+/// Verify the ISA guard on actual x86 and AArch64 programs, independent of the host.
 #[test]
 #[serial]
-fn test_patch_nop_success() {
+fn test_patch_nop_processor_guard() {
     require_ghidra!();
-    let harness = harness();
-
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let result = ghidra(harness)
-        .arg("patch")
-        .arg("nop")
-        .arg(&main_addr)
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .run();
-
-    // NOP at a code address may conflict with existing instructions. These
-    // mutation tests share one program and run serially in an unspecified order;
-    // an earlier test (e.g. test_patch_at_function_boundary) may overwrite the
-    // bytes at `main`, leaving no valid instruction at its entry. On fixed-width
-    // ISAs like ARM64 (macOS) a partial byte patch reliably destroys the
-    // instruction, so "No instruction at address" is an expected graceful error.
-    assert!(
-        result.exit_code == 0
-            || result.stderr.contains("conflict")
-            || result.stderr.contains("Memory change")
-            || result.stderr.contains("No instruction at address"),
-        "Expected success or instruction conflict, got: stderr={}",
-        result.stderr
-    );
+    let client = harness().client().unwrap();
+    for (language, hex, supported) in [
+        ("x86:LE:64:default", "6690c3", true),
+        ("AARCH64:LE:64:v8A", "1f2003d5c0035fd6", false),
+    ] {
+        let name = format!("nop-{}", uuid::Uuid::new_v4());
+        client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateNopGuardProgram extends GhidraScript {
+    public void run() throws Exception {
+        String[] args = getScriptArgs();
+        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID(args[1]));
+        var program = new ProgramDB(args[0], language, language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("test code");
+            try {
+                byte[] bytes = java.util.HexFormat.of().parseHex(args[2]);
+                var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
+                var block = program.getMemory().createInitializedBlock("code", address,
+                    new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
+                block.setExecute(true);
+                block.setWrite(false);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder().createFile(args[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#, &[name.clone(), language.to_owned(), hex.to_owned()], &[], false).unwrap();
+        client.open_program(&name).unwrap();
+        let instruction = client
+            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .unwrap();
+        assert_eq!(instruction["landed"], true, "{instruction}");
+        let before = client
+            .send_command(
+                "read_memory",
+                Some(serde_json::json!({"address":"1000", "size":hex.len()/2})),
+            )
+            .unwrap();
+        let map_before = client.send_command("memory_map", None).unwrap();
+        let result = client.send_command(
+            "patch_nop",
+            Some(serde_json::json!({"address":"1000", "count":1})),
+        );
+        let after = client
+            .send_command(
+                "read_memory",
+                Some(serde_json::json!({"address":"1000", "size":hex.len()/2})),
+            )
+            .unwrap();
+        if supported {
+            let result = result.unwrap();
+            assert_eq!(result["bytes"], 2);
+            assert_eq!(after["hex"], "9090c3");
+        } else {
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("supports only x86"), "{error}");
+            assert!(error.to_string().contains("patch bytes"), "{error}");
+            assert_eq!(after, before);
+            let unchanged = client
+                .send_command(
+                    "disasm",
+                    Some(serde_json::json!({"address":"1000", "count":1})),
+                )
+                .unwrap();
+            assert_eq!(unchanged["instructions"], instruction["instructions"]);
+        }
+        assert_eq!(client.send_command("memory_map", None).unwrap(), map_before);
+        // IntelHexExporter returns false, rather than throwing, for this 64-bit address space.
+        let output = tempfile::tempdir().unwrap();
+        let error = client
+            .program_export(
+                "hex",
+                Some(output.path().join("code.hex").to_str().unwrap()),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("32 bits"), "{error}");
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&name).unwrap();
+    }
 }
 
 /// Test exporting patched binary.
@@ -111,11 +168,17 @@ fn test_patch_export() {
         .arg(TEST_PROGRAM)
         .run();
 
-    // Export may fail in headless mode due to BinaryExporter limitations
-    // Just verify the command completes without hanging
+    result.assert_success();
+    assert!(std::fs::metadata(&output_path).unwrap().len() > 0);
+    let directory = tempfile::tempdir().unwrap();
+    let error = harness
+        .client()
+        .unwrap()
+        .patch_export(directory.path().to_str().unwrap())
+        .unwrap_err();
     assert!(
-        result.exit_code == 0 || !result.stderr.is_empty(),
-        "Should either succeed or provide an error message"
+        error.to_string().contains("Failed to export binary"),
+        "{error}"
     );
 
     // Clean up
@@ -211,31 +274,43 @@ fn test_patch_invalid_hex_fails() {
     result.assert_failure();
 }
 
-/// Test patching with odd-length hex string (should fail or be handled).
+/// Invalid hex must fail before clearing instructions or changing memory permissions.
 #[test]
 #[serial]
 fn test_patch_odd_hex_length() {
     require_ghidra!();
     let harness = harness();
-
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let _result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
-        .arg(&main_addr)
-        .arg("909") // Odd length - not valid byte sequence
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .run();
-
-    // This should either:
-    // 1. Fail with an error about odd-length hex
-    // 2. Succeed by padding (implementation-dependent)
-    // Either way, it shouldn't crash or hang
-
-    // Just verify the command completes (success or failure)
-    // The test is that it handles the edge case gracefully
+    let client = harness.client().unwrap();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
+    let disasm = || {
+        client
+            .send_command(
+                "disasm",
+                Some(serde_json::json!({"address":address,"count":1})),
+            )
+            .unwrap()
+    };
+    let memory = || {
+        client
+            .send_command(
+                "read_memory",
+                Some(serde_json::json!({"address":address,"size":8})),
+            )
+            .unwrap()
+    };
+    let before_instruction = disasm();
+    let before_memory = memory();
+    let before_map = client.send_command("memory_map", None).unwrap();
+    for hex in ["909", "0x9", "", "0x", "  ", "ZZ", "+1"] {
+        let error = client.patch_bytes(&address, hex).unwrap_err();
+        assert!(
+            error.to_string().contains("complete byte pairs"),
+            "{hex:?}: {error}"
+        );
+        assert_eq!(memory(), before_memory);
+        assert_eq!(disasm(), before_instruction);
+        assert_eq!(client.send_command("memory_map", None).unwrap(), before_map);
+    }
 }
 
 /// Test that patching without --program argument uses default program.
