@@ -1,38 +1,29 @@
 ---
-name: hina-ghidra
-description: Analyze native binaries with the ghidra-cli revision bundled in the Hina analysis image, including durable import, decompilation, disassembly repair, functions, xrefs, strings, symbols, types, PCode, analyzer control, call graphs, scripts, and patch exploration. Use when a native executable or library needs structural or semantic reverse engineering through Ghidra.
+name: ghidra-cli
+description: Use ghidra-cli for native-binary reverse engineering with Ghidra, including import of programs, code queries and decompilation, type and annotation edits, Java scripts, patches, and binary export.
 ---
 
-# Hina Ghidra CLI
+# Ghidra CLI
 
-Use `/usr/local/bin/ghidra`, the bundled Rust ghidra-cli. `GHIDRA_INSTALL_DIR` and
-persistent project storage under `/reports` are configured by the image;
-`/samples` is read-only.
+The executable is `ghidra`. This skill is the canonical reference for RE agents
+using the CLI. Read [commands.md](references/commands.md) to select an operation;
+use `ghidra <command> --help` for exact arguments.
 
-One localhost JVM bridge is kept per project and reused by later commands.
-Program operations are serialized, while status, queued-job inspection, and
-cooperative cancellation remain available.
+Global `--project PROJECT --program PROGRAM` select the target. Each project
+reuses a JVM bridge; program operations are serialized while `status`, `jobs`,
+and `cancel` remain responsive.
 
-A fresh `ghidra import` auto-analyzes and durably commits before the persistent
-bridge opens the program. Do not immediately run `ghidra analyze` unless
-reanalysis is intentional; use `--no-analyze` to skip analysis.
+Fresh import analyzes and commits before opening the persistent bridge.
+`--no-analyze` omits analysis; `analyze` explicitly reruns it.
 
-For raw/headerless binaries, provide the known language and load model explicitly;
-do not infer ISA, endian, or base address from plausible disassembly.
+Output defaults to human-readable on a terminal and compact JSON when piped.
+`--json` and `--pretty` explicitly select JSON; `--fields` restricts result fields.
 
-```bash
-ghidra doctor
-ghidra import /samples/target.bin --project target --program target.bin
-ghidra summary --project target --program target.bin
-ghidra decompile main --with-vars --with-params --project target --program target.bin
-```
+Edits can remain in memory. `program save` flushes by restarting the bridge;
+`stop` flushes and ends it. `program close` is not a substitute for saving.
+A failed nested mutation can retain partial changes; do not assume rollback.
 
-Use [references/commands.md](references/commands.md) as the command catalog and
-`ghidra <command> --help` for exact flags.
-
-Mutations remain in the running bridge until flushed. Use `ghidra program save
---project NAME` when another Ghidra process must see them, or `ghidra stop
---project NAME` when ending the session.
-
-Read [references/workarounds.md](references/workarounds.md) for limitations that
-still apply to the bundled revision.
+A socket timeout does not cancel the job. Inspect `jobs [ID]` before retrying a
+mutation; `cancel [ID]` requests cancellation. Queued jobs are removed immediately;
+running jobs cancel cooperatively. A timeout is reported with exit 75, distinct
+from a command failure.
