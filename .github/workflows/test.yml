@@ -15,7 +15,8 @@ env:
 
 # macOS jobs are paused while decompiler and fixture symbol failures are investigated.
 jobs:
-  # Job 1: Unit tests and CLI tests (no Ghidra needed) - ~2 min
+  # Job 1: Unit tests and CLI tests (no Ghidra or JDK installation needed) - ~2 min
+  # Doctor success is checked by command_tests in readonly-integration.
   unit-and-cli:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15

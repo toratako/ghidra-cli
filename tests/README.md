@@ -32,9 +32,14 @@ For a targeted run:
 ```bash
 cargo test --lib --bin ghidra-cli
 cargo test --test daemon_tests
-# These suites do not require Ghidra:
+# These suites do not require Ghidra or a JDK installation:
 cargo test --test e2e --test output_format_integration --test harness_tests
 ```
+
+`command_tests::test_doctor` verifies a working Ghidra/JDK installation in CI's
+`readonly-integration` job. `output_format_integration` checks doctor's failure
+output and exit status using a missing installation path; its other tests cover
+local CLI behavior without Ghidra prerequisites.
 
 Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
 reference `.snap` files are not tracked. To run without accepting snapshots:

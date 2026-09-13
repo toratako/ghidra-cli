@@ -1,22 +1,7 @@
-//! Integration tests for output format
-//! Tests require real Ghidra installation
-
-/// Helper to verify Ghidra is installed before running tests
-fn require_ghidra() {
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("doctor")
-        .output()
-        .expect("Failed to run ghidra-cli doctor");
-
-    if !output.status.success() {
-        panic!("Ghidra is not installed. Tests require Ghidra installation per AGENTS.md");
-    }
-}
+//! CLI output format tests that do not require Ghidra or a JDK installation.
 
 #[test]
 fn test_format_detection_tty() {
-    require_ghidra();
-
     // Test that --help shows both --json and --pretty flags
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--help");
@@ -33,8 +18,6 @@ fn test_format_detection_tty() {
 
 #[test]
 fn test_json_flag() {
-    require_ghidra();
-
     // Test --json flag is recognized
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--json").arg("--help");
@@ -43,8 +26,6 @@ fn test_json_flag() {
 
 #[test]
 fn test_pretty_flag() {
-    require_ghidra();
-
     // Test --pretty flag is recognized
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     cmd.arg("--pretty").arg("--help");

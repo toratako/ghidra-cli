@@ -1,6 +1,6 @@
 //! End-to-end smoke tests for ghidra-cli
 //!
-//! This is a lightweight smoke test that verifies basic CLI functionality.
+//! This is a lightweight smoke test that verifies basic CLI functionality without Ghidra.
 //! Comprehensive test coverage is in:
 //! - command_tests.rs (version, doctor, config)
 //! - project_tests.rs (project management, import, analyze)
@@ -9,8 +9,6 @@
 //! - unimplemented_tests.rs (graceful error messages)
 
 use predicates::prelude::*;
-
-mod common;
 
 /// Smoke test - verifies basic CLI commands work
 #[test]
@@ -21,12 +19,6 @@ fn test_smoke() {
         .assert()
         .success()
         .stdout(predicate::str::contains("ghidra-cli"));
-
-    // Doctor command verifies installation
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("doctor")
-        .assert()
-        .success();
 
     // Config list should work
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
