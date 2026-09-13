@@ -1,0 +1,126 @@
+use super::{start_daemon, TEST_PROGRAM};
+use crate::common::{self, ensure_test_project, test_project};
+use serial_test::serial;
+use std::time::Duration;
+
+#[test]
+#[serial]
+fn management_results_are_single_json_documents() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    for flag in ["--json", "--pretty"] {
+        for command in ["start", "status", "ping", "jobs"] {
+            let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+                .args([flag, "--quiet", command, "--project", test_project()])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{command}: {output:?}");
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(value.is_object(), "{command}: {value}");
+            assert!(output.stderr.is_empty(), "{command}: {output:?}");
+            if command == "status" {
+                assert_eq!(value["state"], "running");
+                assert!(value["port"].is_number());
+                assert!(value["info"].is_object());
+            }
+        }
+    }
+    let function = harness
+        .client()
+        .unwrap()
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
+        .unwrap();
+    let address = function["address"].as_str().unwrap();
+    for flag in ["--json", "--pretty"] {
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .args([
+                flag,
+                "function",
+                "create",
+                address,
+                "--project",
+                test_project(),
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["detail"].is_object(), "{error}");
+    }
+    let project_path = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_project_dir()
+        .unwrap()
+        .join(test_project());
+    let initial_pid = ghidra_cli::ghidra::bridge::read_pid_file(&project_path)
+        .unwrap()
+        .unwrap();
+    for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
+        // restart leaves a JVM running; inherited Windows pipe handles would
+        // make assert_cmd's output readers wait past its process timeout.
+        let output = common::run_command_with_output(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .args(["--json", "--quiet"])
+                .args(&args)
+                .args(["--project", test_project(), "--program", TEST_PROGRAM]),
+            Duration::from_secs(300),
+        )
+        .unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        if args == ["program", "save"] {
+            assert_eq!(value["saved"], true);
+            assert_eq!(
+                ghidra_cli::ghidra::bridge::read_pid_file(&project_path).unwrap(),
+                Some(initial_pid),
+                "program save restarted the bridge"
+            );
+        }
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
+}
+
+#[test]
+#[serial]
+fn test_batch_failure_exit_and_results() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let batch = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        batch.path(),
+        "program info\nfunction create main\nprogram info\n",
+    )
+    .unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "batch"])
+        .arg(batch.path())
+        .args(["--project", test_project()])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["detail"]["commands_executed"], 3);
+    assert_eq!(error["detail"]["failed"], 1);
+    assert!(error["detail"]["results"][0]["result"]["function_count"].is_number());
+    assert!(error["detail"]["results"][1]["detail"].is_object());
+    assert!(error["detail"]["results"][2]["result"]["function_count"].is_number());
+    std::fs::write(batch.path(), "program info\nprogram save\n").unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "batch"])
+        .arg(batch.path())
+        .args(["--project", test_project()])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result[0]["failed"], 0);
+    assert_eq!(result[0]["results"][1]["result"]["saved"], true);
+    assert!(harness.client().unwrap().ping().unwrap());
+}

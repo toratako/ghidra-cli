@@ -1,0 +1,325 @@
+use super::{harness, TEST_PROGRAM};
+use crate::common::{
+    ghidra,
+    schemas::{MemoryBlock, StringData, Validate},
+    test_project, GhidraCommand,
+};
+use serial_test::serial;
+use std::fs;
+
+// Strings List Tests
+
+#[test]
+#[serial]
+fn test_strings_list_schema_validation() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("strings")
+        .arg("list")
+        .with_project(test_project(), TEST_PROGRAM)
+        .json_format()
+        .arg("--limit")
+        .arg("50")
+        .run();
+
+    result.assert_success();
+
+    let strings: Vec<StringData> = result.json();
+    assert!(!strings.is_empty(), "Should have at least one string");
+
+    for s in &strings {
+        s.assert_valid();
+    }
+
+    // Check if any known strings are present (informational)
+    let known = ["Hello", "test_binary", "super_secret"];
+    let found: Vec<_> = known
+        .iter()
+        .filter(|k| strings.iter().any(|s| s.value.contains(*k)))
+        .collect();
+    if !found.is_empty() {
+        eprintln!("Found known strings: {:?}", found);
+    }
+}
+
+// Memory Map Tests
+
+#[test]
+#[serial]
+fn test_memory_map_schema_validation() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("memory")
+        .arg("map")
+        .with_project(test_project(), TEST_PROGRAM)
+        .json_format()
+        .run();
+
+    result.assert_success();
+
+    let blocks: Vec<MemoryBlock> = result.json();
+    assert!(
+        !blocks.is_empty(),
+        "Memory map should have at least one block"
+    );
+
+    for block in &blocks {
+        block.assert_valid();
+    }
+
+    let has_text = blocks
+        .iter()
+        .any(|b| b.name.contains("text") || b.name.contains("code") || b.name.contains(".text"));
+    assert!(
+        has_text,
+        "Should have a text/code segment. Found: {:?}",
+        blocks.iter().map(|b| &b.name).collect::<Vec<_>>()
+    );
+}
+
+// Summary Tests
+
+#[test]
+#[serial]
+fn test_summary_contains_expected_fields() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("summary")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    result.assert_success();
+    assert!(
+        !result.stdout.trim().is_empty(),
+        "Summary should produce output"
+    );
+    result.assert_stdout_contains("sample_binary");
+}
+
+// Stats Tests
+
+#[test]
+#[serial]
+fn test_stats_normal() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("stats")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    result.assert_success();
+    result.assert_stdout_contains("stats");
+    result.assert_stdout_contains("functions");
+    result.assert_stdout_contains("symbols");
+}
+
+#[test]
+#[serial]
+fn test_stats_has_all_fields() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("stats")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    result.assert_success();
+
+    let json: serde_json::Value = result.json();
+
+    // Stats may be returned as flat object or wrapped: [{"stats": {...}}]
+    let obj = if let Some(obj) = json.as_object() {
+        obj.clone()
+    } else if let Some(arr) = json.as_array() {
+        arr.first()
+            .and_then(|v| v.as_object())
+            .and_then(|o| o.get("stats"))
+            .and_then(|v| v.as_object())
+            .expect("Expected stats object in array wrapper")
+            .clone()
+    } else {
+        panic!("Stats should be a JSON object or array");
+    };
+
+    // Verify key fields exist
+    for key in &["functions", "strings", "symbols"] {
+        assert!(obj.contains_key(*key), "Missing stats field: {}", key);
+    }
+
+    let functions = obj.get("functions").and_then(|v| v.as_u64()).unwrap_or(0);
+    assert!(
+        functions > 0,
+        "functions count should be > 0, got {}",
+        functions
+    );
+
+    let strings = obj.get("strings").and_then(|v| v.as_u64()).unwrap_or(0);
+    assert!(strings > 0, "strings count should be > 0, got {}", strings);
+}
+
+#[test]
+#[serial]
+fn test_stats_json_format() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("stats")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    result.assert_success();
+
+    // Verify output is valid JSON
+    let json: serde_json::Value = result.json();
+
+    // Extract stats object (may be flat or wrapped)
+    let stats = if json.is_object() {
+        json.clone()
+    } else if let Some(arr) = json.as_array() {
+        arr.first()
+            .and_then(|v| v.as_object())
+            .and_then(|o| o.get("stats"))
+            .cloned()
+            .expect("Expected stats in array wrapper")
+    } else {
+        panic!("Expected JSON object or array");
+    };
+
+    // Verify it has numeric function count
+    let functions = stats
+        .get("functions")
+        .and_then(|v| v.as_u64())
+        .expect("Should have numeric functions field");
+    assert!(
+        functions >= 8,
+        "Should have at least 8 functions, got {}",
+        functions
+    );
+
+    let strings = stats
+        .get("strings")
+        .and_then(|v| v.as_u64())
+        .expect("Should have numeric strings field");
+    assert!(
+        strings >= 3,
+        "Should have at least 3 strings, got {}",
+        strings
+    );
+}
+
+// Program Tests
+
+#[test]
+#[serial]
+fn test_program_info() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("program")
+        .arg("info")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    result.assert_success();
+
+    // Program info should mention the program name
+    assert!(
+        result.stdout.contains("sample_binary") || result.stdout.contains("name"),
+        "Program info should contain program name or 'name' field. Got: {}",
+        &result.stdout[..result.stdout.len().min(500)]
+    );
+}
+
+#[test]
+#[serial]
+fn test_program_export_json() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let inline = client.program_export("json", None).unwrap();
+    assert!(!inline["functions"].as_array().unwrap().is_empty());
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("program.json");
+    let exported = client
+        .program_export("json", Some(path.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(exported["status"], "exported");
+    let written: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(written, inline);
+    let error = client
+        .program_export("json", Some(directory.path().to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to write file"),
+        "{error}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[serial]
+fn test_program_export_json_write_failure() {
+    require_ghidra!();
+    let error = harness()
+        .client()
+        .unwrap()
+        .program_export("json", Some("/dev/full"))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to write file"),
+        "{error}"
+    );
+}
+
+#[test]
+#[serial]
+fn test_program_close() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = ghidra(harness)
+        .arg("program")
+        .arg("close")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+
+    assert!(
+        result.exit_code == 0 || result.stderr.contains("Unknown command"),
+        "Expected success or 'Unknown command', got: {}",
+        result.stderr
+    );
+
+    // The bridge is shared across the whole suite, and `program close` clears the
+    // current program. Re-open it so later tests (which assume a program is
+    // loaded, e.g. test_program_info_no_program) aren't broken by test ordering.
+    let _ = ghidra(harness)
+        .arg("program")
+        .arg("info")
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+}
+
+#[test]
+#[serial]
+fn test_program_info_no_program() {
+    require_ghidra!();
+    let harness = harness();
+
+    let result = GhidraCommand::new()
+        .arg("program")
+        .arg("info")
+        .with_daemon(harness)
+        .run();
+
+    result.assert_success();
+}

@@ -52,6 +52,15 @@ These fail until reviewed snapshots are added. The normal suite also validates
 response schemas without snapshots. CI suite groupings are in
 [the test workflow](../.github/workflows/test.yml).
 
+`readonly_tests.rs` owns the shared bridge and keeps the snapshot assertions at
+their original source/module path. Its `readonly/` modules cover functions and
+instructions, program metadata, relationships, search, and batch queries.
+`daemon_tests.rs` keeps one suite fixture while its `daemon/` modules cover
+lifecycle, jobs, program sessions/persistence, deletion, and output contracts.
+These modules remain part of their owning test executable and use the same
+serial lock. Filter a domain with, for example,
+`cargo test --test daemon_tests program_session::`.
+
 ## Coverage and fixtures
 
 | Suite/source | Scope |
