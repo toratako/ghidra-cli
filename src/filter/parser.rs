@@ -26,55 +26,29 @@ pub fn parse_filter(input: &str) -> Result<Filter> {
         .ok_or_else(|| GhidraError::FilterParseError("Empty expression".to_string()))
 }
 
+// The grammar groups AND terms inside OR terms; parentheses recurse here.
 fn parse_logical_expr(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
-    let mut terms = Vec::new();
-    let mut ops = Vec::new();
+    let exprs = pair
+        .into_inner()
+        .map(|group| {
+            let terms = group
+                .into_inner()
+                .map(parse_logical_term)
+                .collect::<Result<Vec<_>>>()?;
+            logical_group(LogicalOp::And, terms)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    logical_group(LogicalOp::Or, exprs)
+}
 
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::logical_term => {
-                terms.push(parse_logical_term(inner)?);
-            }
-            Rule::logical_op => {
-                let op_str = inner.as_str();
-                let op = match op_str {
-                    "AND" | "&&" => LogicalOp::And,
-                    "OR" | "||" => LogicalOp::Or,
-                    _ => {
-                        return Err(GhidraError::FilterParseError(format!(
-                            "Unknown operator: {}",
-                            op_str
-                        )))
-                    }
-                };
-                ops.push(op);
-            }
-            _ => {}
-        }
-    }
-
-    if terms.is_empty() {
-        return Err(GhidraError::FilterParseError(
+fn logical_group(op: LogicalOp, mut exprs: Vec<FilterExpr>) -> Result<FilterExpr> {
+    match exprs.len() {
+        0 => Err(GhidraError::FilterParseError(
             "No terms in logical expression".to_string(),
-        ));
+        )),
+        1 => Ok(exprs.pop().unwrap()),
+        _ => Ok(FilterExpr::Logical { op, exprs }),
     }
-
-    if terms.len() == 1 {
-        return Ok(terms.into_iter().next().unwrap());
-    }
-
-    // Build expression tree respecting precedence (AND before OR)
-    // For simplicity, we'll evaluate left-to-right for now
-    // TODO: Proper precedence handling
-    let mut result = terms[0].clone();
-    for (i, op) in ops.iter().enumerate() {
-        result = FilterExpr::Logical {
-            op: *op,
-            exprs: vec![result, terms[i + 1].clone()],
-        };
-    }
-
-    Ok(result)
 }
 
 fn parse_logical_term(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
@@ -174,10 +148,6 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
                     }
                 });
             }
-            Rule::in_check => {
-                // Already handled field
-                continue;
-            }
             Rule::value_list => {
                 let mut values = Vec::new();
                 for val_pair in inner.into_inner() {
@@ -267,7 +237,8 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> Result<Value> {
             }
             Rule::quoted_string => {
                 let s = inner.as_str();
-                let s = s.trim_matches(|c| c == '"' || c == '\'');
+                // The grammar guarantees one matching pair of ASCII delimiters.
+                let s = &s[1..s.len() - 1];
                 return Ok(Value::String(s.to_string()));
             }
             Rule::identifier => {
@@ -302,6 +273,97 @@ mod tests {
             assert!(matches!(value, Value::Hex(0x401000)));
         } else {
             panic!("Expected Compare expression");
+        }
+    }
+
+    #[test]
+    fn rejects_incomplete_or_trailing_input() {
+        for input in [
+            "name=test garbage",
+            "size>0 AND",
+            "size>0 OR name=",
+            "name=test)",
+            "(name=test",
+            "size>0 &&",
+            "name IN []",
+            "name EXISTS garbage",
+            "name='unterminated",
+            "",
+        ] {
+            assert!(parse_filter(input).is_err(), "accepted {input:?}");
+        }
+        assert!(parse_filter(" \n (name=test AND size>0) \t ").is_ok());
+    }
+
+    #[test]
+    fn logical_precedence_parentheses_and_short_circuit() {
+        let data = serde_json::json!({"a": 1, "b": 0, "c": 0, "name": "text"});
+        for (input, expected) in [
+            ("a=1 OR b=1 AND c=1", true),
+            ("a=1 || b=1 && c=1", true),
+            ("(a=1 OR b=1) AND c=1", false),
+            ("NOT a=1 OR b=0 AND NOT c=1", true),
+            ("!(a=1 OR b=1)", false),
+            ("a=1 OR name>1", true),
+            ("a=0 AND name>1", false),
+        ] {
+            assert_eq!(
+                parse_filter(input).unwrap().evaluate(&data).unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_existence_and_membership_through_evaluation() {
+        let data = serde_json::json!({
+            "name": "test", "empty": "", "nil": null, "tags": ["Crypto", "reviewed"],
+            "size": 16, "flag": true, "object": {}, "array": []
+        });
+        for (input, expected) in [
+            ("name EXISTS", true),
+            ("missing EXISTS", false),
+            ("nil EXISTS", true),
+            ("name EMPTY", false),
+            ("empty EMPTY", true),
+            ("nil EMPTY", true),
+            ("object EMPTY", true),
+            ("array EMPTY", true),
+            ("missing EMPTY", true),
+            ("nil NULL", true),
+            ("missing NULL", true),
+            ("empty NULL", false),
+            ("tags IN ['network', 'CRYPTO']", true),
+            ("tags IN ['network']", false),
+            ("name IN ['TEST']", true),
+            ("size IN [1, 0x10]", true),
+            ("flag IN [false, true]", true),
+            ("NOT missing EXISTS AND tags IN ['crypto']", true),
+        ] {
+            assert_eq!(
+                parse_filter(input).unwrap().evaluate(&data).unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn removes_only_outer_quotes_and_keeps_identifier_values() {
+        for (input, name) in [
+            (r#"name="'test'""#, "'test'"),
+            (r#"name='"test"'"#, "\"test\""),
+            (r#"name="''日本語''""#, "''日本語''"),
+            (r#"name=''"#, ""),
+            ("name=trueish", "trueish"),
+            ("name=FALSE_name", "FALSE_name"),
+        ] {
+            let data = serde_json::json!({"name": name});
+            assert!(
+                parse_filter(input).unwrap().evaluate(&data).unwrap(),
+                "{input}"
+            );
         }
     }
 }

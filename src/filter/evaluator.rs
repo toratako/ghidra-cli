@@ -15,24 +15,14 @@ pub fn evaluate(expr: &FilterExpr, data: &JsonValue) -> Result<bool> {
 }
 
 fn get_field_value<'a>(field: &str, data: &'a JsonValue) -> Option<&'a JsonValue> {
-    let parts: Vec<&str> = field.split('.').collect();
     let mut current = data;
 
-    for part in parts {
-        // Check for array index like "field[0]"
-        if let Some(bracket_pos) = part.find('[') {
-            let field_name = &part[..bracket_pos];
-            let index_str = &part[bracket_pos + 1..part.len() - 1];
-
-            current = current.get(field_name)?;
-
-            if let Ok(index) = index_str.parse::<usize>() {
-                current = current.get(index)?;
-            } else {
-                return None;
-            }
-        } else {
-            current = current.get(part)?;
+    for part in field.split('.') {
+        let mut segments = part.split('[');
+        current = current.get(segments.next()?)?;
+        for segment in segments {
+            let index = segment.strip_suffix(']')?.parse::<usize>().ok()?;
+            current = current.get(index)?;
         }
     }
 
@@ -49,40 +39,14 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
     let field_value = field_value.unwrap();
 
     match (field_value, value) {
-        (JsonValue::Number(n), val) => {
-            let field_num = n.as_f64().unwrap();
-            let compare_num = val.as_f64().ok_or_else(|| {
-                GhidraError::InvalidFilter(format!("Cannot compare number with {:?}", val))
-            })?;
-
-            Ok(match op {
-                CompareOp::Equal => (field_num - compare_num).abs() < f64::EPSILON,
-                CompareOp::NotEqual => (field_num - compare_num).abs() >= f64::EPSILON,
-                CompareOp::Greater => field_num > compare_num,
-                CompareOp::GreaterEqual => field_num >= compare_num,
-                CompareOp::Less => field_num < compare_num,
-                CompareOp::LessEqual => field_num <= compare_num,
-            })
-        }
+        (JsonValue::Number(n), val) => compare_numbers(&json_number(n), val, op).ok_or_else(|| {
+            GhidraError::InvalidFilter(format!("Cannot compare number with {:?}", val))
+        }),
         (JsonValue::String(s), val) if val.as_f64().is_some() => {
-            // Ghidra addresses come back from the bridge as hex strings
-            // (e.g. "002dad4c", or "ram:002dad4c" for multi-space
-            // programs), never as JSON numbers. A numeric filter value
-            // (0x..., a bare int) against such a field used to fall
-            // through to the catch-all `Ok(false)` below -- silently
-            // matching nothing instead of comparing addresses. Parse the
-            // field as hex (falling back to decimal) so `address >= 0x...`
-            // works the way it looks like it should.
-            let compare_num = val.as_f64().unwrap();
+            // Preserve hex-first interpretation of bridge address strings,
+            // including address-space prefixes, without rounding through f64.
             match parse_numeric_field(s) {
-                Some(field_num) => Ok(match op {
-                    CompareOp::Equal => (field_num - compare_num).abs() < f64::EPSILON,
-                    CompareOp::NotEqual => (field_num - compare_num).abs() >= f64::EPSILON,
-                    CompareOp::Greater => field_num > compare_num,
-                    CompareOp::GreaterEqual => field_num >= compare_num,
-                    CompareOp::Less => field_num < compare_num,
-                    CompareOp::LessEqual => field_num <= compare_num,
-                }),
+                Some(field_num) => Ok(compare_numbers(&field_num, val, op).unwrap()),
                 None => Err(GhidraError::InvalidFilter(format!(
                     "Cannot compare non-numeric string field {:?} numerically",
                     s
@@ -128,15 +92,65 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
     }
 }
 
+fn json_number(number: &serde_json::Number) -> Value {
+    if let Some(n) = number.as_i64() {
+        Value::Integer(n)
+    } else if let Some(n) = number.as_u64() {
+        Value::Hex(n)
+    } else {
+        Value::Number(number.as_f64().unwrap())
+    }
+}
+
+// i128 holds both signed JSON integers and the complete u64 address range.
+// Integral float literals also have an exact integer representation here;
+// this avoids rounding an address when comparing against e.g. 9007199254740992.0.
+fn exact_integer(value: &Value) -> Option<i128> {
+    match value {
+        Value::Integer(n) => Some(i128::from(*n)),
+        Value::Hex(n) => Some(i128::from(*n)),
+        Value::Number(n)
+            if n.fract() == 0.0 && *n >= i128::MIN as f64 && *n < -(i128::MIN as f64) =>
+        {
+            Some(*n as i128)
+        }
+        _ => None,
+    }
+}
+
+fn compare_numbers(left: &Value, right: &Value, op: CompareOp) -> Option<bool> {
+    if let (Some(left), Some(right)) = (exact_integer(left), exact_integer(right)) {
+        return Some(match op {
+            CompareOp::Equal => left == right,
+            CompareOp::NotEqual => left != right,
+            CompareOp::Greater => left > right,
+            CompareOp::GreaterEqual => left >= right,
+            CompareOp::Less => left < right,
+            CompareOp::LessEqual => left <= right,
+        });
+    }
+    // Retain the existing tolerance for non-integral floating point values.
+    let left = left.as_f64()?;
+    let right = right.as_f64()?;
+    Some(match op {
+        CompareOp::Equal => (left - right).abs() < f64::EPSILON,
+        CompareOp::NotEqual => (left - right).abs() >= f64::EPSILON,
+        CompareOp::Greater => left > right,
+        CompareOp::GreaterEqual => left >= right,
+        CompareOp::Less => left < right,
+        CompareOp::LessEqual => left <= right,
+    })
+}
+
 /// Element-vs-value equality for array-field filters. Mirrors the scalar `=`
 /// semantics (exact, case-sensitive for strings); type mismatches are simply
 /// not-equal rather than errors, since arrays can hold mixed content.
 fn scalar_equals(elem: &JsonValue, val: &Value) -> bool {
     match (elem, val) {
         (JsonValue::String(s), Value::String(v)) => s == v,
-        (JsonValue::Number(n), v) => v
-            .as_f64()
-            .is_some_and(|c| (n.as_f64().unwrap() - c).abs() < f64::EPSILON),
+        (JsonValue::Number(n), v) => {
+            compare_numbers(&json_number(n), v, CompareOp::Equal).unwrap_or(false)
+        }
         (JsonValue::Bool(b), Value::Boolean(v)) => *b == *v,
         _ => false,
     }
@@ -179,7 +193,7 @@ fn is_address_field(field: &str) -> bool {
 /// address strings are unprefixed hex (optionally with an address-space
 /// prefix like "ram:"), so hex is tried first; plain decimal is the
 /// fallback for other numeric-looking string fields.
-fn parse_numeric_field(s: &str) -> Option<f64> {
+fn parse_numeric_field(s: &str) -> Option<Value> {
     let hex_part = s.rsplit(':').next().unwrap_or(s);
     let hex_part = hex_part
         .strip_prefix("0x")
@@ -187,10 +201,10 @@ fn parse_numeric_field(s: &str) -> Option<f64> {
         .unwrap_or(hex_part);
     if !hex_part.is_empty() {
         if let Ok(n) = u64::from_str_radix(hex_part, 16) {
-            return Some(n as f64);
+            return Some(Value::Hex(n));
         }
     }
-    s.parse::<f64>().ok()
+    s.parse::<f64>().ok().map(Value::Number)
 }
 
 fn evaluate_string_op(field: &str, op: StringOp, value: &str, data: &JsonValue) -> Result<bool> {
@@ -331,9 +345,9 @@ fn evaluate_in(field: &str, values: &[Value], data: &JsonValue) -> Result<bool> 
 fn scalar_matches_in(field_value: &JsonValue, val: &Value) -> bool {
     match (field_value, val) {
         (JsonValue::String(s), Value::String(v)) => s.eq_ignore_ascii_case(v),
-        (JsonValue::Number(n), v) => v
-            .as_f64()
-            .is_some_and(|c| (n.as_f64().unwrap() - c).abs() < f64::EPSILON),
+        (JsonValue::Number(n), v) => {
+            compare_numbers(&json_number(n), v, CompareOp::Equal).unwrap_or(false)
+        }
         (JsonValue::Bool(b), Value::Boolean(v)) => *b == *v,
         _ => false,
     }
@@ -566,5 +580,126 @@ mod tests {
         };
 
         assert!(evaluate(&expr, &data).unwrap());
+    }
+
+    #[test]
+    fn nested_array_paths_follow_the_grammar() {
+        let data = json!({"a": [[{"name": "found"}]], "items": [{"size": 2}]});
+        for (input, expected) in [
+            ("a[0][0].name=found", true),
+            ("a[0][0].name EXISTS", true),
+            ("items[0].size IN [1,2]", true),
+            ("a[1][0].name=found", false),
+            ("a[-1][0].name=found", false),
+            ("a[0.5][0].name=found", false),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn address_comparisons_preserve_all_integer_bits() {
+        let data = json!({"address": "ram:0020000000000001"});
+        for (input, expected) in [
+            ("address=0x20000000000000", false),
+            ("address!=0x20000000000000", true),
+            ("address>0x20000000000000", true),
+            ("address>=0x20000000000001", true),
+            ("address<0x20000000000001", false),
+            ("address<=0x20000000000000", false),
+            ("address=9007199254740993", true),
+            ("address=9007199254740992.0", false),
+            ("address>-1", true),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+        let high = json!({"address": "0xffffffffffffffff"});
+        for (input, expected) in [
+            ("address=0xffffffffffffffff", true),
+            ("address=0xfffffffffffffffe", false),
+            ("address>0xfffffffffffffffe", true),
+            ("address<18446744073709551616.0", true),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&high)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_equality_is_consistent_for_scalars_arrays_and_in() {
+        let data = json!({"n": u64::MAX, "values": [u64::MAX], "negative": i64::MIN});
+        for (input, expected) in [
+            ("n=0xffffffffffffffff", true),
+            ("n=0xfffffffffffffffe", false),
+            ("values=0xfffffffffffffffe", false),
+            ("values!=0xfffffffffffffffe", true),
+            ("n IN [0xfffffffffffffffe]", false),
+            ("values IN [0xfffffffffffffffe]", false),
+            ("values IN [0xffffffffffffffff]", true),
+            ("negative=-9223372036854775808", true),
+            ("negative<0xffffffffffffffff", true),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_string_and_fractional_semantics_are_preserved() {
+        let data =
+            json!({"value": "10", "fraction": "1.5", "n": 1.5, "name": "word", "values": ["10"]});
+        for (input, expected) in [
+            ("value=10", false),
+            ("value=0x10", true),
+            ("value='10'", true),
+            ("fraction=1.5", true),
+            ("n>1.4", true),
+            ("n<1.6", true),
+            ("values=0x10", false),
+            ("value IN [0x10]", false),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+        assert!(crate::filter::Filter::parse("name>1")
+            .unwrap()
+            .evaluate(&data)
+            .is_err());
+        assert!(crate::filter::Filter::parse("n='1.5'")
+            .unwrap()
+            .evaluate(&data)
+            .is_err());
     }
 }
