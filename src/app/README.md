@@ -2,6 +2,8 @@
 
 `src/main.rs` owns parsing, environment overrides, logging, the setup async
 runtime, and error/exit reporting. These private modules own command workflows.
+`src/cli.rs` defines the root parser and command tree; `src/cli/` owns command-family
+argument definitions and shared query options, re-exported through `crate::cli`.
 
 | File | Responsibility |
 |------|----------------|
