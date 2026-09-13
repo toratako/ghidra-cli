@@ -22,12 +22,15 @@ ghidra stop --project target
 ```
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
-`program save` restarts the bridge; see [import/save boundaries](../SKILL.md).
 Use `import --detach` to return while import continues, `--no-analyze` to omit
 analysis, and `analyze --project target --program target.bin` to reanalyze.
-`stats` reports program statistics; `summary` gives an overview.
+`stats` reports program statistics; `summary` reports the loaded program's
+metadata.
 
-Raw/headerless import accepts explicit language and load options:
+### Raw import
+
+Choose raw input's ISA, endianness, and load address from target evidence;
+plausible disassembly alone does not validate them.
 
 ```bash
 ghidra import ./firmware.bin --project firmware \
@@ -37,7 +40,7 @@ ghidra import ./firmware.bin --project firmware \
 
 `--base-address`, `--block-name`, `--file-offset`, and `--length` imply
 `BinaryLoader`; `--processor` aliases `--language`. Raw import does not establish
-an entry point.
+an entry point. Use `disasm-at` and `function create` at a known code address.
 
 ## Functions and code
 
@@ -60,6 +63,11 @@ ghidra function set-return-type abort_path --type void --project target
 ghidra function set-calling-convention parse_header --convention __cdecl --project target
 ghidra function set-noreturn abort_path --project target
 ```
+
+`decompile` accepts a function name or address; `--with-vars` and `--with-params`
+include local-variable and parameter details. After type, name, or signature
+edits, decompile the affected function again. Decompilation has no native time
+limit by default; use `jobs` to inspect long work and `cancel` to request a stop.
 
 Use `disasm-at` when auto-analysis missed a known target. If analysis ran through
 inline data or chose the wrong boundary:
@@ -171,8 +179,7 @@ ghidra analyzer run --project target --program target.bin
 ```
 
 `analyzer set NAME true|false` changes the enabled option; it does not run
-analysis. Use the exact name returned by `analyzer list`, quoting names with
-spaces, then `analyzer run` when reanalysis is intended.
+analysis. Use names from `analyzer list`; run analysis with `analyzer run`.
 
 ## Comments, scripts, batch work, and export
 
@@ -215,3 +222,6 @@ Use `script run PATH` or `script run -` with Java source on stdin.
 variable-length instructions. A missing first instruction is an error; a later
 gap ends successfully with a smaller returned `count`. Check that count. Failed
 nested mutations can retain partial changes; see [persistence semantics](../SKILL.md).
+The current implementation fills with `0x90` on x86 and `0x00` elsewhere; it does
+not assemble ISA-specific NOPs. For other ISAs, use `patch bytes` with the intended
+instruction encoding.

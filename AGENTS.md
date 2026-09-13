@@ -8,6 +8,11 @@ not a shared size target. External docs may link to `SKILL.md` as an entry point
 but must not depend on its internal reference layout. Keep future plans separate
 from implemented behavior. See the [documentation map](docs/README.md).
 
+Write only what helps the reader choose or act. Keep useful examples and
+non-obvious constraints; omit explanations apparent from the examples, generic
+advice, and repeated navigation. Brevity is not a reason to remove domain knowledge
+or recovery guidance.
+
 - Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
   `ghidra doctor` fails. See [test commands and coverage](tests/README.md).
 - Preserve output defaults: human-readable on TTY, `JsonCompact` on non-TTY;
