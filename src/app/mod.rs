@@ -37,7 +37,9 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Version => handle_version(output),
         Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
         Commands::SetDefault(args) => handle_set_default(args.clone(), output),
-        Commands::Project(args) => handle_project_command(args.command.clone(), output),
+        Commands::Project(args) => {
+            handle_project_command(args.command.clone(), &cli.projects_dir, output)
+        }
         // Saving a stopped project is a no-op; do not auto-start it.
         Commands::Program(cli::ProgramCommands::Save(_)) => handle_program_save(cli),
         // Commands requiring bridge
@@ -65,15 +67,11 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         extract_project_from_command(&cli.command).or_else(|| cli.project.clone());
     let project_path = resolve_project_path(&project_from_cmd, &config)?;
 
-    let ghidra_install_dir = config
-        .ghidra_install_dir
-        .clone()
-        .or_else(|| config.get_ghidra_install_dir().ok())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
-            )
-        })?;
+    let ghidra_install_dir = config.get_ghidra_install_dir().map_err(|_| {
+        anyhow::anyhow!(
+            "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
+        )
+    })?;
 
     // Import and Quick produce their own result and don't need execute_via_bridge.
     // Other commands (including Analyze) produce a result via execute_via_bridge.

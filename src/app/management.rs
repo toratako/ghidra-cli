@@ -56,15 +56,11 @@ fn handle_bridge_start(
     let config = load_config(projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
 
-    let ghidra_install_dir = config
-        .ghidra_install_dir
-        .clone()
-        .or_else(|| config.get_ghidra_install_dir().ok())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
-            )
-        })?;
+    let ghidra_install_dir = config.get_ghidra_install_dir().map_err(|_| {
+        anyhow::anyhow!(
+            "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
+        )
+    })?;
 
     // Check if bridge is already running
     if let Some(port) = bridge::is_bridge_running(&project_path) {

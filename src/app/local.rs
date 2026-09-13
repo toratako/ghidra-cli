@@ -146,11 +146,12 @@ pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> a
 
 pub(super) fn handle_project_command(
     cmd: cli::ProjectCommands,
+    projects_dir: &Option<PathBuf>,
     output: Output,
 ) -> anyhow::Result<()> {
     use cli::ProjectCommands;
 
-    let config = Config::load()?;
+    let config = super::project::load_config(projects_dir)?;
     let client = GhidraClient::new(config)?;
 
     match cmd {
@@ -162,18 +163,7 @@ pub(super) fn handle_project_command(
             )?;
         }
         ProjectCommands::List => {
-            let project_dir = client.get_project_dir();
-            let mut projects = Vec::new();
-            if project_dir.exists() {
-                for entry in std::fs::read_dir(project_dir)? {
-                    let entry = entry?;
-                    if entry.path().is_dir() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            projects.push(name.to_string());
-                        }
-                    }
-                }
-            }
+            let projects = crate::ghidra::project::list_projects(client.get_project_dir())?;
             let human = if projects.is_empty() {
                 "No projects found".to_string()
             } else {
@@ -189,27 +179,23 @@ pub(super) fn handle_project_command(
             // basename so absolute project names work too. `create_project` may
             // also have left an empty `<parent>/<basename>` directory.
             let project_path = client.get_project_path(&name);
-            let (basename, parent) = match (project_path.file_name(), project_path.parent()) {
-                (Some(f), Some(p)) => (f.to_string_lossy().to_string(), p.to_path_buf()),
-                _ => {
-                    output.result(
-                        &json!({"project": name, "deleted": false}),
-                        &format!("Project '{}' not found", name),
-                    )?;
-                    return Ok(());
-                }
+            let Some(paths) = crate::ghidra::project::ProjectPaths::new(&project_path) else {
+                output.result(
+                    &json!({"project": name, "deleted": false}),
+                    &format!("Project '{}' not found", name),
+                )?;
+                return Ok(());
             };
-            let gpr = parent.join(format!("{}.gpr", basename));
-            let rep = parent.join(format!("{}.rep", basename));
-            let legacy_dir = project_path.clone();
-
-            if !gpr.exists() && !rep.exists() && !legacy_dir.is_dir() {
+            if !paths.exists() && !paths.is_empty_reservation() {
                 output.result(
                     &json!({"project": name, "deleted": false}),
                     &format!("Project '{}' not found", name),
                 )?;
                 return Ok(());
             }
+            let gpr = paths.descriptor;
+            let rep = paths.data;
+            let legacy_dir = paths.legacy;
 
             // Stop any running bridge first so the JVM releases the project lock
             // before we delete its files. stop_bridge also clears the stale
@@ -223,7 +209,13 @@ pub(super) fn handle_project_command(
                 std::fs::remove_dir_all(&rep)?;
             }
             if legacy_dir.is_dir() {
-                std::fs::remove_dir_all(&legacy_dir)?;
+                // create_project only reserves an empty directory. Contents
+                // added later are not Ghidra's sibling .gpr/.rep artifacts.
+                if let Err(error) = std::fs::remove_dir(&legacy_dir) {
+                    if error.kind() != std::io::ErrorKind::DirectoryNotEmpty {
+                        return Err(error.into());
+                    }
+                }
             }
             output.result(
                 &json!({"project": name, "deleted": true}),

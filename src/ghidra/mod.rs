@@ -1,5 +1,6 @@
 pub mod bridge;
 pub mod java;
+pub(crate) mod project;
 pub mod setup;
 
 use crate::config::Config;
@@ -15,7 +16,7 @@ pub struct GhidraClient {
 impl GhidraClient {
     pub fn new(config: Config) -> Result<Self> {
         let install_dir = config.get_ghidra_install_dir()?;
-        let project_dir = config.get_project_dir()?;
+        let project_dir = std::path::absolute(config.get_project_dir()?)?;
 
         // Create project directory if it doesn't exist
         if !project_dir.exists() {
@@ -39,7 +40,7 @@ impl GhidraClient {
 
     pub fn project_exists(&self, project_name: &str) -> bool {
         let project_path = self.get_project_path(project_name);
-        project_path.exists() && project_path.join(format!("{}.rep", project_name)).exists()
+        project::ProjectPaths::new(&project_path).is_some_and(|paths| paths.exists())
     }
 
     pub fn create_project(&self, project_name: &str) -> Result<()> {

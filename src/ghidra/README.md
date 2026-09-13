@@ -9,6 +9,7 @@
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
 | `setup.rs` | Ghidra download, installation, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
+| `project.rs` | Project descriptor/data paths, persisted-data checks, and project-name enumeration |
 | `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
 | `scripts/ghidracli/` | Java runtime, transport, scheduling, program session, and command handlers; see [Java bridge map](scripts/ghidracli/README.md) |
 

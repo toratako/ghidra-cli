@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::ghidra::project::ProjectPaths;
 use std::path::{Path, PathBuf};
 
 /// Whether a Ghidra project already exists on disk for the given project path.
@@ -7,14 +8,7 @@ use std::path::{Path, PathBuf};
 /// as sibling `<parent>/<name>.gpr` (project file) and `<parent>/<name>.rep`
 /// (project directory). Either marks an existing project.
 pub(super) fn project_exists(project_path: &Path) -> bool {
-    match (project_path.file_name(), project_path.parent()) {
-        (Some(name), Some(parent)) => {
-            let name = name.to_string_lossy();
-            parent.join(format!("{}.gpr", name)).exists()
-                || parent.join(format!("{}.rep", name)).exists()
-        }
-        _ => false,
-    }
+    ProjectPaths::new(project_path).is_some_and(|paths| paths.exists())
 }
 
 /// Whether an import can reuse a project containing persisted program data.
@@ -24,21 +18,7 @@ pub(super) fn project_exists(project_path: &Path) -> bool {
 /// the one-shot importer to initialize such projects.
 /// Real program data lives in bucket subdirectories under `idata`.
 pub(super) fn project_has_program_data(project_path: &Path) -> bool {
-    let (Some(name), Some(parent)) = (project_path.file_name(), project_path.parent()) else {
-        return false;
-    };
-    let name = name.to_string_lossy();
-    let gpr = parent.join(format!("{}.gpr", name));
-    let idata = parent.join(format!("{}.rep", name)).join("idata");
-
-    gpr.is_file()
-        && std::fs::read_dir(idata)
-            .map(|entries| {
-                entries
-                    .filter_map(|entry| entry.ok())
-                    .any(|entry| entry.path().is_dir())
-            })
-            .unwrap_or(false)
+    ProjectPaths::new(project_path).is_some_and(|paths| paths.has_program_data())
 }
 
 /// Load config, applying the global `--projects-dir` override (if any) onto
@@ -65,11 +45,12 @@ pub(super) fn resolve_project_path(
 
     let project_dir = config.get_project_dir()?;
 
-    if PathBuf::from(&project_name).is_absolute() {
-        Ok(PathBuf::from(project_name))
+    let path = if PathBuf::from(&project_name).is_absolute() {
+        PathBuf::from(project_name)
     } else {
-        Ok(project_dir.join(project_name))
-    }
+        project_dir.join(project_name)
+    };
+    Ok(std::path::absolute(path)?)
 }
 
 #[cfg(test)]

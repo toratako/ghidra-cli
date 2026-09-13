@@ -42,6 +42,123 @@ fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
 }
 
 #[test]
+fn project_management_honors_directory_override_and_lists_real_project_names() {
+    let temp = tempfile::tempdir().unwrap();
+    let configured = temp.path().join("configured");
+    let requested = temp.path().join("requested");
+    std::fs::create_dir_all(&configured).unwrap();
+    std::fs::create_dir_all(&requested).unwrap();
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        serde_json::to_vec(&serde_json::json!({
+            "aliases": {}, "ghidra_project_dir": configured,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let command = || {
+        let mut cmd = isolated_command(&temp);
+        cmd.env_remove("GHIDRA_PROJECT_DIR")
+            .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
+            .arg("--projects-dir")
+            .arg(&requested);
+        cmd
+    };
+    command()
+        .args(["project", "create", "target"])
+        .assert()
+        .success();
+    assert!(requested.join("target").is_dir());
+    assert!(!configured.join("target").exists());
+    std::fs::create_dir(configured.join("target")).unwrap();
+    std::fs::create_dir(requested.join("target.rep")).unwrap();
+    std::fs::write(requested.join("target.gpr"), "descriptor").unwrap();
+    let output = command().args(["project", "list"]).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!(["target"])
+    );
+    command()
+        .args(["project", "delete", "target"])
+        .assert()
+        .success();
+    assert!(configured.join("target").is_dir());
+    assert!(!requested.join("target").exists());
+    assert!(!requested.join("target.gpr").exists());
+    assert!(!requested.join("target.rep").exists());
+
+    std::fs::create_dir(requested.join("with-source")).unwrap();
+    std::fs::write(requested.join("with-source/input.bin"), "source data").unwrap();
+    std::fs::write(requested.join("with-source.gpr"), "descriptor").unwrap();
+    std::fs::create_dir(requested.join("with-source.rep")).unwrap();
+    command()
+        .args(["project", "delete", "with-source"])
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read_to_string(requested.join("with-source/input.bin")).unwrap(),
+        "source data"
+    );
+    assert!(!requested.join("with-source.gpr").exists());
+    assert!(!requested.join("with-source.rep").exists());
+    // A remaining source directory alone is neither listed nor recursively removed.
+    let output = command().args(["project", "list"]).output().unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!([])
+    );
+    command()
+        .args(["project", "delete", "with-source"])
+        .assert()
+        .success();
+    assert!(requested.join("with-source/input.bin").exists());
+}
+
+#[test]
+fn launch_resolves_installation_from_environment_before_config() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        serde_json::to_vec(&serde_json::json!({
+            "aliases": {}, "ghidra_install_dir": temp.path().join("config-install"),
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    for args in [
+        vec!["start", "--project", "missing"],
+        vec!["program", "info", "--project", "missing"],
+    ] {
+        let output = isolated_command(&temp)
+            .env(
+                "GHIDRA_INSTALL_DIR",
+                temp.path().join("environment-install"),
+            )
+            .env("XDG_CONFIG_HOME", temp.path().join("config-data"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("environment-install"),
+            "{error}"
+        );
+        assert!(
+            !error["message"]
+                .as_str()
+                .unwrap()
+                .contains("config-install"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn local_results_obey_json_modes() {
     let temp = tempfile::tempdir().unwrap();
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {

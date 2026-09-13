@@ -13,7 +13,7 @@ runtime, and error/exit reporting. These private modules own command workflows.
 | `management.rs` | Start/stop/restart/status/ping/jobs/cancel handlers and explicit save without auto-start |
 | `installation.rs` | Setup and doctor commands |
 | `local.rs` | Initialization, version, configuration, defaults, and project commands |
-| `project.rs` | Configuration override and project path resolution, plus persisted-project checks |
+| `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
 Command-level project/program options retain their precedence over global options
 and configured defaults. Filter validation runs before bridge work. Bridge recovery

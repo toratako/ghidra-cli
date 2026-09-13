@@ -13,6 +13,11 @@ installation and compiles the embedded bridge bundle.
 ## Project configuration
 
 `--projects-dir DIR` overrides the `ghidra_project_dir` config key.
+This applies to project creation, listing, information, and deletion as well as
+bridge commands. `GHIDRA_INSTALL_DIR` overrides the configured installation for
+both doctor and command execution.
+Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
+reserved by `project create`; a nonempty same-named directory is retained.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
 the default falls back from the cache directory to `~/ghidra-cli-projects`.
 
