@@ -1,3 +1,4 @@
+mod batch;
 mod execute;
 mod import;
 mod installation;
@@ -11,6 +12,7 @@ use crate::cli::{self, Cli, Commands};
 use crate::filter;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
+use clap::Parser;
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
@@ -50,10 +52,21 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
 
 /// Run a command that requires the bridge.
 fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
-    let output = Output::new(&cli);
+    let result = execute_bridge_command(&cli)?;
+    output::print_result(&cli, result)
+}
+
+fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
+    if matches!(
+        cli.command,
+        Commands::Program(cli::ProgramCommands::Save(_))
+    ) {
+        return management::program_save_result(cli).map(|(result, _)| result);
+    }
+    let output = Output::new(cli);
     // Reject a malformed --filter up front, before any bridge work: the bridge
     // fetch for a filtered query pulls the *full* dataset, so failing late
-    // wastes that transfer (and used to silently dump it — TODO.md Bug 2).
+    // wastes that transfer.
     if let Some(opts) = extract_query_options(&cli.command) {
         if let Some(expr) = &opts.filter {
             filter::Filter::parse(expr).map_err(describe_query_error)?;
@@ -77,7 +90,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
     // Other commands (including Analyze) produce a result via execute_via_bridge.
     let result = match &cli.command {
         Commands::Import(args) => {
-            import::run_import(&cli, args, &project_path, &ghidra_install_dir)?
+            import::run_import(cli, args, &project_path, &ghidra_install_dir)?
         }
 
         _ => {
@@ -126,12 +139,36 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 client.open_program(requested_program)?;
             }
 
-            let first_attempt = execute_via_bridge(
-                &client,
-                &cli.command,
-                output.quiet || output.json,
-                config.default_limit,
-            );
+            let execute = |client: &BridgeClient| {
+                if let Commands::Batch(args) = &cli.command {
+                    let content = std::fs::read_to_string(&args.script_file)
+                        .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
+                    batch::execute_batch(&content, |line| {
+                        let mut sub_cli = Cli::try_parse_from(
+                            std::iter::once("ghidra-cli").chain(line.split_whitespace()),
+                        )?;
+                        // Unspecified targets retain the batch's project and current
+                        // selection. Explicit per-line targets use normal routing.
+                        if sub_cli.project.is_none() {
+                            sub_cli.project = Some(project_path.to_string_lossy().into_owned());
+                        }
+                        if sub_cli.projects_dir.is_none() {
+                            sub_cli.projects_dir = cli.projects_dir.clone();
+                        }
+                        sub_cli.quiet = true;
+                        let result = execute_bridge_command(&sub_cli)?;
+                        output::process_batch_result(&sub_cli.command, result)
+                    })
+                } else {
+                    execute_via_bridge(
+                        client,
+                        &cli.command,
+                        output.quiet || output.json,
+                        config.default_limit,
+                    )
+                }
+            };
+            let first_attempt = execute(&client);
             // Restart on "Unknown command" (old bridge lacks the handler) OR on a
             // stale list_functions response: an old bridge silently ignores the
             // newer tags/untagged args and returns a successful, UNFILTERED list.
@@ -167,18 +204,13 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
 
                     // One restart per invocation: the retry result is accepted
                     // (or its error propagated) without re-probing.
-                    execute_via_bridge(
-                        &retry_client,
-                        &cli.command,
-                        output.quiet || output.json,
-                        config.default_limit,
-                    )?
+                    execute(&retry_client)?
                 }
             }
         }
     };
 
-    output::print_result(&cli, result)
+    Ok(result)
 }
 
 fn is_unknown_command_error(err: &anyhow::Error) -> bool {

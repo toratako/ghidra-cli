@@ -1,0 +1,253 @@
+//! CLI routing contracts, verified against recorded requests without Ghidra.
+
+use ghidra_cli::ghidra::bridge;
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+struct RecordedBridge {
+    root: tempfile::TempDir,
+    project: PathBuf,
+    port: u16,
+    requests: Arc<Mutex<Vec<Value>>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl RecordedBridge {
+    fn new() -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("projects/project");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(bridge::port_file_path(&project).unwrap(), port.to_string()).unwrap();
+        std::fs::write(
+            bridge::pid_file_path(&project).unwrap(),
+            std::process::id().to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("config.yaml"),
+            "aliases: {}\ndefault_limit: 1\n",
+        )
+        .unwrap();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let captured = requests.clone();
+        let worker = std::thread::spawn(move || {
+            let mut program = String::from("A");
+            for connection in listener.incoming() {
+                let mut connection = connection.unwrap();
+                connection
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(&connection).read_line(&mut line).unwrap();
+                if line.is_empty() {
+                    continue;
+                }
+                let request: Value = serde_json::from_str(&line).unwrap();
+                if request["command"] == "test_stop" {
+                    break;
+                }
+                captured.lock().unwrap().push(request.clone());
+                let args = &request["args"];
+                let data = match request["command"].as_str().unwrap() {
+                    "bridge_info" => json!({"auto_save": true}),
+                    "open_program" => {
+                        program = args["program"].as_str().unwrap().to_owned();
+                        json!({"program": program})
+                    }
+                    "import" => json!({"program": "imported"}),
+                    "list_imports" | "list_exports" => {
+                        let mut rows = vec![json!({"name": "first"}), json!({"name": "second"})];
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        let key = if request["command"] == "list_imports" {
+                            "imports"
+                        } else {
+                            "exports"
+                        };
+                        json!({key: rows, "count": rows.len()})
+                    }
+                    _ => json!({"observed_program": program}),
+                };
+                writeln!(connection, "{}", json!({"status": "success", "data": data})).unwrap();
+            }
+        });
+        Self {
+            root,
+            project,
+            port,
+            requests,
+            worker: Some(worker),
+        }
+    }
+
+    fn command(&self) -> assert_cmd::Command {
+        let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
+        cmd.current_dir(self.root.path())
+            .env("GHIDRA_CLI_CONFIG", self.root.path().join("config.yaml"))
+            .env(
+                "GHIDRA_INSTALL_DIR",
+                self.root.path().join("unused-install"),
+            )
+            .env_remove("GHIDRA_DEFAULT_PROJECT")
+            .env_remove("GHIDRA_DEFAULT_PROGRAM")
+            .arg("--project")
+            .arg(&self.project)
+            .timeout(std::time::Duration::from_secs(15));
+        cmd
+    }
+
+    fn run(&self, args: &[&str]) -> Value {
+        let output = self.command().args(args).output().unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        serde_json::from_slice(&output.stdout).unwrap()
+    }
+}
+
+impl Drop for RecordedBridge {
+    fn drop(&mut self) {
+        if let Ok(mut connection) = TcpStream::connect(("127.0.0.1", self.port)) {
+            let _ = writeln!(connection, "{{\"command\":\"test_stop\"}}");
+        }
+        let _ = self.worker.take().unwrap().join();
+        let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
+        let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn batch_routes_each_target_and_keeps_explicit_program_switches() {
+    let first = RecordedBridge::new();
+    let second = RecordedBridge::new();
+    std::fs::write(
+        first.root.path().join("nested.txt"),
+        "comment set 1000 nested --program C\n",
+    )
+    .unwrap();
+    std::fs::write(first.root.path().join("batch.txt"), format!(
+        "comment set 1000 marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
+        second.project.display(),
+    )).unwrap();
+    let result = first.run(&["batch", "batch.txt", "--program", "A"]);
+    let rows = &result[0]["results"];
+    assert_eq!(rows[0]["result"]["observed_program"], "B");
+    assert_eq!(rows[1]["result"]["observed_program"], "B");
+    assert_eq!(
+        rows[2]["result"]["results"][0]["result"]["observed_program"],
+        "C"
+    );
+    assert_eq!(rows[3]["result"]["observed_program"], "D");
+    assert_eq!(
+        second.requests.lock().unwrap().last().unwrap()["command"],
+        "program_info"
+    );
+}
+
+#[test]
+fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("batch.txt"), "program info\n").unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .current_dir(bridge.root.path())
+        .env("GHIDRA_CLI_CONFIG", bridge.root.path().join("config.yaml"))
+        .env(
+            "GHIDRA_INSTALL_DIR",
+            bridge.root.path().join("unused-install"),
+        )
+        .env_remove("GHIDRA_PROJECT_DIR")
+        .env_remove("GHIDRA_DEFAULT_PROJECT")
+        .env_remove("GHIDRA_DEFAULT_PROGRAM")
+        .args([
+            "--projects-dir",
+            "projects",
+            "--project",
+            "project",
+            "batch",
+            "batch.txt",
+        ])
+        .timeout(std::time::Duration::from_secs(15))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result[0]["results"][0]["result"]["observed_program"], "A");
+}
+
+#[test]
+fn batch_save_of_a_stopped_project_does_not_start_it() {
+    let bridge = RecordedBridge::new();
+    let stopped = bridge.root.path().join("stopped");
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        format!("program save --project {}\n", stopped.display(),),
+    )
+    .unwrap();
+    let result = bridge.run(&["batch", "batch.txt"]);
+    assert_eq!(result[0]["results"][0]["result"]["state"], "stopped");
+    assert_eq!(result[0]["results"][0]["result"]["saved"], false);
+}
+
+#[test]
+fn imports_and_exports_paginate_after_fetching_for_queries_and_batches() {
+    let bridge = RecordedBridge::new();
+    for command in ["query", "dump"] {
+        for kind in ["imports", "exports"] {
+            let args = [command, kind, "--offset", "1", "--limit", "1"];
+            assert_eq!(bridge.run(&args), json!([{"name": "second"}]));
+            std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+            assert_eq!(
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"],
+                json!([{"name": "second"}])
+            );
+            assert_eq!(bridge.run(&[command, kind, "--count"]), json!(2));
+        }
+    }
+}
+
+#[test]
+fn ndjson_contains_exactly_one_document_per_line() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args(["query", "imports", "--limit", "0", "-o", "ndjson"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let output = String::from_utf8(output.stdout).unwrap();
+    let rows = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        vec![json!({"name": "first"}), json!({"name": "second"})]
+    );
+}
+
+#[test]
+fn os_file_paths_are_resolved_in_the_cli_working_directory() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+    bridge.run(&["import", "binary", "--no-analyze"]);
+    bridge.run(&["program", "export", "json", "-o", "export.json"]);
+    bridge.run(&["patch", "export", "-o", "patched.bin"]);
+    let requests = bridge.requests.lock().unwrap();
+    for (command, key, filename) in [
+        ("import", "binary_path", "binary"),
+        ("program_export", "output", "export.json"),
+        ("patch_export", "output", "patched.bin"),
+    ] {
+        let request = requests.iter().find(|r| r["command"] == command).unwrap();
+        let actual = PathBuf::from(request["args"][key].as_str().unwrap());
+        assert!(actual.is_absolute(), "{request}");
+        assert_eq!(actual.file_name().unwrap(), filename);
+        assert_eq!(
+            actual.parent().unwrap().canonicalize().unwrap(),
+            bridge.root.path().canonicalize().unwrap()
+        );
+    }
+}

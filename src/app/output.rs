@@ -172,6 +172,23 @@ fn output_format(cli: &Cli) -> OutputFormat {
     }
 }
 
+/// Keep batch results structured while applying the same row selection as a
+/// standalone command. Unmodified results retain their bridge envelope.
+pub(super) fn process_batch_result(
+    command: &Commands,
+    result: serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    if let Some(opts) = extract_query_options(command) {
+        if let Some(query) =
+            Query::from_options(&opts, OutputFormat::JsonCompact).map_err(describe_query_error)?
+        {
+            let json = query.process_results(unwrap_bridge_response(result))?;
+            return Ok(serde_json::from_str(&json)?);
+        }
+    }
+    Ok(result)
+}
+
 pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Result<()> {
     if !cli.quiet {
         check_dotnet_decompile_warning(&cli.command, &result);

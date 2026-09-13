@@ -7,7 +7,8 @@ runtime, and error/exit reporting. These private modules own command workflows.
 |------|----------------|
 | `mod.rs` | Command routing, early filter validation, bridge/program selection, and one-restart compatibility recovery |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
-| `execute.rs` | Convert commands to bridge requests, including batch dispatch, range parsing, and symbol mutation guards |
+| `execute.rs` | Convert commands to bridge requests, with shared list-fetch limits, range parsing, and symbol mutation guards |
+| `batch.rs` | Aggregate attempted command results and stop on save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
 | `management.rs` | Start/stop/restart/status/ping/jobs/cancel handlers and explicit save without auto-start |
@@ -26,6 +27,9 @@ startup program.
 Batch errors retain attempted results and structured details in the error
 envelope. Ordinary errors allow later commands to run; save failures and timeouts
 stop execution. Preserve the timeout error type through batch context for exit 75.
+Each batch line uses normal target resolution and compatibility recovery. An
+omitted project inherits the batch project; an omitted program keeps that
+project's current selection. Query modifiers apply within each structured result.
 Output precedence remains explicit format, pretty JSON, compact JSON, then TTY
 detection; query processing follows response-envelope extraction.
 `output.rs` shares report rendering; `src/terminal.rs` handles the streams:

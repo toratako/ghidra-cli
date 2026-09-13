@@ -41,7 +41,7 @@ jobs:
         run: cargo test --lib --verbose
 
       - name: Run CLI tests
-        run: cargo test --test e2e --test output_format_integration --test harness_tests --verbose
+        run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 
   # Job 2: Ghidra setup - installs Ghidra to seed installation caches.
   # This runs once per OS, then test jobs use the cached artifacts.

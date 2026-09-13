@@ -114,6 +114,12 @@ fn handle_bridge_stop(
 /// Flush pending changes in place; a stopped bridge has nothing pending.
 pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     let output = Output::new(&cli);
+    let (result, message) = program_save_result(&cli)?;
+    output.result(&result, &message)
+}
+
+pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> {
+    let output = Output::new(cli);
     let Commands::Program(cli::ProgramCommands::Save(args)) = &cli.command else {
         unreachable!("handle_program_save dispatched for a non-Save Program command");
     };
@@ -122,13 +128,13 @@ pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     let config = load_config(&cli.projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
     let Some(port) = bridge::is_bridge_running(&project_path) else {
-        return output.result(
-            &json!({"saved": false, "state": "stopped", "project": project_path}),
-            &format!(
+        return Ok((
+            json!({"saved": false, "state": "stopped", "project": project_path}),
+            format!(
                 "No bridge running for project: {} — nothing pending to save.",
                 project_path.display()
             ),
-        );
+        ));
     };
     let ghidra_install_dir = config.get_ghidra_install_dir()?;
     let client = super::ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?;
@@ -142,7 +148,7 @@ pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     } else {
         "No program open — nothing pending to save."
     };
-    output.result(&result, message)
+    Ok((result, message.to_owned()))
 }
 
 /// Get bridge status for a project. A stopped bridge is a valid status result.

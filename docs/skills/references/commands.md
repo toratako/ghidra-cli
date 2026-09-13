@@ -210,6 +210,12 @@ ghidra-cli patch export -o ./target.patched.bin --project target
 ```
 
 A batch file contains one subcommand per line without the `ghidra-cli` prefix.
+Per-line `--project` and `--program` select the target as in a standalone command.
+Without them, the line uses the batch project and its current program selection;
+an explicit program switch remains active for subsequent lines in that project.
+Filters, fields, sorting, limits, and counts apply to each line's result.
+Import inputs and program/patch export destinations resolve relative to the CLI's
+working directory, including when reusing a bridge started elsewhere.
 
 Script paths resolve absolutely; arguments after `--` and captured stdout are
 returned with the result. Repeat `--expect PATH[:MIN_ROWS]` to reject missing,

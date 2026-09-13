@@ -18,6 +18,7 @@ pub(super) fn run_import(
     if !binary_path.exists() {
         anyhow::bail!("Binary not found: {}", args.binary);
     }
+    let binary_path = std::fs::canonicalize(binary_path)?;
     let (one_shot_options, explicit_loader_control) = build_oneshot_import_options(args)?;
 
     // Acquire a bridge connection, the imported program's name, and whether
@@ -57,7 +58,8 @@ pub(super) fn run_import(
         // a bridge left running by an older CLI.
         let client = super::ensure_autosave_bridge(port, project_path, ghidra_install_dir, output)?;
         output.progress("Importing into running bridge...");
-        let result = client.import_binary(&args.binary, args.program.as_deref())?;
+        let result =
+            client.import_binary(&binary_path.to_string_lossy(), args.program.as_deref())?;
         let name = args.program.clone().unwrap_or_else(|| {
             result
                 .get("program")
@@ -75,7 +77,8 @@ pub(super) fn run_import(
             BridgeStartMode::Project,
         )?;
         let client = BridgeClient::new(port);
-        let result = client.import_binary(&args.binary, args.program.as_deref())?;
+        let result =
+            client.import_binary(&binary_path.to_string_lossy(), args.program.as_deref())?;
         let name = args.program.clone().unwrap_or_else(|| {
             result
                 .get("program")

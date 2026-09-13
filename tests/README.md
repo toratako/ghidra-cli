@@ -33,7 +33,7 @@ For a targeted run:
 cargo test --lib --bin ghidra-cli
 cargo test --test daemon_tests
 # These suites do not require Ghidra or a JDK installation:
-cargo test --test e2e --test output_format_integration --test harness_tests
+cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests
 ```
 
 `command_tests::test_doctor` verifies a working Ghidra/JDK installation in CI's
@@ -62,6 +62,7 @@ response schemas without snapshots. CI suite groupings are in
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version, doctor, config, init |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
+| `routing_tests` | Recorded bridge requests: batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
 
 `daemon_tests` also checks cancellation does not poison the next job, handlers
