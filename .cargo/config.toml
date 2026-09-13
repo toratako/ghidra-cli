@@ -1,0 +1,2 @@
+[alias]
+test-run = "run --quiet --example test-runner --"

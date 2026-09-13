@@ -107,33 +107,47 @@ pub fn import_oneshot(
     let stdout_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut saw_success = false;
+        let mut diagnostics = std::collections::VecDeque::new();
         for line in reader.lines().map_while(Result::ok) {
             info!("[Ghidra import stdout] {}", line);
             if line.contains("Import succeeded") || line.contains("REPORT: Save succeeded") {
                 saw_success = true;
             }
+            if diagnostics.len() == 20 {
+                diagnostics.pop_front();
+            }
+            diagnostics.push_back(line);
         }
-        saw_success
+        (
+            saw_success,
+            diagnostics.into_iter().collect::<Vec<_>>().join("\n"),
+        )
     });
     let stderr = child.stderr.take().expect("stderr should be piped");
     let stderr_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
-        let mut last_error = String::new();
+        let mut diagnostics = std::collections::VecDeque::new();
         for line in reader.lines().map_while(Result::ok) {
             info!("[Ghidra import stderr] {}", line);
-            if line.contains("ERROR") || line.contains("Exception") || line.contains("Abort") {
-                last_error = line.clone();
+            if diagnostics.len() == 20 {
+                diagnostics.pop_front();
             }
+            diagnostics.push_back(line);
         }
-        last_error
+        diagnostics.into_iter().collect::<Vec<_>>().join("\n")
     });
 
     let status = child
         .wait()
         .context("Failed to wait for Ghidra headless import")?;
 
-    let saw_success = stdout_handle.join().unwrap_or(false);
-    let last_error = stderr_handle.join().unwrap_or_default();
+    let (saw_success, stdout_tail) = stdout_handle.join().unwrap_or_default();
+    let stderr_tail = stderr_handle.join().unwrap_or_default();
+    let last_error = [stdout_tail, stderr_tail]
+        .into_iter()
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     if !status.success() {
         anyhow::bail!(

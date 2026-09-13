@@ -111,6 +111,7 @@ fn suite_resources_are_isolated_and_cleaned_on_exit() {
                 "suite_resources_are_isolated_and_cleaned_on_exit",
             ])
             .env(CHILD_REPORT, &report)
+            .env_remove(common::fixture::RUN_DIR_ENV)
             .env("GHIDRA_CLI_CONFIG", reports.path().join("config.yaml"))
             .env("GHIDRA_PROJECT_DIR", reports.path())
             .output()
@@ -127,6 +128,178 @@ fn suite_resources_are_isolated_and_cleaned_on_exit() {
     assert_ne!(
         projects[0], projects[1],
         "Test runs must not share projects"
+    );
+}
+
+#[test]
+fn doctor_runs_once_for_concurrent_callers() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let check = common::DoctorCheck::default();
+    let calls = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                check.require_with(|| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(doctor_output(true, HEALTHY, ""))
+                });
+            });
+        }
+    });
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn doctor_failure_is_replayed_without_rerunning() {
+    let check = common::DoctorCheck::default();
+    assert!(std::panic::catch_unwind(|| {
+        check.require_with(|| Ok(doctor_output(false, HEALTHY, "broken JDK")));
+    })
+    .is_err());
+    let panic = std::panic::catch_unwind(|| {
+        check.require_with(|| panic!("doctor ran again"));
+    })
+    .unwrap_err();
+    assert!(panic
+        .downcast_ref::<String>()
+        .unwrap()
+        .contains("broken JDK"));
+
+    let check = common::DoctorCheck::default();
+    for _ in 0..2 {
+        let panic = std::panic::catch_unwind(|| {
+            check.require_with(|| Err("cannot spawn doctor".to_string()));
+        })
+        .unwrap_err();
+        assert!(panic
+            .downcast_ref::<String>()
+            .unwrap()
+            .contains("cannot spawn doctor"));
+    }
+}
+
+#[test]
+fn shared_fixture_survives_suite_exit() {
+    const REPORT: &str = "GHIDRA_SHARED_FIXTURE_REPORT";
+    if let Some(report) = std::env::var_os(REPORT) {
+        std::fs::write(report, common::fixture_binary().to_str().unwrap()).unwrap();
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for i in 0..2 {
+        let report = root.path().join(format!("report-{i}"));
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "shared_fixture_survives_suite_exit"])
+            .env(common::fixture::RUN_DIR_ENV, root.path())
+            .env(REPORT, &report)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        paths.push(std::path::PathBuf::from(
+            std::fs::read_to_string(report).unwrap(),
+        ));
+    }
+    assert_eq!(paths[0], paths[1]);
+    assert!(
+        paths[0].is_file(),
+        "A suite removed the run's shared fixture"
+    );
+    root.close().unwrap();
+    assert!(!paths[0].exists());
+}
+
+fn fake_project(dir: &std::path::Path) -> anyhow::Result<()> {
+    std::fs::write(dir.join("project.gpr"), b"")?;
+    std::fs::create_dir_all(dir.join("project.rep/idata/00"))?;
+    std::fs::write(dir.join("project.rep/idata/00/data"), b"original")?;
+    Ok(())
+}
+
+#[test]
+fn fixture_publication_is_serialized_across_processes() {
+    const ROOT: &str = "GHIDRA_PUBLICATION_TEST_ROOT";
+    if let Some(root) = std::env::var_os(ROOT) {
+        let root = std::path::PathBuf::from(root);
+        let source = common::fixture::publish_once(&root, "analyzed", |dir| {
+            // create_new makes duplicate initialization fail even if serialized.
+            std::fs::File::create_new(root.join("built-once"))?;
+            fake_project(dir)
+        })
+        .unwrap();
+        assert_eq!(
+            std::fs::read(source.join("project.rep/idata/00/data")).unwrap(),
+            b"original"
+        );
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let children: Vec<_> = (0..4)
+        .map(|_| {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "fixture_publication_is_serialized_across_processes",
+                ])
+                .env(ROOT, root.path())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    for child in children {
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+    }
+}
+
+#[test]
+fn failed_fixture_is_not_published_or_rebuilt_in_the_same_run() {
+    let root = tempfile::tempdir().unwrap();
+    let error = common::fixture::publish_once(root.path(), "analyzed", |dir| {
+        fake_project(dir)?;
+        anyhow::bail!("analysis failed")
+    })
+    .unwrap_err();
+    assert!(error.to_string().contains("analysis failed"));
+    assert!(!root.path().join("analyzed").exists());
+    let error = common::fixture::publish_once(root.path(), "analyzed", |_| {
+        panic!("Failed analysis ran again");
+    })
+    .unwrap_err();
+    assert!(error.to_string().contains("analysis failed"));
+    let next_run = tempfile::tempdir().unwrap();
+    assert!(common::fixture::publish_once(next_run.path(), "analyzed", fake_project).is_ok());
+}
+
+#[test]
+fn project_copies_do_not_share_files_or_overwrite_existing_projects() {
+    let root = tempfile::tempdir().unwrap();
+    let seed = root.path().join("source");
+    std::fs::create_dir(&seed).unwrap();
+    fake_project(&seed).unwrap();
+    std::fs::write(seed.join("project.lock"), b"stale").unwrap();
+    let first = root.path().join("first/project");
+    let second = root.path().join("second/project");
+    common::fixture::copy_project(&seed.join("project"), &first).unwrap();
+    common::fixture::copy_project(&seed.join("project"), &second).unwrap();
+    std::fs::write(
+        first.with_extension("rep").join("idata/00/data"),
+        b"changed",
+    )
+    .unwrap();
+    for project in [&seed.join("project"), &second] {
+        assert_eq!(
+            std::fs::read(project.with_extension("rep").join("idata/00/data")).unwrap(),
+            b"original"
+        );
+    }
+    assert!(!first.with_extension("lock").exists());
+    assert!(common::fixture::copy_project(&seed.join("project"), &first).is_err());
+    assert_eq!(
+        std::fs::read(first.with_extension("rep").join("idata/00/data")).unwrap(),
+        b"changed"
     );
 }
 

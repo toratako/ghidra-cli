@@ -62,27 +62,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run unit tests
-        run: cargo test --lib --verbose
-
-      - name: Run CLI tests
-        run: cargo test --test e2e --test output_format_integration --test harness_tests --verbose
-
-      - name: Run read-only integration tests
-        run: cargo test --test readonly_tests --test command_tests --verbose -- --nocapture
-        timeout-minutes: 30
-        env:
-          RUST_LOG: info
-
-      - name: Run mutation integration tests
-        run: cargo test --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
-        timeout-minutes: 30
-        env:
-          RUST_LOG: info
-
-      - name: Run infrastructure tests
-        run: cargo test --test daemon_tests --test reliability_tests --test project_tests --verbose -- --nocapture
-        timeout-minutes: 30
+      - name: Run all tests
+        run: cargo test-run --no-fail-fast --verbose -- --nocapture
+        timeout-minutes: 80
         env:
           RUST_LOG: info
 

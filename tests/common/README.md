@@ -2,7 +2,8 @@
 
 | Source | Responsibility |
 |---|---|
-| [mod.rs](mod.rs) | `DaemonTestHarness`, per-executable project/fixture setup, availability checks, cleanup |
+| [mod.rs](mod.rs) | `DaemonTestHarness`, per-executable project ownership, availability checks, cleanup |
+| [fixture.rs](fixture.rs) | Run-scoped binary and analyzed source, publication locking, isolated copies |
 | [helpers.rs](helpers.rs) | `GhidraCommand`, `GhidraResult`, name matching and assertions |
 | [schemas.rs](schemas.rs) | Response validation |
 
@@ -35,9 +36,27 @@ serial execution, test commands, and unbootstrapped snapshots.
 
 ## Lifecycle boundaries
 
-`test_project()` allocates a fresh absolute project path per test executable.
-`ensure_test_project()` imports/analyzes the fixture once; import and stop failures
-fail setup immediately. Projects from previous runs or other suites are not reused.
+`test_project()` allocates a fresh directory per test executable, keeping the
+source project basename `project`. `ensure_test_project()` copies the run's closed,
+analyzed source into it once. Never open or mutate the source with a bridge.
+
+`tests/support/test_runner.rs` supplies `GHIDRA_TEST_RUN_DIR` and removes it after Cargo
+exits, including on test failure. Without the runner, each executable owns local
+fixture storage. The environment variable is internal to the runner and test
+helpers; it must not point to a persistent cache. Parent configuration and source
+files must remain fixed during an invocation.
+
+`fixture.rs` uses an OS file lock for each preparation stage and publishes by
+directory rename only after successful completion. Failed preparation is recorded
+for the rest of the invocation; later suites fail with the original diagnostic.
+An interrupted builder cannot publish a partial source. A subsequent runner
+invocation always starts fresh. Copies use ordinary files, preserve the project
+basename, and omit sibling lock/discovery files. Existing destinations are rejected.
+
+`require_ghidra!()` delegates to a shared `DoctorCheck` in this module, so macro
+expansion does not create one cache per test. The output or spawn failure is
+retained and checked by every caller. Direct doctor calls remain available for
+tests of changed environments and doctor itself.
 
 `DaemonTestHarness::new()` calls the bridge lifecycle API directly so startup
 errors reach callers intact. It records the PID as well as the discovered port.
@@ -45,5 +64,6 @@ Drop calls `stop_bridge()` for drain/force termination, then waits for both the
 original and current PIDs (restart may change them) to release project locks:
 up to 15s per PID, or 30s on Windows, after stop. It removes stale discovery files
 and the harness data directory. Suite-exit cleanup also stops the bridge and
-removes the generated project/fixture; statics do not receive normal Rust Drop.
+removes the suite project and any locally owned fixture; shared sources belong
+to the runner. Statics do not receive normal Rust Drop.
 Cleanup remains best effort under forced process termination.

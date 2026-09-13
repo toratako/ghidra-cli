@@ -18,13 +18,12 @@ fn test_version() {
 
 #[test]
 fn test_doctor() {
-    require_ghidra!();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("doctor")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Ghidra CLI Doctor"));
+        .output()
+        .expect("Failed to run doctor");
+    common::assert_doctor_ready(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Ghidra CLI Doctor"));
 }
 
 #[test]

@@ -91,3 +91,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "ghidra"
 path = "src/main.rs"
+
+[[example]]
+name = "test-runner"
+path = "tests/support/test_runner.rs"

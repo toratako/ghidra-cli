@@ -3,14 +3,29 @@
 ## Run
 
 ```bash
-cargo test --no-fail-fast
+cargo test-run --no-fail-fast
 cargo fmt --all -- --check
 cargo clippy -- -D warnings
 ```
 
 Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
-checks `ghidra doctor` and panics with its output; never turn that into a skip.
+checks `ghidra doctor` once per test executable and retains failures with their
+diagnostics; never turn a failed prerequisite into a skip. The parent test
+process must keep its Ghidra/JDK configuration fixed. Tests of doctor itself or
+changed child environments invoke doctor directly.
 Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK.
+
+`cargo test-run` forwards all arguments to `cargo test` and owns a temporary
+fixture directory for that invocation. It preserves Cargo's test execution order
+and returns its failure status. Each invocation gets a fresh source; nothing is
+reused from a previous run. `--help` shows Cargo's test options.
+
+Plain `cargo test` remains supported, with fixture reuse limited to each test
+executable. Use `test-run` when selecting several Ghidra suites:
+
+```bash
+cargo test-run --test comment_tests --test type_tests
+```
 
 For a targeted run:
 
@@ -39,6 +54,7 @@ response schemas without snapshots. CI suite groupings are in
 | `daemon_tests`, `reliability_tests`, `project_tests` | Lifecycle, restart/stale-state recovery, project management |
 | `readonly_tests` | Read queries and response schemas |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
+| `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version, doctor, config, init |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
@@ -54,14 +70,22 @@ for shared-state tests. Never share projects across suites/runs or assume fixed
 function addresses; look them up by name.
 
 `fixture_binary()` compiles [sample_binary.rs](fixtures/sample_binary.rs) with
-`rustc` once per executable into temporary storage. It keeps function symbols,
+`rustc` once per runner invocation into temporary storage. It keeps function symbols,
 exercises exports, and strips debug information to avoid expensive standard-library
 DWARF analysis. It uses the host format (`.exe` on Windows); no binary fixture
-or manual build is needed. Setup/import failures fail the tests.
+or manual build is needed. The first suite that needs analysis runs the one-shot
+importer and waits for Ghidra to save and exit. Each suite receives ordinary file
+copies of that closed project in its own directory. Setup never starts a bridge;
+the suite's harness starts it when needed. CLI import/analysis tests still create
+new projects and exercise the real commands. Setup/import failures fail the tests.
+
+With `-- --nocapture`, `[test setup]` lines report doctor, fixture compilation,
+analysis, copy, and bridge startup times. Harness teardown reports shutdown time;
+the runner reports total elapsed time after Cargo exits.
 
 See [common helpers and a test example](common/README.md) when adding tests.
 Harness Drop and suite-exit cleanup are best effort; forced termination can leave
 processes/projects behind. For slow startup, start with `ghidra doctor`; for
 stale discovery files, inspect the owning project/process before cleanup.
-Import/analysis setup currently has a 300s budget that can be tight under load;
+CLI import/analysis tests currently have a 300s budget that can be tight under load;
 see the [open TODO](../docs/TODO.md). Reducing parallel suites can reduce pressure.

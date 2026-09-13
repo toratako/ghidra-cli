@@ -7,6 +7,7 @@
 
 #![allow(dead_code, unused_imports)]
 
+pub mod fixture;
 pub mod helpers;
 pub mod schemas;
 
@@ -29,8 +30,9 @@ pub const FIXTURE_PROGRAM: &str = if cfg!(windows) {
     "sample_binary"
 };
 
-static FIXTURE: OnceLock<tempfile::TempDir> = OnceLock::new();
-static PROJECT: OnceLock<PathBuf> = OnceLock::new();
+pub use fixture::fixture_binary;
+
+static PROJECT: OnceLock<(tempfile::TempDir, PathBuf)> = OnceLock::new();
 
 fn register_cleanup() {
     static REGISTER: Once = Once::new();
@@ -47,120 +49,62 @@ fn register_cleanup() {
 
 extern "C" fn cleanup_suite() {
     let _ = std::panic::catch_unwind(|| {
-        if let Some(project) = PROJECT.get() {
+        if let Some((directory, project)) = PROJECT.get() {
             // Rust statics are not dropped. Explicitly stop the suite's bridge
             // before removing its unique project, including on test failures.
             if ghidra_cli::ghidra::bridge::stop_bridge(project).is_ok() {
                 let _ = std::fs::remove_file(project.with_extension("gpr"));
                 let _ = std::fs::remove_dir_all(project.with_extension("rep"));
+                let _ = std::fs::remove_dir_all(directory.path());
             }
         }
-        if let Some(fixture) = FIXTURE.get() {
-            let _ = std::fs::remove_dir_all(fixture.path());
-        }
+        fixture::cleanup();
     });
 }
 
-/// Build the host-native fixture once per test executable, outside the source tree.
-pub fn fixture_binary() -> PathBuf {
-    register_cleanup();
-    let dir = FIXTURE.get_or_init(|| {
-        let dir = tempfile::Builder::new()
-            .prefix("ghidra-fixture-")
-            .tempdir()
-            .expect("Failed to create fixture directory");
-        let output = std::process::Command::new("rustc")
-            .args(["--edition", "2021", "-C", "strip=debuginfo"])
-            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample_binary.rs"))
-            .arg("-o")
-            .arg(dir.path().join(FIXTURE_PROGRAM))
-            .output()
-            .expect("Failed to run rustc for test fixture");
-        assert!(
-            output.status.success(),
-            "Fixture compilation failed: {}\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        dir
-    });
-    dir.path().join(FIXTURE_PROGRAM)
-}
-
-/// Each test executable and run gets a fresh project, so mutations never affect
-/// another suite or a later run. Absolute paths also isolate CLI config changes.
+/// Each suite opens its own copy under a unique directory. Keep the source's
+/// project basename so relocation does not require editing Ghidra metadata.
 pub fn test_project() -> &'static str {
     register_cleanup();
     PROJECT
         .get_or_init(|| {
-            ghidra_cli::config::Config::load()
+            let root = ghidra_cli::config::Config::load()
                 .and_then(|config| config.get_project_dir())
-                .expect("Could not determine project dir")
-                .join(format!("ghidra-test-{}", uuid::Uuid::new_v4()))
+                .expect("Could not determine project dir");
+            std::fs::create_dir_all(&root).expect("Failed to create project directory");
+            let root = dunce::canonicalize(root).expect("Failed to resolve project directory");
+            let dir = tempfile::Builder::new()
+                .prefix("ghidra-test-")
+                .tempdir_in(root)
+                .expect("Failed to create suite project directory");
+            let project = dir.path().join(fixture::PROJECT_NAME);
+            (dir, project)
         })
+        .1
         .to_str()
         .expect("Test project path is not UTF-8")
 }
 
-/// Import and analyze once for this suite. Setup failures must fail the tests.
+/// Copy the run's closed, analyzed fixture once for this suite.
 pub fn ensure_test_project(project: &str, program: &str) {
-    static SETUP: Once = Once::new();
-    SETUP.call_once(|| {
-        let binary = fixture_binary();
-        let projects_dir = ghidra_cli::config::Config::load()
-            .and_then(|config| config.get_project_dir())
-            .expect("Could not determine project dir");
-
-        eprintln!("=== Setting up test project (durable import + analysis) ===");
-        eprintln!("Project dir: {:?}", projects_dir);
-
-        // Step 1: Import the binary
-        //
-        // IMPORTANT: We use Stdio::null() instead of piped stdout/stderr.
-        // On Windows, `ghidra import` spawns analyzeHeadless.bat → cmd.exe → java.exe.
-        // If we use piped I/O, the grandchild JVM inherits the pipe handles.
-        // When ghidra.exe exits, the pipe stays open (JVM holds inherited handles),
-        // so output()/wait_with_output() blocks forever. Using null avoids this.
-        eprintln!("Step 1: Importing binary {:?} ...", binary);
-        let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra");
-        let import_status = run_cli_with_timeout(
-            ghidra_bin,
-            &[
-                "import",
-                binary.to_str().unwrap(),
-                "--project",
-                project,
-                "--program",
-                program,
-            ],
-            Duration::from_secs(300),
-        );
-        let import_status = import_status.expect("Test fixture import failed");
-        assert!(
-            import_status.success(),
-            "Test fixture import failed: {import_status}"
-        );
-
-        // Step 2: Stop the persistent bridge started by `ghidra import`.
-        // The fresh-project one-shot importer already analyzed and durably
-        // committed the program before this bridge started, so an additional
-        // `ghidra analyze` here is both redundant and expensive. Stopping the
-        // bridge keeps test binaries isolated and lets DaemonTestHarness start a
-        // fresh Process-mode bridge against the committed project.
-        eprintln!("Step 2: Stopping bridge after durable import...");
-        let stop_status = run_cli_with_timeout(
-            ghidra_bin,
-            &["stop", "--project", project],
-            Duration::from_secs(120),
-        );
-        let stop_status = stop_status.expect("Failed to stop fixture import bridge");
-        assert!(
-            stop_status.success(),
-            "Failed to stop fixture import bridge: {stop_status}"
-        );
-
-        eprintln!("=== Test project setup complete ===");
+    static SETUP: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+    assert_eq!(
+        project,
+        test_project(),
+        "Setup must use the suite's project"
+    );
+    assert_eq!(
+        program, FIXTURE_PROGRAM,
+        "Setup must use the fixture program"
+    );
+    require_ghidra();
+    let setup = SETUP.get_or_init(|| {
+        fixture::copy_analyzed_project(std::path::Path::new(project))
+            .map_err(|error| format!("{error:#}"))
     });
+    if let Err(error) = setup {
+        panic!("Failed to prepare test project: {error}");
+    }
 }
 
 /// Test harness that manages bridge lifecycle for a test suite.
@@ -200,6 +144,7 @@ impl DaemonTestHarness {
 
         // Start the bridge directly via bridge API (not CLI subprocess).
         // This gives us detailed error messages from Ghidra in the Err value.
+        let started = std::time::Instant::now();
         let port = ghidra_cli::ghidra::bridge::ensure_bridge_running(
             &project_path,
             &ghidra_install_dir,
@@ -207,6 +152,11 @@ impl DaemonTestHarness {
                 program_name: program.to_string(),
             },
         )?;
+
+        eprintln!(
+            "[test setup] bridge start: {:.2}s",
+            started.elapsed().as_secs_f64()
+        );
 
         // Store PID now so Drop can wait for it even if restart deletes the PID file
         let pid = ghidra_cli::ghidra::bridge::read_pid_file(&project_path)
@@ -245,6 +195,7 @@ impl DaemonTestHarness {
 
 impl Drop for DaemonTestHarness {
     fn drop(&mut self) {
+        let started = std::time::Instant::now();
         // Read current PID from file (may differ from self.pid if restart changed it)
         let file_pid = ghidra_cli::ghidra::bridge::read_pid_file(&self.project_path)
             .ok()
@@ -283,6 +234,10 @@ impl Drop for DaemonTestHarness {
         // Final cleanup of any remaining stale files
         let _ = ghidra_cli::ghidra::bridge::cleanup_stale_files(&self.project_path);
         let _ = std::fs::remove_dir_all(&self.data_dir);
+        eprintln!(
+            "[test teardown] bridge stop: {:.2}s",
+            started.elapsed().as_secs_f64()
+        );
     }
 }
 
@@ -331,16 +286,45 @@ pub fn run_cli_with_timeout(
     }
 }
 
-/// Require Ghidra to be available for tests to proceed.
+/// Cache the actual diagnostic output, including failures, rather than poisoning
+/// a Once after a panic. Every dependent test still fails with the same reason.
+#[derive(Default)]
+pub struct DoctorCheck(OnceLock<std::result::Result<std::process::Output, String>>);
+
+impl DoctorCheck {
+    pub fn require_with(
+        &self,
+        check: impl FnOnce() -> std::result::Result<std::process::Output, String>,
+    ) {
+        match self.0.get_or_init(check) {
+            Ok(output) => assert_doctor_ready(output),
+            Err(error) => panic!("Failed to run ghidra doctor: {error}"),
+        }
+    }
+}
+
+/// The parent test process keeps its Ghidra/JDK configuration fixed. Tests that
+/// change child environments or test doctor itself must invoke doctor directly.
+pub fn require_ghidra() {
+    static CHECK: DoctorCheck = DoctorCheck(OnceLock::new());
+    CHECK.require_with(|| {
+        let started = std::time::Instant::now();
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+            .arg("doctor")
+            .output()
+            .map_err(|error| error.to_string());
+        eprintln!(
+            "[test setup] doctor: {:.2}s",
+            started.elapsed().as_secs_f64()
+        );
+        output
+    });
+}
+
 #[macro_export]
 macro_rules! require_ghidra {
     () => {
-        let doctor = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
-            .arg("doctor")
-            .output()
-            .expect("Failed to run ghidra doctor");
-
-        $crate::common::assert_doctor_ready(&doctor);
+        $crate::common::require_ghidra();
     };
 }
 
