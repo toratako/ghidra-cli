@@ -63,6 +63,11 @@ closing a program also saves first; a save failure keeps that program open.
 The CLI upgrades a running bridge that predates automatic saving before sending
 program commands, using a normal stop/start to load the current Java bundle.
 
+`program delete --program NAME` deletes the project file without selecting it.
+Deleting the current program saves and closes it first; deleting another file
+preserves the current selection. Other consumers and checkouts can prevent
+deletion.
+
 On a save failure, the error has `detail.save_failed: true` and preserves the
 editing response in `detail.command_response`. Changes may still be in memory:
 keep the bridge running, resolve the reported cause, and retry `program save`

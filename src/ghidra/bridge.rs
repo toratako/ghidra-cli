@@ -22,7 +22,7 @@ use headless::{apply_java_home, bridge_failure_hint};
 pub use headless::{compile_check, find_headless_script};
 pub use import::{import_oneshot, OneShotImportOptions};
 
-/// How to start the bridge - import a new binary or open an existing program.
+/// Which program, if any, the bridge opens before reporting readiness.
 pub enum BridgeStartMode {
     /// Open an existing program in the project
     Process { program_name: String },
@@ -304,34 +304,33 @@ pub fn start_bridge(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "project".to_string());
 
+    // Script-only headless mode would otherwise create a missing project.
+    anyhow::ensure!(
+        ghidra_project_dir
+            .join(format!("{ghidra_project_name}.gpr"))
+            .is_file()
+            && ghidra_project_dir
+                .join(format!("{ghidra_project_name}.rep"))
+                .is_dir(),
+        "Ghidra project not found: {}",
+        project_path.display()
+    );
+
     cmd.arg(ghidra_project_dir).arg(&ghidra_project_name);
 
-    // Add mode-specific args.
-    //
-    // `-noanalysis` everywhere: the bridge must bind its socket and signal ready
-    // BEFORE any auto-analysis runs, so launch stays bounded. Analysis is driven
-    // separately as an unbounded TCP `analyze` operation (which also saves).
-    match &mode {
-        BridgeStartMode::Process { program_name } => {
-            cmd.arg("-process").arg(program_name).arg("-noanalysis");
-        }
-        BridgeStartMode::Project => {
-            cmd.arg("-process").arg("-noanalysis");
-        }
-    }
-
-    // Add Java bridge script args.
-    //
-    // `-preScript` (not `-postScript`): a preScript runs after the binary is
-    // imported/loaded (so `currentProgram` is set) but before auto-analysis.
-    // The bridge binds its ServerSocket inside run(), so as a preScript it comes
-    // up as early as possible — decoupling a bounded launch from unbounded
-    // analysis. (`-noanalysis` skips the analysis phase anyway.)
-    cmd.arg("-scriptPath")
+    // Run only the bridge script, without -process/-import. Otherwise the
+    // headless analyzer retains its own Program consumer until the bridge exits,
+    // preventing deletion even after ProgramSession closes that program.
+    // The bridge opens the optional program itself before publishing readiness.
+    cmd.arg("-noanalysis")
+        .arg("-scriptPath")
         .arg(scripts_dir.to_str().unwrap())
         .arg("-preScript")
         .arg("GhidraCliBridge.java")
         .arg(port_file.to_str().unwrap());
+    if let BridgeStartMode::Process { program_name } = &mode {
+        cmd.arg(program_name);
+    }
 
     apply_java_home(&mut cmd, ghidra_install_dir);
 

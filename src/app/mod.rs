@@ -83,6 +83,23 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         }
 
         _ => {
+            // A deletion target is a project file, not a program to select.
+            let deleting_program = matches!(
+                &cli.command,
+                Commands::Program(cli::ProgramCommands::Delete(_))
+            );
+            let selected_program = if deleting_program {
+                None
+            } else {
+                extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
+            };
+            let startup_program = if deleting_program {
+                None
+            } else {
+                selected_program
+                    .clone()
+                    .or_else(|| config.get_default_program())
+            };
             // For all bridge commands (including Analyze), ensure bridge is running
             let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
                 // bridge_info is a responsive control request, including while
@@ -90,10 +107,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?
             } else {
                 // Auto-start bridge - use specific program if available, otherwise project mode
-                let mode = if let Some(program) = extract_program_from_command(&cli.command)
-                    .or_else(|| cli.program.clone())
-                    .or_else(|| config.get_default_program())
-                {
+                let mode = if let Some(program) = startup_program.clone() {
                     BridgeStartMode::Process {
                         program_name: program,
                     }
@@ -110,10 +124,8 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
             // Let the bridge compare project files. Internal Program names can
             // be identical across different files, so program_info is not an
             // identity check. Opening the selected file again is a no-op.
-            if let Some(requested_program) =
-                extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
-            {
-                client.open_program(&requested_program)?;
+            if let Some(requested_program) = &selected_program {
+                client.open_program(requested_program)?;
             }
 
             let first_attempt = execute_via_bridge(
@@ -140,10 +152,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     // Running bridge may be from an older script; force restart to load
                     // the embedded bridge matching this CLI version.
                     let _ = bridge::stop_bridge(&project_path);
-                    let mode = if let Some(program) = extract_program_from_command(&cli.command)
-                        .or_else(|| cli.program.clone())
-                        .or_else(|| config.get_default_program())
-                    {
+                    let mode = if let Some(program) = startup_program.clone() {
                         BridgeStartMode::Process {
                             program_name: program,
                         }
@@ -154,10 +163,8 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                         bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
                     let retry_client = BridgeClient::new(port);
 
-                    if let Some(requested_program) =
-                        extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
-                    {
-                        retry_client.open_program(&requested_program)?;
+                    if let Some(requested_program) = &selected_program {
+                        retry_client.open_program(requested_program)?;
                     }
 
                     // One restart per invocation: the retry result is accepted

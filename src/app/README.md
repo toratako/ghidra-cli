@@ -21,6 +21,8 @@ retries at most once after dispatch. A preflight `bridge_info` check upgrades a
 bridge lacking automatic saving before sending program commands. Import retains
 its stop/start/open/analyze order; `program save` sends an in-place save request
 and is a no-op for a stopped bridge. Save failures must never trigger command replay.
+Deletion treats `--program` as a file target and never opens it as a selection or
+startup program.
 Batch errors retain attempted results and structured details in the error
 envelope. Ordinary errors allow later commands to run; save failures and timeouts
 stop execution. Preserve the timeout error type through batch context for exit 75.

@@ -15,7 +15,7 @@ public class GhidraCliBridge extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
         if (args.length < 1) {
-            printerr("Usage: GhidraCliBridge.java <port_file_path>");
+            printerr("Usage: GhidraCliBridge.java <port_file_path> [<program>]");
             return;
         }
         // GhidraScript.executeNormal() starts a transaction before run(). End
@@ -41,6 +41,6 @@ public class GhidraCliBridge extends GhidraScript {
                 GhidraCliBridge.this.clearListing(start, end);
             }
             public void logError(String message) { printerr(message); }
-        }, args[0], this::println);
+        }, args[0], args.length > 1 ? args[1] : null, this::println);
     }
 }

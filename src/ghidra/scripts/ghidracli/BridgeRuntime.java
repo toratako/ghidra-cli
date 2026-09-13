@@ -9,12 +9,22 @@ import java.util.function.Consumer;
 public final class BridgeRuntime {
     private BridgeRuntime() {}
 
-    public static void run(ScriptAccess script, String portFilePath, Consumer<String> output) throws Exception {
+    public static void run(ScriptAccess script, String portFilePath, String initialProgram,
+            Consumer<String> output) throws Exception {
         ProgramSession session = new ProgramSession(script);
-        JobScheduler jobs = new JobScheduler(session, new CommandDispatcher(session));
+        CommandDispatcher commands = new CommandDispatcher(session);
+        JobScheduler jobs = new JobScheduler(session, commands);
         BridgeServer server = new BridgeServer(jobs::handleRequest, jobs::beginShutdown,
             jobs::isShutdownRequested, script::logError);
         try {
+            if (initialProgram != null) {
+                JsonObject args = new JsonObject();
+                args.addProperty("program", initialProgram);
+                JsonObject response = commands.execute("open_program", args);
+                if (!"success".equals(response.get("status").getAsString())) {
+                    throw new IllegalArgumentException(response.get("message").getAsString());
+                }
+            }
             jobs.start(server::closeServerSocket);
             File portFile = new File(portFilePath);
             portFile.getParentFile().mkdirs();

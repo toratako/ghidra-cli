@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `project_path` is `<parent>/<name>`; analyzeHeadless materializes the project
 /// as sibling `<parent>/<name>.gpr` (project file) and `<parent>/<name>.rep`
-/// (project directory). Either marks an existing project we can `-process`.
+/// (project directory). Either marks an existing project.
 pub(super) fn project_exists(project_path: &Path) -> bool {
     match (project_path.file_name(), project_path.parent()) {
         (Some(name), Some(parent)) => {
@@ -17,12 +17,11 @@ pub(super) fn project_exists(project_path: &Path) -> bool {
     }
 }
 
-/// Whether a project contains persisted program data and can be opened with
-/// `analyzeHeadless -process`.
+/// Whether an import can reuse a project containing persisted program data.
 ///
 /// A stale or newly-created empty project may have both `.gpr` and `.rep`
-/// artifacts but only index files under `.rep/idata`. Starting a project-mode
-/// bridge for that state fails before the bridge script can accept an import.
+/// artifacts but only index files under `.rep/idata`. The import workflow uses
+/// the one-shot importer to initialize such projects.
 /// Real program data lives in bucket subdirectories under `idata`.
 pub(super) fn project_has_program_data(project_path: &Path) -> bool {
     let (Some(name), Some(parent)) = (project_path.file_name(), project_path.parent()) else {

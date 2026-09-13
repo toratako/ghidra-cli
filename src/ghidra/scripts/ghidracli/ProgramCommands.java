@@ -326,7 +326,7 @@ final class ProgramCommands {
                 return errorResult("Program not found: " + programName);
             }
 
-            programFile.delete();
+            session.delete(programFile);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");

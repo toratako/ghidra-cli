@@ -43,8 +43,8 @@ fn append_import_options(cmd: &mut Command, options: &OneShotImportOptions) {
 /// HeadlessAnalyzer's transaction for the bridge's whole life and only commits
 /// it during teardown — a commit we then race by killing the JVM), this run
 /// imports, optionally analyzes, saves, commits the project, and exits on its
-/// own. The persistent bridge can then open the already-committed program in
-/// `-process` mode, where saves are durable and no teardown commit is required.
+/// own. The persistent bridge then opens the committed program through its
+/// ProgramSession, which owns saving and release.
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,

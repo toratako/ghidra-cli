@@ -59,8 +59,11 @@ command response in error detail, and leave the program available for retry.
 `program_save` retries the flush without restarting the bridge. Switching and
 closing save before releasing the session's own consumer; a failed save or open
 keeps the previous program. Shutdown drains requests, saves, and releases this
-consumer on the script thread. The headless harness retains its own consumer for
-the initial program until script cleanup.
+consumer on the script thread. Persistent startup runs the script without
+`-process`, so even the initial program is opened and released by `ProgramSession`.
+Opening initializes the analyzer options previously registered by HeadlessAnalyzer.
+Deletion closes the selected file before removing it; a refused deletion restores
+the selection. Never release another consumer or terminate its checkout.
 
 ## Command boundaries
 

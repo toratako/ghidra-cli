@@ -71,6 +71,9 @@ failures retain the editing result and program for recovery; explicit save keeps
 the same JVM. Real bridge tests cover OSGi loading of the whole source bundle.
 Batch coverage checks nonzero failure exits, preservation of per-command results
 and save errors, and stopping subsequent commands after a save failure or timeout.
+Program deletion coverage includes the initial program, closed files with matching
+internal names, a stopped bridge, empty projects, batch deletion, and failures
+that must preserve other consumers or unsaved changes.
 
 `common::test_project()` gives each test executable a fresh project. Read-only
 suites reuse a bridge to amortize JVM startup; lifecycle/mutation suites may

@@ -20,13 +20,18 @@ stream lifetimes remain owned by their respective workflows.
 
 `ensure_bridge_running()` reuses a live bridge or removes stale discovery files
 and starts one. `BridgeStartMode::Process { program_name }` opens an existing
-program; `Project` uses bare `-process` to open the project without selecting one.
+program through `ProgramSession`; `Project` opens the project without selecting one.
 Both launch with:
 
 ```text
-analyzeHeadless <project_dir> <project_name> -process [<program>] -noanalysis
-  -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path>
+analyzeHeadless <project_dir> <project_name> -noanalysis
+  -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path> [<program>]
 ```
+
+Omit `-process`: it leaves a headless-owned reference to the initial program that
+prevents deletion until shutdown. The bridge opens the requested program before
+publishing readiness, owns its release, and also supports empty existing projects.
+Missing projects are rejected before launching.
 
 Launch readiness is bounded and excludes analysis. Fresh imports use a separate
 short-lived `analyzeHeadless -import` run that analyzes and commits before the

@@ -6,6 +6,7 @@ import ghidra.framework.model.DomainObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
+import java.io.IOException;
 
 /** Live view of script state; never caches a Program or a per-job monitor. */
 final class ProgramSession {
@@ -82,6 +83,15 @@ final class ProgramSession {
             domObj.release(consumer);
             throw new IllegalArgumentException("Project file is not a program: " + domainFile.getPathname());
         }
+        try {
+            // HeadlessAnalyzer normally initializes these before its preScript.
+            // Script-only startup must register analyzer options on every open.
+            ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager((Program) domObj)
+                .initializeOptions();
+        } catch (Exception failure) {
+            domObj.release(consumer);
+            throw failure;
+        }
         if (program() != null) program().release(consumer);
         setProgram((Program) domObj);
         if (requestActive) requestTransaction = transaction("ghidra-cli: open program");
@@ -91,5 +101,25 @@ final class ProgramSession {
         save();
         if (program() != null) program().release(consumer);
         setProgram(null);
+    }
+
+    void delete(DomainFile file) throws Exception {
+        boolean wasCurrent = isCurrent(file);
+        if (wasCurrent) closeProgram();
+        try {
+            file.delete();
+        } catch (Exception failure) {
+            // Do not release other consumers or terminate checkouts. Restore
+            // our selection when Ghidra refuses to delete the closed file.
+            if (wasCurrent) {
+                try {
+                    open(file);
+                } catch (Exception reopenFailure) {
+                    throw new IOException(failure.getMessage() + "; failed to reopen "
+                        + file.getPathname() + ": " + reopenFailure.getMessage(), failure);
+                }
+            }
+            throw failure;
+        }
     }
 }
