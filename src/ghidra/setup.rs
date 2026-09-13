@@ -151,7 +151,10 @@ pub fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<PathBuf> {
 
         // Capture the root directory (first path component)
         if root_dir.is_none() {
-            if let Some(first_component) = file.enclosed_name().and_then(|p| p.components().next())
+            if let Some(first_component) = file
+                .enclosed_name()
+                .as_ref()
+                .and_then(|p| p.components().next())
             {
                 root_dir = Some(target_dir.join(first_component.as_os_str()));
             }
@@ -212,6 +215,34 @@ pub async fn install_ghidra(version: Option<String>, target_dir: PathBuf) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_zip_preserves_root_and_contents() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let zip_path = temp.path().join("ghidra.zip");
+        let mut archive = zip::ZipWriter::new(File::create(&zip_path)?);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o755);
+        archive.start_file("ghidra_test/support/analyzeHeadless", options)?;
+        archive.write_all(b"#!/bin/sh\n")?;
+        archive.finish()?;
+
+        let target = temp.path().join("install");
+        let root = extract_zip(&zip_path, &target)?;
+        assert_eq!(root, target.join("ghidra_test"));
+        let script = root.join("support/analyzeHeadless");
+        assert_eq!(std::fs::read(&script)?, b"#!/bin/sh\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(script)?.permissions().mode() & 0o777,
+                0o755
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn test_ghidra_min_java_defaults() {

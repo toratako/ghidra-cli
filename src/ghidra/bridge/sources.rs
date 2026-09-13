@@ -177,7 +177,7 @@ fn install_sources(root: &Path, sources: &[(&str, &str)]) -> Result<PathBuf> {
         hash.consume(source.as_bytes());
         hash.consume([0]);
     }
-    let destination = root.join(format!("{:x}", hash.compute()));
+    let destination = root.join(format!("{:x}", hash.finalize()));
     if destination.is_dir() {
         return Ok(destination);
     }

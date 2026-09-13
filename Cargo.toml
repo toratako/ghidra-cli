@@ -9,80 +9,80 @@ repository = "https://github.com/akiselev/ghidra-cli"
 
 [dependencies]
 # CLI framework
-clap = { version = "4.5", features = ["derive", "env", "cargo"] }
+clap = { version = "4.6.6", features = ["derive", "env", "cargo"] }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_yaml = "0.9.34"
 
 # Parsing
-pest = "2.7"
-pest_derive = "2.7"
+pest = "2.9.1"
+pest_derive = "2.9.1"
 
 # Output formatting
-tabled = "0.15"
-comfy-table = "7.1"
+tabled = "0.22.0"
+comfy-table = "8.0.0"
 
 # Error handling
-anyhow = "1.0"
-thiserror = "1.0"
+anyhow = "1.0.104"
+thiserror = "2.0.20"
 
 # Logging
-env_logger = "0.11"
-log = "0.4"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
+env_logger = "0.11.11"
+log = "0.4.34"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-appender = "0.2.5"
 
 # Async runtime (only needed for setup command's HTTP downloads)
-tokio = { version = "1.35", features = ["rt", "io-util", "time", "net"] }
+tokio = { version = "1.53.1", features = ["rt", "io-util", "time", "net"] }
 
 # Time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 
 # Hashing
-md5 = "0.7"
+md5 = "0.8.1"
 
 # File system & paths
-dirs = "5.0"
-tempfile = "3.8"
-walkdir = "2.4"
+dirs = "7.0.0"
+tempfile = "3.27.0"
+walkdir = "2.5.0"
 
 # Process management
-which = "6.0"
-libc = "0.2"
+which = "8.0.6"
+libc = "0.2.189"
 
 # Regex
-regex = "1.10"
-lazy_static = "1.4"
+regex = "1.13.1"
+lazy_static = "1.5.0"
 
 # CSV/TSV
-csv = "1.3"
+csv = "1.4.0"
 
 # String similarity (for fuzzy matching)
-strsim = "0.11"
+strsim = "0.11.1"
 
 # Cross-platform support
-dunce = "1.0" # Windows path handling
+dunce = "1.0.5" # Windows path handling
 
 # Setup command dependencies
-reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"] }
-zip = "0.6"
-futures-util = "0.3"
-indicatif = "0.17"
+reqwest = { version = "0.13.5", features = ["json", "stream", "rustls"] }
+zip = "8.6.0"
+futures-util = "0.3.34"
+indicatif = "0.18.6"
 
 
 [dev-dependencies]
-assert_cmd = "2.0"
-predicates = "3.0"
-tempfile = "3.8"
-serial_test = "3.0"
-uuid = { version = "1.6", features = ["v4"] }
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"
+serial_test = "4.0.1"
+uuid = { version = "1.26.1", features = ["v4"] }
 # Snapshot testing - captures full output and detects regressions
-insta = { version = "1.40", features = ["json", "redactions"] }
+insta = { version = "1.48.0", features = ["json", "redactions"] }
 # Property-based testing - exhaustive edge case coverage
-proptest = "1.4"
+proptest = "1.11.0"
 
 [lib]
 name = "ghidra_cli"
