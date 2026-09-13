@@ -1,8 +1,14 @@
 # Changelog
 
 Release history follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
-[runtime documentation](docs/usage.md) for current behavior.
+and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Fixed
+
+- `analyzer set NAME true|false` now accepts an explicit boolean and displays
+  `--help` without panicking. Missing or invalid values produce argument errors.
 
 ## [0.2.2]
 

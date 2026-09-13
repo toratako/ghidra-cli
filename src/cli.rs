@@ -1008,6 +1008,7 @@ pub struct AnalyzerSetArgs {
     /// Analyzer name
     pub name: String,
     /// Enable (true) or disable (false)
+    #[arg(action = clap::ArgAction::Set)]
     pub enabled: bool,
     #[arg(long)]
     pub program: Option<String>,
@@ -1654,6 +1655,45 @@ pub struct SetupArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn analyzer_set_parses_explicit_boolean() {
+        for (value, expected) in [("true", true), ("false", false)] {
+            let cli = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings", value])
+                .expect("analyzer set should accept an explicit boolean");
+            match cli.command {
+                Commands::Analyzer(AnalyzerCommands::Set(args)) => {
+                    assert_eq!(args.name, "ASCII Strings");
+                    assert_eq!(args.enabled, expected);
+                }
+                _ => panic!("expected analyzer set command"),
+            }
+        }
+    }
+
+    #[test]
+    fn analyzer_set_requires_valid_boolean() {
+        let missing = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings"])
+            .err()
+            .expect("expected argument error");
+        assert_eq!(
+            missing.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        let invalid = Cli::try_parse_from(["ghidra", "analyzer", "set", "ASCII Strings", "maybe"])
+            .err()
+            .expect("expected argument error");
+        assert_eq!(invalid.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn analyzer_set_help_is_available() {
+        let help = Cli::try_parse_from(["ghidra", "analyzer", "set", "--help"])
+            .err()
+            .expect("expected argument error");
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(help.to_string().contains("<ENABLED>"));
+    }
 
     #[test]
     fn parses_decompile_target_flag() {
