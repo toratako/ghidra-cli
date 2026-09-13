@@ -259,9 +259,7 @@ pub fn get_function_address(
 
     let functions: Vec<Function> = result.json();
 
-    functions
-        .iter()
-        .find(|f| f.name == name || f.name.contains(name))
+    find_fixture_function(&functions, name)
         .unwrap_or_else(|| {
             let available: Vec<_> = functions.iter().map(|f| f.name.as_str()).collect();
             panic!(
@@ -271,6 +269,20 @@ pub fn get_function_address(
         })
         .address
         .clone()
+}
+
+/// Prefer an exact name, then the platform's underscore prefix, then the first
+/// substring match for demangled or otherwise decorated fixture names.
+pub fn find_fixture_function<'a>(functions: &'a [Function], name: &str) -> Option<&'a Function> {
+    functions
+        .iter()
+        .find(|f| f.name == name)
+        .or_else(|| {
+            functions
+                .iter()
+                .find(|f| matches_function_name(&f.name, name))
+        })
+        .or_else(|| functions.iter().find(|f| f.name.contains(name)))
 }
 
 /// Get the first N function addresses from the test binary.

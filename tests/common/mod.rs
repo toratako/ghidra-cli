@@ -114,7 +114,6 @@ pub fn ensure_test_project(project: &str, program: &str) {
 pub struct DaemonTestHarness {
     port: u16,
     pid: Option<u32>,
-    data_dir: PathBuf,
     project: String,
     project_path: PathBuf,
 }
@@ -126,8 +125,6 @@ impl DaemonTestHarness {
     /// detailed error messages (e.g., "program file(s) not found") propagate
     /// correctly to callers like try_start_daemon().
     pub fn new(project: &str, program: &str) -> Result<Self> {
-        let data_dir = get_unique_data_dir();
-
         // Resolve the project path (must match the CLI's default via get_project_dir)
         let project_path = ghidra_cli::config::Config::load()?
             .get_project_dir()
@@ -137,9 +134,7 @@ impl DaemonTestHarness {
         // Load config to find Ghidra installation
         let config = ghidra_cli::config::Config::load().context("Failed to load config")?;
         let ghidra_install_dir = config
-            .ghidra_install_dir
-            .clone()
-            .or_else(|| config.get_ghidra_install_dir().ok())
+            .get_ghidra_install_dir()
             .context("Ghidra installation directory not configured")?;
 
         // Start the bridge directly via bridge API (not CLI subprocess).
@@ -166,7 +161,6 @@ impl DaemonTestHarness {
         Ok(Self {
             port,
             pid,
-            data_dir,
             project: project.to_string(),
             project_path,
         })
@@ -175,11 +169,6 @@ impl DaemonTestHarness {
     /// Get a BridgeClient connected to the test bridge.
     pub fn client(&self) -> Result<ghidra_cli::ipc::client::BridgeClient> {
         Ok(ghidra_cli::ipc::client::BridgeClient::new(self.port))
-    }
-
-    /// Get data directory for this daemon instance.
-    pub fn data_dir(&self) -> &PathBuf {
-        &self.data_dir
     }
 
     /// Get project name.
@@ -233,19 +222,11 @@ impl Drop for DaemonTestHarness {
 
         // Final cleanup of any remaining stale files
         let _ = ghidra_cli::ghidra::bridge::cleanup_stale_files(&self.project_path);
-        let _ = std::fs::remove_dir_all(&self.data_dir);
         eprintln!(
             "[test teardown] bridge stop: {:.2}s",
             started.elapsed().as_secs_f64()
         );
     }
-}
-
-/// Generate unique data directory for test isolation.
-fn get_unique_data_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("ghidra-data-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&dir).expect("Failed to create test data dir");
-    dir
 }
 
 /// Run a CLI command with timeout.

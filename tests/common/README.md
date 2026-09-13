@@ -63,8 +63,8 @@ errors reach callers intact. It records the PID as well as the discovered port.
 Drop calls `stop_bridge()` for drain/force termination, then waits for both the
 original and current PIDs (restart may change them) to release project locks:
 up to 15s per PID, or 30s on Windows, after stop. It removes stale discovery files
-and the harness data directory. Suite-exit cleanup also stops the bridge and
-removes the suite project and any locally owned fixture; shared sources belong
+after waiting. Suite-exit cleanup also stops the bridge and removes the suite
+project and any locally owned fixture; shared sources belong
 to the runner. Statics do not receive normal Rust Drop.
 Cleanup remains best effort under forced process termination.
 

@@ -2,6 +2,51 @@
 mod common;
 
 #[test]
+fn fixture_function_lookup_prefers_exact_names_and_preserves_fallbacks() {
+    use common::helpers::find_fixture_function;
+    use common::schemas::Function;
+
+    let functions: Vec<Function> = ["__libc_start_main", "_main", "main", "sample_binary::main"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| {
+            serde_json::from_value(serde_json::json!({
+                "name": name,
+                "address": format!("{index:08x}"),
+                "entry_point": format!("{index:08x}"),
+                "size": 1,
+            }))
+            .unwrap()
+        })
+        .collect();
+
+    assert_eq!(
+        find_fixture_function(&functions, "main").unwrap().address,
+        "00000002"
+    );
+    assert_eq!(
+        find_fixture_function(&functions[..2], "main").unwrap().name,
+        "_main"
+    );
+    assert_eq!(
+        find_fixture_function(&functions[3..], "main").unwrap().name,
+        "sample_binary::main"
+    );
+    // Preserve first-match behavior when only substring fallbacks exist.
+    let decorated = [functions[0].clone(), functions[3].clone()];
+    assert_eq!(
+        find_fixture_function(&decorated, "main").unwrap().name,
+        "__libc_start_main"
+    );
+    assert_eq!(
+        find_fixture_function(&functions, "libc").unwrap().name,
+        "__libc_start_main"
+    );
+    assert!(find_fixture_function(&functions, "missing").is_none());
+    assert!(find_fixture_function(&[], "main").is_none());
+}
+
+#[test]
 fn command_output_returns_while_descendant_holds_streams() {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
