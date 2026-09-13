@@ -325,3 +325,32 @@ fn test_script_run_nonexistent() {
         .assert()
         .failure();
 }
+
+#[test]
+#[serial]
+fn java_source_on_stdin_runs_without_interactive_prompt() {
+    require_ghidra!();
+    let _harness = harness();
+    let source = std::fs::read_to_string(echo_args_script_path()).unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args([
+            "--quiet",
+            "script",
+            "run",
+            "-",
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+            "--",
+            "from-stdin",
+        ])
+        .write_stdin(source)
+        .timeout(std::time::Duration::from_secs(120))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(value.to_string().contains("ARG0=from-stdin"), "{value}");
+}

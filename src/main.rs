@@ -7,6 +7,7 @@ mod format;
 mod ghidra;
 mod ipc;
 mod query;
+mod terminal;
 
 use app::{handle_bridge_command, run_command, run_setup};
 use clap::Parser;
@@ -17,7 +18,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = parse_cli();
 
     apply_global_env_overrides(&cli);
 
@@ -33,8 +34,8 @@ fn main() {
         .with_ansi(false)
         .with_filter(tracing_subscriber::EnvFilter::new("debug"));
 
-    // Stdout layer: only if -v/-vv/-vvv is specified
-    let stdout_layer = match cli.verbose {
+    // Console diagnostics are opt-in and always go to stderr.
+    let stderr_layer = match cli.verbose {
         1 => Some("warn"),
         2 => Some("info"),
         3.. => Some("debug"),
@@ -51,13 +52,13 @@ fn main() {
 
     tracing_subscriber::registry()
         .with(file_layer)
-        .with(stdout_layer)
+        .with(stderr_layer)
         .init();
 
     // Captured before `cli` is moved into whichever arm handles it below;
     // needed after the match to decide how verbosely to print error detail.
     let verbose = cli.verbose;
-    let json_requested = cli.json;
+    let output = app::Output::new(&cli);
 
     let result = match &cli.command {
         Commands::Setup(_) => {
@@ -79,31 +80,107 @@ fn main() {
     };
 
     if let Err(e) = result {
-        // A client-side read timeout means the CLI gave up waiting, not that
-        // the job actually failed -- it may still be running server-side and
-        // complete normally after this process exits (see `ghidra jobs`).
-        // Give it a distinguishable prefix and exit code (EX_TEMPFAIL, 75,
-        // from sysexits.h: "temporary failure; user is invited to retry") so
-        // a wrapper script can tell "poll `ghidra jobs` and keep going" apart
-        // from a genuine failure without string-matching stderr.
-        if let Some(timeout) = e.downcast_ref::<ipc::protocol::BridgeTimeoutError>() {
-            eprintln!("Timeout: {}", timeout);
-            std::process::exit(75);
-        }
-        eprintln!("Error: {}", e);
-        // Bridge errors that carry structured detail (e.g. the containing
-        // function's name/entry/size on "function already exists", or the
-        // conflicting data unit's type/range on a `type apply` conflict) print
-        // it as JSON so callers can act on it without a follow-up round trip.
-        // Gated to -vv+/--json to keep the common-case error terse.
-        if let Some(bce) = e.downcast_ref::<ipc::protocol::BridgeCommandError>() {
-            if verbose >= 2 || json_requested {
-                if let Ok(pretty) = serde_json::to_string_pretty(&bce.detail) {
-                    eprintln!("Detail: {}", pretty);
+        let (code, diagnostic) = format_error(&e, output, verbose);
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr().lock(), "{diagnostic}");
+        std::process::exit(code);
+    }
+}
+
+fn parse_cli() -> Cli {
+    let args: Vec<_> = std::env::args_os().collect();
+    match Cli::try_parse_from(&args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            if !error.use_stderr() {
+                error.exit(); // Help and version retain clap's successful text output.
+            }
+            // A failed parse has no Cli. Recover only presentation options, stopping
+            // at `--` so script arguments and operands never select our output mode.
+            use std::io::{IsTerminal, Write};
+            let mut output = app::Output {
+                json: !std::io::stdout().is_terminal(),
+                pretty: false,
+                quiet: false,
+            };
+            let mut format = None;
+            let mut args = args.iter().skip(1).take_while(|arg| *arg != "--");
+            while let Some(arg) = args.next() {
+                if arg == "--json" {
+                    output.json = true;
+                } else if arg == "--pretty" {
+                    output.json = true;
+                    output.pretty = true;
+                } else if arg == "--format" || arg == "-o" {
+                    format = args
+                        .next()
+                        .and_then(|arg| arg.to_str())
+                        .and_then(|f| format::OutputFormat::from_str(f).ok());
+                } else if let Some(value) =
+                    arg.to_str().and_then(|arg| arg.strip_prefix("--format="))
+                {
+                    format = format::OutputFormat::from_str(value).ok();
                 }
             }
+            if let Some(format) = format {
+                output.json = matches!(
+                    format,
+                    format::OutputFormat::Json
+                        | format::OutputFormat::JsonCompact
+                        | format::OutputFormat::JsonStream
+                );
+                output.pretty = matches!(format, format::OutputFormat::Json);
+            }
+            if output.json {
+                let value = serde_json::json!({"status": "error", "message": error.to_string(), "exit_code": error.exit_code()});
+                let _ = writeln!(
+                    std::io::stderr().lock(),
+                    "{}",
+                    output
+                        .json_string(&value)
+                        .expect("parser error is serializable")
+                );
+                std::process::exit(error.exit_code());
+            }
+            error.exit();
         }
-        std::process::exit(1);
+    }
+}
+
+fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32, String) {
+    // A timeout may leave a job running; preserve EX_TEMPFAIL so callers can poll jobs.
+    let timeout = error
+        .downcast_ref::<ipc::protocol::BridgeTimeoutError>()
+        .is_some();
+    let code = if timeout { 75 } else { 1 };
+    let detail = error
+        .downcast_ref::<ipc::protocol::BridgeCommandError>()
+        .map(|e| &e.detail);
+    let message = error.to_string();
+    if output.json {
+        let mut value = serde_json::json!({
+            "status": if timeout { "timeout" } else { "error" },
+            "message": message,
+            "exit_code": code,
+        });
+        if let Some(detail) = detail {
+            value["detail"] = detail.clone();
+        }
+        (
+            code,
+            output
+                .json_string(&value)
+                .expect("error JSON is serializable"),
+        )
+    } else {
+        let prefix = if timeout { "Timeout" } else { "Error" };
+        let mut text = format!("{prefix}: {message}");
+        if verbose >= 2 {
+            if let Some(detail) = detail {
+                text.push_str(&format!("\nDetail: {detail:#}"));
+            }
+        }
+        (code, text)
     }
 }
 
@@ -118,5 +195,49 @@ fn apply_global_env_overrides(cli: &Cli) {
     // calls after reloading config from disk — so the flag must propagate via env.
     if let Some(jh) = &cli.java_home {
         std::env::set_var("GHIDRA_CLI_JAVA_HOME", jh);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn structured_errors_preserve_detail_and_timeout_exit_code() {
+        for pretty in [false, true] {
+            let output = app::Output {
+                json: true,
+                pretty,
+                quiet: false,
+            };
+            let error = anyhow::Error::new(ipc::protocol::BridgeCommandError {
+                message: "function already exists".to_string(),
+                detail: json!({"entry": "00401000", "name": "main"}),
+            });
+            let (code, text) = format_error(&error, output, 0);
+            let value: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(code, 1);
+            assert_eq!(value["detail"]["entry"], "00401000");
+            let timeout = anyhow::Error::new(ipc::protocol::BridgeTimeoutError {
+                command: "analyze".to_string(),
+                timeout_secs: 30,
+            });
+            let (code, text) = format_error(&timeout, output, 0);
+            let value: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(code, 75);
+            assert_eq!(value["exit_code"], 75);
+            assert_eq!(value["status"], "timeout");
+        }
+    }
+
+    #[test]
+    fn explicit_text_format_keeps_human_errors() {
+        let cli =
+            Cli::try_parse_from(["ghidra", "--json", "function", "list", "--format", "table"])
+                .unwrap();
+        let output = app::Output::new(&cli);
+        let (_, text) = format_error(&anyhow::anyhow!("failed operation"), output, 0);
+        assert_eq!(text, "Error: failed operation");
     }
 }

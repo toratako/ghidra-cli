@@ -149,3 +149,112 @@ fn test_comment_delete() {
         stdout
     );
 }
+
+#[test]
+#[serial]
+fn comment_stdin_preserves_multiline_text_without_prompting_pipelines() {
+    require_ghidra!();
+    let harness = harness();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let text = "stdin comment\nsecond line with `literal` $text\n";
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args([
+            "--quiet",
+            "comment",
+            "set",
+            &addr,
+            "--stdin",
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+        ])
+        .write_stdin(text)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+        .args([
+            "comment",
+            "get",
+            &addr,
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        value
+            .to_string()
+            .contains("second line with `literal` $text"),
+        "{value}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn comment_terminal_stdin_explains_eof_even_when_quiet() {
+    use std::io::Write;
+    use std::os::fd::FromRawFd;
+    use std::process::{Command, Stdio};
+    require_ghidra!();
+    let harness = harness();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let mut master = -1;
+    let mut slave = -1;
+    // File takes ownership of the fresh descriptors from openpty.
+    assert_eq!(
+        unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        },
+        0
+    );
+    let mut master = unsafe { std::fs::File::from_raw_fd(master) };
+    let slave = unsafe { std::fs::File::from_raw_fd(slave) };
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("ghidra"))
+        .args([
+            "--quiet",
+            "comment",
+            "set",
+            &addr,
+            "--stdin",
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+        ])
+        .stdin(Stdio::from(slave))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    master.write_all(b"terminal comment\n\x04").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("terminal stdin did not finish after EOF");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Enter comment text; finish with EOF (Ctrl-D)."),
+        "{stderr}"
+    );
+}

@@ -24,33 +24,33 @@ use options::{
     requires_bridge,
 };
 use output::describe_query_error;
+pub(crate) use output::Output;
 use project::{load_config, resolve_project_path};
 
 /// Run a command, starting the bridge if needed.
 pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
+    let output = Output::new(&cli);
     match &cli.command {
         // Non-bridge commands
-        Commands::Init => handle_init(),
-        Commands::Doctor => handle_doctor(&cli.projects_dir),
-        Commands::Version => handle_version(),
-        Commands::Config(cmd) => handle_config_command(cmd.clone()),
-        Commands::SetDefault(args) => handle_set_default(args.clone()),
-        Commands::Project(args) => handle_project_command(args.command.clone()),
+        Commands::Init => handle_init(output),
+        Commands::Doctor => handle_doctor(&cli.projects_dir, output),
+        Commands::Version => handle_version(output),
+        Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
+        Commands::SetDefault(args) => handle_set_default(args.clone(), output),
+        Commands::Project(args) => handle_project_command(args.command.clone(), output),
         // Saving means stopping and restarting the bridge, not a single
         // request/response against an already-running one, so it's handled
         // before the generic bridge dispatch below.
         Commands::Program(cli::ProgramCommands::Save(_)) => handle_program_save(cli),
         // Commands requiring bridge
         _ if requires_bridge(&cli.command) => run_with_bridge(cli),
-        _ => {
-            println!("Command not yet implemented");
-            Ok(())
-        }
+        _ => anyhow::bail!("Command not yet implemented"),
     }
 }
 
 /// Run a command that requires the bridge.
 fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
+    let output = Output::new(&cli);
     // Reject a malformed --filter up front, before any bridge work: the bridge
     // fetch for a filtered query pulls the *full* dataset, so failing late
     // wastes that transfer (and used to silently dump it — TODO.md Bug 2).
@@ -104,13 +104,9 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     BridgeStartMode::Project
                 };
 
-                if !cli.quiet {
-                    eprintln!("Starting Ghidra bridge...");
-                }
+                output.progress("Starting Ghidra bridge...");
                 let port = bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
-                if !cli.quiet {
-                    eprintln!("Bridge ready.");
-                }
+                output.progress("Bridge ready.");
                 BridgeClient::new(port)
             };
 
@@ -123,8 +119,12 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 client.open_program(&requested_program)?;
             }
 
-            let first_attempt =
-                execute_via_bridge(&client, &cli.command, cli.quiet, config.default_limit);
+            let first_attempt = execute_via_bridge(
+                &client,
+                &cli.command,
+                output.quiet || output.json,
+                config.default_limit,
+            );
             // Restart on "Unknown command" (old bridge lacks the handler) OR on a
             // stale list_functions response: an old bridge silently ignores the
             // newer tags/untagged args and returns a successful, UNFILTERED list.
@@ -136,11 +136,9 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                 Ok(value) if !needs_restart => value,
                 Err(err) if !needs_restart => return Err(err),
                 _ => {
-                    if !cli.quiet {
-                        eprintln!(
+                    output.progress(
                             "Bridge command not supported by running instance. Restarting bridge and retrying..."
                         );
-                    }
 
                     // Running bridge may be from an older script; force restart to load
                     // the embedded bridge matching this CLI version.
@@ -170,7 +168,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     execute_via_bridge(
                         &retry_client,
                         &cli.command,
-                        cli.quiet,
+                        output.quiet || output.json,
                         config.default_limit,
                     )?
                 }

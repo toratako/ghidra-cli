@@ -13,6 +13,7 @@ pub(super) fn run_import(
     project_path: &Path,
     ghidra_install_dir: &Path,
 ) -> anyhow::Result<serde_json::Value> {
+    let output = crate::app::Output::new(cli);
     let binary_path = PathBuf::from(&args.binary);
     if !binary_path.exists() {
         anyhow::bail!("Binary not found: {}", args.binary);
@@ -30,23 +31,17 @@ pub(super) fn run_import(
         // loading, so stop any live bridge, perform a short-lived durable
         // headless import with the requested loader options, then reopen it.
         if bridge::is_bridge_running(project_path).is_some() {
-            if !cli.quiet {
-                eprintln!("Stopping bridge for explicit loader import...");
-            }
+            output.progress("Stopping bridge for explicit loader import...");
             bridge::stop_bridge(project_path)?;
         }
-        if !cli.quiet {
-            eprintln!("Importing with explicit Ghidra loader options...");
-        }
+        output.progress("Importing with explicit Ghidra loader options...");
         let name = bridge::import_oneshot(
             project_path,
             &binary_path,
             ghidra_install_dir,
             &one_shot_options,
         )?;
-        if !cli.quiet {
-            eprintln!("Starting Ghidra bridge...");
-        }
+        output.progress("Starting Ghidra bridge...");
         let port = bridge::ensure_bridge_running(
             project_path,
             ghidra_install_dir,
@@ -62,9 +57,7 @@ pub(super) fn run_import(
         // and its socket is accepting; a busy bridge just queues this
         // request, so there is no pre-flight ping gate to fail here.
         let client = BridgeClient::new(port);
-        if !cli.quiet {
-            eprintln!("Importing into running bridge...");
-        }
+        output.progress("Importing into running bridge...");
         let result = client.import_binary(&args.binary, args.program.as_deref())?;
         let name = args.program.clone().unwrap_or_else(|| {
             result
@@ -76,9 +69,7 @@ pub(super) fn run_import(
         client.open_program(&name)?;
         (client, name, true)
     } else if project_has_program_data(project_path) {
-        if !cli.quiet {
-            eprintln!("Starting Ghidra bridge...");
-        }
+        output.progress("Starting Ghidra bridge...");
         let port = bridge::ensure_bridge_running(
             project_path,
             ghidra_install_dir,
@@ -96,9 +87,10 @@ pub(super) fn run_import(
         client.open_program(&name)?;
         (client, name, true)
     } else {
-        if !cli.quiet {
-            eprintln!("Initializing project (importing {})...", args.binary);
-        }
+        output.progress(&format!(
+            "Initializing project (importing {})...",
+            args.binary
+        ));
         // Brand-new or stale empty project: initialize it with a clean, short-lived
         // one-shot import that durably commits the program, then start
         // the persistent bridge in Process mode against the committed
@@ -109,9 +101,7 @@ pub(super) fn run_import(
             ghidra_install_dir,
             &one_shot_options,
         )?;
-        if !cli.quiet {
-            eprintln!("Starting Ghidra bridge...");
-        }
+        output.progress("Starting Ghidra bridge...");
         let port = bridge::ensure_bridge_running(
             project_path,
             ghidra_install_dir,
@@ -128,18 +118,12 @@ pub(super) fn run_import(
     // Fresh projects were already analyzed durably by import_oneshot(), so
     // re-running analyzeAll here would duplicate the most expensive step.
     let analyze_data = if args.no_analyze {
-        if !cli.quiet {
-            eprintln!("Skipping analysis (--no-analyze).");
-        }
+        output.progress("Skipping analysis (--no-analyze).");
         json!(null)
     } else if needs_tcp_analysis {
-        if !cli.quiet {
-            eprintln!("Analyzing {}...", program_name);
-        }
+        output.progress(&format!("Analyzing {}...", program_name));
         let d = client.analyze()?;
-        if !cli.quiet {
-            eprintln!("Analysis complete!");
-        }
+        output.progress("Analysis complete!");
         d
     } else {
         let info = client.program_info()?;
@@ -151,9 +135,7 @@ pub(super) fn run_import(
         })
     };
 
-    if !cli.quiet {
-        eprintln!("Successfully imported as: {}", program_name);
-    }
+    output.progress(&format!("Successfully imported as: {}", program_name));
     Ok(json!({
         "command": "import",
         "program": program_name,

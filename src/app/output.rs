@@ -3,7 +3,52 @@ use crate::cli::{self, Cli, Commands};
 use crate::error::GhidraError;
 use crate::format::{auto_detect_format, DefaultFormatter, Formatter, OutputFormat};
 use crate::query::Query;
-use std::io::IsTerminal;
+use crate::terminal::write_stdout;
+use serde::Serialize;
+use std::io::{IsTerminal, Write};
+
+#[derive(Clone, Copy)]
+pub(crate) struct Output {
+    pub json: bool,
+    pub pretty: bool,
+    pub quiet: bool,
+}
+
+impl Output {
+    pub fn new(cli: &Cli) -> Self {
+        let format = output_format(cli);
+        Self {
+            json: matches!(
+                format,
+                OutputFormat::Json | OutputFormat::JsonCompact | OutputFormat::JsonStream
+            ),
+            pretty: matches!(format, OutputFormat::Json),
+            quiet: cli.quiet,
+        }
+    }
+
+    pub fn result(&self, value: &impl Serialize, human: &str) -> anyhow::Result<()> {
+        if self.json {
+            write_stdout(&self.json_string(value)?)
+        } else {
+            write_stdout(human)
+        }
+    }
+
+    pub fn json_string(&self, value: &impl Serialize) -> serde_json::Result<String> {
+        if self.pretty {
+            serde_json::to_string_pretty(value)
+        } else {
+            serde_json::to_string(value)
+        }
+    }
+
+    pub fn progress(&self, message: &str) {
+        if !self.quiet && !self.json {
+            let _ = writeln!(std::io::stderr().lock(), "{message}");
+        }
+    }
+}
 
 /// Make filter parse failures actionable: the DSL needs a field and operator,
 /// so a bare word like `PK` is invalid (use `name~PK` instead).
@@ -111,12 +156,7 @@ fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
     vec![value]
 }
 
-pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Result<()> {
-    // Check for .NET decompilation and warn
-    if !cli.quiet {
-        check_dotnet_decompile_warning(&cli.command, &result);
-    }
-
+fn output_format(cli: &Cli) -> OutputFormat {
     // Determine output format: explicit -o flag > --json/--pretty > TTY detection
     let opts = extract_query_options(&cli.command);
     let explicit_format = opts
@@ -127,7 +167,7 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
         .ok()
         .flatten();
 
-    let format = if let Some(fmt) = explicit_format {
+    if let Some(fmt) = explicit_format {
         fmt
     } else if cli.pretty {
         OutputFormat::Json
@@ -135,7 +175,15 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
         OutputFormat::JsonCompact
     } else {
         auto_detect_format(std::io::stdout().is_terminal())
-    };
+    }
+}
+
+pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Result<()> {
+    if !cli.quiet {
+        check_dotnet_decompile_warning(&cli.command, &result);
+    }
+    let opts = extract_query_options(&cli.command);
+    let format = output_format(cli);
 
     // Unwrap bridge response envelopes before formatting
     let values = unwrap_bridge_response(result);
@@ -147,7 +195,7 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
         if let Some(query) = Query::from_options(opts, format).map_err(describe_query_error)? {
             let output = query.process_results(values)?;
             if !output.is_empty() {
-                println!("{}", output);
+                crate::terminal::write_stdout(&output)?;
             }
             return Ok(());
         }
@@ -156,7 +204,7 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
     let formatter = DefaultFormatter;
     let output = formatter.format(&values, format)?;
     if !output.is_empty() {
-        println!("{}", output);
+        crate::terminal::write_stdout(&output)?;
     }
     Ok(())
 }

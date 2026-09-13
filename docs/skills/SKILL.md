@@ -19,8 +19,7 @@ immediately after a normal import.
 
 ## Basic commands
 
-Use `ghidra doctor` to check readiness or diagnose startup failures. Read the
-checks: it can print `FAILED` while exiting with code 0.
+Use `ghidra doctor` to check readiness or diagnose startup failures.
 
 For a new executable or library:
 
@@ -38,7 +37,13 @@ Raw/headerless input needs explicit language and load parameters; see
 ## Results, edits, and jobs
 
 Output defaults to human-readable on a terminal and compact JSON when piped.
-`--json` and `--pretty` explicitly select JSON; `--fields` restricts result fields.
+`--json` and `--pretty` explicitly select JSON, including for management and
+configuration commands; `--fields` restricts query result fields. Results go to
+stdout. In JSON modes, errors on stderr have `status`, `message`, `exit_code`,
+and optional `detail` fields.
+
+Progress goes to stderr in text mode; JSON modes and `--quiet` suppress it.
+Explicit verbosity still enables diagnostic logs.
 
 Edits can remain in memory. `program save` flushes by restarting the bridge;
 `stop` flushes and ends it. `program close` is not a substitute for saving.

@@ -1,20 +1,20 @@
+use super::output::Output;
 use super::project::project_exists;
 use crate::cli;
 use crate::config::Config;
 use crate::error::GhidraError;
 use crate::ghidra::bridge;
 use crate::ghidra::GhidraClient;
+use serde_json::json;
 use std::path::PathBuf;
 
-pub(super) fn handle_init() -> anyhow::Result<()> {
-    println!("Ghidra CLI Initialization");
-    println!("========================\n");
-
+pub(super) fn handle_init(output: Output) -> anyhow::Result<()> {
     let mut config = Config::default();
 
     if config.ghidra_install_dir.is_none() {
-        println!("Ghidra installation not found automatically.");
-        println!("Please set GHIDRA_INSTALL_DIR environment variable or run 'ghidra setup'.");
+        output.progress("Ghidra installation not found automatically.");
+        output
+            .progress("Please set GHIDRA_INSTALL_DIR environment variable or run 'ghidra setup'.");
     }
 
     // Set default project directory. Must avoid dot-prefixed path components,
@@ -22,41 +22,52 @@ pub(super) fn handle_init() -> anyhow::Result<()> {
     let project_dir = Config::default_project_dir()?;
     config.ghidra_project_dir = Some(project_dir.clone());
 
-    println!("\nProject directory: {}", project_dir.display());
-
     // Save config
     config.save()?;
 
-    println!(
-        "\nConfiguration saved to: {}",
-        Config::config_path()?.display()
-    );
-    println!("\nRun 'ghidra doctor' to verify your installation.");
-
-    Ok(())
+    let path = Config::config_path()?;
+    output.progress("Run 'ghidra doctor' to verify your installation.");
+    output.result(
+        &json!({"config_path": path, "project_dir": project_dir}),
+        &format!(
+            "Configuration saved to: {}\nProject directory: {}",
+            path.display(),
+            project_dir.display()
+        ),
+    )
 }
 
-pub(super) fn handle_version() -> anyhow::Result<()> {
-    println!("ghidra-cli {}", env!("CARGO_PKG_VERSION"));
-    println!("Rust CLI for Ghidra reverse engineering");
-    Ok(())
+pub(super) fn handle_version(output: Output) -> anyhow::Result<()> {
+    output.result(
+        &json!({"name": "ghidra-cli", "version": env!("CARGO_PKG_VERSION")}),
+        &format!(
+            "ghidra-cli {}\nRust CLI for Ghidra reverse engineering",
+            env!("CARGO_PKG_VERSION")
+        ),
+    )
 }
 
-pub(super) fn handle_config_command(cmd: cli::ConfigCommands) -> anyhow::Result<()> {
+pub(super) fn handle_config_command(
+    cmd: cli::ConfigCommands,
+    output: Output,
+) -> anyhow::Result<()> {
     use cli::ConfigCommands;
 
     match cmd {
         ConfigCommands::List => {
             let config = Config::load()?;
-            println!("{}", serde_yaml::to_string(&config)?);
+            output.result(&config, serde_yaml::to_string(&config)?.trim_end())?;
         }
         ConfigCommands::Get { key } => {
             let config = Config::load()?;
             let yaml = serde_yaml::to_value(&config)?;
             if let Some(value) = yaml.get(&key) {
-                println!("{}", serde_yaml::to_string(value)?);
+                output.result(value, serde_yaml::to_string(value)?.trim_end())?;
             } else {
-                println!("Key not found: {}", key);
+                anyhow::bail!(
+                    "Key not found: {}. Use 'ghidra config list' to see available keys.",
+                    key
+                );
             }
         }
         ConfigCommands::Set { key, value } => {
@@ -89,31 +100,43 @@ pub(super) fn handle_config_command(cmd: cli::ConfigCommands) -> anyhow::Result<
                 }
             }
             config.save()?;
-            println!("Configuration updated");
+            output.result(
+                &json!({"message": "Configuration updated", "key": key}),
+                "Configuration updated",
+            )?;
         }
         ConfigCommands::Reset => {
             let config = Config::default();
             config.save()?;
-            println!("Configuration reset to defaults");
+            output.result(
+                &json!({"message": "Configuration reset to defaults"}),
+                "Configuration reset to defaults",
+            )?;
         }
     }
 
     Ok(())
 }
 
-pub(super) fn handle_set_default(args: cli::SetDefaultArgs) -> anyhow::Result<()> {
+pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> anyhow::Result<()> {
     let mut config = Config::load()?;
 
     match args.kind.as_str() {
         "program" => {
             config.default_program = Some(args.value.clone());
             config.save()?;
-            println!("Default program set to: {}", args.value);
+            output.result(
+                &json!({"message": "Default program set", "program": args.value}),
+                &format!("Default program set to: {}", args.value),
+            )?;
         }
         "project" => {
             config.default_project = Some(args.value.clone());
             config.save()?;
-            println!("Default project set to: {}", args.value);
+            output.result(
+                &json!({"message": "Default project set", "project": args.value}),
+                &format!("Default project set to: {}", args.value),
+            )?;
         }
         _ => {
             anyhow::bail!(format!("Unknown default kind: {}", args.kind));
@@ -123,7 +146,10 @@ pub(super) fn handle_set_default(args: cli::SetDefaultArgs) -> anyhow::Result<()
     Ok(())
 }
 
-pub(super) fn handle_project_command(cmd: cli::ProjectCommands) -> anyhow::Result<()> {
+pub(super) fn handle_project_command(
+    cmd: cli::ProjectCommands,
+    output: Output,
+) -> anyhow::Result<()> {
     use cli::ProjectCommands;
 
     let config = Config::load()?;
@@ -132,25 +158,32 @@ pub(super) fn handle_project_command(cmd: cli::ProjectCommands) -> anyhow::Resul
     match cmd {
         ProjectCommands::Create { name } => {
             client.create_project(&name)?;
-            println!("Project '{}' created", name);
+            output.result(
+                &json!({"project": name, "created": true}),
+                &format!("Project '{}' created", name),
+            )?;
         }
         ProjectCommands::List => {
             let project_dir = client.get_project_dir();
-            if !project_dir.exists() {
-                println!("No projects found");
-                return Ok(());
-            }
-
-            println!("Projects:");
-            for entry in std::fs::read_dir(project_dir)? {
-                let entry = entry?;
-                if entry.path().is_dir() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        println!("  {}", name);
+            let mut projects = Vec::new();
+            if project_dir.exists() {
+                for entry in std::fs::read_dir(project_dir)? {
+                    let entry = entry?;
+                    if entry.path().is_dir() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            projects.push(name.to_string());
+                        }
                     }
                 }
             }
+            let human = if projects.is_empty() {
+                "No projects found".to_string()
+            } else {
+                format!("Projects:\n  {}", projects.join("\n  "))
+            };
+            output.result(&projects, &human)?;
         }
+
         ProjectCommands::Delete { name } => {
             // analyzeHeadless materializes a project as sibling files
             // `<parent>/<basename>.gpr` (descriptor) + `<basename>.rep` (data dir),
@@ -161,7 +194,10 @@ pub(super) fn handle_project_command(cmd: cli::ProjectCommands) -> anyhow::Resul
             let (basename, parent) = match (project_path.file_name(), project_path.parent()) {
                 (Some(f), Some(p)) => (f.to_string_lossy().to_string(), p.to_path_buf()),
                 _ => {
-                    println!("Project '{}' not found", name);
+                    output.result(
+                        &json!({"project": name, "deleted": false}),
+                        &format!("Project '{}' not found", name),
+                    )?;
                     return Ok(());
                 }
             };
@@ -170,7 +206,10 @@ pub(super) fn handle_project_command(cmd: cli::ProjectCommands) -> anyhow::Resul
             let legacy_dir = project_path.clone();
 
             if !gpr.exists() && !rep.exists() && !legacy_dir.is_dir() {
-                println!("Project '{}' not found", name);
+                output.result(
+                    &json!({"project": name, "deleted": false}),
+                    &format!("Project '{}' not found", name),
+                )?;
                 return Ok(());
             }
 
@@ -188,17 +227,27 @@ pub(super) fn handle_project_command(cmd: cli::ProjectCommands) -> anyhow::Resul
             if legacy_dir.is_dir() {
                 std::fs::remove_dir_all(&legacy_dir)?;
             }
-            println!("Project '{}' deleted", name);
+            output.result(
+                &json!({"project": name, "deleted": true}),
+                &format!("Project '{}' deleted", name),
+            )?;
         }
         ProjectCommands::Info { name } => {
             let project_name = name.unwrap_or_else(|| "default".to_string());
             let project_path = client.get_project_path(&project_name);
-            println!("Project: {}", project_name);
-            println!("Path: {}", project_path.display());
             // The project lives on disk as sibling `<name>.gpr`/`<name>.rep`
             // artifacts, not a `<name>` directory, so check those (see
             // `project_exists`) rather than the bare path.
-            println!("Exists: {}", project_exists(&project_path));
+            let exists = project_exists(&project_path);
+            output.result(
+                &json!({"project": project_name, "path": project_path, "exists": exists}),
+                &format!(
+                    "Project: {}\nPath: {}\nExists: {}",
+                    project_name,
+                    project_path.display(),
+                    exists
+                ),
+            )?;
         }
     }
 

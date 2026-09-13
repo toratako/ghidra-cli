@@ -190,13 +190,16 @@ fn test_project_delete_nonexistent() {
 
     let project = unique_project_name("missing");
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
         .arg("project")
         .arg("delete")
         .arg(&project)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("not found"));
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["project"], project);
+    assert_eq!(value["deleted"], false);
 }
 
 #[test]

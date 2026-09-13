@@ -18,7 +18,7 @@ ghidra doctor
 ```
 
 For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
-`ghidra setup`. Check the doctor output: failed checks can still exit with code 0.
+`ghidra setup`. Doctor exits with code 1 if a readiness check fails.
 
 ## Usage
 

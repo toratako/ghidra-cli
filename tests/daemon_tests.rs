@@ -588,3 +588,69 @@ public class CopyBridgeProgram extends GhidraScript {
     client.open_program(TEST_PROGRAM).unwrap();
     client.comment_get(address).unwrap();
 }
+
+#[test]
+#[serial]
+fn management_results_are_single_json_documents() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    for flag in ["--json", "--pretty"] {
+        for command in ["start", "status", "ping", "jobs"] {
+            let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+                .args([flag, "--quiet", command, "--project", test_project()])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{command}: {output:?}");
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(value.is_object(), "{command}: {value}");
+            assert!(output.stderr.is_empty(), "{command}: {output:?}");
+            if command == "status" {
+                assert_eq!(value["state"], "running");
+                assert!(value["port"].is_number());
+                assert!(value["info"].is_object());
+            }
+        }
+    }
+    let function = harness
+        .client()
+        .unwrap()
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
+        .unwrap();
+    let address = function["address"].as_str().unwrap();
+    for flag in ["--json", "--pretty"] {
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+            .args([
+                flag,
+                "function",
+                "create",
+                address,
+                "--project",
+                test_project(),
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["detail"].is_object(), "{error}");
+    }
+    for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra")
+            .args(["--json", "--quiet"])
+            .args(&args)
+            .args(["--project", test_project(), "--program", TEST_PROGRAM])
+            .timeout(Duration::from_secs(300))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        if args == ["program", "save"] {
+            assert_eq!(value["saved"], true);
+        }
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
+}

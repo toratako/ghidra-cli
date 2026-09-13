@@ -3,8 +3,17 @@ use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Deserialize;
 use std::fs::File;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+fn progress_bar(size: u64, quiet: bool) -> ProgressBar {
+    if quiet || !std::io::stderr().is_terminal() {
+        ProgressBar::hidden()
+    } else {
+        ProgressBar::new(size)
+    }
+}
 
 /// GitHub release asset information
 #[derive(Deserialize, Debug)]
@@ -24,7 +33,10 @@ struct GithubRelease {
 
 /// Resolve the download URL for a Ghidra release.
 /// If version is None, fetches the latest release.
-pub async fn resolve_version_url(version: Option<String>) -> Result<(String, String, String)> {
+pub async fn resolve_version_url(
+    version: Option<String>,
+    quiet: bool,
+) -> Result<(String, String, String)> {
     let mut headers = reqwest::header::HeaderMap::new();
     // Use GITHUB_TOKEN if available (avoids 60 req/hour unauthenticated rate limit)
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
@@ -45,7 +57,9 @@ pub async fn resolve_version_url(version: Option<String>) -> Result<(String, Str
             "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/Ghidra_{}",
             ver
         );
-        println!("Fetching release info for Ghidra {}...", ver);
+        if !quiet {
+            eprintln!("Fetching release info for Ghidra {}...", ver);
+        }
         client
             .get(&url)
             .send()
@@ -57,7 +71,9 @@ pub async fn resolve_version_url(version: Option<String>) -> Result<(String, Str
     } else {
         // Fetch latest release
         let url = "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest";
-        println!("Fetching latest Ghidra release info...");
+        if !quiet {
+            eprintln!("Fetching latest Ghidra release info...");
+        }
         client
             .get(url)
             .send()
@@ -67,7 +83,9 @@ pub async fn resolve_version_url(version: Option<String>) -> Result<(String, Str
             .await?
     };
 
-    println!("Found release: {}", release.tag_name);
+    if !quiet {
+        eprintln!("Found release: {}", release.tag_name);
+    }
 
     // Find the zip file in assets
     let zip_asset = release
@@ -84,7 +102,7 @@ pub async fn resolve_version_url(version: Option<String>) -> Result<(String, Str
 }
 
 /// Download a file with progress bar.
-pub async fn download_file(url: &str, path: &Path) -> Result<()> {
+pub async fn download_file(url: &str, path: &Path, quiet: bool) -> Result<()> {
     let client = reqwest::Client::builder()
         .user_agent("ghidra-cli")
         .build()?;
@@ -98,7 +116,7 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
 
     let total_size = res.content_length().unwrap_or(0);
 
-    let pb = ProgressBar::new(total_size);
+    let pb = progress_bar(total_size, quiet);
     pb.set_style(ProgressStyle::default_bar()
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")?
         .progress_chars("#>-"));
@@ -122,14 +140,16 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
 
 /// Extract a zip file to the target directory.
 /// Returns the path to the extracted Ghidra directory.
-pub fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<PathBuf> {
-    println!("Extracting...");
+pub fn extract_zip(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<PathBuf> {
+    if !quiet {
+        eprintln!("Extracting...");
+    }
 
     let file = File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
     let total_files = archive.len();
-    let pb = ProgressBar::new(total_files as u64);
+    let pb = progress_bar(total_files as u64, quiet);
     pb.set_style(
         ProgressStyle::default_bar()
             .template(
@@ -191,22 +211,30 @@ pub fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<PathBuf> {
 
 /// Install Ghidra to the specified directory.
 /// Returns the path to the installed Ghidra directory.
-pub async fn install_ghidra(version: Option<String>, target_dir: PathBuf) -> Result<PathBuf> {
+pub async fn install_ghidra(
+    version: Option<String>,
+    target_dir: PathBuf,
+    quiet: bool,
+) -> Result<PathBuf> {
     // Resolve version and get download URL
-    let (download_url, filename, tag) = resolve_version_url(version).await?;
+    let (download_url, filename, tag) = resolve_version_url(version, quiet).await?;
 
-    println!("Installing Ghidra {} to: {}", tag, target_dir.display());
+    if !quiet {
+        eprintln!("Installing Ghidra {} to: {}", tag, target_dir.display());
+    }
 
     // Download the zip file
     let zip_path = target_dir.join(&filename);
-    download_file(&download_url, &zip_path).await?;
+    download_file(&download_url, &zip_path, quiet).await?;
 
     // Extract the zip
-    let install_path = extract_zip(&zip_path, &target_dir)?;
+    let install_path = extract_zip(&zip_path, &target_dir, quiet)?;
 
     // Cleanup zip file
     if let Err(e) = std::fs::remove_file(&zip_path) {
-        println!("⚠ Could not remove zip file: {}", e);
+        if !quiet {
+            eprintln!("⚠ Could not remove zip file: {}", e);
+        }
     }
 
     Ok(install_path)
@@ -229,7 +257,7 @@ mod tests {
         archive.finish()?;
 
         let target = temp.path().join("install");
-        let root = extract_zip(&zip_path, &target)?;
+        let root = extract_zip(&zip_path, &target, true)?;
         assert_eq!(root, target.join("ghidra_test"));
         let script = root.join("support/analyzeHeadless");
         assert_eq!(std::fs::read(&script)?, b"#!/bin/sh\n");

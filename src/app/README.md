@@ -20,5 +20,9 @@ and configured defaults. Filter validation runs before bridge work. Bridge recov
 retries at most once. Import and save retain their stop/start/open/analyze order.
 Output precedence remains explicit format, pretty JSON, compact JSON, then TTY
 detection; query processing follows response-envelope extraction.
+`output.rs` shares report rendering; `src/terminal.rs` handles the streams:
+results use stdout, optional progress uses stderr in text mode, and a closed
+stdout pipe is normal. `main.rs` structures errors in JSON modes and preserves
+exit 75 for bridge wait timeouts. Setup verification and doctor failures exit 1.
 
 Unit tests stay with their owning helpers; see [validation commands](../../tests/README.md).

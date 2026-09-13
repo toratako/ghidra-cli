@@ -35,9 +35,7 @@ fn parse_expect_spec(spec: &str) -> serde_json::Value {
 /// as command substitution before ghidra-cli ever sees the string).
 fn resolve_comment_text(args: &cli::CommentSetArgs) -> anyhow::Result<String> {
     if args.stdin {
-        let mut buf = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
-        Ok(buf)
+        crate::terminal::read_stdin("comment text")
     } else if let Some(path) = &args.text_file {
         std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read --text-file {}: {}", path.display(), e))
@@ -677,8 +675,7 @@ pub(super) fn execute_via_bridge(
                         // throwaway snippet doesn't need a checked-in file; the
                         // bridge stages it to a temp file and runs it through the
                         // same compile/execute path as `script run PATH`.
-                        let mut source = String::new();
-                        std::io::Read::read_to_string(&mut std::io::stdin(), &mut source)?;
+                        let source = crate::terminal::read_stdin("Java source")?;
                         client.script_run_source(&source, &args.args, &expect, args.allow_empty)
                     } else {
                         // Canonicalize client-side so the bridge receives an absolute
