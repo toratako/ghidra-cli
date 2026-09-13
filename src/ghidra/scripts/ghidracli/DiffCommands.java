@@ -3,6 +3,7 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
@@ -84,6 +85,7 @@ final class DiffCommands {
             if (func2 == null) return errorResult(functionQueries.buildFunctionTargetHint(func2Target));
 
             DecompInterface decompiler = new DecompInterface();
+            decompiler.setOptions(new DecompileOptions());
             try {
                 decompiler.openProgram(session.program());
                 TaskMonitor mon = session.monitor();

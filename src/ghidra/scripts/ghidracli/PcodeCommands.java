@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.Register;
@@ -72,6 +73,7 @@ final class PcodeCommands {
             JsonArray ops = new JsonArray();
             if (highPcode) {
                 DecompInterface decomp = new DecompInterface();
+                decomp.setOptions(new DecompileOptions());
                 try {
                     if (!decomp.openProgram(session.program())) {
                         return errorResult("Decompilation failed: openProgram failed: " + decomp.getLastMessage());

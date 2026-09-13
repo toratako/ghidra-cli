@@ -23,6 +23,14 @@ The encounter-derived changes include C data type import support and selected
 transaction rollback fixes, based on pull request #8 through commit
 857d0b5c2f0c41f8a27182bc3ab4f07ecfc1c939.
 
+It also incorporates selected modifications from:
+  https://github.com/nextgens/ghidra-cli
+
+The nextgens-derived changes include explicit decompiler option initialization
+by Florent Daigniere, based on akiselev/ghidra-cli pull request #24 at commit
+49edebcd82b9a2b2c01edbbc9de6988b7357888c, adapted to the split command handlers
+and extended to high PCode access.
+
 The project is distributed under the GNU General Public License, version 3.
 The GNU GPL v3 license text below is reproduced verbatim.
 

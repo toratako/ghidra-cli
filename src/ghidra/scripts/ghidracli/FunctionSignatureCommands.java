@@ -3,6 +3,7 @@ package ghidracli;
 import com.google.gson.JsonObject;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Function;
@@ -194,6 +195,7 @@ final class FunctionSignatureCommands {
             if (newType == null) return errorResult("Type not found: " + typeName);
 
             DecompInterface decompiler = new DecompInterface();
+            decompiler.setOptions(new DecompileOptions());
             try {
                 decompiler.openProgram(session.program());
                 TaskMonitor mon = session.monitor();

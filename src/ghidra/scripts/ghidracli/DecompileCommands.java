@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
@@ -48,6 +49,7 @@ final class DecompileCommands {
         }
 
         DecompInterface decompiler = new DecompInterface();
+        decompiler.setOptions(new DecompileOptions());
         try {
             decompiler.openProgram(session.program());
 
