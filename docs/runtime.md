@@ -57,13 +57,25 @@ job immediately; active cancellation is cooperative. A socket read timeout
 returns `Timeout:` with exit 75, while the job continues; inspect `jobs` before
 retrying a mutation. Shutdown rejects new work and drains accepted jobs.
 
-Edits may remain in memory under Ghidra's headless transaction. `program save`
-stops and restarts the bridge to flush them; `stop` flushes without restarting.
-`program close` is not a substitute for this flush. Failed mutations inside the
-headless transaction can retain partial changes: aborting the nested transaction
-would also erase earlier successful requests. Do not assume per-request rollback.
-Standalone transactions can roll back; the initially loaded program and programs
-opened later can have different transaction lifetimes.
+Program changes are saved before a command reports success. Analysis, scripts,
+and individual batch operations use the same automatic saving. Switching or
+closing a program also saves first; a save failure keeps that program open.
+The CLI upgrades a running bridge that predates automatic saving before sending
+program commands, using a normal stop/start to load the current Java bundle.
+
+On a save failure, the error has `detail.save_failed: true` and preserves the
+editing response in `detail.command_response`. Changes may still be in memory:
+keep the bridge running, resolve the reported cause, and retry `program save`
+for the same project/program. This saves without a restart or repeating the edit.
+Saving a stopped bridge is a no-op. Auto-save covers the bridge's current program;
+scripts that open other programs own their saving and release. Scripts must close
+transactions they start.
+
+Failed or cancelled operations can retain partial changes, which are also saved;
+their error detail includes `partial_changes_saved: true` when a save occurred.
+Earlier successful requests have already been committed and saved. Cancellation
+does not interrupt the save of retained changes, so job completion can follow
+the cancellation request. A timeout still leaves the job running or queued.
 
 ## Installation failures
 

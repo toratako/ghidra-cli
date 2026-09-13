@@ -3,7 +3,6 @@ package ghidracli;
 import ghidra.app.script.GhidraState;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainObject;
-import ghidra.framework.model.Project;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
@@ -11,9 +10,13 @@ import ghidra.util.task.TaskMonitor;
 /** Live view of script state; never caches a Program or a per-job monitor. */
 final class ProgramSession {
     private final ScriptAccess script;
+    private final Object consumer = new Object();
+    private ProgramTransaction requestTransaction;
+    private boolean requestActive;
 
     ProgramSession(ScriptAccess script) {
         this.script = script;
+        if (program() != null) program().addConsumer(consumer);
     }
 
     Program program() { return script.program(); }
@@ -27,51 +30,66 @@ final class ProgramSession {
     boolean disassemble(Address address) throws Exception { return script.disassemble(address); }
     void analyzeAll(Program program) { script.analyzeAll(program); }
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
-    void logError(String message) { script.logError(message); }
+
+    void beginRequest(String command) {
+        requestActive = true;
+        if (program() != null) requestTransaction = transaction("ghidra-cli: " + command);
+    }
+
+    private void endRequestTransaction() {
+        if (requestTransaction != null) {
+            requestTransaction.end(true);
+            requestTransaction = null;
+        }
+    }
+
+    boolean finishRequest() throws Exception {
+        requestActive = false;
+        return save();
+    }
+
+    /** Flush committed changes before acknowledging a request or releasing a program. */
+    boolean save() throws Exception {
+        endRequestTransaction();
+        if (program() == null) return false;
+        if (program().getCurrentTransactionInfo() != null) {
+            throw new IllegalStateException("Program still has an active transaction");
+        }
+        if (!program().isChanged()) return false;
+        // A cancelled command can retain partial edits. Cancellation must not
+        // interrupt their durable save after the request transaction has ended.
+        program().save("ghidra-cli auto-save", TaskMonitor.DUMMY);
+        if (program().isChanged()) {
+            throw new IllegalStateException("Program still has unsaved changes");
+        }
+        return true;
+    }
 
     boolean isCurrent(DomainFile domainFile) {
         return program() != null
             && program().getDomainFile().getPathname().equals(domainFile.getPathname());
     }
 
-    /** Switch a program using the project's existing consumer identity. */
-    void open(DomainFile domainFile, Project project) throws Exception {
+    /** Save before switching; keep the old program if saving or opening fails. */
+    void open(DomainFile domainFile) throws Exception {
         // Program names are stored inside the database and can be identical in
         // different project files (for example after copying a program).
         if (isCurrent(domainFile)) return;
-        Object consumer = project;
         TaskMonitor mon = monitor();
-
-        // Release current program if one is open
-        if (program() != null) {
-            try {
-                program().save("Auto-save before switch", mon);
-            } catch (Exception e) {
-                // Best effort save
-            }
-            try {
-                program().release(consumer);
-            } catch (Exception e) {
-                // Best effort release
-            }
-        }
-
-        // Open the requested program
+        save();
         DomainObject domObj = domainFile.getDomainObject(consumer, true, false, mon);
-        if (domObj instanceof Program) {
-            setProgram((Program) domObj);
+        if (!(domObj instanceof Program)) {
+            domObj.release(consumer);
+            throw new IllegalArgumentException("Project file is not a program: " + domainFile.getPathname());
         }
+        if (program() != null) program().release(consumer);
+        setProgram((Program) domObj);
+        if (requestActive) requestTransaction = transaction("ghidra-cli: open program");
     }
 
-    void closeProgram() {
-        // The initially loaded program is held by the headless harness too.
-        // Its pending transaction is saved when the script returns, not here.
-        try {
-            Project project = state().getProject();
-            if (project != null) program().release(project);
-        } catch (Exception ignored) {
-            // Preserve best-effort release for a program owned by the harness.
-        }
+    void closeProgram() throws Exception {
+        save();
+        if (program() != null) program().release(consumer);
         setProgram(null);
     }
 }

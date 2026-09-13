@@ -7,6 +7,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Batch failures now return nonzero status and retain successful results and
+  structured error details. Save failures and timeouts stop subsequent commands;
+  timeouts retain exit code 75.
+- Program edits, analysis, and scripts now save automatically before reporting
+  success. `program save` retries pending saves without restarting the bridge;
+  save failures return an error with the original command result. Failed or
+  cancelled operations can retain partial changes, which are also saved.
 - Renamed the executable from `ghidra` to `ghidra-cli`, with no compatibility
   alias. Update command invocations in scripts and automation. Command examples
   below use the new executable name.

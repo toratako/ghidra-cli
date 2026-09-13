@@ -38,9 +38,7 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
         Commands::SetDefault(args) => handle_set_default(args.clone(), output),
         Commands::Project(args) => handle_project_command(args.command.clone(), output),
-        // Saving means stopping and restarting the bridge, not a single
-        // request/response against an already-running one, so it's handled
-        // before the generic bridge dispatch below.
+        // Saving a stopped project is a no-op; do not auto-start it.
         Commands::Program(cli::ProgramCommands::Save(_)) => handle_program_save(cli),
         // Commands requiring bridge
         _ if requires_bridge(&cli.command) => run_with_bridge(cli),
@@ -87,10 +85,9 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         _ => {
             // For all bridge commands (including Analyze), ensure bridge is running
             let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
-                // Liveness already proven by is_bridge_running() (PID alive + socket
-                // accepting). A busy bridge queues the request rather than failing a
-                // pre-flight ping, so connect directly and let it wait its turn.
-                BridgeClient::new(port)
+                // bridge_info is a responsive control request, including while
+                // analysis or another program job is running.
+                ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?
             } else {
                 // Auto-start bridge - use specific program if available, otherwise project mode
                 let mode = if let Some(program) = extract_program_from_command(&cli.command)
@@ -180,7 +177,80 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
 }
 
 fn is_unknown_command_error(err: &anyhow::Error) -> bool {
-    err.to_string().contains("Unknown command:")
+    // Never replay an executed command whose save failed, even if a script's
+    // captured error happens to contain this compatibility message.
+    if err
+        .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+        .is_some_and(|err| err.detail.get("save_failed").and_then(|v| v.as_bool()) == Some(true))
+    {
+        return false;
+    }
+    err.to_string().starts_with("Unknown command:")
+}
+
+/// Upgrade a running pre-auto-save bridge before sending any editing command.
+pub(super) fn ensure_autosave_bridge(
+    port: u16,
+    project_path: &std::path::Path,
+    ghidra_install_dir: &std::path::Path,
+    output: Output,
+) -> anyhow::Result<BridgeClient> {
+    let client = BridgeClient::new(port);
+    let info = client.bridge_info()?;
+    if info.get("auto_save").and_then(|v| v.as_bool()) == Some(true) {
+        return Ok(client);
+    }
+    output.progress("Updating the running bridge to enable automatic saving...");
+    // Old bridge_info reports the internal program name, which can differ from
+    // its project file path. Also flush an explicitly opened program: the old
+    // headless shutdown only guarantees saving the initially loaded program.
+    let checkpoint = client.script_run_source(
+        r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.util.task.TaskMonitor;
+public class PrepareAutoSaveUpgrade extends GhidraScript {
+    public void run() throws Exception {
+        if (currentProgram == null) return;
+        end(true);
+        if (currentProgram.getCurrentTransactionInfo() == null && currentProgram.isChanged()) {
+            currentProgram.save("ghidra-cli bridge upgrade", TaskMonitor.DUMMY);
+        }
+        writer.println(currentProgram.getDomainFile().getPathname());
+    }
+}
+"#,
+        &[],
+        &[],
+        false,
+    )?;
+    let program = checkpoint
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not determine the current program before upgrading; bridge left running."
+            )
+        })?
+        .trim();
+    let mode = if program.is_empty() {
+        BridgeStartMode::Project
+    } else {
+        BridgeStartMode::Process {
+            program_name: program.to_owned(),
+        }
+    };
+    bridge::stop_bridge(project_path)?;
+    let port = bridge::ensure_bridge_running(project_path, ghidra_install_dir, mode)?;
+    let client = BridgeClient::new(port);
+    anyhow::ensure!(
+        client
+            .bridge_info()?
+            .get("auto_save")
+            .and_then(|v| v.as_bool())
+            == Some(true),
+        "The restarted bridge does not support automatic saving; no editing command was sent."
+    );
+    Ok(client)
 }
 
 /// Detects a stale bridge that ignored the `tags`/`untagged` args on

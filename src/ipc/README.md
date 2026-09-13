@@ -32,6 +32,12 @@ Request `command` is required; optional `args` is omitted when `None`.
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON.
 
+`bridge_info.auto_save: true` advertises saving before successful program
+responses. `program_save` retries pending saves without restarting. A save failure
+returns `error` with `detail.save_failed: true`, `saved: false`, and the original
+`command_response`; do not replay the edit. Errors with retained, saved changes
+include `detail.partial_changes_saved: true`.
+
 | Response status | Client result |
 |---|---|
 | `success` | `data`, or `{}` if absent |

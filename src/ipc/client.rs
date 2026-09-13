@@ -558,6 +558,11 @@ impl BridgeClient {
         self.send_command("program_close", None)
     }
 
+    /// Flush pending changes without restarting the bridge.
+    pub fn program_save(&self) -> Result<serde_json::Value> {
+        self.send_command_with_timeout("program_save", None, transport::long_op_timeout())
+    }
+
     pub fn program_delete(&self, program: &str) -> Result<serde_json::Value> {
         self.send_command("program_delete", Some(json!({"program": program})))
     }

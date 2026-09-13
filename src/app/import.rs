@@ -53,10 +53,9 @@ pub(super) fn run_import(
         client.open_program(&name)?;
         (client, name, false)
     } else if let Some(port) = bridge::is_bridge_running(project_path) {
-        // is_bridge_running() already proved the bridge process is alive
-        // and its socket is accepting; a busy bridge just queues this
-        // request, so there is no pre-flight ping gate to fail here.
-        let client = BridgeClient::new(port);
+        // Check automatic-save support before importing or analyzing through
+        // a bridge left running by an older CLI.
+        let client = super::ensure_autosave_bridge(port, project_path, ghidra_install_dir, output)?;
         output.progress("Importing into running bridge...");
         let result = client.import_binary(&args.binary, args.program.as_deref())?;
         let name = args.program.clone().unwrap_or_else(|| {

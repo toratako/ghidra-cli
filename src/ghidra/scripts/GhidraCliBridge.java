@@ -18,9 +18,16 @@ public class GhidraCliBridge extends GhidraScript {
             printerr("Usage: GhidraCliBridge.java <port_file_path>");
             return;
         }
+        // GhidraScript.executeNormal() starts a transaction before run(). End
+        // our own transaction before serving requests so each request can save.
+        // end() also clears the script's transaction ID for normal cleanup.
+        end(true);
         BridgeRuntime.run(new ScriptAccess() {
             public Program program() { return currentProgram; }
-            public void setProgram(Program program) { currentProgram = program; }
+            public void setProgram(Program program) {
+                currentProgram = program;
+                state.setCurrentProgram(program);
+            }
             public GhidraState state() { return state; }
             public TaskMonitor monitor() { return monitor; }
             public void setMonitor(TaskMonitor value) { monitor = value; }

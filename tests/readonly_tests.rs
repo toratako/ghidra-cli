@@ -1428,8 +1428,8 @@ fn test_batch_multiple_queries() {
 
     let batch_content = r#"
 # Test batch file
-query --address 0x100000
-query --function main
+program info
+function get main
 "#;
 
     let batch_file = create_batch_file(batch_content);
@@ -1484,9 +1484,9 @@ fn test_batch_with_comments() {
 
     let batch_content = r#"
 # Query main function
-query --function main
-# Query by address
-query --address 0x100000
+function get main
+# Query program metadata
+program info
 # Another comment
 "#;
 
@@ -1536,9 +1536,9 @@ fn test_batch_with_invalid_command() {
     harness();
 
     let batch_content = r#"
-query --function main
+function get main
 invalid-command --arg value
-query --address 0x100000
+program info
 "#;
 
     let batch_file = create_batch_file(batch_content);
@@ -1550,9 +1550,16 @@ query --address 0x100000
         .arg(batch_file.to_str().unwrap())
         .run();
 
-    result.assert_success();
-    result.assert_stdout_contains("commands_parsed");
-    result.assert_stdout_contains("3");
+    result.assert_failure();
+    assert_eq!(result.exit_code, 1);
+    assert!(result.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_str(&result.stderr).unwrap();
+    assert_eq!(error["detail"]["commands_executed"], 3);
+    assert_eq!(error["detail"]["failed"], 1);
+    assert_eq!(error["detail"]["not_executed"], 0);
+    assert!(error["detail"]["results"][0]["result"].is_object());
+    assert!(error["detail"]["results"][1]["error"].is_string());
+    assert!(error["detail"]["results"][2]["result"].is_object());
 
     fs::remove_file(batch_file).ok();
 }

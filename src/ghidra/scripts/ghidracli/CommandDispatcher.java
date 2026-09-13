@@ -6,6 +6,7 @@ import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.successResponse;
 
 final class CommandDispatcher {
+    private final ProgramSession session;
     private final FunctionCommands functionCommands;
     private final ProgramCommands programCommands;
     private final ListingCommands listingCommands;
@@ -26,6 +27,7 @@ final class CommandDispatcher {
     private final TypeImportCommands typeImportCommands;
 
     CommandDispatcher(ProgramSession session) {
+        this.session = session;
         AddressResolver addressResolver = new AddressResolver(session);
         TypeResolver typeResolver = new TypeResolver(session);
         FunctionQueries functionQueries = new FunctionQueries(session, addressResolver);
@@ -50,7 +52,7 @@ final class CommandDispatcher {
         scriptCommands = new ScriptCommands(session, artifacts);
     }
 
-    private JsonObject dispatchCommand(String command, JsonObject args) {
+    private JsonObject dispatchCommand(String command, JsonObject args) throws Exception {
         if (command == null) return null;
         switch (command) {
             case "program_info":    return programCommands.handleProgramInfo();
@@ -72,6 +74,7 @@ final class CommandDispatcher {
             case "list_programs":   return programCommands.handleListPrograms();
             case "open_program":    return programCommands.handleOpenProgram(args);
             case "program_close":   return programCommands.handleProgramClose();
+            case "program_save":    return programCommands.handleProgramSave();
             case "program_delete":  return programCommands.handleProgramDelete(args);
             case "program_export":  return programCommands.handleProgramExport(args);
             // Find commands
@@ -160,6 +163,38 @@ final class CommandDispatcher {
         }
     }
     JsonObject execute(String command, JsonObject args) {
+        JsonObject response;
+        try {
+            session.beginRequest(command);
+            response = executeCommand(command, args);
+        } catch (Exception e) {
+            response = errorResponse(e.getMessage());
+        }
+        try {
+            boolean saved = session.finishRequest();
+            if (saved && "error".equals(response.get("status").getAsString())) {
+                JsonObject detail = response.has("detail")
+                    ? response.getAsJsonObject("detail") : new JsonObject();
+                detail.addProperty("partial_changes_saved", true);
+                response.add("detail", detail);
+            }
+            return response;
+        } catch (Exception e) {
+            JsonObject detail = new JsonObject();
+            detail.addProperty("saved", false);
+            detail.addProperty("save_failed", true);
+            detail.addProperty("command", command);
+            if (session.program() != null) {
+                detail.addProperty("program", session.program().getDomainFile().getPathname());
+            }
+            detail.add("command_response", response);
+            return errorResponse("Auto-save failed: " + e.getMessage()
+                + ". Changes may remain in memory. Retry `ghidra-cli program save` for this project/program; "
+                + "do not repeat the editing command or stop the bridge before saving.", detail);
+        }
+    }
+
+    private JsonObject executeCommand(String command, JsonObject args) {
         try {
             JsonObject result = dispatchCommand(command, args);
             if (result == null) {

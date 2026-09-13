@@ -45,9 +45,16 @@ and optional `detail` fields.
 Progress goes to stderr in text mode; JSON modes and `--quiet` suppress it.
 Explicit verbosity still enables diagnostic logs.
 
-Edits can remain in memory. `program save` flushes by restarting the bridge;
-`stop` flushes and ends it. `program close` is not a substitute for saving.
-A failed nested mutation can retain partial changes; do not assume rollback.
+Edits are saved automatically before success is returned, including analysis,
+scripts, and each operation in a batch.
+After a save failure, keep the bridge running and retry `program save` with the
+same project/program; it saves in place without repeating the edit.
+Failed or cancelled operations can retain partial changes; do not assume rollback.
+
+`batch` exits nonzero if any command fails; attempted results and error details
+are in `detail.results`. Ordinary errors allow subsequent commands to run; save
+failures and timeouts stop the batch, with `not_executed` counting remaining commands.
+Do not replay successful edits.
 
 A socket timeout does not cancel the job. Inspect `jobs [ID]` before retrying a
 mutation; `cancel [ID]` requests cancellation. Queued jobs are removed immediately;

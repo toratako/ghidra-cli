@@ -17,6 +17,41 @@ fn start_daemon() -> DaemonTestHarness {
         .unwrap_or_else(|e| panic!("Failed to start bridge: {e}"))
 }
 
+/// Read a separate database object from the saved file while the bridge stays
+/// running. A normal comment_get would only prove the in-memory edit exists.
+fn assert_saved_comment(client: &ghidra_cli::ipc::client::BridgeClient, address: &str, text: &str) {
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.framework.model.DomainFile;
+import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.CodeUnit;
+public class CheckAutoSavedComment extends GhidraScript {
+    public void run() throws Exception {
+        if (currentProgram.isChanged()) throw new IllegalStateException("Program is still dirty");
+        Object consumer = new Object();
+        Program saved = (Program) currentProgram.getDomainFile()
+            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
+        try {
+            String actual = saved.getListing().getComment(CodeUnit.EOL_COMMENT,
+                saved.getAddressFactory().getAddress(getScriptArgs()[0]));
+            if (!getScriptArgs()[1].equals(actual)) {
+                throw new IllegalStateException("Saved comment differs: " + actual);
+            }
+        } finally {
+            saved.release(consumer);
+        }
+    }
+}
+"#,
+            &[address.to_owned(), text.to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+}
+
 #[test]
 #[serial]
 fn test_analyzer_enable_disable_in_bridge() {
@@ -397,6 +432,7 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
     let address = function["address"].as_str().expect("function address");
     let text = format!("persist-before-failure-{}", uuid::Uuid::new_v4());
     client.comment_set(address, &text, Some("EOL")).unwrap();
+    assert_saved_comment(&client, address, &text);
 
     // The address parses, but is outside every memory block. This fails inside
     // patch_bytes' transaction, after the earlier comment has succeeded.
@@ -410,6 +446,7 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
         error.to_string().contains("Failed to patch bytes"),
         "{error}"
     );
+    assert_saved_comment(&client, address, &text);
     drop(harness);
 
     let restarted = start_daemon();
@@ -518,7 +555,7 @@ public class CopyBridgeProgram extends GhidraScript {
         currentProgram.getDomainFile().copyTo(folder, monitor).setName("alternate");
     }
 }
-"#, &[folder.clone()], &[], false).unwrap();
+"#, std::slice::from_ref(&folder), &[], false).unwrap();
     let alternate = format!("/{folder}/alternate");
     client.open_program(&alternate).unwrap();
     // Copying/renaming the project file retains the original internal Program
@@ -539,6 +576,7 @@ public class CopyBridgeProgram extends GhidraScript {
     let address = function["address"].as_str().unwrap();
     let marker = format!("alternate-only-{}", uuid::Uuid::new_v4());
     client.comment_set(address, &marker, Some("EOL")).unwrap();
+    assert_saved_comment(&client, address, &marker);
     assert!(client.comment_get(address).unwrap()["comments"]
         .as_array()
         .unwrap()
@@ -591,6 +629,121 @@ public class CopyBridgeProgram extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_failed_script_saves_partial_changes() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let function = client
+        .send_command("get_function", Some(serde_json::json!({"address": "main"})))
+        .unwrap();
+    let address = function["address"].as_str().unwrap();
+    let text = format!("failed-script-autosave-{}", uuid::Uuid::new_v4());
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class EditThenFailAutoSave extends GhidraScript {
+    public void run() throws Exception {
+        setEOLComment(toAddr(getScriptArgs()[0]), getScriptArgs()[1]);
+        throw new IllegalStateException("intentional failure after editing");
+    }
+}
+"#,
+            &[address.to_owned(), text.clone()],
+            &[],
+            false,
+        )
+        .unwrap_err();
+    let error = error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap();
+    assert!(error.message.contains("intentional failure after editing"));
+    assert_eq!(error.detail["partial_changes_saved"], true);
+    assert_saved_comment(&client, address, &text);
+}
+
+#[test]
+#[serial]
+fn test_save_failure_preserves_program_and_does_not_replay_edit() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let key = uuid::Uuid::new_v4().to_string();
+    // Deliberately leave a script-owned transaction open: the edit completes,
+    // but a durable save cannot acquire the program lock.
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class PreventAutoSave extends GhidraScript {
+    public void run() throws Exception {
+        var options = currentProgram.getOptions("AutoSaveTest");
+        String key = getScriptArgs()[0];
+        options.setInt(key, options.getInt(key, 0) + 1);
+        println(Integer.toString(currentProgram.startTransaction("deliberately left open")));
+    }
+}
+"#,
+            std::slice::from_ref(&key),
+            &[],
+            false,
+        )
+        .unwrap_err();
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert_eq!(detail["save_failed"], true);
+    assert_eq!(detail["saved"], false);
+    assert_eq!(detail["command_response"]["status"], "success");
+    let transaction = detail["command_response"]["data"]["stdout"]
+        .as_str()
+        .unwrap()
+        .trim()
+        .to_owned();
+    assert!(client.program_save().is_err());
+    assert!(client.program_close().is_err());
+    assert_eq!(client.bridge_info().unwrap()["has_current_program"], true);
+
+    let batch = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(batch.path(), "program save\nprogram info\n").unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "batch"])
+        .arg(batch.path())
+        .args(["--project", test_project()])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let batch_error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(batch_error["detail"]["save_failed"], true);
+    assert_eq!(batch_error["detail"]["not_executed"], 1);
+    assert_eq!(
+        batch_error["detail"]["results"][0]["detail"]["command_response"]["status"],
+        "success"
+    );
+
+    let repaired = client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class AllowAutoSave extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
+        println("edit-count:" + currentProgram.getOptions("AutoSaveTest").getInt(getScriptArgs()[1], 0));
+    }
+}
+"#, &[transaction, key], &[], false).unwrap();
+    assert!(repaired["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("edit-count:1"));
+    assert_eq!(client.program_save().unwrap()["saved"], true);
+    assert!(client.ping().unwrap());
+}
+
+#[test]
+#[serial]
 fn management_results_are_single_json_documents() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
@@ -638,6 +791,14 @@ fn management_results_are_single_json_documents() {
         let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(error["detail"].is_object(), "{error}");
     }
+    let project_path = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_project_dir()
+        .unwrap()
+        .join(test_project());
+    let initial_pid = ghidra_cli::ghidra::bridge::read_pid_file(&project_path)
+        .unwrap()
+        .unwrap();
     for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
         let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .args(["--json", "--quiet"])
@@ -650,7 +811,52 @@ fn management_results_are_single_json_documents() {
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         if args == ["program", "save"] {
             assert_eq!(value["saved"], true);
+            assert_eq!(
+                ghidra_cli::ghidra::bridge::read_pid_file(&project_path).unwrap(),
+                Some(initial_pid),
+                "program save restarted the bridge"
+            );
         }
         assert!(output.stderr.is_empty(), "{output:?}");
     }
+}
+
+#[test]
+#[serial]
+fn test_batch_failure_exit_and_results() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let batch = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        batch.path(),
+        "program info\nfunction create main\nprogram info\n",
+    )
+    .unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "batch"])
+        .arg(batch.path())
+        .args(["--project", test_project()])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["detail"]["commands_executed"], 3);
+    assert_eq!(error["detail"]["failed"], 1);
+    assert!(error["detail"]["results"][0]["result"]["function_count"].is_number());
+    assert!(error["detail"]["results"][1]["detail"].is_object());
+    assert!(error["detail"]["results"][2]["result"]["function_count"].is_number());
+    std::fs::write(batch.path(), "program info\nprogram save\n").unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "batch"])
+        .arg(batch.path())
+        .args(["--project", test_project()])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result[0]["failed"], 0);
+    assert_eq!(result[0]["results"][1]["result"]["saved"], true);
+    assert!(harness.client().unwrap().ping().unwrap());
 }

@@ -33,12 +33,12 @@ public final class BridgeRuntime {
             output.accept("---GHIDRA_CLI_END---");
             System.out.flush();
             server.start();
-            // This must remain on the calling GhidraScript thread. Returning
-            // allows the headless harness to finish its transaction and save.
+            // Requests commit and save on the calling GhidraScript thread.
             jobs.runProgramJobs();
         } finally {
             jobs.beginShutdown();
             server.close();
+            session.closeProgram();
             // Rust removes discovery files after the JVM releases project locks.
         }
     }

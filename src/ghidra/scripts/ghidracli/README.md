@@ -28,30 +28,39 @@ accepted jobs before returning to Ghidra. Connection handlers enqueue without
 waiting on program futures; completed futures hand writes to a separate bounded
 response pool so waiting clients cannot starve controls.
 
-`ProgramSession` centralizes program switching/release and reads the current
-Program, GhidraState, and monitor from the owning script. It does not keep a second
-copy of the current Program. Handlers and helpers retain the session, not a
+`ProgramSession` centralizes request transactions, saving, and program switching
+and release. It reads the current Program, GhidraState, and monitor from the
+owning script. It does not keep a second copy of the current Program.
+Handlers and helpers retain the session, not a
 Program or monitor captured during construction. `JobScheduler` installs a fresh
 `JobTaskMonitor` for each request and restores the script monitor in `finally`.
 Control requests read snapshots and job records instead of this session.
 Switching resolves the requested project file before checking whether it is
 already open; two files can contain Programs with the same internal name.
 
-`ProgramTransaction` remembers the Program and whether an outer transaction
-already existed when a handler began. An inner abort would mark the entire
-Ghidra transaction group for rollback, losing earlier successful commands.
-Therefore a failed nested handler ends its transaction without aborting the
-outer group. Partial changes from the failed handler can remain; this does not
-provide atomic rollback per request. Standalone transactions retain their
-requested commit/rollback behavior. Handler mutations must use
-`session.transaction()` rather than calling `Program.startTransaction()` directly.
+The entry script calls its inherited `end(true)` before serving requests to end
+the transaction created by `GhidraScript.executeNormal()`. Never end an unknown
+transaction ID or leave the script's transaction ID tied to a switched program.
+`CommandDispatcher` wraps each program request in a `ProgramSession` transaction,
+ends it, and saves a changed program before returning a response. Read-only
+requests do not write an unchanged database. Analysis and scripts follow the same
+path, so there is no separate list of mutating command names to maintain.
 
-The headless harness holds an outer transaction for the initially loaded program
-while the bridge script runs. Returning from the script lets the harness commit
-and save that program. `ghidra-cli program save` stops and restarts the bridge to
-obtain this durable flush. A program explicitly opened by `ProgramSession` can
-have a different transaction lifetime; do not assume every Program has the
-harness's outer transaction.
+`ProgramTransaction` remembers its Program and whether it is nested. Nested
+handler aborts would roll back other changes in the same request, so they retain
+partial changes as before; standalone transactions retain their requested
+commit/rollback behavior. Handler mutations must use `session.transaction()`.
+Earlier requests have already committed and saved. Failed requests also flush
+retained changes and report `partial_changes_saved` in their error detail.
+
+Saving uses a non-cancelled monitor after the request transaction ends, including
+when execution was cancelled. Save errors fail the response, preserve the original
+command response in error detail, and leave the program available for retry.
+`program_save` retries the flush without restarting the bridge. Switching and
+closing save before releasing the session's own consumer; a failed save or open
+keeps the previous program. Shutdown drains requests, saves, and releases this
+consumer on the script thread. The headless harness retains its own consumer for
+the initial program until script cleanup.
 
 ## Command boundaries
 

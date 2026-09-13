@@ -19,9 +19,9 @@ final class ProgramTransaction {
         if (ended) return;
         ended = true;
         // Ghidra shares one rollback status across nested transactions. Aborting
-        // a handler inside the headless script transaction would discard earlier
-        // successful requests too. Preserve those edits, even if the failed
-        // request left partial changes. Standalone transactions can still abort.
+        // a handler inside the request transaction would discard other changes
+        // in that request too. Preserve partial edits as before; earlier
+        // requests have already committed and saved. Standalone transactions can abort.
         program.endTransaction(id, commit || nested);
     }
 }

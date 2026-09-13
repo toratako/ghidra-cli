@@ -293,6 +293,7 @@ final class JobScheduler {
         String programName = currentProgramNameSnapshot;
         result.addProperty("protocol_version", 2);
         result.addProperty("has_current_program", programName != null);
+        result.addProperty("auto_save", true);
         if (programName != null) {
             result.addProperty("current_program", programName);
         }

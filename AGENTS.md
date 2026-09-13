@@ -23,8 +23,9 @@ or recovery guidance.
   doctor must use the same complete bundle.
 - Run program operations on the original GhidraScript thread. Handlers retain
   `ProgramSession`, never a cached Program or job monitor.
-- Mutations use `ProgramSession.transaction()`: nested aborts can erase earlier
-  successful requests. Failed nested handlers may retain partial changes.
+- Mutations use `ProgramSession.transaction()`: nested aborts can erase other
+  changes in the same request. Failed nested handlers may retain partial changes.
+  End each request transaction and save before replying; never hide save failures.
 
 See [CLI routing](src/app/README.md), [bridge lifecycle](src/ghidra/README.md),
 [Java ownership/transactions](src/ghidra/scripts/ghidracli/README.md), and

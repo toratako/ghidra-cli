@@ -65,8 +65,12 @@ response schemas without snapshots. CI suite groupings are in
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
 
 `daemon_tests` also checks cancellation does not poison the next job, handlers
-follow program switch/close, and a failed mutation cannot erase earlier edits
-on restart. Real bridge tests cover OSGi loading of the whole source bundle.
+follow program switch/close, automatic saves are visible in a separate database
+object before shutdown, and failed mutations cannot erase earlier edits. Save
+failures retain the editing result and program for recovery; explicit save keeps
+the same JVM. Real bridge tests cover OSGi loading of the whole source bundle.
+Batch coverage checks nonzero failure exits, preservation of per-command results
+and save errors, and stopping subsequent commands after a save failure or timeout.
 
 `common::test_project()` gives each test executable a fresh project. Read-only
 suites reuse a bridge to amortize JVM startup; lifecycle/mutation suites may

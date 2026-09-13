@@ -115,115 +115,38 @@ fn handle_bridge_stop(
     Ok(json!({"state": "stopped", "project": project_path, "message": message}))
 }
 
-/// `ghidra-cli program save`: flush pending changes to disk.
-///
-/// Ghidra's headless harness holds a transaction for the initially loaded
-/// program throughout the bridge preScript. Saving that program in place fails
-/// with "Unable to lock due to active transaction"; returning from the script
-/// lets the harness commit and save. This command obtains that durable flush
-/// by stopping the bridge and restarting it against the same program. Programs
-/// explicitly opened during a session can have a different transaction lifetime.
+/// Flush pending changes in place; a stopped bridge has nothing pending.
 pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     let output = Output::new(&cli);
     let Commands::Program(cli::ProgramCommands::Save(args)) = &cli.command else {
         unreachable!("handle_program_save dispatched for a non-Save Program command");
     };
     let project = args.project.clone().or_else(|| cli.project.clone());
-    let mut program = args.program.clone().or_else(|| cli.program.clone());
-    let projects_dir = cli.projects_dir.clone();
-
-    let config = load_config(&projects_dir)?;
+    let program = args.program.clone().or_else(|| cli.program.clone());
+    let config = load_config(&cli.projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
-
-    let port = match bridge::is_bridge_running(&project_path) {
-        Some(port) => port,
-        None => {
-            return output.result(
-                &json!({"saved": false, "state": "stopped", "project": project_path}),
-                &format!(
-                    "No bridge running for project: {} — nothing pending to save.",
-                    project_path.display()
-                ),
-            );
-        }
+    let Some(port) = bridge::is_bridge_running(&project_path) else {
+        return output.result(
+            &json!({"saved": false, "state": "stopped", "project": project_path}),
+            &format!(
+                "No bridge running for project: {} — nothing pending to save.",
+                project_path.display()
+            ),
+        );
     };
-
-    // Reopen the same program on restart even if the caller didn't pass
-    // --program, by asking the (still-running, for a moment longer) bridge
-    // what it currently has open. While we're connected, also snapshot a
-    // cheap invariant (function count) so we can prove the save actually
-    // took, rather than trusting the restart to have worked.
-    let mut expected_function_count: Option<i64> = None;
-    {
-        let client = BridgeClient::new(port);
-        if program.is_none() {
-            if let Ok(info) = client.bridge_info() {
-                program = info
-                    .get("current_program")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-            }
-        }
-        if let Ok(info) = client.program_info() {
-            expected_function_count = info.get("function_count").and_then(|v| v.as_i64());
-        }
+    let ghidra_install_dir = config.get_ghidra_install_dir()?;
+    let client = super::ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?;
+    if let Some(program) = program {
+        client.open_program(&program)?;
     }
-
-    output.progress("Saving: stopping the bridge to flush pending changes to disk...");
-    handle_bridge_stop(project.clone(), &projects_dir, output)?;
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    handle_bridge_start(project.clone(), program, &projects_dir, output)?;
-
-    // Verify the restart actually reflects what was pending, instead of
-    // trusting a clean restart to mean a clean save. A mismatch here means
-    // the underlying Ghidra transaction was rolled back on shutdown (e.g. a
-    // handled error earlier in the session aborted a nested sub-transaction,
-    // which silently discards the whole session's changes) -- fail loudly
-    // rather than printing "Saved" over a reverted program.
-    if let Some(expected) = expected_function_count {
-        let new_port = bridge::is_bridge_running(&project_path);
-        let actual = new_port.and_then(|p| {
-            BridgeClient::new(p)
-                .program_info()
-                .ok()
-                .and_then(|info| info.get("function_count").and_then(|v| v.as_i64()))
-        });
-
-        match actual {
-            Some(actual) if actual == expected => {
-                return output.result(
-                    &json!({"saved": true, "project": project_path, "function_count": actual}),
-                    &format!(
-                        "Saved (bridge restarted, function count verified: {}).",
-                        actual
-                    ),
-                );
-            }
-            Some(actual) => {
-                anyhow::bail!(
-                    "Save verification FAILED: function count before save was {}, but is {} \
-                     after restart. The bridge restarted cleanly but Ghidra rolled back pending \
-                     changes on shutdown -- this save did NOT persist your edits. Re-check state \
-                     with `ghidra-cli function list --count` and `ghidra-cli program save` again; if this \
-                     persists, checkpoint in smaller batches.",
-                    expected,
-                    actual
-                );
-            }
-            None => {
-                anyhow::bail!(
-                    "Save verification FAILED: could not query the restarted bridge to confirm \
-                     the save took (expected function count was {}). Check `ghidra-cli status` before \
-                     trusting this save.",
-                    expected
-                );
-            }
-        }
-    }
-    output.result(
-        &json!({"saved": true, "project": project_path}),
-        "Saved (bridge restarted).",
-    )
+    let mut result = client.program_save()?;
+    result["project"] = json!(project_path);
+    let message = if result["saved"] == true {
+        "Saved."
+    } else {
+        "No program open — nothing pending to save."
+    };
+    output.result(&result, message)
 }
 
 /// Get bridge status for a project. A stopped bridge is a valid status result.

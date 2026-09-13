@@ -102,19 +102,10 @@ final class ProgramCommands {
             // Use reflection to handle API differences across Ghidra versions
             try {
                 java.lang.reflect.Method saveMethod = loadResults.getClass().getMethod("save", TaskMonitor.class);
-                // Actually it's per-loaded item; iterate
-                // LoadResults implements Iterable<Loaded<DomainObject>>
-                if (loadResults instanceof Iterable) {
-                    for (Object loaded : (Iterable<?>) loadResults) {
-                        java.lang.reflect.Method saveMeth = loaded.getClass().getMethod("save", TaskMonitor.class);
-                        saveMeth.invoke(loaded, mon);
-                    }
-                }
+                saveMethod.invoke(loadResults, mon);
+            } finally {
                 java.lang.reflect.Method releaseMethod = loadResults.getClass().getMethod("release", Object.class);
                 releaseMethod.invoke(loadResults, consumer);
-            } catch (Exception reflectEx) {
-                // Preserve the existing best-effort save behavior.
-                session.logError("Import save warning: " + reflectEx.getMessage());
             }
 
             JsonObject result = new JsonObject();
@@ -123,7 +114,9 @@ final class ProgramCommands {
             return result;
 
         } catch (Exception e) {
-            return errorResult("Import failed: " + e.getMessage());
+            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                && e.getCause() != null ? e.getCause() : e;
+            return errorResult("Import failed: " + cause.getMessage());
         }
     }
 
@@ -152,19 +145,8 @@ final class ProgramCommands {
         }
 
         try {
-            TaskMonitor mon = session.monitor();
-
             // Use GhidraScript's built-in analyzeAll which works across Ghidra versions
             session.analyzeAll(session.program());
-
-            // Explicitly opened programs may save here. The initially loaded
-            // program still has the harness's outer transaction; its durable
-            // save happens when the bridge script returns.
-            try {
-                session.program().save("Analysis complete", mon);
-            } catch (Exception saveErr) {
-                // Best effort - durable persistence also happens on clean shutdown.
-            }
 
             FunctionManager fm = session.program().getFunctionManager();
             JsonObject result = new JsonObject();
@@ -288,7 +270,7 @@ final class ProgramCommands {
                     ". Available: " + available.toString());
             }
 
-            session.open(domainFile, project);
+            session.open(domainFile);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "success");
@@ -300,7 +282,15 @@ final class ProgramCommands {
         }
     }
 
-    JsonObject handleProgramClose() {
+    JsonObject handleProgramSave() {
+        JsonObject result = new JsonObject();
+        // CommandDispatcher finishes the transaction and saves before replying.
+        result.addProperty("saved", session.program() != null);
+        if (session.program() != null) result.addProperty("program", session.program().getName());
+        return result;
+    }
+
+    JsonObject handleProgramClose() throws Exception {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -312,7 +302,7 @@ final class ProgramCommands {
         JsonObject result = new JsonObject();
         result.addProperty("status", "closed");
         result.addProperty("program", programName);
-        result.addProperty("note", "not saved to disk -- run `ghidra-cli program save` or `ghidra-cli stop` to persist pending changes");
+        result.addProperty("saved", true);
         return result;
     }
 
