@@ -242,7 +242,7 @@ impl BridgeClient {
     }
 
     /// `addresses` scopes the delete to exactly those symbols (by address);
-    /// see `resolve_symbol_addresses` in app/execute.rs for how callers compute it.
+    /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
     pub fn symbol_delete(&self, name: &str, addresses: &[String]) -> Result<serde_json::Value> {
         self.send_command(
             "symbol_delete",
@@ -251,7 +251,7 @@ impl BridgeClient {
     }
 
     /// `addresses` scopes the rename to exactly those symbols (by address);
-    /// see `resolve_symbol_addresses` in app/execute.rs for how callers compute it.
+    /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
     pub fn symbol_rename(
         &self,
         old_name: &str,

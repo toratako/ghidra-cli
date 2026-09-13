@@ -1,30 +1,8 @@
-use super::output::describe_query_error;
-use crate::cli::{self, Commands};
-use crate::filter;
-use crate::ipc::client::BridgeClient;
+mod scripts;
+mod symbols;
 
-/// Parse a `--expect` spec (`PATH` or `PATH:MIN_ROWS`) into the wire form
-/// `{path, min_rows?}`. The path is made absolute against the *client's* CWD so
-/// the bridge validates the same file the script wrote, regardless of the CWD
-/// the bridge JVM inherited. A trailing `:<digits>` is treated as MIN_ROWS;
-/// anything else (e.g. a Windows drive letter) stays part of the path.
-fn parse_expect_spec(spec: &str) -> serde_json::Value {
-    let (path_part, min_rows) = match spec.rsplit_once(':') {
-        Some((p, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
-            (p, n.parse::<u64>().ok())
-        }
-        _ => (spec, None),
-    };
-    let abs = std::path::absolute(path_part)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path_part.to_string());
-    let mut obj = serde_json::Map::new();
-    obj.insert("path".to_string(), serde_json::Value::String(abs));
-    if let Some(n) = min_rows {
-        obj.insert("min_rows".to_string(), serde_json::json!(n));
-    }
-    serde_json::Value::Object(obj)
-}
+use crate::cli::{self, Commands};
+use crate::ipc::client::BridgeClient;
 
 /// Resolve `comment set`'s text from `--stdin`, `--text-file`, or the TEXT
 /// positional (in that priority order; clap already rejects combining them).
@@ -70,89 +48,6 @@ fn bridge_list_params(
         };
         (limit, filter)
     }
-}
-
-/// Resolve which address(es) a symbol mutation (`symbol rename`/`symbol
-/// delete`) should touch, given the caller's optional `--address`/`--filter`
-/// disambiguators and `--all` opt-in.
-///
-/// Ghidra auto-generates names (`caseD_XX`, `LAB_XXXX`, ...) that are
-/// routinely reused across unrelated addresses program-wide, so a bare name
-/// is never a safe mutation target on its own: without this, `symbol
-/// rename`/`symbol delete` would silently touch every symbol sharing that
-/// name, not just the one address the caller meant. Returns the exact
-/// addresses to pass to the bridge; the bridge enforces the same guard
-/// independently as a second line of defense.
-fn resolve_symbol_addresses(
-    client: &BridgeClient,
-    name: &str,
-    address: Option<&str>,
-    filter_expr: Option<&str>,
-    all: bool,
-) -> anyhow::Result<Vec<String>> {
-    let response = client.symbol_get(name)?;
-    let mut candidates: Vec<serde_json::Value> = response
-        .get("symbols")
-        .and_then(|s| s.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    if candidates.is_empty() {
-        anyhow::bail!("Symbol not found: {}", name);
-    }
-
-    if let Some(addr) = address {
-        let normalized = addr
-            .trim()
-            .to_lowercase()
-            .trim_start_matches("0x")
-            .to_string();
-        candidates.retain(|s| {
-            s.get("address")
-                .and_then(|a| a.as_str())
-                .map(|a| a.trim_start_matches("0x").eq_ignore_ascii_case(&normalized))
-                .unwrap_or(false)
-        });
-        if candidates.is_empty() {
-            anyhow::bail!("No symbol named '{}' at address {}", name, addr);
-        }
-    }
-
-    if let Some(expr) = filter_expr {
-        let parsed = filter::Filter::parse(expr).map_err(describe_query_error)?;
-        candidates.retain(|s| parsed.evaluate(s).unwrap_or(false));
-        if candidates.is_empty() {
-            anyhow::bail!("No symbol named '{}' matches filter '{}'", name, expr);
-        }
-    }
-
-    if candidates.len() > 1 && !all {
-        let addrs: Vec<String> = candidates
-            .iter()
-            .map(|s| {
-                s.get("address")
-                    .and_then(|a| a.as_str())
-                    .unwrap_or("?")
-                    .to_string()
-            })
-            .collect();
-        anyhow::bail!(
-            "'{}' matches {} symbols at addresses [{}] -- pass --address <ADDR> (or a narrower \
-             --filter) to pick one, or --all to affect every match",
-            name,
-            candidates.len(),
-            addrs.join(", ")
-        );
-    }
-
-    Ok(candidates
-        .into_iter()
-        .filter_map(|s| {
-            s.get("address")
-                .and_then(|a| a.as_str())
-                .map(|s| s.to_string())
-        })
-        .collect())
 }
 
 /// Execute a command via the bridge client.
@@ -387,34 +282,7 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::Save(_) => client.program_save(),
             }
         }
-        Commands::Symbol(cmd) => {
-            use cli::SymbolCommands;
-            match cmd {
-                SymbolCommands::List(_) => client.symbol_list(list_limit, None),
-                SymbolCommands::Get(args) => client.symbol_get(&args.name),
-                SymbolCommands::Create(args) => client.symbol_create(&args.address, &args.name),
-                SymbolCommands::Delete(args) => {
-                    let addresses = resolve_symbol_addresses(
-                        client,
-                        &args.name,
-                        args.address.as_deref(),
-                        args.options.filter.as_deref(),
-                        args.all,
-                    )?;
-                    client.symbol_delete(&args.name, &addresses)
-                }
-                SymbolCommands::Rename(args) => {
-                    let addresses = resolve_symbol_addresses(
-                        client,
-                        &args.old_name,
-                        args.address.as_deref(),
-                        args.filter.as_deref(),
-                        args.all,
-                    )?;
-                    client.symbol_rename(&args.old_name, &args.new_name, &addresses)
-                }
-            }
-        }
+        Commands::Symbol(cmd) => symbols::execute(client, cmd, list_limit),
         Commands::Type(cmd) => {
             use cli::TypeCommands;
             match cmd {
@@ -561,36 +429,7 @@ pub(super) fn execute_via_bridge(
                 }
             }
         }
-        Commands::Script(cmd) => {
-            use cli::ScriptCommands;
-            match cmd {
-                ScriptCommands::Run(args) => {
-                    let expect: Vec<serde_json::Value> =
-                        args.expect.iter().map(|s| parse_expect_spec(s)).collect();
-                    if args.script_path == "-" {
-                        // Read a one-off script's Java source from stdin so a
-                        // throwaway snippet doesn't need a checked-in file; the
-                        // bridge stages it to a temp file and runs it through the
-                        // same compile/execute path as `script run PATH`.
-                        let source = crate::terminal::read_stdin("Java source")?;
-                        client.script_run_source(&source, &args.args, &expect, args.allow_empty)
-                    } else {
-                        // Canonicalize client-side so the bridge receives an absolute
-                        // path independent of the working directory its JVM inherited.
-                        // Fall back to the raw path if the file is missing; the bridge
-                        // then reports a clear "Script not found".
-                        let path = std::fs::canonicalize(&args.script_path)
-                            .or_else(|_| std::path::absolute(&args.script_path))
-                            .map(|p| p.to_string_lossy().into_owned())
-                            .unwrap_or_else(|_| args.script_path.clone());
-                        client.script_run(&path, &args.args, &expect, args.allow_empty)
-                    }
-                }
-                ScriptCommands::Python(args) => client.script_python(&args.code),
-                ScriptCommands::Java(args) => client.script_java(&args.code),
-                ScriptCommands::List => client.script_list(),
-            }
-        }
+        Commands::Script(cmd) => scripts::execute(client, cmd),
         Commands::Disasm(args) => client.disasm(args.resolved_target(), args.num_instructions),
         Commands::DisasmAt(args) => client.disasm_at(&args.address, args.count),
         Commands::Clear(args) => {
@@ -620,16 +459,7 @@ pub(super) fn execute_via_bridge(
                 AnalyzerCommands::Run(_) => client.analyze_run(),
             }
         }
-        Commands::Rename(args) => {
-            let addresses = resolve_symbol_addresses(
-                client,
-                &args.old_name,
-                args.address.as_deref(),
-                args.filter.as_deref(),
-                args.all,
-            )?;
-            client.symbol_rename(&args.old_name, &args.new_name, &addresses)
-        }
+        Commands::Rename(args) => symbols::rename(client, args),
         _ => anyhow::bail!("Command not supported"),
     }
 }

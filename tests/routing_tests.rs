@@ -59,6 +59,14 @@ impl RecordedBridge {
                         json!({"program": program})
                     }
                     "import" => json!({"program": "imported"}),
+                    "symbol_get" => json!({"symbols": if args["name"] == "missing" {
+                        vec![]
+                    } else {
+                        vec![
+                            json!({"name": "shared", "address": "00AB", "kind": "label"}),
+                            json!({"name": "shared", "address": "00CD", "kind": "function"}),
+                        ]
+                    }}),
                     "list_imports" | "list_exports" => {
                         let mut rows = vec![json!({"name": "first"}), json!({"name": "second"})];
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
@@ -249,5 +257,142 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
             actual.parent().unwrap().canonicalize().unwrap(),
             bridge.root.path().canonicalize().unwrap()
         );
+    }
+}
+
+#[test]
+fn symbol_mutations_resolve_targets_before_sending_the_edit() {
+    let bridge = RecordedBridge::new();
+    for (args, command, addresses) in [
+        (
+            vec![
+                "symbol",
+                "rename",
+                "shared",
+                "renamed",
+                "--address",
+                "0x00ab",
+            ],
+            "symbol_rename",
+            json!(["00AB"]),
+        ),
+        (
+            vec!["rename", "shared", "renamed", "--filter", "kind=function"],
+            "symbol_rename",
+            json!(["00CD"]),
+        ),
+        (
+            vec!["symbol", "delete", "shared", "--all"],
+            "symbol_delete",
+            json!(["00AB", "00CD"]),
+        ),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        bridge.run(&args);
+        let requests = bridge.requests.lock().unwrap();
+        let domain: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] != "bridge_info")
+            .collect();
+        assert_eq!(domain.len(), 2, "{domain:?}");
+        assert_eq!(domain[0]["command"], "symbol_get");
+        assert_eq!(domain[0]["args"], json!({"name": "shared"}));
+        assert_eq!(domain[1]["command"], command);
+        let expected = if command == "symbol_delete" {
+            json!({"name": "shared", "addresses": addresses})
+        } else {
+            json!({"old_name": "shared", "new_name": "renamed", "addresses": addresses})
+        };
+        assert_eq!(domain[1]["args"], expected);
+    }
+}
+
+#[test]
+fn symbol_resolution_errors_never_send_a_mutation() {
+    let bridge = RecordedBridge::new();
+    for (args, diagnostic) in [
+        (
+            vec!["symbol", "delete", "missing"],
+            "Symbol not found: missing",
+        ),
+        (
+            vec!["rename", "shared", "renamed"],
+            "matches 2 symbols at addresses [00AB, 00CD]",
+        ),
+        (
+            vec!["symbol", "delete", "shared", "--address", "FFFF"],
+            "No symbol named 'shared' at address FFFF",
+        ),
+        (
+            vec![
+                "symbol",
+                "rename",
+                "shared",
+                "renamed",
+                "--filter",
+                "kind=absent",
+            ],
+            "No symbol named 'shared' matches filter 'kind=absent'",
+        ),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        let output = bridge.command().args(args).output().unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"].as_str().unwrap().contains(diagnostic),
+            "{error}"
+        );
+        let requests = bridge.requests.lock().unwrap();
+        assert_eq!(requests.last().unwrap()["command"], "symbol_get");
+        assert!(!requests.iter().any(|r| matches!(
+            r["command"].as_str(),
+            Some("symbol_rename" | "symbol_delete")
+        )));
+    }
+}
+
+#[test]
+fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
+    let bridge = RecordedBridge::new();
+    let source = "// Java source with `literal` $text\n";
+    std::fs::write(bridge.root.path().join("Example.java"), source).unwrap();
+    for path in ["Example.java", "missing.java", "-"] {
+        let output = bridge
+            .command()
+            .args([
+                "script",
+                "run",
+                path,
+                "--expect",
+                "rows.csv:2",
+                "--expect",
+                "artifact:name",
+                "--allow-empty",
+                "--",
+                "argument with spaces",
+            ])
+            .write_stdin(source)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let requests = bridge.requests.lock().unwrap();
+        let request = requests.last().unwrap();
+        assert_eq!(request["command"], "script_run");
+        let mut expected = json!({
+            "args": ["argument with spaces"],
+            "expect": [
+                {"path": bridge.root.path().join("rows.csv"), "min_rows": 2},
+                {"path": bridge.root.path().join("artifact:name")},
+            ],
+            "allow_empty": true,
+        });
+        if path == "-" {
+            expected["source"] = json!(source);
+        } else {
+            let path = bridge.root.path().join(path);
+            expected["path"] = json!(path.canonicalize().unwrap_or(path));
+        }
+        assert_eq!(request["args"], expected);
     }
 }

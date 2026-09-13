@@ -9,7 +9,9 @@ argument definitions and shared query options, re-exported through `crate::cli`.
 |------|----------------|
 | `mod.rs` | Command routing, early filter validation, bridge/program selection, and one-restart compatibility recovery |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
-| `execute.rs` | Convert commands to bridge requests, with shared list-fetch limits, range parsing, and symbol mutation guards |
+| `execute.rs` | Dispatch bridge requests, with shared list-fetch limits, range parsing, and comment input resolution |
+| `execute/symbols.rs` | Resolve and guard symbol mutation targets; share rename handling with the top-level alias |
+| `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs` | Aggregate attempted command results and stop on save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
