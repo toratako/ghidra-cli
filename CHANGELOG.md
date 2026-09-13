@@ -5,10 +5,157 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0]
+
+Changes since upstream 0.2.2 ([`10019ba`](https://github.com/toratako/ghidra-cli/commit/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79)),
+including the electricazimuth integration in
+[`a6a4103`](https://github.com/toratako/ghidra-cli/commit/a6a4103e0bd358d1c7146151f7e8f9e9f617830d),
+selected nonsleepr and encounter changes, and subsequent work in this repository.
+
+### Added
+
+- `ghidra pcode at ADDRESS` and `pcode function TARGET [--high]` expose raw
+  instruction PCode and decompiler high PCode, including operands, outputs,
+  address spaces, and register names.
+- `ghidra analyzer list|set|run` lists analyzer settings, enables or disables a
+  named analyzer, and explicitly re-runs analysis. Changing a setting with
+  `analyzer set NAME true|false` does not itself start analysis.
+- `ghidra type import-c CODE [--category PATH]` (aliases `type import` and
+  `type parse-c`) parses C declarations, including structs, unions, enums,
+  typedefs, and function definitions. Results include type names, paths, sizes,
+  categories, and parser messages. Category placement applies to the parsed
+  types without moving unrelated existing types with the same name.
+- Explicit import controls: `--loader`, `--language` (alias `--processor`),
+  `--compiler-spec` (alias `--cspec`), and repeatable
+  `--loader-option NAME=VALUE`. Raw binary options `--base-address`,
+  `--block-name`, `--file-offset`, and `--length` imply `BinaryLoader` when no
+  loader is specified. Explicit loader imports stop any running project bridge,
+  import through `analyzeHeadless`, and reopen the imported program.
+- `ghidra disasm-at ADDRESS [--count N]` creates instructions at an unanalyzed
+  address and reports both Ghidra's `ok` result and whether an instruction
+  actually `landed` at the target.
+- `ghidra clear START:END [--to-data | --disasm-at ADDRESS]` clears overlapping
+  code units, optionally re-disassembling at a specified address in the same
+  request.
+- `ghidra function set-noreturn TARGET [--value true|false]` controls a
+  function's no-return flag. `function get` and `function list` now include
+  `no_return`.
+- Function-scoped tag commands: `function tag add|remove TARGET TAG_NAME` and
+  `function tag list TARGET`, complementing the top-level `tag` commands and
+  function tag filters introduced in 0.2.2.
+- `ghidra script run -` reads Java source from stdin and stages it for the same
+  compilation and execution path used by script files.
+- `ghidra comment set ADDRESS --stdin` and `--text-file PATH` accept comment
+  text without exposing it to shell argument expansion.
+- `ghidra type apply ADDRESS TYPE --force` (alias `--clear-conflicting`) clears
+  overlapping instructions or data before applying a type. Replacing a function
+  entry point reports a warning that its code was cleared.
+- `ghidra program save` flushes pending edits by stopping the bridge, reopening
+  the same program, and checking its function count. This works around the
+  headless harness's lifetime transaction, which prevents an in-place save.
+
+### Changed
+
+- `function create ADDRESS [NAME]` attempts disassembly first when the target
+  has no instruction.
+- `find calls TARGET` now returns calls made by the target function, scanning
+  its entire body. Rows use `call_site`, `callee`, `callee_address`, and `type`
+  instead of the previous incoming-call `address`/`caller` fields.
+- `patch nop --count N` stops at the first missing instruction after a
+  successful patch and reports the actual count and patched instructions.
+  A missing instruction at the starting address still fails; reaching a gap
+  later no longer rolls back the preceding patches.
+- Separated Rust CLI workflows, bridge transport, headless import, and bridge
+  diagnostics into dedicated modules. Split the Java bridge into runtime,
+  scheduling, program-session, and command components; startup and `doctor`
+  compile the same complete source bundle. Handlers resolve the current
+  program and per-job monitor through the shared session.
+- Rust library APIs now carry import/export limits in
+  `BridgeClient::list_imports`/`list_exports` and analysis/loader settings in
+  `bridge::import_oneshot` via `OneShotImportOptions`.
+- `cargo test-run` shares a closed, analyzed fixture across test executables
+  within one invocation, giving each suite an independent project copy.
+  Fixture creation uses file locks and atomic publication; setup failures are
+  cached for that run. Prerequisite checks run once per suite, and fixture
+  import avoids starting a throwaway bridge. Plain `cargo test` retains a
+  fixture local to each test executable.
+- Integration tests build a host-native fixture from Rust source, use isolated
+  temporary projects, and derive test addresses from the imported program.
+  CI no longer reuses mutable Ghidra project caches. Integration jobs use
+  `cargo test-run`, include tag and fixture coverage, and release validation
+  runs the full test set. Added regression coverage for cancellation followed
+  by another job, program switching, and persistence after a failed mutation.
+- Reorganized agent guidance under `docs/skills/SKILL.md`, with runtime and
+  recovery guidance in `docs/runtime.md` and implementation documentation beside
+  its modules. Replaced the old `.claude`-specific guidance and separated future
+  plans from the command reference.
+- Updated Cargo dependencies and adapted output formatting, hashing, HTTP/TLS,
+  and ZIP extraction to their current APIs.
+- Package metadata now points to `toratako/ghidra-cli` and lists `toratako`
+  alongside original author Alexander Kiselev. Recorded incorporated upstream
+  contributions in `LICENSE`.
+
 ### Fixed
 
-- `analyzer set NAME true|false` now accepts an explicit boolean and displays
+- Fresh imports no longer run auto-analysis twice. `import --no-analyze` now
+  also disables analysis in the one-shot importer; imports through an existing
+  bridge still run analysis when requested.
+- Failed headless imports include recent stdout and stderr in their
+  diagnostics, including errors that Ghidra reports on stdout.
+- Program switching resolves the project's file path rather than comparing
+  internal program names. `--program`, `program open`, `analyze`, and the
+  current-program marker now distinguish copied programs with identical names,
+  including files in project subfolders.
+- Failed nested mutation transactions no longer roll back earlier successful
+  commands in the headless session. Partial changes from the failed request can
+  remain; this does not provide atomic rollback per request. Standalone
+  transactions retain commit/rollback behavior.
+- Clean bridge shutdown persists pending edits. `program close` now reports
+  that closing did not save them to disk; use `program save` or `stop` to flush
+  edits before closing.
+- Java scripts load from the exact OSGi bundle registered for their directory,
+  preventing broader registered script paths from shadowing it. Removed a
+  reflective class-name literal that made the OSGi analyzer add an unwireable
+  package import and break bridge startup.
+- `symbol rename`, top-level `rename`, and `symbol delete` reject ambiguous
+  names unless scoped with `--address`/`--filter` or explicitly applied to all
+  matches with `--all`. `symbol delete --filter` now scopes the deletion.
+  `function rename OLD NEW --address ADDRESS` honors the exact entry address
+  and rejects an `OLD` name mismatch.
+- `type create` rejects C declarations and other non-identifier names instead
+  of silently creating an empty struct named after the entire input. Use
+  `type import-c` for declarations or `type add-field` to populate an empty struct.
+- `function create` and `type apply` errors include structured details about
+  owning functions, missing instructions, overlapping code units, and conflicting
+  data types/ranges. Error detail is printed as JSON on stderr with `-vv` or
+  `--json`.
+- Address-field filters accept quoted hexadecimal values with or without a
+  `0x`/`0X` prefix. `memory read` and patch operations resolve overlay-qualified
+  addresses; `clear` parses ranges such as `rom1::5512:551d` and inherits the
+  start address's space for an unqualified end address.
+- `xref to` resolves external import names and their local thunk targets,
+  collecting references to all matching addresses without duplicate rows.
+- `strings refs PATTERN` searches matching defined string values and returns
+  their references instead of treating the pattern as an address.
+- `graph callers` recognizes parameter and indirection references as well as
+  direct calls. `graph callers`/`callees` honor `--limit` during recursive
+  traversal, avoiding an exhaustive walk before truncating the output;
+  `--limit 0` remains unlimited.
+- `dump imports|exports` and `query imports|exports` pass row limits to the
+  bridge, including the unlimited `--limit 0` case.
+- `patch bytes` and `patch nop` temporarily enable writes to read-only memory
+  blocks and restore the original permission afterward.
+- `analyzer set NAME true|false` accepts an explicit boolean and displays
   `--help` without panicking. Missing or invalid values produce argument errors.
+- Socket read timeouts report `Timeout:` with exit code 75 (`EX_TEMPFAIL`),
+  distinct from bridge failures with exit code 1. A client timeout does not
+  cancel the server-side job; inspect `ghidra jobs` before retrying.
+
+### Removed
+
+- The legacy `type` argument alias for the bridge's `comment_set` request.
+  Direct protocol clients must send `comment_type`; the CLI continues to expose
+  `--comment-type`.
 
 ## [0.2.2]
 
@@ -27,44 +174,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `operands`) with any-element semantics: `tags ~ 'crypto'` matches if any
   element matches; `tags != 'x'` means NO element equals `x`. Previously such
   filters silently matched nothing.
-- `ghidra disasm-at ADDRESS [--count N]` — disassemble at an address,
-  disassembling first if no instruction is there yet, and report whether an
-  instruction actually landed there (`ok`/`landed`), since `disassemble()` can
-  report success with nothing landing at the target.
-- `ghidra function create ADDRESS [NAME]` now auto-disassembles at the target
-  first if no instruction exists there, instead of failing outright.
-- `ghidra clear START:END [--to-data] [--disasm-at ADDR]` — clear code units
-  overlapping a range (undoes auto-analysis that mis-disassembled through
-  inline data), optionally re-disassembling at a precise address in the same
-  call.
-- `ghidra function set-noreturn TARGET [--value true|false]` — mark a function
-  as never returning to its call site. `no_return` and `tags` are now included
-  in `function get`/`function list` output.
-- `ghidra function tag add/remove/list TARGET TAG_NAME` and
-  `ghidra function list --tag TAG_NAME` — native function tagging
-  (Ghidra's `FunctionTagManager`/`Function.addTag`), replacing the
-  `[subsys:name]` PLATE-comment convention some projects used as a workaround.
-- `ghidra script run -` reads Java source from stdin for one-off scripts
-  (staged to a temp file and compiled through the same path as a file on
-  disk), so a throwaway snippet no longer needs a checked-in file.
-  `ghidra doctor` now documents why `script python`/`script java` (inline
-  eval) stay disabled.
-- `ghidra type apply ADDRESS TYPE --force` (alias `--clear-conflicting`)
-  clears a conflicting data unit first instead of failing on it.
-- `ghidra comment set ADDRESS --stdin` / `--text-file PATH` read comment text
-  outside the shell argument, avoiding silent corruption from shell
-  metacharacter expansion (e.g. backticks) in free-form prose.
-- Structured error detail for three previously-opaque failures — `function
-  create` on an address already owned by another function (owner
-  name/entry/size), `function create` when `createFunction` returns `null` or
-  throws (diagnoses no-instruction vs. inside-existing-function vs.
-  mid-code-unit causes), and `type apply` "Conflicting data exists" (the
-  conflicting unit's kind/type/range). Printed as JSON with `-vv`/`--json`.
-- `program save` flushes edits by stopping/restarting the same program: the
-  headless harness's lifetime transaction prevents an in-place save. `stop`
-  persists without restarting; `program close` now reports that it cannot
-  perform the requested in-place save instead of silently discarding that intent.
-
 - Responsive `ping`, `status`, `bridge_info`, `jobs`, and `cancel` use snapshots
   independently of the single Ghidra program lane. Program requests receive job
   IDs and wait in a bounded FIFO (256), replacing the invisible socket backlog.
@@ -109,46 +218,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `EOL`). The client sent the type under key `type` while the bridge read
   `comment_type`; the client now sends `comment_type` and the bridge still
   accepts the old key as a fallback.
-- `ghidra script run` no longer fails intermittently with "Failed to get OSGi
-  bundle containing script" for `.java` scripts. Two bugs compounded: the
-  bridge resolved the target script through `GhidraScriptUtil`'s ambiguous
-  "first registered ancestor directory" bundle lookup instead of the exact
-  bundle it had just registered, so an unrelated, broader script directory
-  registered earlier (e.g. from another project) could shadow it; and a
-  reflective `Class.forName()` call with a literal class-name string caused
-  the bnd OSGi analyzer to add an unwireable `Import-Package` to the bridge's
-  own bundle, breaking bridge startup outright. `script run` now builds and
-  loads the class from the exact bundle it resolved for the script's
-  directory.
-- `symbol rename`/`symbol delete NAME` no longer silently mutate every symbol
-  in the program sharing `NAME` (Ghidra reuses auto-generated names like
-  `caseD_XX`/`LAB_XXXX` across unrelated addresses). Both now require
-  `--address`/`--filter` to disambiguate a name shared by more than one
-  symbol, or `--all` to explicitly opt into affecting every match; `symbol
-  delete --filter` now actually scopes the deletion instead of being silently
-  ignored.
-- `type create` now rejects a value that isn't a bare identifier (e.g.
-  `type create "struct Foo {}"`) instead of silently creating a type
-  literally named after the whole unparsed string. It only ever creates an
-  empty struct — build fields afterward with `type add-field`.
-- `--filter "address = '0xADDR'"` (quoted, `0x`-prefixed) now matches the
-  same symbol as `--filter "address = 'ADDR'"`. Address-shaped filter fields
-  (`address`, `entry_point`, `from`, `to`, `min_address`, `max_address`)
-  tolerate an optional `0x`/`0X` prefix on the compared value.
-- `function rename OLD NEW --address ADDR` now honors the exact entry address
-  and rejects an `OLD` name mismatch. Reused auto-generated names made ignoring
-  the address unsafe, as with the symbol mutation fix above.
-- `memory read` now resolves overlay-qualified addresses (e.g. `rom20::69f0`)
-  through `resolveAddress`, replacing the default-space-only hex parser.
-- `clear RANGE` no longer fails to parse overlay-qualified ranges (e.g.
-  `rom1::5512:551d` or `rom1::5512:rom1::551d`) with `Invalid start address:
-  rom1`. `RANGE` was split on the first `:`, which took everything before the
-  `::` bank separator as the whole start address; it now splits on the `:`
-  that actually separates start from end, treating `::` as a unit, and a bare
-  end address inherits the start address's overlay space.
-- Socket read timeout now reports `Timeout:`/exit 75 (`EX_TEMPFAIL`), distinct
-  from bridge failure (`Error:`/exit 1). The job continues server-side; poll
-  `ghidra jobs <id>` before retrying.
 
 ## [0.2.1]
 
@@ -248,6 +317,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running bridge first so the project lock is released. `ghidra project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/akiselev/ghidra-cli/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/akiselev/ghidra-cli/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/akiselev/ghidra-cli/releases/tag/v0.2.0
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/toratako/ghidra-cli/compare/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79...v0.3.0
+[0.2.2]: https://github.com/toratako/ghidra-cli/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/toratako/ghidra-cli/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/toratako/ghidra-cli/releases/tag/v0.2.0
