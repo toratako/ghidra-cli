@@ -4,9 +4,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
+import ghidra.program.model.mem.ByteMemBufferImpl;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
@@ -424,23 +426,25 @@ final class MemoryCommands {
                 hexStr.append(String.format("%02x", bytes[i] & 0xFF));
             }
 
-            // Also interpret as array of 8-byte pointers
+            int pointerSize = session.program().getDefaultPointerSize();
+            boolean bigEndian = mem.isBigEndian();
             JsonArray pointers = new JsonArray();
-            for (int i = 0; i + 7 < bytesRead; i += 8) {
-                long val = 0;
-                for (int j = 0; j < 8; j++) {
-                    val |= ((long)(bytes[i+j] & 0xFF)) << (8*j);
-                }
+            for (int i = 0; i <= bytesRead - pointerSize; i += pointerSize) {
+                Address pointerAddr = baseAddr.add(i);
+                ByteMemBufferImpl buffer = new ByteMemBufferImpl(mem, pointerAddr,
+                    Arrays.copyOfRange(bytes, i, i + pointerSize), bigEndian);
                 JsonObject ptrObj = new JsonObject();
                 ptrObj.addProperty("offset", i);
-                ptrObj.addProperty("address", baseAddr.add(i).toString());
-                ptrObj.addProperty("value", String.format("0x%016x", val));
+                ptrObj.addProperty("address", pointerAddr.toString());
+                ptrObj.addProperty("value", String.format("0x%0" + (pointerSize * 2) + "x",
+                    buffer.getBigInteger(0, pointerSize, false)));
 
-                // Check if value looks like a code address
-                if (val >= 0x00401000L && val <= 0x05bb99ffL) {
-                    ghidra.program.model.address.Address funcAddr =
-                        session.program().getAddressFactory().getDefaultAddressSpace().getAddress(val);
-                    ghidra.program.model.listing.Function func = session.program().getFunctionManager().getFunctionAt(funcAddr);
+                // Ghidra handles unsigned offsets and the source address space's
+                // overlay, segmented, and addressable-word pointer semantics.
+                Address funcAddr = PointerDataType.getAddressValue(buffer, pointerSize,
+                    pointerAddr.getAddressSpace());
+                if (funcAddr != null && mem.contains(funcAddr)) {
+                    Function func = session.program().getFunctionManager().getFunctionAt(funcAddr);
                     if (func != null) {
                         ptrObj.addProperty("function", func.getName());
                     }

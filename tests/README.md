@@ -67,6 +67,7 @@ serial lock. Filter a domain with, for example,
 |---|---|
 | `daemon_tests`, `reliability_tests`, `project_tests` | Lifecycle, restart/stale-state recovery, project management |
 | `readonly_tests` | Read queries and response schemas |
+| `memory_tests` | Pointer decoding across target widths, byte orders, and address spaces |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version, doctor, config, init |
