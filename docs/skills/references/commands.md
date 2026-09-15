@@ -210,6 +210,13 @@ ghidra-cli patch export -o ./target.patched.bin --project target
 ```
 
 A batch file contains one subcommand per line without the `ghidra-cli` prefix.
+Use single or double quotes for multiword arguments, for example
+`function set-signature main --signature "int main(int argc, char **argv)"`.
+Backslashes escape the next character outside quotes; single quotes preserve
+literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backticks.
+Variables, command substitutions, and wildcards are never expanded. Empty lines
+and lines starting with `#` are ignored; malformed quoting fails that line and
+later lines still run.
 Per-line `--project` and `--program` select the target as in a standalone command.
 Without them, the line uses the batch project and its current program selection;
 an explicit program switch remains active for subsequent lines in that project.

@@ -128,6 +128,123 @@ impl Drop for RecordedBridge {
 }
 
 #[test]
+fn batch_preserves_quoted_signatures_types_and_comments() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        r#"function set-signature parse_header --signature "int parse_header(char *buf, int len)"
+function set-return-type parse_header --type 'unsigned long'
+comment set 1000 'Header length includes the prefix'
+"#,
+    )
+    .unwrap();
+    let result = bridge.run(&["batch", "batch.txt"]);
+    assert_eq!(result[0]["commands_executed"], 3);
+    let requests = bridge.requests.lock().unwrap();
+    let edits: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] != "bridge_info")
+        .map(|r| (r["command"].clone(), r["args"].clone()))
+        .collect();
+    assert_eq!(
+        edits,
+        vec![
+            (
+                json!("function_set_signature"),
+                json!({"target": "parse_header", "signature": "int parse_header(char *buf, int len)"}),
+            ),
+            (
+                json!("function_set_return_type"),
+                json!({"target": "parse_header", "return_type": "unsigned long"}),
+            ),
+            (
+                json!("comment_set"),
+                json!({"address": "1000", "text": "Header length includes the prefix", "comment_type": null}),
+            ),
+        ]
+    );
+}
+
+#[test]
+fn batch_unescapes_arguments_without_expanding_shell_syntax() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        concat!(
+            r#"comment set 1000 "say \"hello\"; path C:\temp; slash \\; \$value"
+comment set 1001 escaped\ spaces\ and\ \'quotes\'
+comment set 1002 '$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal'
+comment set 1003 ""
+"#,
+            "comment set 1004 trailing\\ \n",
+        ),
+    )
+    .unwrap();
+    bridge.run(&["batch", "batch.txt"]);
+    let requests = bridge.requests.lock().unwrap();
+    let comments: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] == "comment_set")
+        .map(|r| r["args"]["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        comments,
+        vec![
+            r#"say "hello"; path C:\temp; slash \; $value"#,
+            "escaped spaces and 'quotes'",
+            "$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal",
+            "",
+            "trailing ",
+        ]
+    );
+}
+
+#[test]
+fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "# commands\ncomment set 1000 'unfinished\ncomment set 1001 \"unfinished\ncomment set 1002 trailing\\\ncomment set 1003 'valid after errors'\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    let detail = &error["detail"];
+    assert_eq!(detail["commands_parsed"], 4);
+    assert_eq!(detail["commands_executed"], 4);
+    assert_eq!(detail["failed"], 3);
+    assert_eq!(detail["not_executed"], 0);
+    for (index, diagnostic) in [
+        "unterminated single quote",
+        "unterminated double quote",
+        "trailing escape",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let row = &detail["results"][index];
+        assert_eq!(row["line"], index + 2);
+        assert_eq!(row["exit_code"], 1);
+        assert!(row["error"].as_str().unwrap().contains(diagnostic), "{row}");
+    }
+    assert!(detail["results"][3]["result"].is_object());
+    let requests = bridge.requests.lock().unwrap();
+    let comments: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] == "comment_set")
+        .collect();
+    assert_eq!(comments.len(), 1);
+    assert_eq!(comments[0]["args"]["address"], "1003");
+    assert_eq!(comments[0]["args"]["text"], "valid after errors");
+}
+
+#[test]
 fn batch_routes_each_target_and_keeps_explicit_program_switches() {
     let first = RecordedBridge::new();
     let second = RecordedBridge::new();

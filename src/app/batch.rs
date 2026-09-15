@@ -1,5 +1,54 @@
 use crate::ipc::protocol::{BridgeCommandError, BridgeTimeoutError};
 
+/// Split one command with shell-style quoting, without evaluating shell syntax.
+pub(super) fn split_arguments(line: &str) -> anyhow::Result<Vec<String>> {
+    let mut arguments = Vec::new();
+    let mut argument = String::new();
+    let mut started = false;
+    let mut quote = None;
+    let mut characters = line.chars();
+    while let Some(character) = characters.next() {
+        match (quote, character) {
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('\''), _) => argument.push(character),
+            (_, '\\') => {
+                let escaped = characters
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid batch syntax: trailing escape"))?;
+                // Within double quotes, backslashes only escape shell-special
+                // characters; preserve them in paths and text such as "C:\temp".
+                if quote == Some('"') && !matches!(escaped, '"' | '\\' | '$' | '`') {
+                    argument.push('\\');
+                }
+                argument.push(escaped);
+                started = true;
+            }
+            (None, '\'' | '"') => {
+                quote = Some(character);
+                started = true;
+            }
+            (None, _) if character.is_whitespace() => {
+                if started {
+                    arguments.push(std::mem::take(&mut argument));
+                    started = false;
+                }
+            }
+            _ => {
+                argument.push(character);
+                started = true;
+            }
+        }
+    }
+    if let Some(quote) = quote {
+        let kind = if quote == '\'' { "single" } else { "double" };
+        anyhow::bail!("Invalid batch syntax: unterminated {kind} quote");
+    }
+    if started {
+        arguments.push(argument);
+    }
+    Ok(arguments)
+}
+
 /// Retain every attempted result; stop on an unresolved save or running job.
 pub(super) fn execute_batch(
     content: &str,
@@ -9,7 +58,7 @@ pub(super) fn execute_batch(
     let lines: Vec<_> = content
         .lines()
         .enumerate()
-        .map(|(index, line)| (index + 1, line.trim()))
+        .map(|(index, line)| (index + 1, line.trim_start()))
         .filter(|(_, line)| !line.is_empty() && !line.starts_with('#'))
         .collect();
     let mut results = Vec::new();
@@ -17,7 +66,7 @@ pub(super) fn execute_batch(
     let mut save_failed = false;
     let mut last_error = None;
     for (number, line) in &lines {
-        let mut row = json!({"line": number, "command": line});
+        let mut row = json!({"line": number, "command": line.trim()});
         match execute(line) {
             Ok(value) => row["result"] = value,
             Err(error) => {
@@ -69,6 +118,33 @@ pub(super) fn execute_batch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batch_arguments_preserve_quoted_and_escaped_values() {
+        for (line, expected) in [
+            ("  first\tsecond  ", vec!["first", "second"]),
+            (
+                r#"'' "" before"two words"after"#,
+                vec!["", "", "beforetwo wordsafter"],
+            ),
+            (r#"'literal \ " $value'"#, vec![r#"literal \ " $value"#]),
+            (
+                r#"escaped\ space \'quote\' back\\slash"#,
+                vec!["escaped space", "'quote'", r"back\slash"],
+            ),
+            (
+                r#""say \"yes\" \$value \`name\` C:\temp \\""#,
+                vec![r#"say "yes" $value `name` C:\temp \"#],
+            ),
+            (r#""日本語 のコメント""#, vec!["日本語 のコメント"]),
+            (
+                "$value $(command) `command` *.bin ; | >",
+                vec!["$value", "$(command)", "`command`", "*.bin", ";", "|", ">"],
+            ),
+        ] {
+            assert_eq!(split_arguments(line).unwrap(), expected, "{line}");
+        }
+    }
 
     #[test]
     fn batch_keeps_successes_and_error_detail_and_returns_failure() {

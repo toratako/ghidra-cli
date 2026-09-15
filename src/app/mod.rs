@@ -145,7 +145,8 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                         .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
                     batch::execute_batch(&content, |line| {
                         let mut sub_cli = Cli::try_parse_from(
-                            std::iter::once("ghidra-cli").chain(line.split_whitespace()),
+                            std::iter::once("ghidra-cli".to_owned())
+                                .chain(batch::split_arguments(line)?),
                         )?;
                         // Unspecified targets retain the batch's project and current
                         // selection. Explicit per-line targets use normal routing.
