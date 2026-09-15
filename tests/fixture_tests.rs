@@ -7,11 +7,16 @@ fn relocated_fixture_preserves_analysis_and_isolates_mutations() -> anyhow::Resu
     let root = tempfile::Builder::new()
         .prefix("ghidra-copy-test-")
         .tempdir()?;
-    let first = root.path().join("first/project");
+    // Exercise equivalent path spellings even on Unix.
+    let first = root.path().join("first/./project");
     common::fixture::copy_analyzed_project(&first)?;
     assert!(ghidra_cli::ghidra::bridge::is_bridge_running(&first).is_none());
 
     let harness = common::DaemonTestHarness::new(first.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    assert_eq!(
+        ghidra_cli::ghidra::bridge::is_bridge_running(&first),
+        Some(harness.port())
+    );
     let address = common::get_function_address(
         &harness,
         first.to_str().unwrap(),

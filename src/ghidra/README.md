@@ -71,7 +71,14 @@ real Ghidra integration tests check OSGi resolution, which plain `javac` cannot.
 ## Discovery, liveness, and shutdown
 
 Each project path hashes to `bridge-{md5}.port` / `.pid` in the platform data
-directory (`~/.local/share/ghidra-cli/` on Linux).
+directory (`~/.local/share/ghidra-cli/` on Linux). Discovery and startup locking
+identify the `.rep` directory: its volume/file ID on Windows and its canonical
+location elsewhere. This preserves distinct projects while resolving Windows
+case variations and directory aliases. Missing projects use an absolute path
+without requiring files to exist. Windows falls back to the canonical location
+on filesystems that do not provide usable file IDs. See the
+[upgrade procedure](../../docs/runtime.md#upgrading) before replacing a CLI
+while bridges are running.
 
 - `is_bridge_running()` checks a valid port, valid/live PID, and TCP connectivity,
   returning the port from that check to avoid a separate discovery-file read.

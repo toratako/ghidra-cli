@@ -54,25 +54,104 @@ pub fn get_data_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Compute MD5 hash of project path for file naming.
-fn project_hash(project_path: &Path) -> String {
-    format!(
-        "{:x}",
-        md5::compute(project_path.to_string_lossy().as_bytes())
-    )
+/// Use the same project identity for discovery and startup locking.
+fn project_hash(project_path: &Path) -> Result<String> {
+    let absolute = std::path::absolute(project_path)?;
+    // The bare project path usually does not exist: Ghidra stores its database
+    // in the sibling .rep directory. Identify that directory without folding
+    // distinct names on case-sensitive volumes.
+    let identity = match repository_identity(&absolute.with_added_extension("rep")) {
+        Ok(identity) => identity,
+        // Missing projects still support status, save, and stale-file cleanup.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            absolute.to_string_lossy().as_bytes().to_vec()
+        }
+        Err(error) => return Err(error.into()),
+    };
+    Ok(format!("{:x}", md5::compute(identity)))
+}
+
+#[cfg(not(windows))]
+fn repository_identity(repository: &Path) -> std::io::Result<Vec<u8>> {
+    repository_path_identity(repository)
+}
+
+fn repository_path_identity(repository: &Path) -> std::io::Result<Vec<u8>> {
+    let mut identity = b"repository-directory\0".to_vec();
+    identity.extend_from_slice(
+        dunce::canonicalize(repository)?
+            .to_string_lossy()
+            .as_bytes(),
+    );
+    Ok(identity)
+}
+
+#[cfg(windows)]
+fn repository_identity(repository: &Path) -> std::io::Result<Vec<u8>> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileIdInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
+        BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO,
+    };
+
+    let directory = std::fs::OpenOptions::new()
+        .access_mode(0)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(repository)?;
+    let mut info = std::mem::MaybeUninit::<FILE_ID_INFO>::uninit();
+    // SAFETY: directory owns a live handle, and info has the exact type and
+    // buffer size required by FileIdInfo. Read it only after a successful call.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            directory.as_raw_handle(),
+            FileIdInfo,
+            info.as_mut_ptr().cast(),
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    } != 0
+    {
+        // SAFETY: GetFileInformationByHandleEx initialized FILE_ID_INFO.
+        let info = unsafe { info.assume_init() };
+        if info.FileId.Identifier != [0; 16] {
+            let mut identity = b"windows-repository\0".to_vec();
+            identity.extend_from_slice(&info.VolumeSerialNumber.to_le_bytes());
+            identity.extend_from_slice(&info.FileId.Identifier);
+            return Ok(identity);
+        }
+    }
+
+    // FAT and some network filesystems only provide the older 64-bit file ID.
+    // Prefer 128 bits above because 64-bit IDs are not unique on ReFS.
+    let mut info = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    // SAFETY: directory is live and info points to the required writable type.
+    if unsafe { GetFileInformationByHandle(directory.as_raw_handle(), info.as_mut_ptr()) } != 0 {
+        // SAFETY: GetFileInformationByHandle initialized the entire structure.
+        let info = unsafe { info.assume_init() };
+        if info.nFileIndexHigh != 0 || info.nFileIndexLow != 0 {
+            let mut identity = b"windows-repository-64\0".to_vec();
+            identity.extend_from_slice(&info.dwVolumeSerialNumber.to_le_bytes());
+            identity.extend_from_slice(&info.nFileIndexHigh.to_le_bytes());
+            identity.extend_from_slice(&info.nFileIndexLow.to_le_bytes());
+            return Ok(identity);
+        }
+    }
+
+    // A zero/unsupported ID must never collapse unrelated projects to one key.
+    repository_path_identity(repository)
 }
 
 /// Get the port file path for a project.
 pub fn port_file_path(project_path: &Path) -> Result<PathBuf> {
     let data_dir = get_data_dir()?;
-    let hash = project_hash(project_path);
+    let hash = project_hash(project_path)?;
     Ok(data_dir.join(format!("bridge-{}.port", hash)))
 }
 
 /// Get the PID file path for a project.
 pub fn pid_file_path(project_path: &Path) -> Result<PathBuf> {
     let data_dir = get_data_dir()?;
-    let hash = project_hash(project_path);
+    let hash = project_hash(project_path)?;
     Ok(data_dir.join(format!("bridge-{}.pid", hash)))
 }
 
@@ -172,7 +251,7 @@ impl Drop for StartupLockGuard {
 /// Blocks until the lock is acquired or the 60-second timeout expires.
 fn acquire_startup_lock(project_path: &Path) -> Result<StartupLockGuard> {
     let data_dir = get_data_dir()?;
-    let hash = project_hash(project_path);
+    let hash = project_hash(project_path)?;
     let lock_path = data_dir.join(format!("bridge-{}.starting", hash));
     let pid = std::process::id().to_string();
     let deadline = std::time::Instant::now() + Duration::from_secs(60);
@@ -404,6 +483,99 @@ pub enum BridgeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_keys_normalize_missing_project_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("missing/project");
+        let alias = root.path().join("missing/./project");
+        assert_eq!(
+            project_hash(&project).unwrap(),
+            project_hash(&alias).unwrap()
+        );
+        assert_eq!(
+            project_hash(Path::new("missing/./project")).unwrap(),
+            project_hash(&std::env::current_dir().unwrap().join("missing/project")).unwrap()
+        );
+    }
+
+    #[test]
+    fn discovery_keys_preserve_dotted_names_and_resolve_repository_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = dunce::canonicalize(root.path()).unwrap();
+        let project = directory.join("Project.v1");
+        let repository = directory.join("Project.v1.rep");
+        std::fs::create_dir(&repository).unwrap();
+        let original_hash = project_hash(&project).unwrap();
+        assert_eq!(
+            project_hash(&directory.join("./Project.v1")).unwrap(),
+            original_hash
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            project_hash(Path::new(&project.to_string_lossy().replace('\\', "/"))).unwrap(),
+            original_hash
+        );
+        std::fs::write(directory.join("Project.v1.gpr"), []).unwrap();
+        assert_eq!(project_hash(&project).unwrap(), original_hash);
+        std::fs::create_dir(directory.join("Project.v2.rep")).unwrap();
+        assert_ne!(
+            project_hash(&directory.join("Project.v2")).unwrap(),
+            original_hash
+        );
+    }
+
+    #[test]
+    fn discovery_keys_respect_filesystem_case_sensitivity() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("Project");
+        let alias = root.path().join("project");
+        std::fs::create_dir(root.path().join("Project.rep")).unwrap();
+        if root.path().join("project.rep").exists() {
+            assert_eq!(
+                project_hash(&project).unwrap(),
+                project_hash(&alias).unwrap()
+            );
+        } else {
+            std::fs::create_dir(root.path().join("project.rep")).unwrap();
+            assert_ne!(
+                project_hash(&project).unwrap(),
+                project_hash(&alias).unwrap()
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_keys_resolve_directory_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("projects");
+        std::fs::create_dir_all(directory.join("project.rep")).unwrap();
+        let alias = root.path().join("alias");
+        std::os::unix::fs::symlink(&directory, &alias).unwrap();
+        assert_eq!(
+            project_hash(&directory.join("project")).unwrap(),
+            project_hash(&alias.join("project")).unwrap()
+        );
+
+        // Repository symlink targets need not themselves end in .rep.
+        for name in ["store.v1", "store.v2", "store.rep"] {
+            std::fs::create_dir(root.path().join(name)).unwrap();
+        }
+        std::os::unix::fs::symlink(root.path().join("store.v1"), root.path().join("first.rep"))
+            .unwrap();
+        std::os::unix::fs::symlink(root.path().join("store.v2"), root.path().join("second.rep"))
+            .unwrap();
+        let first_hash = project_hash(&root.path().join("first")).unwrap();
+        assert_ne!(
+            first_hash,
+            project_hash(&root.path().join("second")).unwrap()
+        );
+        assert_ne!(
+            first_hash,
+            project_hash(&root.path().join("store")).unwrap()
+        );
+    }
 
     #[test]
     fn shutdown_timeout_defaults_and_supports_unbounded_wait() {

@@ -87,6 +87,12 @@ Earlier successful requests have already been committed and saved. Cancellation
 does not interrupt the save of retained changes, so job completion can follow
 the cancellation request. A timeout still leaves the job running or queued.
 
+## Upgrading
+
+Before replacing the CLI, run `ghidra-cli stop --project P` for each running
+project using the old CLI and the same project path used to start it. Start
+bridges again after updating; old discovery keys are not preserved or migrated.
+
 ## Installation failures
 
 Use `-v`/`-vv`/`-vvv` for warn/info/debug logs; `--quiet` suppresses
@@ -102,7 +108,8 @@ For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu),
 `openjdk-21-jdk`, respectively. WSL2 is preferable for compatibility.
 
 Port/PID discovery files live in `~/.local/share/ghidra-cli/bridge-{md5}.port`
-and `.pid` on Linux, keyed by project path. Liveness checks require a valid port,
-a live PID, and TCP connectivity; `status` additionally pings the protocol.
+and `.pid` on Linux, keyed by the canonical `.rep` directory. Liveness checks
+require a valid port, a live PID, and TCP connectivity; `status` additionally
+pings the protocol.
 Startup/status/shutdown clean stale discovery files. A busy program lane is not
 proof of a dead bridge; inspect `jobs` before restarting.

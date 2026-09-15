@@ -204,6 +204,52 @@ fn test_project_delete_nonexistent() {
 
 #[test]
 #[serial]
+fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()> {
+    use ghidra_cli::ghidra::bridge;
+
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-delete-alias-")
+        .tempdir()?;
+    let project = root.path().join("nested/project");
+    common::fixture::copy_analyzed_project(&project)?;
+    let harness =
+        common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    let pid = bridge::read_pid_file(&project)?.expect("bridge PID");
+    let port_file = bridge::port_file_path(&project)?;
+    let pid_file = bridge::pid_file_path(&project)?;
+    let alias = root.path().join(if cfg!(windows) {
+        "nested/./PROJECT"
+    } else {
+        "nested/./project"
+    });
+    assert_eq!(bridge::is_bridge_running(&alias), Some(harness.port()));
+
+    let output = common::run_command_with_output(
+        std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+            .args(["--json", "project", "delete"])
+            .arg(&alias),
+        std::time::Duration::from_secs(60),
+    )?;
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)?["deleted"],
+        true
+    );
+    assert!(
+        !bridge::is_pid_alive(pid),
+        "Project deletion left the bridge running"
+    );
+    assert!(!project.with_extension("gpr").exists());
+    assert!(!project.with_extension("rep").exists());
+    assert!(!port_file.exists());
+    assert!(!pid_file.exists());
+    drop(harness);
+    Ok(())
+}
+
+#[test]
+#[serial]
 fn test_import_existing_program() {
     require_ghidra!();
 

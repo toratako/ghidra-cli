@@ -200,7 +200,7 @@ pub(super) fn handle_project_command(
             // Stop any running bridge first so the JVM releases the project lock
             // before we delete its files. stop_bridge also clears the stale
             // port/pid/`.lock`/`.lock~` files via cleanup_stale_files.
-            let _ = bridge::stop_bridge(&project_path);
+            bridge::stop_bridge(&project_path)?;
 
             if gpr.exists() {
                 std::fs::remove_file(&gpr)?;
