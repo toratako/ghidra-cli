@@ -53,7 +53,11 @@ final class FunctionSignatureCommands {
             try {
                 ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
                     func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
-                cmd.applyTo(session.program());
+                if (!cmd.applyTo(session.program(), session.monitor())) {
+                    String diagnostic = cmd.getStatusMsg();
+                    throw new IllegalStateException(diagnostic == null || diagnostic.isBlank()
+                        ? "Ghidra rejected the function signature" : diagnostic);
+                }
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(false);
