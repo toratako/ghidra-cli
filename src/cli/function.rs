@@ -34,8 +34,8 @@ pub enum FunctionCommands {
     SetReturnType(SetReturnTypeArgs),
     /// Set function calling convention
     SetCallingConvention(SetCallingConventionArgs),
-    /// Set variable type in a function
-    SetVarType(SetVarTypeArgs),
+    /// Rename and/or retype a local variable or parameter
+    EditVar(EditVarArgs),
     /// Mark a function as never returning to its call site (fixes bogus
     /// decompiled fallthrough tails at every call site in one shot)
     #[command(name = "set-noreturn")]
@@ -220,26 +220,30 @@ impl SetCallingConventionArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct SetVarTypeArgs {
+#[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["new_name", "type_name"])))]
+pub struct EditVarArgs {
     /// Function target (name | 0xaddr | FUN_<hex>)
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
     /// Function target (name | 0xaddr | FUN_<hex>)
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
-    /// Variable name to retype
-    #[arg(long = "var")]
+    /// Current variable name (exact match, from decompile --with-vars/--with-params)
+    #[arg(long = "var", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub var_name: String,
+    /// New variable name; omit to retain the name
+    #[arg(long = "name", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub new_name: Option<String>,
     /// New type name (e.g., "int", "char *", "MyStruct")
-    #[arg(long = "type")]
-    pub type_name: String,
+    #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub type_name: Option<String>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
 }
 
-impl SetVarTypeArgs {
+impl EditVarArgs {
     pub fn resolved_target(&self) -> &str {
         self.target
             .as_deref()

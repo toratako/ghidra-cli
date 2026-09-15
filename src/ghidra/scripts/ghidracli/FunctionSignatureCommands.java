@@ -1,5 +1,6 @@
 package ghidracli;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.decompiler.DecompInterface;
@@ -7,7 +8,11 @@ import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Variable;
+import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolUtilities;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.task.TaskMonitor;
 import java.util.Iterator;
@@ -182,70 +187,132 @@ final class FunctionSignatureCommands {
         }
     }
 
-    JsonObject handleSetVarType(JsonObject args) {
+    JsonObject handleFunctionEditVar(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
-        String funcTarget = getArgString(args, "function");
+        String funcTarget = getArgString(args, "target");
         String varName = getArgString(args, "var_name");
+        String newName = getArgString(args, "new_name");
         String typeName = getArgString(args, "type_name");
-        if (funcTarget == null || funcTarget.isEmpty()) return errorResult("Function target required");
-        if (varName == null || varName.isEmpty()) return errorResult("Variable name required (--var)");
-        if (typeName == null || typeName.isEmpty()) return errorResult("Type name required (--type)");
+        if (funcTarget == null || funcTarget.isBlank()) return errorResult("Function target required");
+        if (varName == null || varName.isBlank()) return errorResult("Variable name required (--var)");
+        if (newName == null && typeName == null) return errorResult("At least one of --name or --type is required");
+        if (typeName != null && typeName.isBlank()) return errorResult("Type name must not be empty (--type)");
 
         try {
             Function func = functionQueries.findFunctionByNameOrAddress(funcTarget);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(funcTarget));
 
-            DataType newType = typeResolver.resolveDataType(typeName);
-            if (newType == null) return errorResult("Type not found: " + typeName);
+            if (newName != null) SymbolUtilities.validateName(newName);
+            DataType newType = null;
+            if (typeName != null) {
+                newType = typeResolver.resolveDataType(typeName);
+                if (newType == null) return errorResult("Type not found: " + typeName);
+                // Resolve program-dependent sizes (notably pointers) before validating.
+                newType = newType.clone(session.program().getDataTypeManager());
+                if (newType.getLength() <= 0) return errorResult("Type must have a fixed positive size: " + typeName);
+            }
 
             DecompInterface decompiler = new DecompInterface();
             decompiler.setOptions(new DecompileOptions());
             try {
-                decompiler.openProgram(session.program());
+                if (!decompiler.openProgram(session.program()))
+                    return errorResult("Could not open program in decompiler: " + decompiler.getLastMessage());
                 TaskMonitor mon = session.monitor();
                 DecompileResults results = decompiler.decompileFunction(func, 30, mon);
                 if (!results.decompileCompleted())
-                    return errorResult("Decompilation failed for " + funcTarget);
+                    return errorResult("Decompilation failed for " + funcTarget + ": " + results.getErrorMessage());
 
                 ghidra.program.model.pcode.HighFunction highFunc = results.getHighFunction();
                 if (highFunc == null)
                     return errorResult("Could not get high-level function representation");
 
                 ghidra.program.model.pcode.LocalSymbolMap lsm = highFunc.getLocalSymbolMap();
-                ghidra.program.model.pcode.HighSymbol targetSym = null;
-                Iterator<ghidra.program.model.pcode.HighSymbol> symIter = lsm.getSymbols();
+                HighSymbol targetSym = null;
+                JsonArray candidates = new JsonArray();
+                Iterator<HighSymbol> symIter = lsm.getSymbols();
                 while (symIter.hasNext()) {
-                    ghidra.program.model.pcode.HighSymbol sym = symIter.next();
-                    if (sym.getName().equals(varName)) {
+                    HighSymbol sym = symIter.next();
+                    if (!sym.isGlobal() && sym.getName().equals(varName)) {
                         targetSym = sym;
-                        break;
+                        JsonObject candidate = describeVariable(sym.getName(), sym.getDataType(), sym.getStorage().toString());
+                        candidate.addProperty("kind", sym.isParameter() ? "parameter" : "local");
+                        if (sym.getPCAddress() != null) candidate.addProperty("first_use", sym.getPCAddress().toString());
+                        candidates.add(candidate);
                     }
                 }
 
                 if (targetSym == null)
                     return errorResult("Variable not found: " + varName + " in function " + func.getName());
+                if (candidates.size() > 1) {
+                    JsonObject error = errorResult("Ambiguous variable name: " + varName);
+                    JsonObject detail = new JsonObject();
+                    detail.add("candidates", candidates);
+                    error.add("detail", detail);
+                    return error;
+                }
 
-                ProgramTransaction transaction = session.transaction("Set variable type");
+                // Check inferred symbols as well as persisted variables and labels.
+                // Ghidra applies the type before renaming, so a known name conflict
+                // must be rejected before entering updateDBVariable.
+                String effectiveName = newName != null ? newName : targetSym.getName();
+                symIter = lsm.getSymbols();
+                while (symIter.hasNext()) {
+                    HighSymbol other = symIter.next();
+                    if (other != targetSym && other.getName().equals(effectiveName))
+                        return errorResult("Variable name conflicts with another symbol: " + effectiveName);
+                }
+                Symbol existingSymbol = targetSym.getSymbol();
+                for (Symbol symbol : session.program().getSymbolTable().getSymbols(effectiveName, func)) {
+                    if (!symbol.equals(existingSymbol))
+                        return errorResult("Variable name conflicts with another symbol: " + effectiveName);
+                }
+
+                JsonObject before = describeVariable(targetSym.getName(), targetSym.getDataType(), targetSym.getStorage().toString());
+
+                ProgramTransaction transaction = session.transaction("Edit variable");
                 try {
-                    HighFunctionDBUtil.updateDBVariable(targetSym, targetSym.getName(), newType, SourceType.USER_DEFINED);
+                    // Null means no requested edit to that attribute. In particular,
+                    // do not pin a decompiler-inferred type during a rename.
+                    HighFunctionDBUtil.updateDBVariable(targetSym, newName, newType, SourceType.USER_DEFINED);
                     transaction.end(true);
                 } catch (Exception e) {
                     transaction.end(true);
                     throw e;
                 }
 
+                Variable updated = targetSym.isParameter() ? func.getParameter(targetSym.getCategoryIndex()) : null;
+                if (!targetSym.isParameter()) {
+                    for (Variable variable : func.getLocalVariables()) {
+                        if (variable.getName().equals(effectiveName)) {
+                            updated = variable;
+                            break;
+                        }
+                    }
+                }
+                if (updated == null) throw new IllegalStateException("Edited variable could not be read from the database");
+
                 JsonObject result = new JsonObject();
                 result.addProperty("status", "updated");
                 result.addProperty("function", func.getName());
-                result.addProperty("variable", varName);
-                result.addProperty("new_type", newType.getName());
+                result.addProperty("kind", targetSym.isParameter() ? "parameter" : "local");
+                result.add("before", before);
+                result.add("after", describeVariable(updated.getName(), updated.getDataType(), updated.getVariableStorage().toString()));
                 result.addProperty("address", func.getEntryPoint().toString());
                 return result;
             } finally {
                 decompiler.dispose();
             }
         } catch (Exception e) {
-            return errorResult("Failed to set variable type: " + e.getMessage());
+            return errorResult("Failed to edit variable: " + e.getMessage());
         }
+    }
+
+    private static JsonObject describeVariable(String name, DataType type, String storage) {
+        JsonObject result = new JsonObject();
+        result.addProperty("name", name);
+        result.addProperty("type", type.getName());
+        result.addProperty("type_path", type.getPathName());
+        result.addProperty("storage", storage);
+        return result;
     }
 }

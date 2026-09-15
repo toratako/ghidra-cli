@@ -56,7 +56,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetSignature(args) => args.project.clone(),
             cli::FunctionCommands::SetReturnType(args) => args.project.clone(),
             cli::FunctionCommands::SetCallingConvention(args) => args.project.clone(),
-            cli::FunctionCommands::SetVarType(args) => args.project.clone(),
+            cli::FunctionCommands::EditVar(args) => args.project.clone(),
             cli::FunctionCommands::SetNoReturn(args) => args.project.clone(),
             cli::FunctionCommands::Tag(cmd) => match cmd {
                 cli::FunctionTagCommands::Add(args) => args.project.clone(),
@@ -200,7 +200,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetSignature(args) => args.program.clone(),
             cli::FunctionCommands::SetReturnType(args) => args.program.clone(),
             cli::FunctionCommands::SetCallingConvention(args) => args.program.clone(),
-            cli::FunctionCommands::SetVarType(args) => args.program.clone(),
+            cli::FunctionCommands::EditVar(args) => args.program.clone(),
             cli::FunctionCommands::SetNoReturn(args) => args.program.clone(),
             cli::FunctionCommands::Tag(cmd) => match cmd {
                 cli::FunctionTagCommands::Add(args) => args.program.clone(),

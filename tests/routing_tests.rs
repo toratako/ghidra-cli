@@ -136,6 +136,48 @@ impl Drop for RecordedBridge {
 }
 
 #[test]
+fn variable_edits_send_one_request_with_only_requested_attributes() {
+    let bridge = RecordedBridge::new();
+    for (flags, name, data_type) in [
+        (
+            vec!["--name", "header", "--type", "Header *"],
+            json!("header"),
+            json!("Header *"),
+        ),
+        (vec!["--name", "header"], json!("header"), Value::Null),
+        (vec!["--type", "Header *"], Value::Null, json!("Header *")),
+    ] {
+        let mut args = vec![
+            "function",
+            "edit-var",
+            "parse_header",
+            "--var",
+            "local_10",
+            "--program",
+            "B",
+        ];
+        args.extend(flags);
+        bridge.run(&args);
+        let mut requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "function_edit_var")
+            .collect();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(
+            edits[0]["args"],
+            json!({
+                "target": "parse_header", "var_name": "local_10", "new_name": name, "type_name": data_type,
+            })
+        );
+        assert!(requests
+            .iter()
+            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        requests.clear();
+    }
+}
+
+#[test]
 fn batch_preserves_quoted_signatures_types_and_comments() {
     let bridge = RecordedBridge::new();
     std::fs::write(

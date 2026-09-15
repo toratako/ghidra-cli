@@ -56,8 +56,8 @@ ghidra-cli function rename FUN_00401000 parse_header --project target
 ghidra-cli function create 0x401234 parse_entry --project target
 ghidra-cli function set-signature parse_header \
   --signature "int parse_header(char *buf, int len)" --project target
-ghidra-cli function set-var-type parse_header --var local_10 \
-  --type "Header *" --project target
+ghidra-cli function edit-var parse_header --var local_10 \
+  --name header --type "Header *" --project target
 ghidra-cli function set-return-type abort_path --type void --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-noreturn abort_path --project target
@@ -68,6 +68,14 @@ include local-variable and parameter details. Re-decompile after type, name, or
 signature edits.
 There is no native time limit by default; inspect long work with
 `jobs` and request a stop with `cancel`.
+
+`function edit-var FUNCTION --var CURRENT_NAME` edits a local variable or parameter
+by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
+or both. Omitted attributes are not explicitly reassigned. `before` reports the
+decompiler's variable and `after` the updated database definition, including name,
+type/path, and storage. A rename can leave the database type undefined so the
+decompiler continues inferring it. Known name conflicts and invalid types fail
+before editing; other failures can retain partial changes.
 
 Use `disasm-at` when auto-analysis missed a known target. If analysis ran through
 inline data or chose the wrong boundary:

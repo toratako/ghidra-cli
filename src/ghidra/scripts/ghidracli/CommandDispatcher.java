@@ -120,7 +120,7 @@ final class CommandDispatcher {
             case "function_tag_add":    return tagCommands.handleFunctionTagAdd(args);
             case "function_tag_remove": return tagCommands.handleFunctionTagRemove(args);
             case "function_tag_list":   return tagCommands.handleFunctionTagList(args);
-            case "set_var_type":    return functionSignatureCommands.handleSetVarType(args);
+            case "function_edit_var": return functionSignatureCommands.handleFunctionEditVar(args);
             // PCode commands
             case "pcode_at":        return pcodeCommands.handlePcodeAt(args);
             case "pcode_function":  return pcodeCommands.handlePcodeFunction(args);

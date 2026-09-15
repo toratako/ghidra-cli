@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Replaced `function set-var-type` with `function edit-var FUNCTION --var NAME
+  [--name NEW_NAME] [--type TYPE]`. Rename and type changes share one request;
+  either attribute can be changed alone. Results include the variable kind and
+  before/after definitions. The old CLI and bridge command are removed.
 - Batch failures now return nonzero status and retain successful results and
   structured error details. Save failures and timeouts stop subsequent commands;
   timeouts retain exit code 75.

@@ -163,11 +163,12 @@ pub(super) fn execute_via_bridge(
                         "convention": args.convention,
                     })),
                 ),
-                FunctionCommands::SetVarType(args) => client.send_command(
-                    "set_var_type",
+                FunctionCommands::EditVar(args) => client.send_command(
+                    "function_edit_var",
                     Some(json!({
-                        "function": args.resolved_target(),
+                        "target": args.resolved_target(),
                         "var_name": args.var_name,
+                        "new_name": args.new_name,
                         "type_name": args.type_name,
                     })),
                 ),

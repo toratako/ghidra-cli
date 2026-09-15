@@ -217,6 +217,40 @@ fn failures_have_nonzero_status_and_json_diagnostics() {
 }
 
 #[test]
+fn variable_edit_rejects_missing_or_empty_edits_and_the_removed_command() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    for args in [
+        vec!["function", "edit-var", "main", "--var", "local_10"],
+        vec!["function", "edit-var", "main", "--name", "header"],
+        vec![
+            "function", "edit-var", "main", "--var", "", "--name", "header",
+        ],
+        vec![
+            "function", "edit-var", "main", "--var", "local_10", "--name", "",
+        ],
+        vec![
+            "function", "edit-var", "main", "--var", "local_10", "--type", "",
+        ],
+        vec![
+            "function",
+            "set-var-type",
+            "main",
+            "--var",
+            "local_10",
+            "--type",
+            "int",
+        ],
+    ] {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["exit_code"], 2);
+    }
+}
+
+#[test]
 fn invalid_choices_list_valid_values_before_loading_config() {
     let temp = tempfile::tempdir().unwrap();
     // These argument errors must not depend on a usable config or bridge.
