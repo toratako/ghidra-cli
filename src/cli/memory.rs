@@ -8,9 +8,9 @@ pub enum MemoryCommands {
     Map(QueryOptions),
     /// Read memory
     Read(MemReadArgs),
-    /// Write memory
+    /// Write memory (WIP; use patch bytes instead)
     Write(MemWriteArgs),
-    /// Search memory
+    /// Search memory (WIP; use find bytes instead)
     Search(MemSearchArgs),
 }
 

@@ -12,7 +12,7 @@ use crate::cli::{self, Cli, Commands};
 use crate::filter;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
@@ -57,6 +57,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
 }
 
 fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
+    execute::validate_supported_command(&cli.command)?;
     if matches!(
         cli.command,
         Commands::Program(cli::ProgramCommands::Save(_))
@@ -145,7 +146,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                         .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
                     let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
                     batch::execute_batch(&content, on_error, |line| {
-                        let mut sub_cli = Cli::try_parse_from(
+                        let mut sub_cli = parse_batch_command(
                             std::iter::once("ghidra-cli".to_owned())
                                 .chain(batch::split_arguments(line)?),
                         )?;
@@ -162,7 +163,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                         }
                         sub_cli.quiet = true;
                         let result = execute_bridge_command(&sub_cli)?;
-                        output::process_batch_result(&sub_cli.command, result)
+                        output::process_batch_result(&sub_cli.command, result, config.default_limit)
                     })
                 } else {
                     execute_via_bridge(
@@ -191,14 +192,16 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
 
                     // Running bridge may be from an older script; force restart to load
                     // the embedded bridge matching this CLI version.
-                    let _ = bridge::stop_bridge(&project_path);
-                    let mode = if let Some(program) = startup_program.clone() {
-                        BridgeStartMode::Process {
-                            program_name: program,
-                        }
+                    let selected_path = if let Some(program) = &selected_program {
+                        Some(program.clone())
                     } else {
-                        BridgeStartMode::Project
+                        current_program_path(&client)?
                     };
+                    let mode = match selected_path {
+                        Some(program_name) => BridgeStartMode::Process { program_name },
+                        None => BridgeStartMode::Project,
+                    };
+                    bridge::stop_bridge(&project_path)?;
                     let port =
                         bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
                     let retry_client = BridgeClient::new(port);
@@ -216,6 +219,65 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
     };
 
     Ok(result)
+}
+
+fn parse_batch_command(args: impl IntoIterator<Item = String>) -> anyhow::Result<Cli> {
+    use clap::parser::ValueSource;
+    let matches = Cli::command().try_get_matches_from(args)?;
+    let mut cli = Cli::from_arg_matches(&matches)?;
+    if let Commands::Query(query) = &mut cli.command {
+        let query_matches = matches.subcommand().expect("query has command matches").1;
+        // Environment defaults apply to standalone queries; an omitted batch
+        // target inherits the batch project and its current program instead.
+        if query_matches.value_source("project") == Some(ValueSource::EnvVariable) {
+            query.project = None;
+            cli.project = None;
+        }
+        if query_matches.value_source("program") == Some(ValueSource::EnvVariable) {
+            query.program = None;
+            cli.program = None;
+        }
+    }
+    Ok(cli)
+}
+
+fn current_program_path(client: &BridgeClient) -> anyhow::Result<Option<String>> {
+    let info = client.bridge_info()?;
+    if let Some(path) = info.get("current_program_path") {
+        return selected_path(path);
+    }
+    // Older auto-save bridges do not advertise the file path. Never use their
+    // internal Program name as a file identity, or fall back to config defaults.
+    let programs = client.list_programs()?;
+    if programs
+        .get("has_current_program")
+        .and_then(|v| v.as_bool())
+        == Some(false)
+    {
+        return Ok(None);
+    }
+    let current = programs
+        .get("programs")
+        .and_then(|v| v.as_array())
+        .and_then(|rows| {
+            rows.iter()
+                .find(|row| row.get("current").and_then(|v| v.as_bool()) == Some(true))
+        })
+        .and_then(|row| row.get("path"));
+    match current {
+        Some(path) if !path.is_null() => selected_path(path),
+        _ => anyhow::bail!(
+            "Could not determine the selected program file before restarting; bridge left running"
+        ),
+    }
+}
+
+fn selected_path(value: &serde_json::Value) -> anyhow::Result<Option<String>> {
+    match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(path) if !path.is_empty() => Ok(Some(path.clone())),
+        _ => anyhow::bail!("Invalid selected program path; bridge left running"),
+    }
 }
 
 fn is_unknown_command_error(err: &anyhow::Error) -> bool {
@@ -321,4 +383,75 @@ fn stale_tags_response(command: &Commands, value: &serde_json::Value) -> bool {
             rows.iter()
                 .any(|row| row.is_object() && row.get("tags").is_none())
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::io::{BufRead, BufReader, Write};
+
+    #[test]
+    fn restart_resolves_selected_file_path_and_refuses_unknown_identity() {
+        for (responses, expected) in [
+            (
+                vec![
+                    json!({"current_program_path": "/nested/actual-file", "program_name": "internal-name"}),
+                ],
+                Some(Some("/nested/actual-file")),
+            ),
+            (vec![json!({"current_program_path": null})], Some(None)),
+            (
+                vec![
+                    json!({"auto_save": true}),
+                    json!({"has_current_program": true, "programs": [{"name": "internal-name", "path": "/actual-file", "current": true}]}),
+                ],
+                Some(Some("/actual-file")),
+            ),
+            (
+                vec![
+                    json!({"auto_save": true}),
+                    json!({"has_current_program": false, "programs": []}),
+                ],
+                Some(None),
+            ),
+            (
+                vec![
+                    json!({"auto_save": true}),
+                    json!({"has_current_program": true, "current_program_name": "internal-name", "programs": []}),
+                ],
+                None,
+            ),
+            (vec![json!({"current_program_path": ""})], None),
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let worker = std::thread::spawn(move || {
+                for (index, response) in responses.into_iter().enumerate() {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut line = String::new();
+                    BufReader::new(&stream).read_line(&mut line).unwrap();
+                    let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                    assert_eq!(
+                        request["command"],
+                        if index == 0 {
+                            "bridge_info"
+                        } else {
+                            "list_programs"
+                        }
+                    );
+                    writeln!(stream, "{}", json!({"status": "success", "data": response})).unwrap();
+                }
+            });
+            let actual = current_program_path(&BridgeClient::new(port));
+            worker.join().unwrap();
+            match expected {
+                Some(path) => assert_eq!(actual.unwrap().as_deref(), path),
+                None => assert!(actual
+                    .unwrap_err()
+                    .to_string()
+                    .contains("bridge left running")),
+            }
+        }
+    }
 }

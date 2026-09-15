@@ -12,7 +12,6 @@ mod terminal;
 use app::{handle_bridge_command, run_command, run_setup};
 use clap::Parser;
 use cli::{Cli, Commands};
-use std::path::PathBuf;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -25,14 +24,24 @@ fn main() {
     // --- Logging setup ---
     // File layer: always writes at debug level
     let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .unwrap_or_else(std::env::temp_dir)
         .join("ghidra-cli");
-    let _ = std::fs::create_dir_all(&log_dir);
-    let file_appender = tracing_appender::rolling::daily(&log_dir, "ghidra-cli.log");
-    let file_layer = tracing_subscriber::fmt::layer()
-        .with_writer(file_appender)
-        .with_ansi(false)
-        .with_filter(tracing_subscriber::EnvFilter::new("debug"));
+    let file_layer = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("ghidra-cli.log")
+        .build(&log_dir)
+        .map_err(|error| {
+            if cli.verbose > 0 && !cli.quiet {
+                eprintln!("File logging unavailable: {error}");
+            }
+        })
+        .ok()
+        .map(|file_appender| {
+            tracing_subscriber::fmt::layer()
+                .with_writer(file_appender)
+                .with_ansi(false)
+                .with_filter(tracing_subscriber::EnvFilter::new("debug"))
+        });
 
     // Console diagnostics are opt-in and always go to stderr.
     let stderr_layer = match cli.verbose {

@@ -83,6 +83,18 @@ impl RecordedBridge {
                             symbol_fixture("9007199254740994", "00CD", "function"),
                         ]
                     }}),
+                    "list_functions" => {
+                        let mut rows = vec![
+                            json!({"name": "excluded", "size": 0}),
+                            json!({"name": "small", "size": 10}),
+                            json!({"name": "large", "size": 30}),
+                            json!({"name": "medium", "size": 20}),
+                        ];
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        json!({"functions": rows, "count": rows.len()})
+                    }
                     "list_imports" | "list_exports" => {
                         let mut rows = vec![json!({"name": "first"}), json!({"name": "second"})];
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
@@ -141,6 +153,55 @@ impl Drop for RecordedBridge {
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
     }
+}
+
+#[test]
+fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "aliases: {}\ndefault_limit: 1\ndefault_output_format: csv\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["query", "imports"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "name\nfirst\n");
+    for flags in [vec!["--json"], vec!["--pretty"], vec!["-o", "json-compact"]] {
+        let output = bridge
+            .command()
+            .args(["query", "imports"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{flags:?}: {output:?}");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            json!([{"name": "first"}])
+        );
+    }
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "aliases: {}\ndefault_output_format: auto\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["query", "imports"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stdout)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -885,4 +946,158 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
         }
         assert_eq!(request["args"], expected);
     }
+}
+
+#[test]
+fn batch_queries_inherit_targets_without_environment_overrides() {
+    let first = RecordedBridge::new();
+    let second = RecordedBridge::new();
+    let env_project = RecordedBridge::new();
+    std::fs::write(first.root.path().join("batch.txt"), format!(
+        "query memory\ncomment set 1000 marker --program B\nquery memory\nquery memory --program C\nquery memory --project {} --program D\nquery memory\n",
+        batch_path_argument(&second.project),
+    )).unwrap();
+    let output = first
+        .command()
+        .env("GHIDRA_DEFAULT_PROJECT", &env_project.project)
+        .env("GHIDRA_DEFAULT_PROGRAM", "environment-program")
+        .args(["batch", "batch.txt", "--program", "A"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    for (index, program) in [(0, "A"), (1, "B"), (2, "B"), (3, "C"), (4, "D"), (5, "C")] {
+        assert_eq!(
+            result[0]["results"][index]["result"]["observed_program"],
+            program
+        );
+    }
+    assert!(env_project.requests.lock().unwrap().is_empty());
+    for (bridge, expected) in [(&first, vec!["A", "B", "C"]), (&second, vec!["D"])] {
+        let requests = bridge.requests.lock().unwrap();
+        let opened: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "open_program")
+            .map(|r| r["args"]["program"].as_str().unwrap())
+            .collect();
+        assert_eq!(opened, expected);
+    }
+}
+
+#[test]
+fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for command in [vec!["query", "functions"], vec!["function", "list"]] {
+        for (flags, expected) in [
+            (
+                vec!["--filter", "size>0"],
+                json!([{"name": "small", "size": 10}]),
+            ),
+            (vec!["--sort=-size"], json!([{"name": "large", "size": 30}])),
+            (
+                vec!["--offset", "1"],
+                json!([{"name": "small", "size": 10}]),
+            ),
+            (
+                vec!["--filter", "size>0", "--sort=-size", "--offset", "1"],
+                json!([{"name": "medium", "size": 20}]),
+            ),
+            (
+                vec![
+                    "--filter",
+                    "size>0",
+                    "--sort=-size",
+                    "--offset",
+                    "1",
+                    "--limit",
+                    "0",
+                ],
+                json!([{"name": "medium", "size": 20}, {"name": "small", "size": 10}]),
+            ),
+            (vec!["--filter", "size>0", "--count"], json!(3)),
+        ] {
+            let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let result = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                assert_eq!(result, expected, "{args:?}, batch={batch}");
+                let requests = bridge.requests.lock().unwrap();
+                let lists: Vec<_> = requests
+                    .iter()
+                    .filter(|r| r["command"] == "list_functions")
+                    .collect();
+                assert_eq!(lists.len(), 1);
+                assert!(lists[0]["args"]["limit"].is_null(), "{lists:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn unsupported_memory_commands_fail_before_bridge_or_config_errors() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("invalid.yaml"), "aliases: [").unwrap();
+    for (args, diagnostic) in [
+        (
+            vec!["memory", "write", "1000", "90"],
+            "memory write is not implemented (WIP)",
+        ),
+        (
+            vec!["memory", "search", "90"],
+            "memory search is not implemented (WIP)",
+        ),
+    ] {
+        for invalid_config in [false, true] {
+            let mut command = bridge.command();
+            command.args(&args).args(["--program", "must-not-open"]);
+            if invalid_config {
+                command.env("GHIDRA_CLI_CONFIG", bridge.root.path().join("invalid.yaml"));
+            }
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(1), "{output:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(
+                error["message"].as_str().unwrap().contains(diagnostic),
+                "{error}"
+            );
+            assert!(bridge.requests.lock().unwrap().is_empty());
+        }
+    }
+}
+
+#[test]
+fn batch_continues_after_unsupported_memory_commands_without_selecting_their_programs() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("batch.txt"),
+        "memory write 1000 90 --program must-not-open\nmemory search 90 --program must-not-open\ncomment set 1000 after\n"
+    ).unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt", "--on-error", "continue"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["detail"]["commands_executed"], 3);
+    assert_eq!(error["detail"]["failed"], 2);
+    assert_eq!(error["detail"]["not_executed"], 0);
+    for index in [0, 1] {
+        assert!(error["detail"]["results"][index]["error"]
+            .as_str()
+            .unwrap()
+            .contains("not implemented (WIP)"));
+    }
+    let requests = bridge.requests.lock().unwrap();
+    let domain: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] != "bridge_info")
+        .collect();
+    assert_eq!(domain.len(), 1, "{domain:?}");
+    assert_eq!(domain[0]["command"], "comment_set");
+    assert_eq!(domain[0]["args"]["text"], "after");
 }

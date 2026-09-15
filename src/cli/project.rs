@@ -95,7 +95,4 @@ pub struct ImportArgs {
     /// Import only — skip auto-analysis (the program is still persisted)
     #[arg(long, default_value = "false")]
     pub no_analyze: bool,
-    /// Return immediately, let bridge continue import in background
-    #[arg(long, default_value = "false")]
-    pub detach: bool,
 }

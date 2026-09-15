@@ -42,6 +42,92 @@ fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
 }
 
 #[test]
+fn removed_flags_are_rejected_before_loading_config() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    for args in [
+        vec!["import", "input.bin", "--detach"],
+        vec!["analyze", "--detach"],
+        vec!["function", "rename", "old", "new", "--filter", "name=old"],
+        vec!["function", "rename", "old", "new", "--all"],
+    ] {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["message"]
+            .as_str()
+            .unwrap()
+            .contains("unexpected argument"));
+    }
+}
+
+#[test]
+fn unfinished_memory_commands_report_wip_before_loading_config() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    for (args, alternative) in [
+        (vec!["memory", "write", "0x1000", "90"], "patch bytes"),
+        (vec!["memory", "search", "90"], "find bytes"),
+    ] {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        let message = error["message"].as_str().unwrap();
+        assert!(
+            message.contains("WIP") && message.contains(alternative),
+            "{error}"
+        );
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn unavailable_file_logging_does_not_prevent_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    let not_a_directory = temp.path().join("not-a-directory");
+    std::fs::write(&not_a_directory, "keep").unwrap();
+    let output = isolated_command(&temp)
+        .env("XDG_DATA_HOME", &not_a_directory)
+        .arg("version")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    assert!(output.stderr.is_empty(), "{output:?}");
+    assert_eq!(std::fs::read_to_string(not_a_directory).unwrap(), "keep");
+}
+
+#[test]
+fn configured_json_default_and_explicit_flags_choose_presentation() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        "aliases: {}\ndefault_output_format: json\n",
+    )
+    .unwrap();
+    for (flags, pretty) in [
+        (vec![], true),
+        (vec!["--json"], false),
+        (vec!["--pretty"], true),
+    ] {
+        let output = isolated_command(&temp)
+            .args(flags)
+            .arg("version")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+        assert_eq!(
+            output.stdout.iter().filter(|&&c| c == b'\n').count() > 1,
+            pretty,
+            "{output:?}"
+        );
+    }
+}
+
+#[test]
 fn project_management_honors_directory_override_and_lists_real_project_names() {
     let temp = tempfile::tempdir().unwrap();
     let configured = temp.path().join("configured");

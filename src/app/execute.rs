@@ -4,6 +4,22 @@ mod symbols;
 use crate::cli::{self, Commands};
 use crate::ipc::client::BridgeClient;
 
+pub(super) fn validate_supported_command(command: &Commands) -> anyhow::Result<()> {
+    match command {
+        Commands::Memory(cli::MemoryCommands::Write(_)) => {
+            anyhow::bail!(
+                "memory write is not implemented (WIP); use patch bytes for supported byte edits"
+            )
+        }
+        Commands::Memory(cli::MemoryCommands::Search(_)) => {
+            anyhow::bail!(
+                "memory search is not implemented (WIP); use find bytes for byte-pattern searches"
+            )
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Resolve `comment set`'s text from `--stdin`, `--text-file`, or the TEXT
 /// positional (in that priority order; clap already rejects combining them).
 /// Reading from stdin/a file bypasses the shell entirely, so callers building
@@ -224,19 +240,10 @@ pub(super) fn execute_via_bridge(
                         "size": args.size,
                     })),
                 ),
-                MemoryCommands::Write(args) => client.send_command(
-                    "write_memory",
-                    Some(json!({
-                        "address": args.address,
-                        "bytes": args.bytes,
-                    })),
-                ),
-                MemoryCommands::Search(args) => client.send_command(
-                    "search_memory",
-                    Some(json!({
-                        "pattern": args.pattern,
-                    })),
-                ),
+                MemoryCommands::Write(_) | MemoryCommands::Search(_) => {
+                    validate_supported_command(command)?;
+                    unreachable!("unsupported memory commands are rejected")
+                }
             }
         }
         Commands::Dump(cmd) => {

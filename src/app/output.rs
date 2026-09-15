@@ -157,7 +157,17 @@ fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
 }
 
 fn output_format(cli: &Cli) -> OutputFormat {
-    // Determine output format: explicit -o flag > --json/--pretty > TTY detection
+    // Error presentation must remain available when config cannot be loaded.
+    // Command execution reports configuration errors through its normal path.
+    let configured = crate::config::Config::load()
+        .ok()
+        .and_then(|config| config.default_output_format)
+        .and_then(|format| OutputFormat::from_str(&format).ok());
+    output_format_with_default(cli, configured)
+}
+
+fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> OutputFormat {
+    // Explicit -o > --json/--pretty > configured format > TTY detection.
     let opts = extract_query_options(&cli.command);
     let explicit_format = opts.as_ref().and_then(|o| o.format);
 
@@ -168,8 +178,22 @@ fn output_format(cli: &Cli) -> OutputFormat {
     } else if cli.json || opts.as_ref().is_some_and(|o| o.json) {
         OutputFormat::JsonCompact
     } else {
-        auto_detect_format(std::io::stdout().is_terminal())
+        configured.unwrap_or_else(|| auto_detect_format(std::io::stdout().is_terminal()))
     }
+}
+
+fn effective_query_options(
+    command: &Commands,
+    default_limit: Option<usize>,
+) -> Option<cli::QueryOptions> {
+    let mut opts = extract_query_options(command)?;
+    if opts.limit.is_none()
+        && !opts.count
+        && (opts.filter.is_some() || opts.sort.is_some() || opts.offset.is_some())
+    {
+        opts.limit = default_limit;
+    }
+    Some(opts)
 }
 
 /// Keep batch results structured while applying the same row selection as a
@@ -177,8 +201,9 @@ fn output_format(cli: &Cli) -> OutputFormat {
 pub(super) fn process_batch_result(
     command: &Commands,
     result: serde_json::Value,
+    default_limit: Option<usize>,
 ) -> anyhow::Result<serde_json::Value> {
-    if let Some(opts) = extract_query_options(command) {
+    if let Some(opts) = effective_query_options(command, default_limit) {
         if let Some(query) =
             Query::from_options(&opts, OutputFormat::JsonCompact).map_err(describe_query_error)?
         {
@@ -193,7 +218,7 @@ pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Resu
     if !cli.quiet {
         check_dotnet_decompile_warning(&cli.command, &result);
     }
-    let opts = extract_query_options(&cli.command);
+    let opts = effective_query_options(&cli.command, crate::config::Config::load()?.default_limit);
     let format = output_format(cli);
 
     // Unwrap bridge response envelopes before formatting
@@ -243,9 +268,25 @@ mod tests {
                 let cli =
                     Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain(flags))
                         .unwrap();
-                assert_eq!(output_format(&cli), expected);
+                assert_eq!(
+                    output_format_with_default(&cli, Some(OutputFormat::Csv)),
+                    expected
+                );
             }
         }
+    }
+
+    #[test]
+    fn configured_output_applies_when_no_format_is_explicit() {
+        let cli = Cli::try_parse_from(["ghidra-cli", "function", "list"]).unwrap();
+        assert_eq!(
+            output_format_with_default(&cli, Some(OutputFormat::Csv)),
+            OutputFormat::Csv
+        );
+        assert_eq!(
+            output_format_with_default(&cli, None),
+            auto_detect_format(std::io::stdout().is_terminal())
+        );
     }
 
     #[test]

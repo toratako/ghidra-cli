@@ -115,7 +115,4 @@ pub struct AnalyzeArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-    /// Return immediately, let bridge continue analysis in background
-    #[arg(long, default_value = "false")]
-    pub detach: bool,
 }

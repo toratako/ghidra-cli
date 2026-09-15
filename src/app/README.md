@@ -20,9 +20,13 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
 Command-level project/program options override global options and configured
-defaults. Validate filters before bridge work. Recovery retries at most once
+defaults. Validate filters and reject unsupported memory operations before bridge work.
+Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Recovery retries at most once
 after dispatch; preflight `bridge_info` upgrades bridges lacking automatic saving
-before program commands. Never replay commands after save failures.
+before program commands. Compatibility restart captures the selected project
+file path (never the internal Program name or a default); if it cannot determine
+the selection, it leaves the bridge running. Stop errors prevent restart.
+Never replay commands after save failures.
 Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
@@ -32,9 +36,13 @@ errors follow `--on-error continue|stop` (default: continue); nested batches
 inherit the policy unless overridden. Save failures/timeouts always stop them.
 Preserve the timeout type for exit 75. Each line uses normal target resolution
 and recovery: omitted project inherits the batch project, omitted program keeps
-that project's selection, and query modifiers apply within each result.
+that project's selection, and query modifiers apply within each result. Suppress
+standalone query environment defaults when a batch line omits its targets.
 
-Output precedence: explicit format, pretty JSON, compact JSON, then TTY detection.
+Output precedence: explicit format, pretty JSON, compact JSON, configured
+`default_output_format`, then TTY detection. Apply `default_limit` after client
+filter/sort/offset processing when the limit is omitted; count and explicit zero
+must remain uncapped. Batch results use the same row-selection rules.
 Extract response envelopes before query processing. `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
