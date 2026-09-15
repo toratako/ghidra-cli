@@ -1,5 +1,5 @@
-use super::harness;
-use crate::common::{test_project, GhidraCommand};
+use super::{harness, TEST_PROGRAM};
+use crate::common::{get_function_address, test_project, GhidraCommand};
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
@@ -17,15 +17,18 @@ fn create_batch_file(content: &str) -> PathBuf {
 #[serial]
 fn test_batch_multiple_queries() {
     require_ghidra!();
-    harness();
+    let harness = harness();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    let batch_content = r#"
+    let batch_content = format!(
+        r#"
 # Test batch file
 program info
-function get main
-"#;
+function get {address}
+"#
+    );
 
-    let batch_file = create_batch_file(batch_content);
+    let batch_file = create_batch_file(&batch_content);
 
     let result = GhidraCommand::new()
         .arg("batch")
@@ -73,17 +76,20 @@ fn test_batch_empty_file() {
 #[serial]
 fn test_batch_with_comments() {
     require_ghidra!();
-    harness();
+    let harness = harness();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    let batch_content = r#"
+    let batch_content = format!(
+        r#"
 # Query main function
-function get main
+function get {address}
 # Query program metadata
 program info
 # Another comment
-"#;
+"#
+    );
 
-    let batch_file = create_batch_file(batch_content);
+    let batch_file = create_batch_file(&batch_content);
 
     let result = GhidraCommand::new()
         .arg("batch")
@@ -126,15 +132,18 @@ fn test_batch_invalid_file() {
 #[serial]
 fn test_batch_with_invalid_command() {
     require_ghidra!();
-    harness();
+    let harness = harness();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    let batch_content = r#"
-function get main
+    let batch_content = format!(
+        r#"
+function get {address}
 invalid-command --arg value
 program info
-"#;
+"#
+    );
 
-    let batch_file = create_batch_file(batch_content);
+    let batch_file = create_batch_file(&batch_content);
 
     let result = GhidraCommand::new()
         .arg("batch")

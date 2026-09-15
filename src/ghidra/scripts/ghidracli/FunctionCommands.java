@@ -144,7 +144,7 @@ final class FunctionCommands {
                 // this address, rather than resolving old_name program-wide --
                 // Ghidra reuses auto-generated names (caseD_XX, LAB_XXXX, ...)
                 // across unrelated addresses.
-                Address addr = addressResolver.resolveAddress(addressArg);
+                Address addr = addressResolver.parseAddress(addressArg);
                 if (addr == null) {
                     return errorResult("Invalid address: " + addressArg);
                 }

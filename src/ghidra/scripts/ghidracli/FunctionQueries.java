@@ -9,6 +9,8 @@ import ghidra.program.model.listing.FunctionManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 final class FunctionQueries {
     private final ProgramSession session;
@@ -105,21 +107,18 @@ final class FunctionQueries {
 
         FunctionManager fm = session.program().getFunctionManager();
 
-        // Resolve addresses, symbols, and auto names like FUN_00401234.
-        Address addr = addressResolver.resolveAddress(nameOrAddr);
-        if (addr != null) {
-            Function f = fm.getFunctionContaining(addr);
-            if (f != null) {
-                return f;
-            }
-        }
+        Address explicit = addressResolver.parseAddress(nameOrAddr);
+        if (explicit != null) return fm.getFunctionContaining(explicit);
 
-        // Try as name
-        FunctionIterator iter = fm.getFunctions(true);
-        while (iter.hasNext()) {
-            Function func = iter.next();
-            if (func.getName().equals(nameOrAddr)) return func;
+        Map<Address, Function> candidates = new LinkedHashMap<>();
+        for (Address address : addressResolver.namedAddresses(nameOrAddr.trim())) {
+            Function function = fm.getFunctionContaining(address);
+            if (function != null) candidates.put(function.getEntryPoint(), function);
         }
-        return null;
+        if (candidates.size() > 1) {
+            throw new IllegalArgumentException("Ambiguous function target '" + nameOrAddr
+                + "' at " + candidates.keySet() + "; use an explicit address");
+        }
+        return candidates.isEmpty() ? null : candidates.values().iterator().next();
     }
 }

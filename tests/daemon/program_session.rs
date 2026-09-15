@@ -218,7 +218,10 @@ fn test_failed_script_saves_partial_changes() {
     let harness = start_daemon();
     let client = harness.client().unwrap();
     let function = client
-        .send_command("get_function", Some(serde_json::json!({"address": "main"})))
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
         .unwrap();
     let address = function["address"].as_str().unwrap();
     let text = format!("failed-script-autosave-{}", uuid::Uuid::new_v4());

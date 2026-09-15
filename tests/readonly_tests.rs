@@ -156,11 +156,12 @@ fn test_snapshot_disasm_structure() {
 fn test_snapshot_graph_callees_structure() {
     require_ghidra!();
     let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("graph")
         .arg("callees")
-        .arg("main")
+        .arg(&main_addr)
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();

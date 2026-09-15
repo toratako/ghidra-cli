@@ -229,3 +229,175 @@ fn test_function_create_recreates_deleted_function_body() {
         after_json
     );
 }
+
+#[test]
+#[serial]
+fn test_symbol_targets_revalidate_every_member_and_namespace() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addresses = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
+    let name = format!("guarded_symbol_{}", std::process::id());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.*;
+public class ScopedSymbolFixture extends GhidraScript {
+    public void run() throws Exception {
+        String[] a = getScriptArgs();
+        SymbolTable st = currentProgram.getSymbolTable();
+        for (int i = 0; i < 2; i++) {
+            Namespace ns = st.createNameSpace(currentProgram.getGlobalNamespace(), a[1] + i, SourceType.USER_DEFINED);
+            st.createLabel(toAddr(a[0]), a[1], ns, SourceType.USER_DEFINED);
+        }
+    }
+}
+"#, &[addresses[0].clone(), name.clone()], &[], false).unwrap();
+    let snapshot = client.symbol_get(&name).unwrap()["symbols"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(snapshot.len(), 2);
+    let renamed = format!("{name}_selected");
+    client
+        .symbol_rename_targets(&name, &renamed, &snapshot[..1])
+        .unwrap();
+    assert_eq!(
+        client.symbol_get(&name).unwrap()["symbols"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    // The still-valid member appears first: reject the stale second member before deleting either.
+    let stale = vec![snapshot[1].clone(), snapshot[0].clone()];
+    let error = client.symbol_delete_targets(&name, &stale).unwrap_err();
+    assert!(error.to_string().contains("Stale"), "{error:#}");
+    assert_eq!(
+        client.symbol_get(&name).unwrap()["symbols"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    // Legacy addresses must also validate the entire set before mutation.
+    assert!(client.symbol_delete(&name, &addresses).is_err());
+    assert_eq!(
+        client.symbol_get(&name).unwrap()["symbols"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let remaining = client.symbol_get(&name).unwrap()["symbols"]
+        .as_array()
+        .unwrap()
+        .clone();
+    client.symbol_delete_targets(&name, &remaining).unwrap();
+    let remaining = client.symbol_get(&renamed).unwrap()["symbols"]
+        .as_array()
+        .unwrap()
+        .clone();
+    client.symbol_delete_targets(&renamed, &remaining).unwrap();
+}
+
+#[test]
+#[serial]
+fn test_duplicate_function_names_rejected_before_mutation() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addresses = [
+        get_function_address(harness, test_project(), TEST_PROGRAM, "multiply"),
+        get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers"),
+    ];
+    let before: Vec<serde_json::Value> = addresses
+        .iter()
+        .map(|address| {
+            client
+                .send_command("get_function", Some(serde_json::json!({"address":address})))
+                .unwrap()
+        })
+        .collect();
+    let duplicate = format!("duplicate_function_{}", std::process::id());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.*;
+import ghidra.program.model.listing.*;
+public class DuplicateFunctionFixture extends GhidraScript {
+    public void run() throws Exception {
+        String[] a = getScriptArgs();
+        for (int i = 0; i < 2; i++) {
+            Function f = getFunctionAt(toAddr(a[i]));
+            if (!f.getParentNamespace().isGlobal()) throw new IllegalStateException("fixture must be global");
+        }
+        for (int i = 0; i < 2; i++) {
+            Function f = getFunctionAt(toAddr(a[i]));
+            Namespace ns = currentProgram.getSymbolTable().createNameSpace(currentProgram.getGlobalNamespace(), a[2] + i, SourceType.USER_DEFINED);
+            f.setParentNamespace(ns);
+            f.setName(a[2], SourceType.USER_DEFINED);
+        }
+    }
+}
+"#, &[addresses[0].clone(), addresses[1].clone(), duplicate.clone()], &[], false).unwrap();
+    let selected_before: Vec<serde_json::Value> = addresses
+        .iter()
+        .map(|address| {
+            client
+                .send_command("get_function", Some(serde_json::json!({"address":address})))
+                .unwrap()
+        })
+        .collect();
+    for (command, args) in [
+        (
+            "rename_function",
+            serde_json::json!({"old_name":duplicate,"new_name":"should_not_rename"}),
+        ),
+        ("delete_function", serde_json::json!({"address":duplicate})),
+        (
+            "function_set_return_type",
+            serde_json::json!({"target":duplicate,"return_type":"void"}),
+        ),
+    ] {
+        let error = client.send_command(command, Some(args)).unwrap_err();
+        assert!(
+            error.to_string().contains("Ambiguous"),
+            "{command}: {error:#}"
+        );
+    }
+    for (index, address) in addresses.iter().enumerate() {
+        let current = client
+            .send_command("get_function", Some(serde_json::json!({"address":address})))
+            .unwrap();
+        assert_eq!(
+            current, selected_before[index],
+            "ambiguous mutations must preserve every function"
+        );
+    }
+    // Address-qualified rename remains available even when names collide.
+    client.send_command("rename_function", Some(serde_json::json!({"old_name":duplicate,"new_name":before[0]["name"],"address":addresses[0]}))).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.*;
+public class RestoreFunctionFixture extends GhidraScript {
+    public void run() throws Exception {
+        String[] a = getScriptArgs();
+        for (int i = 0; i < 2; i++) {
+            getFunctionAt(toAddr(a[i])).setParentNamespace(currentProgram.getGlobalNamespace());
+            getFunctionAt(toAddr(a[i])).setName(a[i+2], SourceType.USER_DEFINED);
+        }
+    }
+}
+"#,
+            &[
+                addresses[0].clone(),
+                addresses[1].clone(),
+                before[0]["name"].as_str().unwrap().to_string(),
+                before[1]["name"].as_str().unwrap().to_string(),
+            ],
+            &[],
+            false,
+        )
+        .unwrap();
+}

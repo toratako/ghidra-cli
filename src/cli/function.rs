@@ -1,4 +1,4 @@
-use super::annotations::{FunctionTagCommands, RenameArgs};
+use super::annotations::FunctionTagCommands;
 use super::options::QueryOptions;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub enum FunctionCommands {
     #[command(alias = "xrefs", alias = "crossrefs", alias = "references")]
     XRefs(FunctionGetArgs),
     /// Rename function
-    Rename(RenameArgs),
+    Rename(FunctionRenameArgs),
     /// Create function
     Create(CreateFunctionArgs),
     /// Delete function
@@ -43,6 +43,19 @@ pub enum FunctionCommands {
     /// Function tag operations (subsystem/module grouping)
     #[command(subcommand)]
     Tag(FunctionTagCommands),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionRenameArgs {
+    pub old_name: String,
+    pub new_name: String,
+    /// Exact function entry address to disambiguate the old name
+    #[arg(long)]
+    pub address: Option<String>,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

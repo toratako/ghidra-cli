@@ -2,6 +2,7 @@ package ghidracli;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
@@ -44,13 +45,7 @@ final class SymbolCommands {
                 continue;
             }
 
-            JsonObject symData = new JsonObject();
-            symData.addProperty("name", name);
-            symData.addProperty("address", symbol.getAddress().toString());
-            symData.addProperty("type", symbol.getSymbolType().toString());
-            symData.addProperty("source", symbol.getSource().toString());
-            symData.addProperty("is_primary", symbol.isPrimary());
-            symbols.add(symData);
+            symbols.add(symbolToJson(symbol));
             count++;
         }
 
@@ -84,12 +79,7 @@ final class SymbolCommands {
                     }
                     JsonArray syms = new JsonArray();
                     for (Symbol s : symbolsAtAddr) {
-                        JsonObject symData = new JsonObject();
-                        symData.addProperty("name", s.getName());
-                        symData.addProperty("address", s.getAddress().toString());
-                        symData.addProperty("type", s.getSymbolType().toString());
-                        symData.addProperty("source", s.getSource().toString());
-                        syms.add(symData);
+                        syms.add(symbolToJson(s));
                     }
                     JsonObject result = new JsonObject();
                     result.add("symbols", syms);
@@ -105,12 +95,7 @@ final class SymbolCommands {
         JsonArray syms = new JsonArray();
         while (symsByName.hasNext()) {
             Symbol s = symsByName.next();
-            JsonObject symData = new JsonObject();
-            symData.addProperty("name", s.getName());
-            symData.addProperty("address", s.getAddress().toString());
-            symData.addProperty("type", s.getSymbolType().toString());
-            symData.addProperty("source", s.getSource().toString());
-            syms.add(symData);
+            syms.add(symbolToJson(s));
         }
 
         if (syms.size() == 0) {
@@ -155,65 +140,69 @@ final class SymbolCommands {
         }
     }
 
-    /** Strip an optional 0x/0X prefix and lowercase, for tolerant address comparison. */
-    private String normalizeAddressForCompare(String addr) {
-        if (addr == null) return null;
-        String a = addr.trim().toLowerCase();
-        if (a.startsWith("0x")) a = a.substring(2);
-        return a;
+    private JsonObject symbolToJson(Symbol symbol) {
+        JsonObject result = new JsonObject();
+        result.addProperty("id", Long.toString(symbol.getID()));
+        result.addProperty("name", symbol.getName());
+        result.addProperty("address", symbol.getAddress().toString());
+        result.addProperty("namespace", symbol.getParentNamespace().getName(true));
+        result.addProperty("type", symbol.getSymbolType().toString());
+        result.addProperty("source", symbol.getSource().toString());
+        result.addProperty("is_primary", symbol.isPrimary());
+        result.addProperty("address_space", symbol.getAddress().getAddressSpace().getName());
+        result.addProperty("is_default_address_space", symbol.getAddress().getAddressSpace().equals(
+            session.program().getAddressFactory().getDefaultAddressSpace()));
+        return result;
     }
 
-    /**
-     * Resolve exactly which symbols named `name` a mutation should touch.
-     *
-     * Ghidra auto-generates names (`caseD_XX`, `LAB_XXXX`, ...) that are
-     * routinely reused across unrelated addresses program-wide, so a bare
-     * name is not a safe mutation target on its own: without this guard,
-     * `symbol rename`/`symbol delete` would silently touch every symbol
-     * sharing that name, not just the one address the caller meant.
-     *
-     * When `addresses` is non-empty, scope to exactly those addresses
-     * (erroring if any requested address has no matching symbol). When it's
-     * empty and more than one symbol shares `name`, refuse to guess.
-     */
-    private List<Symbol> resolveScopedSymbols(SymbolTable symbolTable, String name, String[] addresses)
-            throws Exception {
-        SymbolIterator syms = symbolTable.getSymbols(name);
-        List<Symbol> all = new ArrayList<>();
-        while (syms.hasNext()) {
-            all.add(syms.next());
-        }
-        if (all.isEmpty()) {
-            throw new IllegalArgumentException("Symbol not found: " + name);
-        }
-
-        if (addresses != null && addresses.length > 0) {
-            Set<String> wanted = new HashSet<>();
-            for (String a : addresses) wanted.add(normalizeAddressForCompare(a));
-            List<Symbol> scoped = new ArrayList<>();
-            for (Symbol s : all) {
-                if (wanted.contains(normalizeAddressForCompare(s.getAddress().toString()))) {
-                    scoped.add(s);
+    /** Revalidate the entire selection before opening a mutation transaction. */
+    private List<Symbol> resolveScopedSymbols(SymbolTable table, String name, JsonObject args) {
+        List<Symbol> selected = new ArrayList<>();
+        if (args.has("targets")) {
+            JsonArray targets = args.getAsJsonArray("targets");
+            if (targets.size() == 0) throw new IllegalArgumentException("Symbol targets cannot be empty");
+            Set<Long> ids = new HashSet<>();
+            for (JsonElement element : targets) {
+                JsonObject expected = element.getAsJsonObject();
+                long id = Long.parseLong(expected.get("id").getAsString());
+                Symbol symbol = table.getSymbol(id);
+                if (!ids.add(id) || symbol == null || !symbol.getName().equals(name)
+                        || !symbolToJson(symbol).equals(expected)) {
+                    throw new IllegalArgumentException("Stale or invalid symbol target: " + id);
                 }
+                selected.add(symbol);
             }
-            if (scoped.isEmpty()) {
-                throw new IllegalArgumentException(
-                    "No symbol named '" + name + "' at the given address(es)");
-            }
-            return scoped;
+            return selected;
         }
 
-        if (all.size() > 1) {
-            StringBuilder addrs = new StringBuilder();
-            for (Symbol s : all) {
-                if (addrs.length() > 0) addrs.append(", ");
-                addrs.append(s.getAddress().toString());
+        // Legacy address-scoped requests must validate every requested address.
+        // Multiple symbols at one address require stable IDs to distinguish namespaces.
+        String[] addresses = getArgStringArray(args, "addresses");
+        SymbolIterator syms = table.getSymbols(name);
+        List<Symbol> all = new ArrayList<>();
+        while (syms.hasNext()) all.add(syms.next());
+        if (addresses.length > 0) {
+            Set<Address> seen = new HashSet<>();
+            for (String value : addresses) {
+                Address address = new AddressResolver(session).parseAddress(value);
+                if (address == null) throw new IllegalArgumentException("Invalid address: " + value);
+                if (!seen.add(address)) continue;
+                Symbol match = null;
+                for (Symbol symbol : all) {
+                    if (!symbol.getAddress().equals(address)) continue;
+                    if (match != null) throw new IllegalArgumentException(
+                        "Ambiguous symbol at " + value + "; use stable symbol targets");
+                    match = symbol;
+                }
+                if (match == null) throw new IllegalArgumentException(
+                    "No symbol named '" + name + "' at address " + value);
+                selected.add(match);
             }
-            throw new IllegalArgumentException("'" + name + "' matches " + all.size()
-                + " symbols at addresses [" + addrs + "] -- pass explicit address(es) to pick "
-                + "one, or request all of them explicitly");
+            return selected;
         }
-
+        if (all.isEmpty()) throw new IllegalArgumentException("Symbol not found: " + name);
+        if (all.size() > 1) throw new IllegalArgumentException(
+            "'" + name + "' matches " + all.size() + " symbols; pass explicit address(es)");
         return all;
     }
 
@@ -222,11 +211,9 @@ final class SymbolCommands {
 
         String name = getArgString(args, "name");
         if (name == null) return errorResult("Symbol name required");
-        String[] addresses = getArgStringArray(args, "addresses");
-
         try {
             SymbolTable symbolTable = session.program().getSymbolTable();
-            List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, addresses);
+            List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, args);
 
             ProgramTransaction transaction = session.transaction("Delete symbol");
             try {
@@ -257,11 +244,9 @@ final class SymbolCommands {
         if (oldName == null || newName == null) {
             return errorResult("old_name and new_name required");
         }
-        String[] addresses = getArgStringArray(args, "addresses");
-
         try {
             SymbolTable symbolTable = session.program().getSymbolTable();
-            List<Symbol> toRename = resolveScopedSymbols(symbolTable, oldName, addresses);
+            List<Symbol> toRename = resolveScopedSymbols(symbolTable, oldName, args);
 
             JsonArray renamed = new JsonArray();
             ProgramTransaction transaction = session.transaction("Rename symbol");

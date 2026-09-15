@@ -11,6 +11,14 @@ fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
+fn symbol_fixture(id: &str, address: &str, kind: &str) -> Value {
+    json!({
+        "id": id, "name": "shared", "address": address, "namespace": "Global",
+        "type": kind, "kind": kind, "source": "USER_DEFINED", "is_primary": true,
+        "address_space": "ram", "is_default_address_space": true,
+    })
+}
+
 struct RecordedBridge {
     root: tempfile::TempDir,
     project: PathBuf,
@@ -71,8 +79,8 @@ impl RecordedBridge {
                         vec![]
                     } else {
                         vec![
-                            json!({"name": "shared", "address": "00AB", "kind": "label"}),
-                            json!({"name": "shared", "address": "00CD", "kind": "function"}),
+                            symbol_fixture("9007199254740993", "00AB", "label"),
+                            symbol_fixture("9007199254740994", "00CD", "function"),
                         ]
                     }}),
                     "list_imports" | "list_exports" => {
@@ -731,7 +739,7 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
 #[test]
 fn symbol_mutations_resolve_targets_before_sending_the_edit() {
     let bridge = RecordedBridge::new();
-    for (args, command, addresses) in [
+    for (args, command, targets) in [
         (
             vec![
                 "symbol",
@@ -742,17 +750,20 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
                 "0x00ab",
             ],
             "symbol_rename",
-            json!(["00AB"]),
+            json!([symbol_fixture("9007199254740993", "00AB", "label")]),
         ),
         (
             vec!["rename", "shared", "renamed", "--filter", "kind=function"],
             "symbol_rename",
-            json!(["00CD"]),
+            json!([symbol_fixture("9007199254740994", "00CD", "function")]),
         ),
         (
             vec!["symbol", "delete", "shared", "--all"],
             "symbol_delete",
-            json!(["00AB", "00CD"]),
+            json!([
+                symbol_fixture("9007199254740993", "00AB", "label"),
+                symbol_fixture("9007199254740994", "00CD", "function")
+            ]),
         ),
     ] {
         bridge.requests.lock().unwrap().clear();
@@ -767,9 +778,9 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
         assert_eq!(domain[0]["args"], json!({"name": "shared"}));
         assert_eq!(domain[1]["command"], command);
         let expected = if command == "symbol_delete" {
-            json!({"name": "shared", "addresses": addresses})
+            json!({"name": "shared", "targets": targets})
         } else {
-            json!({"old_name": "shared", "new_name": "renamed", "addresses": addresses})
+            json!({"old_name": "shared", "new_name": "renamed", "targets": targets})
         };
         assert_eq!(domain[1]["args"], expected);
     }

@@ -246,10 +246,10 @@ fn test_decompile_by_name() {
     require_ghidra!();
     let harness = harness();
 
-    // Use "main" instead of "add_numbers" since add_numbers may be inlined on macOS
+    // The fixture exports this unambiguous function name.
     let result = ghidra(harness)
         .arg("decompile")
-        .arg("main")
+        .arg("add_numbers")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
 
@@ -569,13 +569,14 @@ fn test_diff_programs() {
 #[serial]
 fn test_diff_functions() {
     require_ghidra!();
-    harness();
+    let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = GhidraCommand::new()
         .arg("diff")
         .arg("functions")
-        .arg("main")
-        .arg("main")
+        .arg(&main_addr)
+        .arg(&main_addr)
         .arg("--project")
         .arg(test_project())
         .run();
@@ -587,15 +588,15 @@ fn test_diff_functions() {
 #[serial]
 fn test_diff_functions_different() {
     require_ghidra!();
-    harness();
+    let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    // Self-diff main vs main - use same function to avoid depending on
-    // add_numbers which may be inlined on macOS
+    // Select one entry explicitly: the fixture may have multiple functions named main.
     let result = GhidraCommand::new()
         .arg("diff")
         .arg("functions")
-        .arg("main")
-        .arg("main")
+        .arg(&main_addr)
+        .arg(&main_addr)
         .arg("--project")
         .arg(test_project())
         .run();

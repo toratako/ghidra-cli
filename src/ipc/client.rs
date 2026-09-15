@@ -241,8 +241,33 @@ impl BridgeClient {
         )
     }
 
+    /// Mutate only the stable symbol snapshots returned by symbol_get.
+    pub fn symbol_delete_targets(
+        &self,
+        name: &str,
+        targets: &[serde_json::Value],
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "symbol_delete",
+            Some(json!({"name": name, "targets": targets})),
+        )
+    }
+
+    pub fn symbol_rename_targets(
+        &self,
+        old_name: &str,
+        new_name: &str,
+        targets: &[serde_json::Value],
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "symbol_rename",
+            Some(json!({"old_name": old_name, "new_name": new_name, "targets": targets})),
+        )
+    }
+
     /// `addresses` scopes the delete to exactly those symbols (by address);
     /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
+    #[allow(dead_code)] // Retained public library adapter; CLI uses validated snapshots.
     pub fn symbol_delete(&self, name: &str, addresses: &[String]) -> Result<serde_json::Value> {
         self.send_command(
             "symbol_delete",
@@ -252,6 +277,7 @@ impl BridgeClient {
 
     /// `addresses` scopes the rename to exactly those symbols (by address);
     /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
+    #[allow(dead_code)] // Retained public library adapter; CLI uses validated snapshots.
     pub fn symbol_rename(
         &self,
         old_name: &str,

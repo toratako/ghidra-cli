@@ -91,10 +91,12 @@ fn test_batch_failure_exit_and_results() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
+    let address =
+        common::get_function_address(&harness, test_project(), TEST_PROGRAM, "add_numbers");
     let batch = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(
         batch.path(),
-        "program info\nfunction create main\nprogram info\n",
+        format!("program info\nfunction create {address}\nprogram info\n"),
     )
     .unwrap();
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")

@@ -10,7 +10,6 @@ import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,7 +24,7 @@ final class AddressResolver {
     private static final Pattern NAMED_HEX_ADDRESS_PATTERN =
         Pattern.compile("(?i)^(?:FUN|SUB|LAB|DAT)_([0-9a-f]+)$");
 
-    Address resolveAddress(String addrStr) {
+    Address parseAddress(String addrStr) {
         if (session.program() == null || addrStr == null || addrStr.isEmpty()) {
             return null;
         }
@@ -58,51 +57,38 @@ final class AddressResolver {
             }
         }
 
-        // Try as symbol/function name via SymbolTable. Prefer concrete program
-        // addresses, but remember an external-space address as a fallback so
-        // import names (e.g. CreateThread/puts) can be used directly with xref
-        // commands. External symbols previously resolved to null, forcing
-        // callers to look up the import address manually first.
+        return null;
+    }
+
+    LinkedHashSet<Address> namedAddresses(String target) {
+        LinkedHashSet<Address> candidates = new LinkedHashSet<>();
         SymbolTable st = session.program().getSymbolTable();
-        Address externalCandidate = null;
         SymbolIterator syms = st.getSymbols(target);
         while (syms.hasNext()) {
-            Symbol sym = syms.next();
-            Address symAddr = sym.getAddress();
-            if (symAddr == null) continue;
-            if (!symAddr.isExternalAddress()) {
-                return symAddr;
-            }
-            if (externalCandidate == null) {
-                externalCandidate = symAddr;
-            }
+            Address address = syms.next().getAddress();
+            if (address != null) candidates.add(address);
         }
-
-        // Try global symbols (may include exports/imports). Again prefer a real
-        // program address over an external-space symbol with the same name.
-        List<Symbol> globalSyms = st.getGlobalSymbols(target);
-        for (Symbol sym : globalSyms) {
-            Address symAddr = sym.getAddress();
-            if (symAddr == null) continue;
-            if (!symAddr.isExternalAddress()) {
-                return symAddr;
-            }
-            if (externalCandidate == null) {
-                externalCandidate = symAddr;
-            }
+        for (Symbol sym : st.getGlobalSymbols(target)) {
+            if (sym.getAddress() != null) candidates.add(sym.getAddress());
         }
-
-        // Fallback: scan functions by name (O(n) but handles edge cases).
-        FunctionManager fm = session.program().getFunctionManager();
-        FunctionIterator iter = fm.getFunctions(true);
+        FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
         while (iter.hasNext()) {
             Function func = iter.next();
-            if (func.getName().equals(target)) {
-                return func.getEntryPoint();
-            }
+            if (func.getName().equals(target)) candidates.add(func.getEntryPoint());
         }
+        return candidates;
+    }
 
-        return externalCandidate;
+    Address resolveAddress(String target) {
+        if (session.program() == null || target == null || target.trim().isEmpty()) return null;
+        Address explicit = parseAddress(target);
+        if (explicit != null) return explicit;
+        LinkedHashSet<Address> candidates = namedAddresses(target.trim());
+        if (candidates.size() > 1) {
+            throw new IllegalArgumentException("Ambiguous target '" + target + "' at "
+                + candidates + "; use an explicit address");
+        }
+        return candidates.isEmpty() ? null : candidates.iterator().next();
     }
 
     /**
@@ -117,21 +103,12 @@ final class AddressResolver {
             return targets;
         }
 
-        Address primary = resolveAddress(target);
+        Address primary = parseAddress(target);
         if (primary != null) {
             targets.add(primary);
         }
 
-        SymbolTable st = session.program().getSymbolTable();
-        SymbolIterator syms = st.getSymbols(target.trim());
-        while (syms.hasNext()) {
-            Address a = syms.next().getAddress();
-            if (a != null) targets.add(a);
-        }
-        for (Symbol sym : st.getGlobalSymbols(target.trim())) {
-            Address a = sym.getAddress();
-            if (a != null) targets.add(a);
-        }
+        targets.addAll(namedAddresses(target.trim()));
 
         // Add local thunk functions that ultimately dispatch to any resolved
         // external function. This is the address call references normally target

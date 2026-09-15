@@ -184,12 +184,12 @@ fn test_graph_calls() {
 fn test_graph_callers() {
     require_ghidra!();
     let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    // Use "main" instead of "add_numbers" since add_numbers may be inlined on macOS
     let result = ghidra(harness)
         .arg("graph")
         .arg("callers")
-        .arg("main")
+        .arg(&main_addr)
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
@@ -206,11 +206,12 @@ fn test_graph_callers() {
 fn test_graph_callees() {
     require_ghidra!();
     let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
         .arg("graph")
         .arg("callees")
-        .arg("main")
+        .arg(&main_addr)
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
@@ -245,12 +246,13 @@ fn test_graph_callees() {
 fn test_graph_callees_limit_is_enforced_by_bridge() {
     require_ghidra!();
     let harness = harness();
+    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let client = harness.client().expect("bridge client");
 
     // depth=0 means recursive/unbounded depth; a tiny bridge-side limit must
     // stop traversal before the full graph is constructed.
     let result = client
-        .graph_callees("main", Some(0), Some(2))
+        .graph_callees(&main_addr, Some(0), Some(2))
         .expect("bounded callees graph");
     let callees = result
         .get("callees")
@@ -265,7 +267,7 @@ fn test_graph_callees_limit_is_enforced_by_bridge() {
     // Exercise the callers path too. The fixture may naturally have fewer than
     // two callers for main on some platforms, so only assert the hard ceiling.
     let callers = client
-        .graph_callers("main", Some(0), Some(2))
+        .graph_callers(&main_addr, Some(0), Some(2))
         .expect("bounded callers graph");
     assert!(
         callers
