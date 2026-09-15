@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `type import-c --file PATH` and `--stdin` accept C definitions alongside the
+  existing inline input, with exactly one source per invocation.
+- Type expressions support fixed-length arrays, including pointer arrays and
+  multidimensional arrays, using the target program's pointer width. Ambiguous
+  short type names return full-path candidates instead of selecting a match.
+
 ### Changed
 
 - Replaced `function set-var-type` with `function edit-var FUNCTION --var NAME

@@ -119,7 +119,7 @@ final class FunctionSignatureCommands {
             if (sig != null) result.addProperty("signature", sig);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to set return type: " + e.getMessage());
+            return errorResult("Failed to set return type: " + e.getMessage(), e);
         }
     }
 
@@ -303,7 +303,7 @@ final class FunctionSignatureCommands {
                 decompiler.dispose();
             }
         } catch (Exception e) {
-            return errorResult("Failed to edit variable: " + e.getMessage());
+            return errorResult("Failed to edit variable: " + e.getMessage(), e);
         }
     }
 

@@ -255,7 +255,7 @@ final class TypeCommands {
             }
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to apply type: " + e.getMessage());
+            return errorResult("Failed to apply type: " + e.getMessage(), e);
         }
     }
 
@@ -318,7 +318,7 @@ final class TypeCommands {
             result.addProperty("path", fullPath);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to delete type: " + e.getMessage());
+            return errorResult("Failed to delete type: " + e.getMessage(), e);
         }
     }
 
@@ -349,7 +349,7 @@ final class TypeCommands {
             result.addProperty("path", dataType.getPathName());
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to rename type: " + e.getMessage());
+            return errorResult("Failed to rename type: " + e.getMessage(), e);
         }
     }
 
@@ -423,7 +423,7 @@ final class TypeCommands {
             result.addProperty("base_type", baseTypeName);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to create typedef: " + e.getMessage());
+            return errorResult("Failed to create typedef: " + e.getMessage(), e);
         }
     }
 
@@ -486,7 +486,7 @@ final class TypeCommands {
             result.addProperty("field_type", fieldTypeName);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to add field: " + e.getMessage());
+            return errorResult("Failed to add field: " + e.getMessage(), e);
         }
     }
 
@@ -529,7 +529,7 @@ final class TypeCommands {
             result.addProperty("field", fieldName);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to delete field: " + e.getMessage());
+            return errorResult("Failed to delete field: " + e.getMessage(), e);
         }
     }
 }

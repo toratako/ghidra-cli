@@ -217,6 +217,22 @@ fn failures_have_nonzero_status_and_json_diagnostics() {
 }
 
 #[test]
+fn type_import_requires_exactly_one_input_source() {
+    let temp = tempfile::tempdir().unwrap();
+    for args in [
+        vec!["type", "import-c"],
+        vec!["type", "import-c", "int x;", "--file", "types.h"],
+        vec!["type", "import-c", "int x;", "--stdin"],
+        vec!["type", "import-c", "--file", "types.h", "--stdin"],
+    ] {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["exit_code"], 2);
+    }
+}
+
+#[test]
 fn variable_edit_rejects_missing_or_empty_edits_and_the_removed_command() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();

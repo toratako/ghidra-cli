@@ -7,6 +7,18 @@ import com.google.gson.JsonObject;
 final class JsonProtocol {
     private JsonProtocol() {}
 
+    /** A validation failure with diagnostics that survive handler boundaries. */
+    static class CommandException extends IllegalArgumentException {
+        private final JsonObject detail;
+
+        CommandException(String message, JsonObject detail) {
+            super(message);
+            this.detail = detail;
+        }
+
+        JsonObject detail() { return detail; }
+    }
+
     static JsonObject successResponse(JsonObject data) {
         JsonObject resp = new JsonObject();
         resp.addProperty("status", "success");
@@ -33,6 +45,17 @@ final class JsonProtocol {
         JsonObject result = new JsonObject();
         result.addProperty("error", message);
         return result;
+    }
+
+    static JsonObject errorResult(String message, Throwable cause) {
+        JsonObject result = errorResult(message);
+        JsonObject detail = errorDetail(cause);
+        if (detail != null) result.add("detail", detail);
+        return result;
+    }
+
+    static JsonObject errorDetail(Throwable cause) {
+        return cause instanceof CommandException ? ((CommandException) cause).detail() : null;
     }
 
     static String getArgString(JsonObject args, String key) {

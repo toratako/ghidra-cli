@@ -23,6 +23,21 @@ fn resolve_comment_text(args: &cli::CommentSetArgs) -> anyhow::Result<String> {
     }
 }
 
+fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
+    let code = if args.stdin {
+        crate::terminal::read_stdin("C definitions")?
+    } else if let Some(path) = &args.file {
+        std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read --file {}: {}", path.display(), e))?
+    } else {
+        args.code
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("C code, --file, or --stdin required"))?
+    };
+    anyhow::ensure!(!code.trim().is_empty(), "C definitions must not be empty");
+    Ok(code)
+}
+
 /// The bridge's list handlers only support a literal substring match on the
 /// primary name field, not the full filter DSL implemented client-side in
 /// `query::Filter`. When a full filter expression, sort, or count is requested,
@@ -294,7 +309,7 @@ pub(super) fn execute_via_bridge(
                     client.type_apply_force(&args.address, &args.type_name, args.force)
                 }
                 TypeCommands::ImportC(args) => {
-                    client.type_import_c(&args.code, args.category.as_deref())
+                    client.type_import_c(&resolve_c_source(args)?, args.category.as_deref())
                 }
                 TypeCommands::Delete(args) => {
                     client.send_command("type_delete", Some(json!({"name": args.name})))

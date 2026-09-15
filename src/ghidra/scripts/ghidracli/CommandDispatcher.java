@@ -168,7 +168,7 @@ final class CommandDispatcher {
             session.beginRequest(command);
             response = executeCommand(command, args);
         } catch (Exception e) {
-            response = errorResponse(e.getMessage());
+            response = errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
         }
         try {
             boolean saved = session.finishRequest();
@@ -222,7 +222,7 @@ final class CommandDispatcher {
 
             return successResponse(result);
         } catch (Exception e) {
-            return errorResponse(e.getMessage());
+            return errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
         }
     }
 }

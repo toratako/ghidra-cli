@@ -13,6 +13,12 @@ use common::{ensure_test_project, get_function_address, ghidra, DaemonTestHarnes
 use common::test_project;
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
+#[path = "types/input.rs"]
+mod input;
+
+#[path = "types/resolution.rs"]
+mod resolution;
+
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {

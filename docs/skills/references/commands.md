@@ -147,11 +147,28 @@ ghidra-cli type import-c --category /Recovered \
   --project target
 ```
 
+`type import-c` accepts exactly one input: inline C code, `--file PATH`, or
+`--stdin`. Files are UTF-8 and resolve from the CLI working directory. These
+inputs use the same C declaration parser; file input does not add preprocessing
+or include-path support.
+
+```bash
+ghidra-cli type import-c --file recovered_types.h --category /Recovered
+ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
+```
+
 Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `--all` to affect every match. `type create` accepts a bare name and creates an
 empty struct; use `add-field` or `import-c` for its definition.
 
 `type apply --force` clears a conflicting data unit before applying the type.
+
+Type expressions accept pointers and fixed-length arrays, such as `byte[16]`,
+`Hook *[8]`, and `byte[2][3]`. Array counts are positive decimal integers; sizes
+use the selected program's data organization. Ambiguous short names fail with
+full paths in `detail.candidates`. Use `/Recovered/Hook` or
+`/Recovered/Hook *[8]` to select a category explicitly; an incorrect full path
+does not fall back to another category.
 
 ## Function tags
 

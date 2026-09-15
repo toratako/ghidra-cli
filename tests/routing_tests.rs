@@ -136,6 +136,77 @@ impl Drop for RecordedBridge {
 }
 
 #[test]
+fn type_import_reads_code_files_and_stdin_in_the_client() {
+    let bridge = RecordedBridge::new();
+    let code = "// 日本語\nstruct Header { int size; };\n";
+    std::fs::write(bridge.root.path().join("recovered types.h"), code).unwrap();
+    for (args, input) in [
+        (
+            vec!["type", "import-c", code, "--category", "/Recovered"],
+            None,
+        ),
+        (
+            vec![
+                "type",
+                "import-c",
+                "--file",
+                "recovered types.h",
+                "--category",
+                "/Recovered",
+            ],
+            None,
+        ),
+        (
+            vec!["type", "import-c", "--stdin", "--category", "/Recovered"],
+            Some(code),
+        ),
+    ] {
+        let mut command = bridge.command();
+        command.args(args);
+        if let Some(input) = input {
+            command.write_stdin(input);
+        }
+        command.assert().success();
+        let mut requests = bridge.requests.lock().unwrap();
+        let imports: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "type_import_c")
+            .collect();
+        assert_eq!(imports.len(), 1);
+        assert_eq!(
+            imports[0]["args"],
+            json!({"code": code, "category": "/Recovered"})
+        );
+        requests.clear();
+    }
+    for file in ["missing.h", "empty.h", "invalid.h"] {
+        if file == "empty.h" {
+            std::fs::write(bridge.root.path().join(file), " \n").unwrap();
+        }
+        if file == "invalid.h" {
+            std::fs::write(bridge.root.path().join(file), [0xff]).unwrap();
+        }
+        bridge
+            .command()
+            .args(["type", "import-c", "--file", file])
+            .assert()
+            .failure();
+    }
+    bridge
+        .command()
+        .args(["type", "import-c", "--stdin"])
+        .write_stdin(" ")
+        .assert()
+        .failure();
+    assert!(!bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r["command"] == "type_import_c"));
+}
+
+#[test]
 fn variable_edits_send_one_request_with_only_requested_attributes() {
     let bridge = RecordedBridge::new();
     for (flags, name, data_type) in [

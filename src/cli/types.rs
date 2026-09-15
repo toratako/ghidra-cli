@@ -65,9 +65,16 @@ pub struct ApplyTypeArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("source").required(true).args(["code", "file", "stdin"])))]
 pub struct ImportCArgs {
     /// C code containing type definitions
-    pub code: String,
+    pub code: Option<String>,
+    /// Read C definitions from a UTF-8 file (relative to the CLI working directory)
+    #[arg(long, value_name = "PATH")]
+    pub file: Option<std::path::PathBuf>,
+    /// Read C definitions from standard input
+    #[arg(long)]
+    pub stdin: bool,
     /// Category path to store imported types in
     #[arg(long)]
     pub category: Option<String>,
