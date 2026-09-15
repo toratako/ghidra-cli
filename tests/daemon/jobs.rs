@@ -226,4 +226,101 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
         .as_str()
         .unwrap()
         .contains(&format!("fresh-monitor:{TEST_PROGRAM}")));
+    let status = client.status().unwrap();
+    assert!(status["active_job"].is_null(), "{status}");
+    let finished = &status["recent_jobs"][0];
+    assert_eq!(finished["state"], "complete");
+    let finished_id = finished["id"].as_u64().unwrap();
+    let cancelled = client.cancel_job(Some(finished_id)).unwrap();
+    assert_eq!(cancelled["state"], "complete");
+    let unchanged = client.job_status(Some(finished_id)).unwrap();
+    assert_eq!(unchanged["job"]["state"], "complete");
+    assert_eq!(unchanged["job"]["cancel_requested"], false);
+}
+
+#[test]
+#[serial]
+fn test_shutdown_acknowledges_full_queue_before_draining() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let control = harness.client().unwrap();
+    let worker = harness.client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let release = directory.path().join("release");
+    let script_release = release.to_str().unwrap().to_owned();
+    let script = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class HoldQueueForShutdown extends GhidraScript {
+    public void run() throws Exception {
+        java.io.File release = new java.io.File(getScriptArgs()[0]);
+        monitor.setMessage("holding-queue-for-shutdown");
+        long deadline = System.currentTimeMillis() + 60000;
+        while (!release.exists()) {
+            if (System.currentTimeMillis() > deadline) {
+                throw new IllegalStateException("Queue was not released");
+            }
+            Thread.sleep(10);
+        }
+    }
+}
+"#,
+            &[script_release],
+            &[],
+            false,
+        )
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    loop {
+        let status = control.status().unwrap();
+        if status["active_job"]["progress_message"] == "holding-queue-for-shutdown" {
+            break;
+        }
+        assert!(
+            !script.is_finished(),
+            "script exited before queue saturation"
+        );
+        assert!(std::time::Instant::now() < deadline, "{status}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Enqueue one at a time and observe acceptance to avoid saturating the
+    // socket accept backlog instead of the program queue.
+    let mut pending = Vec::new();
+    for depth in 1..=256 {
+        let mut socket = TcpStream::connect(("127.0.0.1", harness.port())).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .unwrap();
+        writeln!(socket, "{{\"command\":\"stats\"}}").unwrap();
+        pending.push(socket);
+        loop {
+            let status = control.status().unwrap();
+            if status["queue_depth"] == depth {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "{status}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    let overflow = control.stats().unwrap_err();
+    assert!(overflow.to_string().contains("queue is full"));
+    // The active job cannot finish until after this response. A bounded timeout
+    // detects a blocked shutdown without depending on how quickly jobs execute.
+    let shutdown =
+        control.send_command_with_timeout("shutdown", None, Some(Duration::from_secs(5)));
+    std::fs::write(&release, b"release").unwrap();
+    script.join().unwrap().unwrap();
+    shutdown.expect("shutdown must acknowledge before the active job is released");
+    for socket in pending {
+        let mut line = String::new();
+        BufReader::new(socket).read_line(&mut line).unwrap();
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(response["status"], "success", "{response}");
+    }
 }

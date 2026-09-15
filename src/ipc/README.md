@@ -18,6 +18,10 @@ The write timeout is 30s; configurable read/connect/long-operation budgets are i
 [the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
 in its command adapter because it is a Ghidra parameter, not a socket budget.
 EOF without a reply is an error; read timeouts exit 75 without cancelling the job.
+Shutdown uses the caller's remaining total deadline for connect, write, and read;
+it must not fall back to an independent generic socket timeout. The lifecycle
+caller also budgets lock acquisition and process exit, preserves the typed
+timeout error, and retains live discovery on failure.
 
 ## Wire format
 

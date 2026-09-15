@@ -101,13 +101,9 @@ fn handle_bridge_stop(
     let config = load_config(projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
 
-    let message = if bridge::is_bridge_running(&project_path).is_some() {
-        output.progress("Stopping bridge...");
-        bridge::stop_bridge(&project_path)?;
-        "Bridge stopped".to_string()
-    } else {
-        format!("No bridge running for project: {}", project_path.display())
-    };
+    output.progress("Stopping bridge...");
+    bridge::stop_bridge(&project_path)?;
+    let message = "Bridge stopped";
     Ok(json!({"state": "stopped", "project": project_path, "message": message}))
 }
 

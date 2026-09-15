@@ -4,13 +4,12 @@
 //! starts a TCP socket server. The CLI connects directly to this server
 //! to execute commands. No intermediate daemon process is needed.
 
-use std::io::Write;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use tracing::{debug, info, warn};
+use tracing::info;
 
 use crate::ipc::client::BridgeClient;
 
@@ -20,7 +19,6 @@ mod sources;
 mod startup;
 pub use headless::{compile_check, find_headless_script};
 pub use import::{import_oneshot, OneShotImportOptions};
-pub use startup::start_bridge;
 
 /// Which program, if any, the bridge opens before reporting readiness.
 pub enum BridgeStartMode {
@@ -30,8 +28,8 @@ pub enum BridgeStartMode {
     Project,
 }
 
-/// Grace period for a bridge to drain accepted program jobs and let Ghidra
-/// close the project cleanly before the CLI falls back to process termination.
+/// Budget for requesting shutdown and letting Ghidra drain accepted jobs and
+/// close the project. Expiry preserves the live process and its project state.
 const DEFAULT_SHUTDOWN_TIMEOUT_SECS: u64 = 300;
 
 fn parse_shutdown_timeout(raw: Option<&str>) -> Option<Duration> {
@@ -182,112 +180,109 @@ pub fn read_pid_file(project_path: &Path) -> Result<Option<u32>> {
 
 /// Check if a process with the given PID is alive.
 pub fn is_pid_alive(pid: u32) -> bool {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return true; // Invalid identities are never evidence that cleanup is safe.
+    }
     #[cfg(unix)]
     {
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        unsafe {
+            libc::kill(pid as i32, 0) == 0
+                || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+        }
     }
     #[cfg(windows)]
     {
         use std::process::Command;
         Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid)])
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
             .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
-            .unwrap_or(false)
+            .map(|output| {
+                !output.status.success()
+                    || String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+                        line.split("\",\"")
+                            .nth(1)
+                            .and_then(|field| field.trim_matches('"').parse::<u32>().ok())
+                            == Some(pid)
+                    })
+            })
+            .unwrap_or(true)
     }
 }
 
-/// Clean up stale port and PID files.
+/// Clean up discovery for a confirmed dead process under the lifecycle lock.
+#[allow(dead_code)] // Public library recovery API; the CLI uses locked internal cleanup.
 pub fn cleanup_stale_files(project_path: &Path) -> Result<()> {
-    let port_path = port_file_path(project_path)?;
-    let pid_path = pid_file_path(project_path)?;
-    if port_path.exists() {
-        std::fs::remove_file(&port_path).ok();
-    }
-    if pid_path.exists() {
-        std::fs::remove_file(&pid_path).ok();
-    }
+    let _lock = acquire_startup_lock(project_path)?;
+    cleanup_stale_files_locked(project_path)
+}
 
-    // Remove Ghidra project lock files left behind after force-kill.
-    // Ghidra creates {project_name}.lock and {project_name}.lock~ as siblings
-    // of the project directory. If the JVM is killed, these aren't cleaned up
-    // and the next analyzeHeadless invocation may refuse to open the project.
-    if let Some(project_name) = project_path.file_name() {
-        if let Some(parent) = project_path.parent() {
-            let lock_name = format!("{}.lock", project_name.to_string_lossy());
-            let lock_path = parent.join(&lock_name);
-            let lock_tilde = parent.join(format!("{}~", lock_name));
-            if lock_path.exists() {
-                debug!("Removing stale Ghidra lock: {:?}", lock_path);
-                std::fs::remove_file(&lock_path).ok();
-            }
-            if lock_tilde.exists() {
-                debug!("Removing stale Ghidra lock: {:?}", lock_tilde);
-                std::fs::remove_file(&lock_tilde).ok();
-            }
-        }
+fn cleanup_stale_files_locked(project_path: &Path) -> Result<()> {
+    let pid = read_pid_file(project_path)?;
+    if let Some(pid) = pid {
+        anyhow::ensure!(
+            !is_pid_alive(pid),
+            "Bridge process {pid} is still alive; preserving discovery and project locks"
+        );
     }
-
+    // Ghidra owns its project lock artifacts. Even a dead recorded PID cannot
+    // establish that a GUI or another process has not acquired the project since.
+    remove_if_present(&port_file_path(project_path)?)?;
+    remove_if_present(&pid_file_path(project_path)?)?;
     Ok(())
 }
 
-/// RAII guard that removes the startup lock file on drop.
-struct StartupLockGuard {
-    path: PathBuf,
-}
-
-impl Drop for StartupLockGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+fn remove_if_present(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 
-/// Acquire a per-project startup lock so concurrent callers don't each spawn
-/// their own analyzeHeadless (which would cause "Unable to lock project!").
-///
-/// The lock file contains the holder's PID so stale locks (from crashed
-/// processes) are detected and cleaned up automatically.
-///
-/// Blocks until the lock is acquired or the 60-second timeout expires.
-fn acquire_startup_lock(project_path: &Path) -> Result<StartupLockGuard> {
-    let data_dir = get_data_dir()?;
-    let hash = project_hash(project_path)?;
-    let lock_path = data_dir.join(format!("bridge-{}.starting", hash));
-    let pid = std::process::id().to_string();
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+/// The stable file must never be unlinked: otherwise waiters could lock a
+/// detached inode while a new caller locks its replacement. Closing releases
+/// the OS lock, including when the holder crashes before writing anything.
+struct StartupLockGuard {
+    _file: std::fs::File,
+}
 
+fn acquire_startup_lock(project_path: &Path) -> Result<StartupLockGuard> {
+    acquire_lifecycle_lock(project_path, None)
+}
+
+fn acquire_lifecycle_lock(
+    project_path: &Path,
+    deadline: Option<std::time::Instant>,
+) -> Result<StartupLockGuard> {
+    let lock_path =
+        get_data_dir()?.join(format!("bridge-{}.starting", project_hash(project_path)?));
+    let timeout = deadline.map_or(Duration::from_secs(60), |end| {
+        end.saturating_duration_since(std::time::Instant::now())
+            .min(Duration::from_secs(60))
+    });
+    acquire_file_lock(&lock_path, timeout)
+}
+
+fn acquire_file_lock(path: &Path, timeout: Duration) -> Result<StartupLockGuard> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
+    let deadline = std::time::Instant::now() + timeout;
     loop {
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock_path)
-        {
-            Ok(mut f) => {
-                let _ = f.write_all(pid.as_bytes());
-                debug!("Acquired startup lock: {:?}", lock_path);
-                return Ok(StartupLockGuard { path: lock_path });
+        match file.try_lock() {
+            Ok(()) => return Ok(StartupLockGuard { _file: file }),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                anyhow::ensure!(
+                    !remaining.is_zero(),
+                    "Timed out waiting for bridge lifecycle lock"
+                );
+                std::thread::sleep(remaining.min(Duration::from_millis(100)));
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                // If the holder process is dead, remove the stale lock and retry.
-                if let Ok(content) = std::fs::read_to_string(&lock_path) {
-                    if let Ok(holder_pid) = content.trim().parse::<u32>() {
-                        if !is_pid_alive(holder_pid) {
-                            debug!("Removing stale startup lock from dead PID {}", holder_pid);
-                            let _ = std::fs::remove_file(&lock_path);
-                            continue;
-                        }
-                    }
-                }
-                if std::time::Instant::now() > deadline {
-                    anyhow::bail!(
-                        "Timed out waiting for bridge startup lock \
-                         (another process may be starting the bridge)"
-                    );
-                }
-                debug!("Waiting for startup lock...");
-                std::thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => return Err(e.into()),
+            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
         }
     }
 }
@@ -330,15 +325,15 @@ pub fn ensure_bridge_running(
     ghidra_install_dir: &Path,
     mode: BridgeStartMode,
 ) -> Result<u16> {
-    // Fast path (no lock): if the bridge is clearly running, return immediately.
-    if let Some(port) = is_bridge_running(project_path) {
-        info!("Bridge already running on port {}", port);
-        return Ok(port);
-    }
+    start_bridge(project_path, ghidra_install_dir, mode)
+}
 
-    // Slow path: acquire the per-project startup lock so that concurrent
-    // callers don't each launch their own analyzeHeadless (which would fail
-    // with "Unable to lock project!" because Ghidra uses an exclusive lock).
+/// Explicit startup shares the same lifecycle lock and recovery checks.
+pub fn start_bridge(
+    project_path: &Path,
+    ghidra_install_dir: &Path,
+    mode: BridgeStartMode,
+) -> Result<u16> {
     let _lock = acquire_startup_lock(project_path)?;
 
     // Re-check under the lock: another process may have started the bridge
@@ -351,105 +346,51 @@ pub fn ensure_bridge_running(
         return Ok(port);
     }
 
-    // Clean up any stale port/pid/lock files before starting fresh.
-    cleanup_stale_files(project_path)?;
-    start_bridge(project_path, ghidra_install_dir, mode)
+    // Clean up stale discovery files before starting fresh.
+    cleanup_stale_files_locked(project_path)?;
+    startup::start_bridge(project_path, ghidra_install_dir, mode)
 }
 
 /// Stop the bridge for a project.
 pub fn stop_bridge(project_path: &Path) -> Result<()> {
-    // Read PID before sending TCP shutdown so we can wait for the JVM to
-    // fully exit (release project lock) before returning.
-    let pid = read_pid_file(project_path).ok().flatten();
+    stop_bridge_with_timeout(project_path, shutdown_timeout())
+}
 
-    // Try graceful shutdown via TCP using BridgeClient
-    if let Ok(Some(port)) = read_port_file(project_path) {
-        let client = BridgeClient::new(port);
-        if let Ok(()) = client.shutdown() {
-            debug!("Graceful shutdown sent");
+fn stop_bridge_with_timeout(project_path: &Path, timeout: Option<Duration>) -> Result<()> {
+    let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
+    let timeout_error = || {
+        anyhow::Error::new(crate::ipc::protocol::BridgeTimeoutError {
+            command: "shutdown".to_string(),
+            timeout_secs: timeout.map_or(0, |timeout| timeout.as_secs()),
+        })
+    };
+    let _lock = acquire_lifecycle_lock(project_path, deadline).map_err(|error| {
+        if deadline.is_some_and(|end| std::time::Instant::now() >= end) {
+            timeout_error().context("Shutdown deadline expired waiting for the lifecycle lock; preserving project state")
+        } else { error }
+    })?;
+    let pid = read_pid_file(project_path)?;
+    if let Some(pid) = pid.filter(|pid| is_pid_alive(*pid)) {
+        let port = read_port_file(project_path)?.ok_or_else(||
+            anyhow::anyhow!("Bridge process {pid} is alive but its port is unavailable; preserving project state"))?;
+        let shutdown_result = BridgeClient::new(port).shutdown_with_deadline(deadline);
+        // A response can be lost during successful shutdown. If the process
+        // has already exited, cleanup is still safe; otherwise retain state.
+        while is_pid_alive(pid) {
+            if deadline.is_some_and(|end| std::time::Instant::now() >= end) {
+                return Err(timeout_error().context(format!("Bridge process {pid} did not exit before GHIDRA_CLI_SHUTDOWN_TIMEOUT; preserving discovery and project locks")));
+            }
+            if let Err(error) = shutdown_result {
+                return Err(error.context(format!("Could not request shutdown of live bridge process {pid}; preserving project state")));
+            }
+            let remaining = deadline.map_or(Duration::from_millis(100), |end| {
+                end.saturating_duration_since(std::time::Instant::now())
+                    .min(Duration::from_millis(100))
+            });
+            std::thread::sleep(remaining);
         }
     }
-
-    // Wait for the process to drain accepted jobs and exit cleanly, then
-    // force-kill only after the configured grace period. A value of 0 waits
-    // indefinitely, which is useful for very large analysis jobs.
-    if let Some(pid) = pid {
-        let timed_out = match shutdown_timeout() {
-            Some(timeout) => {
-                let deadline = std::time::Instant::now() + timeout;
-                while is_pid_alive(pid) && std::time::Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-                is_pid_alive(pid)
-            }
-            None => {
-                while is_pid_alive(pid) {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-                false
-            }
-        };
-
-        if timed_out {
-            warn!(
-                "Bridge {} did not finish draining before GHIDRA_CLI_SHUTDOWN_TIMEOUT; killing as fallback",
-                pid
-            );
-            #[cfg(unix)]
-            unsafe {
-                // Kill the whole process group (the JVM was spawned into the
-                // analyzeHeadless wrapper's group). Fall back to a single-pid
-                // kill if the group id can't be resolved.
-                let pgid = libc::getpgid(pid as i32);
-                if pgid > 0 {
-                    libc::killpg(pgid, libc::SIGTERM);
-                } else {
-                    libc::kill(pid as i32, libc::SIGTERM);
-                }
-            }
-            #[cfg(windows)]
-            {
-                let _ = std::process::Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/F", "/T"])
-                    .output();
-            }
-
-            // Wait for the process to actually die after SIGTERM/taskkill.
-            // Without this, the JVM may still hold the project lock when the
-            // next bridge tries to start (causes intermittent CI failures).
-            for _ in 0..100 {
-                if !is_pid_alive(pid) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-
-            // Last resort: SIGKILL if SIGTERM wasn't enough
-            #[cfg(unix)]
-            if is_pid_alive(pid) {
-                warn!("SIGKILL bridge process {} (SIGTERM didn't work)", pid);
-                unsafe {
-                    let pgid = libc::getpgid(pid as i32);
-                    if pgid > 0 {
-                        libc::killpg(pgid, libc::SIGKILL);
-                    } else {
-                        libc::kill(pid as i32, libc::SIGKILL);
-                    }
-                }
-                // Brief wait for SIGKILL to take effect
-                for _ in 0..20 {
-                    if !is_pid_alive(pid) {
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-            }
-        }
-    }
-
-    // Clean up files
-    cleanup_stale_files(project_path)?;
-
+    cleanup_stale_files_locked(project_path)?;
     info!("Bridge stopped");
     Ok(())
 }
@@ -466,8 +407,7 @@ pub fn bridge_status(project_path: &Path) -> Result<BridgeStatus> {
                 return Ok(BridgeStatus::Running { port, pid });
             }
         }
-        // Stale files
-        cleanup_stale_files(project_path).ok();
+        // Status is observational. Cleanup belongs to locked lifecycle operations.
     }
 
     Ok(BridgeStatus::Stopped)
@@ -483,6 +423,91 @@ pub enum BridgeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_deadline_includes_lifecycle_lock_wait_and_retains_timeout_type() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("locked-project");
+        let _holder = acquire_startup_lock(&project).unwrap();
+        let started = std::time::Instant::now();
+        let error =
+            stop_bridge_with_timeout(&project, Some(Duration::from_millis(30))).unwrap_err();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+            .is_some());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn shutdown_drain_deadline_preserves_live_discovery_and_timeout_type() {
+        use std::io::{BufRead, BufReader, Write};
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("draining-project");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let pid_path = pid_file_path(&project).unwrap();
+        let port_path = port_file_path(&project).unwrap();
+        std::fs::write(&pid_path, std::process::id().to_string()).unwrap();
+        std::fs::write(
+            &port_path,
+            listener.local_addr().unwrap().port().to_string(),
+        )
+        .unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            assert!(request.contains("shutdown"));
+            writeln!(stream, "{{\"status\":\"shutdown\"}}").unwrap();
+        });
+        let error =
+            stop_bridge_with_timeout(&project, Some(Duration::from_millis(100))).unwrap_err();
+        server.join().unwrap();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+            .is_some());
+        assert!(pid_path.exists() && port_path.exists());
+        std::fs::remove_file(pid_path).unwrap();
+        std::fs::remove_file(port_path).unwrap();
+    }
+
+    #[test]
+    fn lifecycle_lock_recovers_empty_file_and_excludes_waiters() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("bridge.starting");
+        std::fs::write(&path, []).unwrap();
+        let holder = acquire_file_lock(&path, Duration::from_millis(50)).unwrap();
+        assert!(acquire_file_lock(&path, Duration::from_millis(30)).is_err());
+        drop(holder);
+        assert!(
+            path.exists(),
+            "the inode must remain stable for waiting callers"
+        );
+        let _next = acquire_file_lock(&path, Duration::from_millis(50)).unwrap();
+    }
+
+    #[test]
+    fn cleanup_preserves_live_process_discovery_and_unknown_project_locks() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("Project.v1");
+        let pid_path = pid_file_path(&project).unwrap();
+        let port_path = port_file_path(&project).unwrap();
+        let lock_path = project.with_added_extension("lock");
+        std::fs::write(&pid_path, std::process::id().to_string()).unwrap();
+        std::fs::write(&port_path, "1").unwrap();
+        std::fs::write(&lock_path, "held").unwrap();
+        assert!(cleanup_stale_files(&project).is_err());
+        assert!(pid_path.exists() && port_path.exists() && lock_path.exists());
+        std::fs::remove_file(pid_path).unwrap();
+        cleanup_stale_files(&project).unwrap();
+        assert!(
+            lock_path.exists(),
+            "missing discovery does not prove project lock ownership"
+        );
+        assert!(!port_path.exists());
+    }
 
     #[test]
     fn discovery_keys_normalize_missing_project_paths() {

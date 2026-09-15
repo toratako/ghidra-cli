@@ -58,6 +58,11 @@ final class ArtifactManifest {
                 failures.add("missing: " + manifest.get("path").getAsString());
                 continue;
             }
+            if (manifest.has("manifest_error")) {
+                failures.add("cannot read artifact: " + manifest.get("path").getAsString()
+                    + ": " + manifest.get("manifest_error").getAsString());
+                continue;
+            }
             if (manifest.get("bytes").getAsLong() == 0 && !allowEmpty) {
                 failures.add("empty: " + manifest.get("path").getAsString());
             }

@@ -15,7 +15,6 @@ import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.PcodeOpAST;
 import ghidra.program.model.pcode.Varnode;
-import ghidra.util.task.TaskMonitor;
 import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
@@ -78,7 +77,8 @@ final class PcodeCommands {
                     if (!decomp.openProgram(session.program())) {
                         return errorResult("Decompilation failed: openProgram failed: " + decomp.getLastMessage());
                     }
-                    DecompileResults results = decomp.decompileFunction(func, 30, TaskMonitor.DUMMY);
+                    DecompileResults results = decomp.decompileFunction(func, 30, session.monitor());
+                    session.monitor().checkCancelled();
                     if (!results.decompileCompleted()) {
                         String reason = results.getErrorMessage();
                         if (reason == null || reason.isEmpty()) reason = "unknown failure";
@@ -90,7 +90,10 @@ final class PcodeCommands {
                         return errorResult("Decompiler returned no HighFunction for " + func.getName());
                     }
                     Iterator<PcodeOpAST> it = highFunction.getPcodeOps();
-                    while (it.hasNext()) ops.add(pcodeOpToJson(it.next()));
+                    while (it.hasNext()) {
+                        session.monitor().checkCancelled();
+                        ops.add(pcodeOpToJson(it.next()));
+                    }
                 } finally {
                     decomp.dispose();
                 }
@@ -98,6 +101,7 @@ final class PcodeCommands {
                 InstructionIterator instructions =
                     session.program().getListing().getInstructions(func.getBody(), true);
                 while (instructions.hasNext()) {
+                    session.monitor().checkCancelled();
                     Instruction inst = instructions.next();
                     for (PcodeOp op : inst.getPcode()) {
                         JsonObject opJson = pcodeOpToJson(op);

@@ -9,9 +9,8 @@ import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
+import java.util.ArrayDeque;
 import java.util.Iterator;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -25,12 +24,12 @@ final class JobScheduler {
     private static final int MAX_RETAINED_JOBS = 100;
     private static final int MAX_STATUS_JOBS = 25;
     private final Object lifecycleLock = new Object();
-    private final BlockingQueue<ProgramJob> programQueue = new ArrayBlockingQueue<>(MAX_PROGRAM_QUEUE);
+    // Queue membership, active ownership, and state transitions share one lock.
+    private final ArrayDeque<ProgramJob> programQueue = new ArrayDeque<>();
     private final ConcurrentHashMap<Long, JobRecord> jobs = new ConcurrentHashMap<>();
     private final ConcurrentLinkedDeque<Long> completedJobIds = new ConcurrentLinkedDeque<>();
     private final AtomicLong nextJobId = new AtomicLong(1);
     private final long startTime = System.currentTimeMillis();
-    private final Thread programThread = Thread.currentThread();
     private final ProgramSession session;
     private final CommandDispatcher commands;
     private Runnable closeListener;
@@ -40,6 +39,7 @@ final class JobScheduler {
 
     // Published only by the program thread; control requests never dereference Ghidra state.
     private volatile String currentProgramNameSnapshot;
+    private volatile String currentProgramPathSnapshot;
     private volatile String projectNameSnapshot;
     private volatile int programCountSnapshot;
 
@@ -61,7 +61,6 @@ final class JobScheduler {
         final String command;
         final long enqueuedAt;
         final JobTaskMonitor monitor = new JobTaskMonitor();
-        final CompletableFuture<JsonObject> completion = new CompletableFuture<>();
 
         volatile String state = "queued";
         volatile long startedAt;
@@ -78,117 +77,92 @@ final class JobScheduler {
     private static class ProgramJob {
         final JobRecord record;
         final JsonObject args;
-        final boolean poison;
+        // Response ownership ends with delivery; history retains metadata only.
+        final CompletableFuture<JsonObject> completion = new CompletableFuture<>();
 
         ProgramJob(JobRecord record, JsonObject args) {
-            this(record, args, false);
-        }
-
-        private ProgramJob(JobRecord record, JsonObject args, boolean poison) {
             this.record = record;
             this.args = args;
-            this.poison = poison;
-        }
-
-        static ProgramJob poison() {
-            return new ProgramJob(null, null, true);
         }
     }
 
     void runProgramJobs() {
-        while (true) {
-            ProgramJob job;
-            try {
-                job = programQueue.take();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                beginShutdown();
-                return;
+        boolean interrupted = false;
+        try {
+            while (true) {
+                ProgramJob job;
+                synchronized (lifecycleLock) {
+                    while (programQueue.isEmpty() && !shutdownRequested) {
+                        try {
+                            lifecycleLock.wait();
+                        } catch (InterruptedException e) {
+                            interrupted = true;
+                            beginShutdown();
+                        }
+                    }
+                    if (programQueue.isEmpty()) return;
+                    job = programQueue.removeFirst();
+                    activeJob = job.record;
+                    job.record.state = "running";
+                    job.record.startedAt = System.currentTimeMillis();
+                }
+                executeProgramJob(job);
             }
-
-            if (job.poison) {
-                return;
-            }
-            executeProgramJob(job);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 
     private void executeProgramJob(ProgramJob job) {
         JobRecord record = job.record;
         TaskMonitor bridgeMonitor = session.monitor();
-        activeJob = record;
-        record.state = "running";
-        record.startedAt = System.currentTimeMillis();
         session.setMonitor(record.monitor);
 
         JsonObject result;
+        String responseStatus;
+        String failure = null;
         try {
             result = commands.execute(record.command, job.args);
             result.addProperty("job_id", record.id);
-
-            String responseStatus = result.has("status")
-                ? result.get("status").getAsString()
-                : "error";
-            if (record.monitor.isCancelled()) {
-                record.state = "error".equals(responseStatus)
-                    ? "cancelled"
-                    : "completed_after_cancel";
-            } else {
-                record.state = "error".equals(responseStatus) ? "failed" : "complete";
-            }
+            responseStatus = result.has("status") ? result.get("status").getAsString() : "error";
             if ("error".equals(responseStatus) && result.has("message")) {
-                record.error = result.get("message").getAsString();
+                failure = result.get("message").getAsString();
             }
         } catch (Exception e) {
-            record.state = record.monitor.isCancelled() ? "cancelled" : "failed";
-            record.error = e.getMessage();
-            result = errorResponse(e.getMessage());
+            failure = e.getMessage();
+            responseStatus = "error";
+            result = errorResponse(failure);
             result.addProperty("job_id", record.id);
         } finally {
             session.setMonitor(bridgeMonitor);
-            record.finishedAt = System.currentTimeMillis();
-            activeJob = null;
             refreshBridgeSnapshot();
         }
 
-        record.completion.complete(result);
-        retainCompletedJob(record.id);
+        synchronized (lifecycleLock) {
+            boolean failed = "error".equals(responseStatus);
+            record.state = record.monitor.isCancelled()
+                ? (failed ? "cancelled" : "completed_after_cancel")
+                : (failed ? "failed" : "complete");
+            record.error = failure;
+            record.finishedAt = System.currentTimeMillis();
+            activeJob = null;
+            retainCompletedJob(record.id);
+        }
+        job.completion.complete(result);
     }
 
     void beginShutdown() {
         Runnable listenerToClose;
-        boolean enqueuePoison = false;
         synchronized (lifecycleLock) {
-            if (shutdownRequested) {
-                return;
-            }
+            if (shutdownRequested) return;
             shutdownRequested = true;
             acceptingJobs = false;
             listenerToClose = closeListener;
-            if (Thread.currentThread() != programThread) {
-                enqueuePoison = true;
-            }
+            // Wake an idle script thread without consuming bounded queue capacity.
+            // The script thread exits only after all accepted jobs have drained.
+            lifecycleLock.notifyAll();
         }
-
         if (listenerToClose != null) listenerToClose.run();
-
-        if (enqueuePoison) {
-            // FIFO placement drains every job accepted before shutdown. Preserve
-            // interruption but do not strand the GhidraScript thread without its
-            // shutdown sentinel if the bounded queue is temporarily full.
-            boolean interrupted = false;
-            while (true) {
-                try {
-                    programQueue.put(ProgramJob.poison());
-                    break;
-                } catch (InterruptedException e) {
-                    interrupted = true;
-                }
-            }
-            if (interrupted) {
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 
     CompletableFuture<JsonObject> handleRequest(String line) {
@@ -209,7 +183,9 @@ final class JobScheduler {
             }
 
             if (isControlCommand(command)) {
-                return CompletableFuture.completedFuture(handleControlCommand(command, args));
+                synchronized (lifecycleLock) {
+                    return CompletableFuture.completedFuture(handleControlCommand(command, args));
+                }
             }
 
             JobRecord record = new JobRecord(nextJobId.getAndIncrement(), command);
@@ -220,12 +196,14 @@ final class JobScheduler {
                     return CompletableFuture.completedFuture(errorResponse("Bridge is draining and is not accepting new program jobs"));
                 }
                 jobs.put(record.id, record);
-                if (!programQueue.offer(job)) {
+                if (programQueue.size() >= MAX_PROGRAM_QUEUE) {
                     jobs.remove(record.id);
                     return CompletableFuture.completedFuture(errorResponse("Bridge program queue is full; retry shortly"));
                 }
+                programQueue.addLast(job);
+                lifecycleLock.notifyAll();
             }
-            return record.completion;
+            return job.completion;
         } catch (Exception e) {
             return CompletableFuture.completedFuture(
                 errorResponse(e.getMessage()));
@@ -292,6 +270,7 @@ final class JobScheduler {
         JsonObject result = new JsonObject();
         String programName = currentProgramNameSnapshot;
         result.addProperty("protocol_version", 2);
+        result.addProperty("current_program_path", currentProgramPathSnapshot);
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
         if (programName != null) {
@@ -363,25 +342,13 @@ final class JobScheduler {
             target.error = "Cancelled before execution";
             JsonObject response = errorResponse(target.error);
             response.addProperty("job_id", target.id);
-            target.completion.complete(response);
+            queued.completion.complete(response);
             retainCompletedJob(target.id);
 
             JsonObject result = new JsonObject();
             result.addProperty("job_id", target.id);
             result.addProperty("state", target.state);
             result.addProperty("message", target.error);
-            return result;
-        }
-
-        // It may have moved from the queue to active between the checks above.
-        active = activeJob;
-        if (active != null && active.id == target.id) {
-            target.state = "cancel_requested";
-            target.monitor.cancel();
-            JsonObject result = new JsonObject();
-            result.addProperty("job_id", target.id);
-            result.addProperty("state", target.state);
-            result.addProperty("message", "Cancellation requested; completion is cooperative");
             return result;
         }
 
@@ -394,7 +361,7 @@ final class JobScheduler {
 
     private ProgramJob findQueuedJob(long id) {
         for (ProgramJob job : programQueue) {
-            if (!job.poison && job.record != null && job.record.id == id) {
+            if (job.record.id == id) {
                 return job;
             }
         }
@@ -404,8 +371,7 @@ final class JobScheduler {
     private int queuePosition(long id) {
         int position = 0;
         for (ProgramJob job : programQueue) {
-            if (job.poison) continue;
-            if (job.record != null && job.record.id == id) {
+            if (job.record.id == id) {
                 return position;
             }
             position++;
@@ -417,7 +383,7 @@ final class JobScheduler {
         result.addProperty("bridge_state", acceptingJobs ? "running" : "draining");
         result.addProperty("accepting_jobs", acceptingJobs);
         result.addProperty("shutdown_requested", shutdownRequested);
-        result.addProperty("queue_depth", queuedJobCount());
+        result.addProperty("queue_depth", programQueue.size());
 
         JobRecord active = activeJob;
         if (active == null) {
@@ -431,7 +397,6 @@ final class JobScheduler {
         JsonArray queued = new JsonArray();
         int position = 0;
         for (ProgramJob job : programQueue) {
-            if (job.poison || job.record == null) continue;
             if (queued.size() >= MAX_STATUS_JOBS) break;
             queued.add(jobToJson(job.record, position++));
         }
@@ -446,14 +411,6 @@ final class JobScheduler {
             }
         }
         result.add("recent_jobs", recent);
-    }
-
-    private int queuedJobCount() {
-        int count = 0;
-        for (ProgramJob job : programQueue) {
-            if (!job.poison) count++;
-        }
-        return count;
     }
 
     private JsonObject jobToJson(JobRecord record, int queuePosition) {
@@ -490,6 +447,8 @@ final class JobScheduler {
     private void refreshBridgeSnapshot() {
         Program program = session.program();
         currentProgramNameSnapshot = program == null ? null : program.getName();
+        currentProgramPathSnapshot = program == null || program.getDomainFile() == null
+            ? null : program.getDomainFile().getPathname();
 
         Project project = session.state() == null ? null : session.state().getProject();
         projectNameSnapshot = project == null ? null : project.getName();

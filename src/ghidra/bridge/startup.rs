@@ -3,7 +3,7 @@
 use super::headless::{apply_java_home, bridge_failure_hint, find_headless_script};
 #[cfg(unix)]
 use super::is_pid_alive;
-use super::{cleanup_stale_files, pid_file_path, port_file_path, read_port_file};
+use super::{cleanup_stale_files_locked, pid_file_path, port_file_path, read_port_file};
 use super::{sources, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
 use anyhow::{Context, Result};
@@ -208,7 +208,7 @@ pub fn start_bridge(
             // it safe to join the reader threads. Joining before killing was the
             // original hang: a surviving JVM held the pipes open forever.
             kill_process_tree(&mut child);
-            cleanup_stale_files(project_path).ok();
+            cleanup_stale_files_locked(project_path).ok();
 
             let (_, last_error, stdout_lines) = stdout_handle.join().unwrap_or_default();
             let stderr_output = stderr_handle.join().unwrap_or_default();

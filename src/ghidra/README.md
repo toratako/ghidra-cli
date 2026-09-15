@@ -23,7 +23,7 @@ their process and stream lifetimes remain owned by their respective workflows.
 `ensure_bridge_running()` holds the startup lock across liveness recheck,
 stale-file cleanup, and `startup::start_bridge()`. Startup owns the child and
 output readers until readiness or completed failure cleanup; stopping a running
-bridge uses the discovery PID. `BridgeStartMode::Process { program_name }` opens
+bridge waits for the discovery PID to exit without force-killing it. `BridgeStartMode::Process { program_name }` opens
 an existing program through `ProgramSession`; `Project` leaves it unselected.
 Both launch with:
 
@@ -69,7 +69,9 @@ for OSGi resolution, which plain `javac` cannot validate.
 
 Discovery files are `bridge-{md5}.port` / `.pid` in the platform data directory
 (`~/.local/share/ghidra-cli/` on Linux), keyed by the `.rep` directory's volume/file
-ID on Windows and canonical location elsewhere. Startup locks share this identity.
+ID on Windows and canonical location elsewhere. Lifecycle locks share this identity. The persistent `.starting` file carries an
+OS-backed exclusive lock across start, stop, and stale-discovery cleanup. Keep
+the file after release: unlinking it would let waiters lock different files.
 Windows falls back to canonical location if file IDs are unusable; missing
 projects use absolute paths. See the
 [upgrade procedure](../../docs/runtime.md#upgrading) before replacing a CLI
@@ -78,9 +80,16 @@ while bridges are running.
 - `is_bridge_running()` checks a valid port, valid/live PID, and TCP connectivity,
   returning the port from that check to avoid a separate discovery-file read.
 - `bridge_status()` uses `BridgeClient::ping()` for protocol-level verification.
-- `stop_bridge()` uses `BridgeClient::shutdown()`, waits for accepted jobs to
-  drain, then force-terminates the process group if the grace period expires.
-- Startup, failed liveness/status checks, and shutdown remove stale port/PID files.
+- `stop_bridge()` uses deadline-aware shutdown and waits for accepted jobs to
+  drain and the JVM to exit. One budget includes lifecycle-lock acquisition,
+  connection, reply, and exit. Expiry returns the typed timeout (exit 75),
+  preserving discovery and the live process; discovery PIDs are never force-killed.
+- Startup and shutdown clean stale port/PID files only under the lifecycle lock.
+  A live recorded PID prevents cleanup even if its port is unreachable. Status
+  is observational and does not clean files.
+- Never remove Ghidra project locks during recovery. Missing discovery does not
+  establish ownership of those locks. The old PID-file startup-lock protocol
+  does not coordinate with OS locks: stop with the old CLI before upgrading.
 
 Only liveness probes use raw TCP; commands use [BridgeClient](../ipc/README.md).
 A busy program lane is not evidence of a dead bridge. See the

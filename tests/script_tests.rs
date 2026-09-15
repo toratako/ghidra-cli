@@ -415,3 +415,38 @@ public class MissingArtifactOutput extends GhidraScript {
     assert_eq!(detail["artifacts"][0]["exists"], false);
     assert_eq!(detail["artifacts"][0]["path"], missing.to_str().unwrap());
 }
+
+/// /proc/self/mem is a regular file whose unmapped offset zero fails on read,
+/// including for root. allow_empty must not turn that checksum failure into success.
+#[cfg(target_os = "linux")]
+#[test]
+#[serial]
+fn test_artifact_checksum_read_failure_fails_validation() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class UnreadableArtifact extends GhidraScript {
+    public void run() { println("checksum read diagnostic"); }
+}
+"#,
+            &[],
+            &[serde_json::json!({"path": "/proc/self/mem"})],
+            true,
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("Artifact validation failed"));
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert_eq!(detail["artifacts"][0]["exists"], true);
+    assert!(detail["artifacts"][0]["manifest_error"].is_string());
+    assert!(detail["artifacts"][0]["sha256"].is_null());
+    assert!(detail["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("checksum read diagnostic"));
+}

@@ -192,7 +192,7 @@ impl Drop for DaemonTestHarness {
             .ok()
             .flatten();
 
-        // Use stop_bridge for proper graceful shutdown + force-kill
+        // Request graceful shutdown and wait for accepted work to finish.
         let _ = ghidra_cli::ghidra::bridge::stop_bridge(&self.project_path);
 
         // Collect all PIDs we need to wait for (original + current, deduplicated)

@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::debug;
 
 /// Default socket read timeout for short, interactive commands, in seconds.
@@ -86,8 +86,8 @@ fn is_transient_connect_error(e: &std::io::Error) -> bool {
 /// exponential backoff until [`connect_deadline`] elapses. Only pre-send connect
 /// failures are retried — nothing has been written yet — so this stays safe for
 /// non-idempotent commands (rename/comment/patch).
-fn connect_with_retry(addr: &std::net::SocketAddr) -> Result<TcpStream> {
-    let budget = connect_deadline();
+fn connect_with_retry(addr: &std::net::SocketAddr, deadline: Option<Instant>) -> Result<TcpStream> {
+    let budget = remaining_timeout(deadline, Some(connect_deadline()))?.unwrap();
     let started = std::time::Instant::now();
     retry_connect(
         budget,
@@ -137,6 +137,22 @@ fn retry_connect<T>(
     }
 }
 
+fn remaining_timeout(
+    deadline: Option<Instant>,
+    limit: Option<Duration>,
+) -> std::io::Result<Option<Duration>> {
+    match deadline {
+        Some(deadline) => {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(std::io::ErrorKind::TimedOut.into());
+            }
+            Ok(Some(limit.map_or(remaining, |limit| limit.min(remaining))))
+        }
+        None => Ok(limit),
+    }
+}
+
 impl BridgeClient {
     /// Send a command to the bridge and return the result.
     ///
@@ -162,17 +178,41 @@ impl BridgeClient {
         args: Option<serde_json::Value>,
         read_timeout: Option<Duration>,
     ) -> Result<serde_json::Value> {
+        self.send_command_inner(command, args, read_timeout, None)
+    }
+
+    /// Bound connection, request writes and response reads by one wall-clock deadline.
+    /// `None` keeps the response wait unbounded.
+    pub fn send_command_with_deadline(
+        &self,
+        command: &str,
+        args: Option<serde_json::Value>,
+        deadline: Option<Instant>,
+    ) -> Result<serde_json::Value> {
+        self.send_command_inner(command, args, None, deadline)
+    }
+
+    fn send_command_inner(
+        &self,
+        command: &str,
+        args: Option<serde_json::Value>,
+        read_timeout: Option<Duration>,
+        deadline: Option<Instant>,
+    ) -> Result<serde_json::Value> {
+        let timeout_description = deadline
+            .map(|end| end.saturating_duration_since(Instant::now()))
+            .or(read_timeout);
         let addr: std::net::SocketAddr = format!("127.0.0.1:{}", self.port)
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid address: {}", e))?;
-        let mut stream = connect_with_retry(&addr)?;
+        let mut stream = connect_with_retry(&addr, deadline)?;
         // `None` => blocking reads (no timeout). A long analysis can exceed any
         // fixed cap, so callers route those ops through here with `None`.
         stream
-            .set_read_timeout(read_timeout)
+            .set_read_timeout(remaining_timeout(deadline, read_timeout)?)
             .context("Failed to set bridge read timeout before sending request")?;
         stream
-            .set_write_timeout(Some(Duration::from_secs(30)))
+            .set_write_timeout(remaining_timeout(deadline, Some(Duration::from_secs(30)))?)
             .context("Failed to set bridge write timeout before sending request")?;
 
         let request = BridgeRequest {
@@ -183,12 +223,49 @@ impl BridgeClient {
         let request_json = serde_json::to_string(&request)?;
         debug!("Sending: {}", request_json);
 
-        writeln!(stream, "{}", request_json)?;
-        stream.flush()?;
+        let wire = format!("{request_json}\n");
+        let mut pending = wire.as_bytes();
+        while !pending.is_empty() {
+            stream
+                .set_write_timeout(remaining_timeout(deadline, Some(Duration::from_secs(30)))?)?;
+            let written = stream.write(pending)?;
+            anyhow::ensure!(written > 0, "Bridge closed while writing request");
+            pending = &pending[written..];
+        }
 
         let mut reader = BufReader::new(&stream);
         let mut response_line = String::new();
-        match reader.read_line(&mut response_line) {
+        let read_result = if deadline.is_some() {
+            // Refresh the remaining budget on every receive, so a partial reply
+            // cannot extend the shutdown deadline by trickling bytes.
+            let mut bytes = Vec::new();
+            (|| -> std::io::Result<usize> {
+                loop {
+                    stream.set_read_timeout(remaining_timeout(deadline, read_timeout)?)?;
+                    let available = reader.fill_buf()?;
+                    if available.is_empty() {
+                        break;
+                    }
+                    let count = available
+                        .iter()
+                        .position(|byte| *byte == b'\n')
+                        .map_or(available.len(), |index| index + 1);
+                    let complete = available[count - 1] == b'\n';
+                    bytes.extend_from_slice(&available[..count]);
+                    reader.consume(count);
+                    if complete {
+                        break;
+                    }
+                }
+                let count = bytes.len();
+                response_line = String::from_utf8(bytes)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+                Ok(count)
+            })()
+        } else {
+            reader.read_line(&mut response_line)
+        };
+        match read_result {
             // EOF before any response: bridge closed the socket without replying.
             Ok(0) => anyhow::bail!(
                 "Bridge closed the connection without responding to '{}' \
@@ -209,7 +286,7 @@ impl BridgeClient {
             {
                 return Err(BridgeTimeoutError {
                     command: command.to_string(),
-                    timeout_secs: read_timeout.map(|d| d.as_secs()).unwrap_or(0),
+                    timeout_secs: timeout_description.map(|d| d.as_secs()).unwrap_or(0),
                 }
                 .into())
             }
@@ -248,6 +325,59 @@ mod tests {
     use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
     use std::net::TcpListener;
     use std::time::Duration;
+
+    #[test]
+    fn request_deadline_bounds_a_trickling_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            assert!(request.contains("shutdown"));
+            for _ in 0..30 {
+                if stream.write_all(b" ").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(30));
+            }
+        });
+        let started = std::time::Instant::now();
+        let error = client
+            .send_command_with_deadline(
+                "shutdown",
+                None,
+                Some(started + Duration::from_millis(150)),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+                .is_some(),
+            "{error:#}"
+        );
+        assert!(started.elapsed() < Duration::from_millis(700));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn request_deadline_bounds_connection_retries() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        drop(listener);
+        let started = std::time::Instant::now();
+        assert!(client
+            .send_command_with_deadline(
+                "shutdown",
+                None,
+                Some(started + Duration::from_millis(100))
+            )
+            .is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
 
     #[test]
     fn connect_attempts_and_backoff_share_one_deadline() {

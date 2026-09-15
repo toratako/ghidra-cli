@@ -3,7 +3,7 @@
 //! Connects directly to the Java GhidraCliBridge via TCP.
 //! No intermediate daemon process is needed.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use serde_json::json;
@@ -50,8 +50,15 @@ impl BridgeClient {
     }
 
     /// Shutdown the bridge.
+    #[allow(dead_code)] // Public library API; CLI shutdown uses a shared deadline.
     pub fn shutdown(&self) -> Result<()> {
         self.send_command("shutdown", None)?;
+        Ok(())
+    }
+
+    /// Shutdown using the lifecycle caller's remaining total time budget.
+    pub fn shutdown_with_deadline(&self, deadline: Option<Instant>) -> Result<()> {
+        self.send_command_with_deadline("shutdown", None, deadline)?;
         Ok(())
     }
 
