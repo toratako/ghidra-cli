@@ -8,9 +8,8 @@ tests. Raw TCP elsewhere is only a liveness probe.
 
 ## Connection and timeout boundaries
 
-Each request opens its own localhost TCP connection, writes one newline-terminated
-JSON request, and reads one newline-terminated JSON response. There is no
-persistent client connection. Socket handlers run independently of the serialized
+Each request uses a fresh localhost TCP connection for one newline-terminated
+JSON request and response. Socket handlers run independently of the serialized
 Ghidra program lane; see [Java execution ownership](../ghidra/scripts/ghidracli/README.md).
 
 Retry transient connection failures with backoff only **before sending**; replaying
@@ -18,8 +17,7 @@ a sent mutation could duplicate it. Read waits include time in the program queue
 The write timeout is 30s; configurable read/connect/long-operation budgets are in
 [the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
 in its command adapter because it is a Ghidra parameter, not a socket budget.
-EOF without a reply is an error. A read timeout has a distinct error/exit status
-and does not cancel the running job.
+EOF without a reply is an error; read timeouts exit 75 without cancelling the job.
 
 ## Wire format
 

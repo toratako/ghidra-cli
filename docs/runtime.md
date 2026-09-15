@@ -2,20 +2,17 @@
 
 ## Installation
 
-For the basic install, see [README](../README.md#install).
-
-Install Ghidra 11+ with `ghidra-cli setup`, or set `GHIDRA_INSTALL_DIR` to an existing
-installation. A full JDK is required (`javac` and `jdk.compiler`, not a JRE);
-Ghidra 12.x requires JDK 21 (older releases accept JDK 17). The CLI selects a
-suitable JDK automatically; `--java-home` overrides it. `ghidra-cli doctor` checks the
-installation and compiles the embedded bridge bundle.
+Follow [the install steps](../README.md#install) using `ghidra-cli setup` or an
+existing Ghidra 11+ installation. A full JDK is required (`javac` and
+`jdk.compiler`, not a JRE); Ghidra 12.x requires JDK 21 (older releases accept
+JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
+`ghidra-cli doctor` checks the installation and compiles the embedded bridge bundle.
 
 ## Project configuration
 
-`--projects-dir DIR` overrides the `ghidra_project_dir` config key.
-This applies to project creation, listing, information, and deletion as well as
-bridge commands. `GHIDRA_INSTALL_DIR` overrides the configured installation for
-both doctor and command execution.
+`--projects-dir DIR` overrides config `ghidra_project_dir` for project management
+and bridge commands. `GHIDRA_INSTALL_DIR` overrides the configured installation
+for both doctor and execution.
 Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
 reserved by `project create`; a nonempty same-named directory is retained.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
@@ -32,7 +29,7 @@ the default falls back from the cache directory to `~/ghidra-cli-projects`.
 | `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra-cli query` |
 | `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra-cli query` and auto-selection |
 
-Timeout values are seconds. A socket timeout does not cancel a server-side job.
+Timeout values are seconds.
 
 | Variable | Budget and default |
 |---|---|
@@ -55,37 +52,33 @@ ghidra-cli restart --project P --program otherbin
 ghidra-cli stop --project P
 ```
 
-Commands that need the bridge start it on demand. Each project has its own JVM;
-program jobs use a bounded FIFO (256), with the latest 100 jobs retained.
-`cancel` without an ID targets the active job. Queued cancellation removes the
-job immediately; active cancellation is cooperative. A socket read timeout
-returns `Timeout:` with exit 75, while the job continues; inspect `jobs` before
-retrying a mutation. Shutdown rejects new work and drains accepted jobs.
+Commands needing the bridge start a per-project JVM on demand. Program jobs use
+a FIFO of 256, with 100 recent jobs retained. `cancel` defaults to the active job;
+queued cancellation is immediate, active cancellation cooperative. Socket read timeouts
+return `Timeout:` with exit 75 while work stays running or queued; inspect `jobs`
+before retrying a mutation. Shutdown rejects new work and drains accepted jobs.
 
-Program changes are saved before a command reports success. Analysis, scripts,
-and individual batch operations use the same automatic saving. Switching or
-closing a program also saves first; a save failure keeps that program open.
-The CLI upgrades a running bridge that predates automatic saving before sending
-program commands, using a normal stop/start to load the current Java bundle.
+Program commands, including analysis, scripts, and each batch operation, save
+before reporting success. Switching/closing also saves first; failure keeps the
+program open. Before sending program commands to a bridge predating automatic
+saving, the CLI upgrades it with a normal stop/start of the current Java bundle.
 
 `program delete --program NAME` deletes the project file without selecting it.
 Deleting the current program saves and closes it first; deleting another file
 preserves the current selection. Other consumers and checkouts can prevent
 deletion.
 
-On a save failure, the error has `detail.save_failed: true` and preserves the
-editing response in `detail.command_response`. Changes may still be in memory:
-keep the bridge running, resolve the reported cause, and retry `program save`
-for the same project/program. This saves without a restart or repeating the edit.
+Save errors carry `detail.save_failed: true` and the editing response in
+`detail.command_response`. Changes may remain in memory: keep the bridge running,
+resolve the reported cause, and retry `program save` for the same project/program
+without restarting or repeating the edit.
 Saving a stopped bridge is a no-op. Auto-save covers the bridge's current program;
 scripts that open other programs own their saving and release. Scripts must close
 transactions they start.
 
-Failed or cancelled operations can retain partial changes, which are also saved;
-their error detail includes `partial_changes_saved: true` when a save occurred.
-Earlier successful requests have already been committed and saved. Cancellation
-does not interrupt the save of retained changes, so job completion can follow
-the cancellation request. A timeout still leaves the job running or queued.
+Failed/cancelled operations can retain partial changes; saves of those changes
+report `detail.partial_changes_saved: true`. Earlier successful requests are already
+committed and saved. Cancellation cannot interrupt saving, so completion may follow it.
 
 ## Upgrading
 
@@ -107,9 +100,8 @@ For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu),
 `libXtst` (Fedora/RHEL). On Arch/Debian, JDK 21 packages are `jdk21-openjdk` and
 `openjdk-21-jdk`, respectively. WSL2 is preferable for compatibility.
 
-Port/PID discovery files live in `~/.local/share/ghidra-cli/bridge-{md5}.port`
-and `.pid` on Linux, keyed by the canonical `.rep` directory. Liveness checks
-require a valid port, a live PID, and TCP connectivity; `status` additionally
-pings the protocol.
-Startup/status/shutdown clean stale discovery files. A busy program lane is not
-proof of a dead bridge; inspect `jobs` before restarting.
+On Linux, discovery files are `~/.local/share/ghidra-cli/bridge-{md5}.port` and
+`.pid`, keyed by the canonical `.rep` directory. Liveness requires a valid port,
+live PID, and TCP connectivity; `status` also pings the protocol.
+Startup/status/shutdown clean stale files. A busy program lane does not prove the
+bridge is dead; inspect `jobs` before restarting.

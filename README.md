@@ -25,7 +25,7 @@ For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
 - [ghidra-cli skill](docs/skills/SKILL.md): commands and operational semantics for RE agents.
 - [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
 
-For development, see [AGENTS.md](AGENTS.md), [tests](tests/README.md), and the
-[documentation map](docs/README.md). [Release history](CHANGELOG.md) records past changes.
+Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),
+[documentation map](docs/README.md), and [release history](CHANGELOG.md).
 
 Licensed under [GPL-3.0](LICENSE).

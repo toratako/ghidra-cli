@@ -1,48 +1,43 @@
 # Agent Instructions
 
-This CLI primarily serves AI agents. [The skill](docs/skills/SKILL.md) owns the
-RE command reference and agent-facing operational guidance. Installation,
-configuration, and environment recovery belong in ordinary docs; implementation
-and test documentation stay with their modules. Maintain each for its audience,
-not a shared size target. External docs may link to `SKILL.md` as an entry point,
-but must not depend on its internal reference layout. Keep future plans separate
-from implemented behavior. See the [documentation map](docs/README.md).
+This CLI primarily serves AI agents. The [skill](docs/skills/SKILL.md) is for AI
+agents doing reverse engineering (RE) with this CLI. Keep the skill and its
+references self-contained: agents must not need other project docs to do RE work.
+Include only information those agents need for that work.
 
-Write only what helps the reader choose or act. Keep useful examples and
-non-obvious constraints; omit explanations apparent from the examples, generic
-advice, and repeated navigation. Brevity is not a reason to remove domain knowledge
-or recovery guidance.
+Keep installation, configuration, and environment recovery docs outside the skill.
+Keep implementation and test docs with their modules. Separate future plans from
+implemented behavior. Other docs may link to `SKILL.md` as the entry point, but
+must not depend on how the skill's references are organized.
+See the [documentation map](docs/README.md).
+
+Write for each document's audience. Keep useful examples, domain knowledge,
+non-obvious constraints, and recovery steps. Do not remove these just to shorten
+a document or meet a shared length target. Omit generic advice and repetition.
 
 - Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
   `ghidra-cli doctor` fails. See [test commands and coverage](tests/README.md).
 - Preserve output defaults: human-readable on TTY, `JsonCompact` on non-TTY;
-  `--json` and `--pretty` explicitly select JSON. Agent focus does not change this.
+  `--json` and `--pretty` explicitly select JSON.
 - The persistent server is a Java bridge inside Ghidra, one per project; no Rust
   daemon. Launch uses `analyzeHeadless -preScript -noanalysis`.
-- Register every new Java source in `src/ghidra/bridge/sources.rs`; startup and
-  doctor must use the same complete bundle.
-- Run program operations on the original GhidraScript thread. Handlers retain
-  `ProgramSession`, never a cached Program or job monitor.
-- Mutations use `ProgramSession.transaction()`: nested aborts can erase other
-  changes in the same request. Failed nested handlers may retain partial changes.
-  End each request transaction and save before replying; never hide save failures.
+- Register new Java sources in `src/ghidra/bridge/sources.rs` for both startup and
+  doctor. See [bridge lifecycle and paths](src/ghidra/README.md).
+- Program operations run on the original GhidraScript thread. Handlers retain
+  `ProgramSession`, never a cached Program/monitor, and mutate through
+  `session.transaction()`. End each request transaction and save before replying;
+  never hide save failures. See [Java ownership and nested-transaction
+  boundaries](src/ghidra/scripts/ghidracli/README.md).
 
-See [CLI routing](src/app/README.md), [bridge lifecycle](src/ghidra/README.md),
-[Java ownership/transactions](src/ghidra/scripts/ghidracli/README.md), and
-[wire protocol](src/ipc/README.md) for scoped implementation constraints.
+See [CLI routing](src/app/README.md) and [wire protocol](src/ipc/README.md) for
+dispatch/output constraints.
 
 ## Cross-platform paths
 
-- Build paths with `Path`/`PathBuf` joins and use `tempfile` for test artifacts;
-  never assume `/tmp` exists. Resolve launcher/executable names per platform.
-- Discovery, startup locks, shutdown, and test harnesses must use the shared
-  bridge helpers. Projects use sibling `.gpr`/`.rep` artifacts; the bare path
-  may not exist. Absolute paths alone do not resolve case or directory aliases;
-  unconditional lowercasing can merge distinct projects.
-- Pass OS paths as individual `Command` arguments. Quote generated CLI batch
-  paths for the batch parser; cover spaces, apostrophes, and backslashes.
-- Wait for JVM exit and close file handles before deleting or reopening files;
-  Windows can retain project/file locks after a shutdown request.
-- Validate path/lifecycle changes on Linux and Windows, including separator,
-  case, and alias variants. Cross-compilation or Wine does not replace native
-  Windows CI.
+Path and lifecycle changes must follow the shared
+[cross-platform helpers](src/ghidra/README.md#cross-platform-paths) and
+[native-platform validation requirements](tests/README.md#cross-platform-changes).
+
+## Owner Notes (Do NOT edit this section by $agent-instruction-prune)
+
+- Do NOT prune @CHANGELOG.md

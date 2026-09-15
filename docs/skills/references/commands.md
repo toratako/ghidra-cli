@@ -1,9 +1,8 @@
 # ghidra-cli command reference
 
-Use `ghidra-cli <command> --help` for exact flags. Global `--project`, `--program`,
-`--projects-dir`, `--json`, and `--pretty` flags may appear with subcommands.
-Command-level project/program options override global options and configured
-defaults. [SKILL.md](../SKILL.md) describes job control and persistence.
+Use `ghidra-cli <command> --help` for exact flags. Global `--project`, `--program`, `--projects-dir`, `--json`, and `--pretty` may
+appear with subcommands. Command-level project/program options override globals and
+configured defaults. [SKILL.md](../SKILL.md) covers job control and persistence.
 
 ## Project, import, program, and bridge state
 
@@ -65,9 +64,10 @@ ghidra-cli function set-noreturn abort_path --project target
 ```
 
 `decompile` accepts a function name or address; `--with-vars` and `--with-params`
-include local-variable and parameter details. After type, name, or signature
-edits, decompile the affected function again. Decompilation has no native time
-limit by default; use `jobs` to inspect long work and `cancel` to request a stop.
+include local-variable and parameter details. Re-decompile after type, name, or
+signature edits.
+There is no native time limit by default; inspect long work with
+`jobs` and request a stop with `cancel`.
 
 Use `disasm-at` when auto-analysis missed a known target. If analysis ran through
 inline data or chose the wrong boundary:
@@ -79,10 +79,9 @@ ghidra-cli clear 0x401200:0x40121f --disasm-at 0x401210 --project target
 
 Query controls:
 
-`--limit 0` returns all rows. Filtering, sorting, pagination, and counts generally
-run in Rust after fetching the full dataset, so a small result limit does not
-always bound the underlying work. Explicit output format selection precedes
-`--pretty`, then `--json`, then TTY detection.
+`--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
+run in Rust after a full fetch; small limits may not bound underlying work.
+Output precedence: explicit format, `--pretty`, `--json`, TTY detection.
 
 ```bash
 ghidra-cli function list --count --project target
@@ -161,10 +160,9 @@ ghidra-cli function list --tag <name>      # Filter by tag (repeatable = AND)
 ghidra-cli function list --untagged        # Functions with no tags
 ```
 
-Tag names are case-sensitive. `tag add`/`remove` are idempotent (already-present
-and not-present tags are reported, not errors). Function rows include a sorted
-`tags` array, so `--fields name,address,tags` and `--filter "tags ~ 'crypto'"`
-work too.
+Tag names are case-sensitive; `add`/`remove` report already-present/absent tags
+without error. Function rows have a sorted `tags` array, supporting
+`--fields name,address,tags` and `--filter "tags ~ 'crypto'"`.
 
 ## PCode and analyzer control
 
@@ -178,16 +176,15 @@ ghidra-cli analyzer set "ASCII Strings" true --project target
 ghidra-cli analyzer run --project target --program target.bin
 ```
 
-`analyzer set NAME true|false` changes the enabled option; it does not run
-analysis. Use names from `analyzer list`; run analysis with `analyzer run`.
+`analyzer set` only changes the enabled option. Choose names from `analyzer list`
+and execute with `analyzer run`.
 
 ## Comments, scripts, batch work, and export
 
 `comment get ADDRESS` and `comment list` read comments. `comment set` accepts
 `--comment-type EOL` (default), `PRE`, `POST`, or `PLATE`.
 
-Prefer stdin or a file for arbitrary comment text so shell metacharacters are not
-rewritten before ghidra-cli sees them:
+Use stdin or a file to preserve comment text containing shell metacharacters:
 
 ```bash
 printf '%s' 'possible vtable load; verify callers' | \
@@ -209,27 +206,25 @@ ghidra-cli patch nop 0x401234 --count 5 --project target
 ghidra-cli patch export -o ./target.patched.bin --project target
 ```
 
-A batch file contains one subcommand per line without the `ghidra-cli` prefix.
-Use single or double quotes for multiword arguments, for example
+A batch file has one subcommand per line, without `ghidra-cli`. Quote multiword
+arguments, for example
 `function set-signature main --signature "int main(int argc, char **argv)"`.
 Backslashes escape the next character outside quotes; single quotes preserve
 literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backticks.
 Variables, command substitutions, and wildcards are never expanded. Empty lines
 and lines starting with `#` are ignored; malformed quoting fails that line and
 later lines still run.
-Per-line `--project` and `--program` select the target as in a standalone command.
-Without them, the line uses the batch project and its current program selection;
-an explicit program switch remains active for subsequent lines in that project.
-Filters, fields, sorting, limits, and counts apply to each line's result.
+Per-line `--project`/`--program` override the batch project/current selection;
+program switches persist for subsequent lines in that project. Filters, fields,
+sorting, limits, and counts apply within each result.
 Import inputs and program/patch export destinations resolve relative to the CLI's
 working directory, including when reusing a bridge started elsewhere.
 
-Script paths resolve absolutely; arguments after `--` and captured stdout are
-returned with the result. Repeat `--expect PATH[:MIN_ROWS]` to reject missing,
-empty, or short artifacts; `--allow-empty` permits an expected empty file.
-Inline `script python`/`script java` are disabled: the bridge has no embedded
-Python interpreter, and Java scripts go through Ghidra's bundle/compile path.
-Use `script run PATH` or `script run -` with Java source on stdin.
+Script paths resolve absolutely; results include arguments after `--` and captured
+stdout. Repeat `--expect PATH[:MIN_ROWS]` to reject missing/empty/short artifacts;
+`--allow-empty` permits expected empty files. Inline `script python`/`script java`
+are disabled: there is no embedded Python, and Java needs Ghidra's bundle/compile
+path. Use `script run PATH` or `script run -` with Java source on stdin.
 
 `patch nop --count N` walks up to N consecutive instructions (default 1), including
 variable-length instructions. A missing first instruction is an error; a later

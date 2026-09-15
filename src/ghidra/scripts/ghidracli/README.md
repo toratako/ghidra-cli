@@ -1,9 +1,9 @@
 # Java bridge
 
-`../GhidraCliBridge.java` is the only GhidraScript entry point. It adapts inherited
-fields and GhidraScript operations to `ScriptAccess`, then calls `BridgeRuntime`
-on the original script thread. All classes here belong to one source bundle;
-there is no separate Java build, JAR installation, or per-handler script instance.
+`../GhidraCliBridge.java` adapts inherited state/operations to `ScriptAccess` and
+calls `BridgeRuntime` on the original script thread. It is the only GhidraScript
+entry point; all classes share one source bundle, with no separate Java build,
+JAR installation, or per-handler script instance.
 
 ## Execution and ownership
 
@@ -19,48 +19,42 @@ GhidraCliBridge -> BridgeRuntime
                                                                   `-- ScriptAccess
 ```
 
-`BridgeServer` owns network resources and receives callbacks for request handling
-and shutdown. `JobScheduler` owns the bounded FIFO (256 jobs), recent history
-(100 jobs), cancellation, and published status snapshots. Queued cancellation
-removes the job immediately; active cancellation uses its per-job monitor
-cooperatively. It never waits for socket writes on the program thread. Shutdown closes the listener, rejects new program jobs, and drains
-accepted jobs before returning to Ghidra. Connection handlers enqueue without
-waiting on program futures; completed futures hand writes to a separate bounded
-response pool so waiting clients cannot starve controls.
+`BridgeServer` owns networking and request/shutdown callbacks. `JobScheduler`
+owns the FIFO (256 jobs), history (100 jobs), cancellation, and status snapshots.
+Queued cancellation removes jobs immediately; active jobs cancel cooperatively
+via per-job monitors. Connection handlers enqueue without waiting on program
+futures; completed futures use a separate bounded response pool. Neither waiting
+clients nor socket writes may block controls or the program thread. Shutdown
+closes the listener, rejects new jobs, and drains accepted work before returning
+to Ghidra.
 
-`ProgramSession` centralizes request transactions, saving, and program switching
-and release. It reads the current Program, GhidraState, and monitor from the
-owning script. It does not keep a second copy of the current Program.
-Handlers and helpers retain the session, not a
-Program or monitor captured during construction. `JobScheduler` installs a fresh
-`JobTaskMonitor` for each request and restores the script monitor in `finally`.
-Control requests read snapshots and job records instead of this session.
-Switching resolves the requested project file before checking whether it is
-already open; two files can contain Programs with the same internal name.
+`ProgramSession` owns request transactions, saving, switching, and release; it
+reads the current Program, GhidraState, and monitor from the script. Handlers/helpers
+retain the session, never a cached Program/monitor. `JobScheduler` installs a
+fresh `JobTaskMonitor` per request and restores the script monitor in `finally`.
+Controls read snapshots/job records instead of the session. Switching resolves
+the project file before checking whether it is open: different files can have
+Programs with the same internal name.
 
 The entry script calls its inherited `end(true)` before serving requests to end
 the transaction created by `GhidraScript.executeNormal()`. Never end an unknown
 transaction ID or leave the script's transaction ID tied to a switched program.
-`CommandDispatcher` wraps each program request in a `ProgramSession` transaction,
-ends it, and saves a changed program before returning a response. Read-only
-requests do not write an unchanged database. Analysis and scripts follow the same
-path, so there is no separate list of mutating command names to maintain.
+`CommandDispatcher` wraps every program request, including analysis/scripts, in
+a `ProgramSession` transaction, ends it, and saves changes before replying.
+Unchanged databases are not written; no mutating-command list is maintained.
 
-`ProgramTransaction` remembers its Program and whether it is nested. Nested
-handler aborts would roll back other changes in the same request, so they retain
-partial changes as before; standalone transactions retain their requested
-commit/rollback behavior. Handler mutations must use `session.transaction()`.
-Earlier requests have already committed and saved. Failed requests also flush
-retained changes and report `partial_changes_saved` in their error detail.
+Handler mutations must use `session.transaction()`. `ProgramTransaction` retains
+its Program and nesting state: nested aborts would erase other changes in the
+request, so nested handlers retain partial changes; standalone transactions honor
+commit/rollback. Earlier requests are already committed and saved. Failed requests
+flush retained changes and report `partial_changes_saved` in error detail.
 
-Saving uses a non-cancelled monitor after the request transaction ends, including
-when execution was cancelled. Save errors fail the response, preserve the original
-command response in error detail, and leave the program available for retry.
-`program_save` retries the flush without restarting the bridge. Switching and
-closing save before releasing the session's own consumer; a failed save or open
-keeps the previous program. Shutdown drains requests, saves, and releases this
-consumer on the script thread. Persistent startup runs the script without
-`-process`, so even the initial program is opened and released by `ProgramSession`.
+Saving uses a non-cancelled monitor after the transaction ends, even on cancelled
+requests. Save errors fail the response, retain the command response in error
+detail, and keep the program available for in-place `program_save` retries.
+Switching/closing save before releasing the session's consumer; failed save/open
+keeps the previous program. Shutdown drains, saves, and releases on the script
+thread. Startup omits `-process`, so `ProgramSession` also owns the initial program.
 Opening initializes the analyzer options previously registered by HeadlessAnalyzer.
 Deletion closes the selected file before removing it; a refused deletion restores
 the selection. Never release another consumer or terminate its checkout.
@@ -80,13 +74,12 @@ the selection. Never release another consumer or terminate its checkout.
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Shared lookup and diagnostic logic; no handler-to-handler dependencies |
 
-Handlers construct their domain results; the dispatcher applies the wire
-envelope. Error results use `error` for the message and `detail` for structured
-diagnostics. Additional handler fields (such as script `stdout` and `artifacts`)
-are merged into wire `detail`; existing detail fields take precedence. Shared
-helpers contain lookup/serialization logic, not command routing.
-Most implementation classes are package-private; only `BridgeRuntime` and
-`ScriptAccess` cross the default-package entry point's boundary.
+Handlers construct domain results; the dispatcher adds the wire envelope.
+Errors use `error` for messages and `detail` for diagnostics. Additional fields
+(e.g. script `stdout`/`artifacts`) merge into wire `detail`, whose existing fields
+take precedence. Shared helpers own lookup/serialization, not routing. Only
+`BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
+most classes are package-private.
 
 Patch validation rejects empty, odd-length, or invalid hex before clearing code
 units or changing block permissions. NOP patching supports only x86; other

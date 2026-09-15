@@ -1,8 +1,8 @@
 # ghidra-cli next architecture
 
-Future direction, not implemented guarantees. Current behavior is documented in
-[the bridge map](../src/ghidra/README.md) and [runtime reference](runtime.md);
-[PLAN.md](PLAN.md) owns implementation requirements and acceptance criteria.
+Future direction, not implemented guarantees. See [bridge](../src/ghidra/README.md)
+and [runtime](runtime.md) for current behavior; [PLAN.md](PLAN.md) owns proposed
+CLI/module contracts, implementation requirements, and acceptance criteria.
 
 ## Current baseline
 
@@ -31,7 +31,6 @@ re-plan them as future work.
 | RE-native bulk data | Server-side queries, streaming, per-function export, and verified bulk mutations |
 | Capability negotiation | Versioned feature/identity handshake; explicit mismatch errors |
 
-The contracts and suggested CLI/module surfaces live in [PLAN.md](PLAN.md).
 Scheduler state/protocol must not depend on eventual CLI-versus-service packaging.
 
 ## Open design questions

@@ -29,10 +29,9 @@ fn test_function_list() {
 }
 ```
 
-`ghidra(&harness)` supplies the project; builder options include `with_project`,
-`json_format`, and `timeout`. Use response schemas/domain assertions for the
-behavior under test. [Suite guidance](../README.md) covers fixture compilation,
-serial execution, test commands, and unbootstrapped snapshots.
+`ghidra(&harness)` supplies the project; `timeout` sets the command budget.
+Use response schemas/domain assertions. See [suite guidance](../README.md) for
+fixture compilation, serial execution, commands, and unbootstrapped snapshots.
 
 ## Lifecycle boundaries
 
@@ -40,33 +39,28 @@ serial execution, test commands, and unbootstrapped snapshots.
 source project basename `project`. `ensure_test_project()` copies the run's closed,
 analyzed source into it once. Never open or mutate the source with a bridge.
 
-`tests/support/test_runner.rs` supplies `GHIDRA_TEST_RUN_DIR` and removes it after Cargo
-exits, including on test failure. Without the runner, each executable owns local
-fixture storage. The environment variable is internal to the runner and test
-helpers; it must not point to a persistent cache. Parent configuration and source
-files must remain fixed during an invocation.
+`tests/support/test_runner.rs` supplies `GHIDRA_TEST_RUN_DIR` and removes it after
+Cargo exits, including on failure. Without the runner, executables own local
+storage. This internal variable must not point to a persistent cache; parent
+configuration and source files must stay fixed during an invocation.
 
-`fixture.rs` uses an OS file lock for each preparation stage and publishes by
-directory rename only after successful completion. Failed preparation is recorded
-for the rest of the invocation; later suites fail with the original diagnostic.
-An interrupted builder cannot publish a partial source. A subsequent runner
-invocation always starts fresh. Copies use ordinary files, preserve the project
-basename, and omit sibling lock/discovery files. Existing destinations are rejected.
+`fixture.rs` locks each preparation stage with an OS file lock and publishes by
+directory rename only on success; interrupted builders cannot publish partial
+sources. Later suites fail with the original diagnostic; the next invocation
+starts fresh. Copies use ordinary files, preserve the project
+basename, omit sibling lock/discovery files, and reject existing destinations.
 
-`require_ghidra!()` delegates to a shared `DoctorCheck` in this module, so macro
-expansion does not create one cache per test. The output or spawn failure is
-retained and checked by every caller. Direct doctor calls remain available for
-tests of changed environments and doctor itself.
+`require_ghidra!()` delegates to this module's shared `DoctorCheck`, avoiding a
+cache per macro expansion. Every caller checks the retained output/spawn failure.
+For prerequisite policy and direct doctor tests, see [suite guidance](../README.md#run).
 
-`DaemonTestHarness::new()` calls the bridge lifecycle API directly so startup
-errors reach callers intact. It records the PID as well as the discovered port.
-Drop calls `stop_bridge()` for drain/force termination, then waits for both the
-original and current PIDs (restart may change them) to release project locks:
-up to 15s per PID, or 30s on Windows, after stop. It removes stale discovery files
-after waiting. Suite-exit cleanup also stops the bridge and removes the suite
-project and any locally owned fixture; shared sources belong
-to the runner. Statics do not receive normal Rust Drop.
-Cleanup remains best effort under forced process termination.
+`DaemonTestHarness::new()` calls the lifecycle API directly, preserving startup
+errors, and records the PID and port. Drop calls `stop_bridge()` to drain/force
+termination, then waits for original and current PIDs (restart may change them)
+to release locks: up to 15s per PID, or 30s on Windows, after stop. Only then are stale
+discovery files removed. Statics do not receive Rust Drop; suite-exit cleanup
+stops the bridge and removes its project/local fixture. Shared sources belong to
+the runner. Cleanup is best effort under forced termination.
 
 For CLI commands that start or restart a persistent bridge, use
 `run_command_with_output()` when asserting stdout/stderr. It captures to temporary

@@ -15,13 +15,10 @@ process must keep its Ghidra/JDK configuration fixed. Tests of doctor itself or
 changed child environments invoke doctor directly.
 Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK.
 
-`cargo test-run` forwards all arguments to `cargo test` and owns a temporary
-fixture directory for that invocation. It preserves Cargo's test execution order
-and returns its failure status. Each invocation gets a fresh source; nothing is
-reused from a previous run. `--help` shows Cargo's test options.
-
-Plain `cargo test` remains supported, with fixture reuse limited to each test
-executable. Use `test-run` when selecting several Ghidra suites:
+`cargo test-run` forwards arguments (including `--help`) to `cargo test`, preserves
+its order and failure status, and shares a fresh temporary fixture across suites
+for one invocation. Plain `cargo test` limits fixture reuse to each test executable.
+Use `test-run` when selecting several Ghidra suites:
 
 ```bash
 cargo test-run --test comment_tests --test type_tests
@@ -36,10 +33,9 @@ cargo test --test daemon_tests
 cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests
 ```
 
-`command_tests::test_doctor` verifies a working Ghidra/JDK installation in CI's
-`readonly-integration` job. `output_format_integration` checks doctor's failure
-output and exit status using a missing installation path; its other tests cover
-local CLI behavior without Ghidra prerequisites.
+`command_tests::test_doctor` checks a working installation in CI's
+`readonly-integration` job; `output_format_integration` checks doctor's failure
+output/exit status with a missing installation path.
 
 Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
 reference `.snap` files are not tracked. To run without accepting snapshots:
@@ -48,25 +44,23 @@ reference `.snap` files are not tracked. To run without accepting snapshots:
 INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
 ```
 
-These fail until reviewed snapshots are added. The normal suite also validates
-response schemas without snapshots. CI suite groupings are in
+These fail until reviewed snapshots are added; normal schema tests need no
+snapshots. CI suite groupings are in
 [the test workflow](../.github/workflows/test.yml).
 
-`readonly_tests.rs` owns the shared bridge and keeps the snapshot assertions at
-their original source/module path. Its `readonly/` modules cover functions and
-instructions, program metadata, relationships, search, and batch queries.
-`daemon_tests.rs` keeps one suite fixture while its `daemon/` modules cover
-lifecycle, jobs, program sessions/persistence, deletion, and output contracts.
-These modules remain part of their owning test executable and use the same
-serial lock. Filter a domain with, for example,
+`readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial
+locks; domain modules under `readonly/` and `daemon/` remain in those executables.
+Keep snapshot assertions at their original source/module path to preserve Insta
+identity. Filter a domain with, for example,
 `cargo test --test daemon_tests program_session::`.
 
 ## Coverage and fixtures
 
 | Suite/source | Scope |
 |---|---|
-| `daemon_tests`, `reliability_tests`, `project_tests` | Lifecycle, restart/stale-state recovery, project management |
-| `readonly_tests` | Read queries and response schemas |
+| `daemon_tests` | Lifecycle/jobs, program sessions/persistence, deletion, and output contracts |
+| `reliability_tests`, `project_tests` | Restart/stale-state recovery and project management |
+| `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding across target widths, byte orders, and address spaces |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
@@ -93,22 +87,29 @@ for shared-state tests. Never share projects across suites/runs or assume fixed
 function addresses; look them up by name.
 
 `fixture_binary()` compiles [sample_binary.rs](fixtures/sample_binary.rs) with
-`rustc` once per runner invocation into temporary storage. It keeps function symbols,
-exercises exports, and strips debug information to avoid expensive standard-library
-DWARF analysis. It uses the host format (`.exe` on Windows); no binary fixture
-or manual build is needed. The first suite that needs analysis runs the one-shot
-importer and waits for Ghidra to save and exit. Each suite receives ordinary file
-copies of that closed project in its own directory. Setup never starts a bridge;
-the suite's harness starts it when needed. CLI import/analysis tests still create
-new projects and exercise the real commands. Setup/import failures fail the tests.
+`rustc` once per runner invocation. The host-native binary (`.exe` on Windows)
+retains function symbols and exercises exports, but strips debug information to
+avoid standard-library DWARF analysis. No binary fixture or manual build is needed.
+The first suite needing analysis uses the one-shot importer and waits for save/exit;
+each suite receives an isolated copy. Setup starts no bridge; suite harnesses own startup.
+CLI import/analysis tests still use new projects and real commands. Setup/import
+failures fail the tests; see [publication and lifecycle boundaries](common/README.md#lifecycle-boundaries).
 
 With `-- --nocapture`, `[test setup]` lines report doctor, fixture compilation,
 analysis, copy, and bridge startup times. Harness teardown reports shutdown time;
 the runner reports total elapsed time after Cargo exits.
 
 See [common helpers and a test example](common/README.md) when adding tests.
-Harness Drop and suite-exit cleanup are best effort; forced termination can leave
-processes/projects behind. For slow startup, start with `ghidra-cli doctor`; for
-stale discovery files, inspect the owning project/process before cleanup.
+Cleanup is best effort; forced termination can leave processes/projects behind.
+For slow startup, run `ghidra-cli doctor`; inspect the owning project/process
+before cleaning stale discovery files.
 CLI import/analysis tests currently have a 300s budget that can be tight under load;
 see the [open TODO](../docs/TODO.md). Reducing parallel suites can reduce pressure.
+
+## Cross-platform changes
+
+Use `tempfile` for test artifacts; never assume `/tmp` exists. Follow the shared
+[path/lifecycle helpers](../src/ghidra/README.md#cross-platform-paths).
+Validate path/lifecycle changes on Linux and Windows, including separators,
+case/alias variants, spaces, apostrophes, and backslashes. Cross-compilation or
+Wine does not replace native Windows CI.

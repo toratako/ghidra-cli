@@ -18,16 +18,13 @@
 paths. Persistent startup and one-shot imports share launcher/JDK selection;
 their process and stream lifetimes remain owned by their respective workflows.
 
-`ensure_bridge_running()` holds the startup lock across its liveness recheck,
-stale-file cleanup, and call to `startup::start_bridge()`. The startup module owns
-the child and both output readers until readiness or completed failure cleanup;
-stopping an already-running bridge uses the discovery PID in `bridge.rs`.
-
 ## Startup and import
 
-`ensure_bridge_running()` reuses a live bridge or removes stale discovery files
-and starts one. `BridgeStartMode::Process { program_name }` opens an existing
-program through `ProgramSession`; `Project` opens the project without selecting one.
+`ensure_bridge_running()` holds the startup lock across liveness recheck,
+stale-file cleanup, and `startup::start_bridge()`. Startup owns the child and
+output readers until readiness or completed failure cleanup; stopping a running
+bridge uses the discovery PID. `BridgeStartMode::Process { program_name }` opens
+an existing program through `ProgramSession`; `Project` leaves it unselected.
 Both launch with:
 
 ```text
@@ -64,19 +61,17 @@ content changes get new paths so concurrent projects/builds cannot mix revisions
 Keep old bundles while JVMs may still use them. Startup no longer reads the old
 single-file `scripts/` directory.
 
-Register every new Java file in that inventory. `doctor` compiles the same
-inventory in a temporary tree. The inventory unit test checks source coverage;
-real Ghidra integration tests check OSGi resolution, which plain `javac` cannot.
+Register every new Java file in that inventory. `doctor` compiles it in a
+temporary tree; unit tests check source coverage. Real Ghidra tests are required
+for OSGi resolution, which plain `javac` cannot validate.
 
 ## Discovery, liveness, and shutdown
 
-Each project path hashes to `bridge-{md5}.port` / `.pid` in the platform data
-directory (`~/.local/share/ghidra-cli/` on Linux). Discovery and startup locking
-identify the `.rep` directory: its volume/file ID on Windows and its canonical
-location elsewhere. This preserves distinct projects while resolving Windows
-case variations and directory aliases. Missing projects use an absolute path
-without requiring files to exist. Windows falls back to the canonical location
-on filesystems that do not provide usable file IDs. See the
+Discovery files are `bridge-{md5}.port` / `.pid` in the platform data directory
+(`~/.local/share/ghidra-cli/` on Linux), keyed by the `.rep` directory's volume/file
+ID on Windows and canonical location elsewhere. Startup locks share this identity.
+Windows falls back to canonical location if file IDs are unusable; missing
+projects use absolute paths. See the
 [upgrade procedure](../../docs/runtime.md#upgrading) before replacing a CLI
 while bridges are running.
 
@@ -87,8 +82,20 @@ while bridges are running.
   drain, then force-terminates the process group if the grace period expires.
 - Startup, failed liveness/status checks, and shutdown remove stale port/PID files.
 
-Only lightweight liveness probes use raw TCP here; command traffic goes through
-[BridgeClient](../ipc/README.md). A busy program lane is not evidence of a dead
-bridge. Networking, responsive controls, and the serialized GhidraScript lane
-are described in the [Java bridge map](scripts/ghidracli/README.md); timeout knobs
-and operational recovery are in the [runtime reference](../../docs/runtime.md).
+Only liveness probes use raw TCP; commands use [BridgeClient](../ipc/README.md).
+A busy program lane is not evidence of a dead bridge. See the
+[runtime reference](../../docs/runtime.md) for timeout knobs and recovery.
+
+## Cross-platform paths
+
+- Use `Path`/`PathBuf` joins and platform-specific launcher/executable names.
+- Discovery, startup locks, shutdown, and test harnesses must share bridge
+  helpers. Projects use sibling `.gpr`/`.rep` artifacts; the bare path may not
+  exist. Absolute paths alone do not resolve case or directory aliases, and
+  unconditional lowercasing can merge distinct projects.
+- Pass OS paths as individual `Command` arguments. Quote generated CLI batch
+  paths for its parser; cover spaces, apostrophes, and backslashes.
+- Wait for JVM exit and close file handles before deleting or reopening files;
+  Windows can retain project/file locks after a shutdown request.
+
+See [native-platform validation](../../tests/README.md#cross-platform-changes).

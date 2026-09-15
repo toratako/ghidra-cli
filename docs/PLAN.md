@@ -5,12 +5,12 @@ decisions; code and module READMEs describe implemented behavior.
 
 ## 1. Fresh-process verification
 
-Add `project verify` or an equivalent reusable primitive for analysis/writes:
-reopen in a fresh Ghidra process, check project/program/binary identity and caller-supplied
-invariants (e.g. minimum function/symbol counts). Verification and execution
-failures must be distinct; unverifiable work cannot be complete. Publish artifacts
-atomically with explicit partial/failure counts and consistent structured
-lifecycle/result envelopes suitable for corpus scheduling.
+For analysis/writes, add reusable `project verify` or equivalent: reopen the project
+in a fresh Ghidra process and check project/program/binary identity plus caller invariants
+(e.g. minimum function/symbol counts). Distinguish verification from execution
+failure; unverifiable work cannot be complete. Publish artifacts atomically with
+partial/failure counts and consistent structured lifecycle/result envelopes for
+corpus scheduling.
 
 Acceptance:
 
@@ -107,7 +107,8 @@ Acceptance:
 
 ## 4. Server-side query and streaming
 
-Current Rust-side filtering can require fetching a complete bridge dataset. Replace that for large collections with either server-side evaluation of the supported filter/query semantics or a versioned bridge query AST.
+For large collections, replace full-dataset fetches for Rust-side filtering with
+server-side evaluation of supported filter/query semantics or a versioned bridge query AST.
 
 Requirements:
 
@@ -135,7 +136,7 @@ For bulk rename/comment/type/signature/patch operations add:
 
 Extend `bridge_info` into a versioned capability contract covering protocol version, Ghidra/Java versions, command/features, job control, module/bundle support, streaming/frame limits, server-side query support, and current project/program identity.
 
-Client behavior on capability mismatch must be explicit; do not silently fall back to a semantically different path.
+Report capability mismatches explicitly; never silently fall back to different semantics.
 
 ## Build order
 

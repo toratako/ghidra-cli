@@ -1,9 +1,8 @@
 # CLI Application (`src/app/`)
 
-`src/main.rs` owns parsing, environment overrides, logging, the setup async
-runtime, and error/exit reporting. These private modules own command workflows.
-`src/cli.rs` defines the root parser and command tree; `src/cli/` owns command-family
-argument definitions and shared query options, re-exported through `crate::cli`.
+`src/main.rs` owns parsing, environment overrides, logging, setup's async runtime,
+and error/exit reporting; these private modules own workflows. `src/cli.rs` owns
+the command tree and re-exports family arguments/query options from `src/cli/`.
 
 | File | Responsibility |
 |------|----------------|
@@ -20,25 +19,24 @@ argument definitions and shared query options, re-exported through `crate::cli`.
 | `local.rs` | Initialization, version, configuration, defaults, and project commands |
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
-Command-level project/program options retain their precedence over global options
-and configured defaults. Filter validation runs before bridge work. Bridge recovery
-retries at most once after dispatch. A preflight `bridge_info` check upgrades a
-bridge lacking automatic saving before sending program commands. Import retains
-its stop/start/open/analyze order; `program save` sends an in-place save request
-and is a no-op for a stopped bridge. Save failures must never trigger command replay.
-Deletion treats `--program` as a file target and never opens it as a selection or
-startup program.
-Batch errors retain attempted results and structured details in the error
-envelope. Ordinary errors allow later commands to run; save failures and timeouts
-stop execution. Preserve the timeout error type through batch context for exit 75.
-Each batch line uses normal target resolution and compatibility recovery. An
-omitted project inherits the batch project; an omitted program keeps that
-project's current selection. Query modifiers apply within each structured result.
-Output precedence remains explicit format, pretty JSON, compact JSON, then TTY
-detection; query processing follows response-envelope extraction.
-`output.rs` shares report rendering; `src/terminal.rs` handles the streams:
-results use stdout, optional progress uses stderr in text mode, and a closed
-stdout pipe is normal. `main.rs` structures errors in JSON modes and preserves
-exit 75 for bridge wait timeouts. Setup verification and doctor failures exit 1.
+Command-level project/program options override global options and configured
+defaults. Validate filters before bridge work. Recovery retries at most once
+after dispatch; preflight `bridge_info` upgrades bridges lacking automatic saving
+before program commands. Never replay commands after save failures.
+Import retains stop/start/open/analyze order. `program save` saves in place and
+does nothing for a stopped bridge; deletion treats `--program` as a file target
+without opening it as a selection/startup program.
+
+Batch error envelopes retain attempted results and structured detail. Ordinary
+errors permit later commands; save failures/timeouts stop them. Preserve the
+timeout type for exit 75. Each line uses normal target resolution and recovery:
+omitted project inherits the batch project, omitted program keeps that project's
+selection, and query modifiers apply within each result.
+
+Output precedence: explicit format, pretty JSON, compact JSON, then TTY detection.
+Extract response envelopes before query processing. `output.rs` renders reports;
+`src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
+A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
+wait timeouts exit 75, setup verification/doctor failures exit 1.
 
 Unit tests stay with their owning helpers; see [validation commands](../../tests/README.md).
