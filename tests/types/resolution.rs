@@ -22,7 +22,11 @@ fn get_type(program: &str, name: &str) -> Value {
 }
 
 fn create_program(bits: u32) -> String {
-    let program = format!("type-resolution-{bits}-{}", unique_suffix());
+    create_language_program(&format!("x86:LE:{bits}:default"))
+}
+
+fn create_language_program(language: &str) -> String {
+    let program = format!("type-resolution-{}", unique_suffix());
     harness()
         .client()
         .unwrap()
@@ -57,7 +61,7 @@ public class CreateTypeResolutionProgram extends GhidraScript {
     }
 }
 "#,
-            &[program.clone(), format!("x86:LE:{bits}:default")],
+            &[program.clone(), language.to_string()],
             &[],
             false,
         )
@@ -326,9 +330,259 @@ public class CreateBuiltinShadows extends GhidraScript {
     assert_eq!(get_type(&program, "uint32_t[2]")["size"], 14);
     assert_eq!(get_type(&program, "byte")["path"], "/Shadows/byte");
     assert_eq!(get_type(&program, "byte[2]")["size"], 6);
-    assert_eq!(get_type(&program, "u8")["path"], "/Shadows/byte");
+    assert_eq!(get_type(&program, "u8")["size"], 1);
     assert_eq!(get_type(&program, "u32")["size"], 4);
     assert_eq!(get_type(&program, "/byte")["size"], 1);
     assert_eq!(get_type(&program, "/byte[2]")["size"], 2);
     client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn fixed_width_aliases_preserve_width_and_signedness_on_a_16_bit_abi() {
+    require_ghidra!();
+    let program = create_language_program("TI_MSP430:LE:16:default");
+    assert_eq!(get_type(&program, "int")["size"], 2);
+    for (width, unsigned, signed) in [
+        (1, "byte", "sbyte"),
+        (2, "word", "sword"),
+        (4, "dword", "sdword"),
+        (8, "qword", "sqword"),
+    ] {
+        let bits = width * 8;
+        for (alias, expected) in [
+            (format!("uint{bits}_t"), unsigned),
+            (format!("u{bits}"), unsigned),
+            (format!("int{bits}_t"), signed),
+            (format!("s{bits}"), signed),
+        ] {
+            let resolved = get_type(&program, &alias);
+            assert_eq!(resolved["size"], width, "{alias}: {resolved}");
+            assert_eq!(resolved["name"], expected, "{alias}: {resolved}");
+            assert_eq!(
+                get_type(&program, &format!("{alias}[3]"))["size"],
+                width * 3
+            );
+        }
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
+fn rejected_force_apply_preserves_instructions_and_data() {
+    require_ghidra!();
+    let program = create_program(32);
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.DWordDataType;
+public class PrepareTypeApplyMemory extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        memory.createInitializedBlock("first", toAddr(0x1000), 8, (byte) 0xc3, monitor, false);
+        memory.createInitializedBlock("after_gap", toAddr(0x1010), 8, (byte) 0, monitor, false);
+        memory.createInitializedBlock("last", toAddr(0xfffffff0L), 16, (byte) 0, monitor, false);
+        disassemble(toAddr(0x1000));
+        createData(toAddr(0x1004), DWordDataType.dataType);
+        createData(toAddr(0xfffffffcL), DWordDataType.dataType);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    for (address, ty) in [
+        ("1000", "void"),
+        ("1004", "void"),
+        ("1000", "Holder"),
+        ("1004", "byte[20]"),
+        ("1004", "byte[2147483647]"),
+        ("fffffffc", "byte[8]"),
+    ] {
+        let failed = type_command(&program, &["apply", address, ty, "--force"]);
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert!(
+            error["detail"].get("partial_changes_saved").is_none(),
+            "{error}"
+        );
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class CheckTypeApplyPreservation extends GhidraScript {
+    public void run() throws Exception {
+        if (getInstructionAt(toAddr(0x1000)) == null)
+            throw new IllegalStateException("Rejected apply removed instruction");
+        for (long address : new long[] { 0x1004, 0xfffffffcL }) {
+            var data = getDataAt(toAddr(address));
+            if (data == null || !data.isDefined() || data.getLength() != 4
+                    || !data.getDataType().getName().equals("dword"))
+                throw new IllegalStateException("Rejected apply removed data");
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+    }
+    // Valid forced replacement still succeeds after all rejected requests.
+    type_command(&program, &["apply", "1004", "byte[4]", "--force"]).assert_success();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn type_creation_reports_the_registered_conflict_name_and_path() {
+    require_ghidra!();
+    let program = create_program(64);
+    for (name, args, kind) in [
+        (
+            "EnumCollision",
+            vec!["create-enum", "EnumCollision", "--values", "ONE=1"],
+            "enum",
+        ),
+        (
+            "TypedefCollision",
+            vec!["typedef", "TypedefCollision", "byte"],
+            "typedef",
+        ),
+        (
+            "StructCollision",
+            vec!["create", "StructCollision"],
+            "struct",
+        ),
+    ] {
+        // Different kinds force Ghidra to retain both definitions under unique names.
+        let initial = if kind == "struct" {
+            vec!["typedef", name, "byte"]
+        } else {
+            vec!["create", name]
+        };
+        type_command(&program, &initial).assert_success();
+        let result = type_command(&program, &args);
+        result.assert_success();
+        let created: Value = result.json();
+        let created = &created[0];
+        let registered_name = created["name"].as_str().unwrap();
+        let path = created["path"].as_str().unwrap();
+        assert_ne!(registered_name, name, "{created}");
+        let resolved = get_type(&program, path);
+        assert_eq!(resolved["name"], registered_name);
+        assert_eq!(resolved["path"], path);
+        assert_eq!(resolved["kind"], kind);
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
+fn append_field_size_is_honored_or_rejected_before_changing_the_structure() {
+    require_ghidra!();
+    let program = create_program(64);
+    type_command(
+        &program,
+        &["add-field", "Holder", "--name", "anchor", "--type", "byte"],
+    )
+    .assert_success();
+    let client = harness().client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.Structure;
+import ghidra.docking.settings.FormatSettingsDefinition;
+public class SetAnchorFormat extends GhidraScript {
+    public void run() throws Exception {
+        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
+        FormatSettingsDefinition.DEF.setChoice(holder.getComponent(0).getDefaultSettings(),
+            FormatSettingsDefinition.DECIMAL);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    type_command(
+        &program,
+        &[
+            "add-field",
+            "Holder",
+            "--name",
+            "sized",
+            "--type",
+            "string",
+            "--size",
+            "8",
+        ],
+    )
+    .assert_success();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.Structure;
+import ghidra.docking.settings.FormatSettingsDefinition;
+public class CheckAnchorFormat extends GhidraScript {
+    public void run() throws Exception {
+        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
+        if (FormatSettingsDefinition.DEF.getChoice(holder.getComponent(0).getDefaultSettings())
+                != FormatSettingsDefinition.DECIMAL)
+            throw new IllegalStateException("Append discarded an existing field's format setting");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let before = get_type(&program, "Holder");
+    assert_eq!(before["components"][1]["size"], 8);
+    assert_eq!(before["size"], 9);
+    for (size, message) in [
+        ("0", "Field size must be positive"),
+        ("8", "Ghidra cannot honor --size"),
+    ] {
+        type_command(
+            &program,
+            &[
+                "add-field",
+                "Holder",
+                "--name",
+                "invalid",
+                "--type",
+                "byte",
+                "--size",
+                size,
+            ],
+        )
+        .assert_failure()
+        .assert_stderr_contains(message);
+        assert_eq!(get_type(&program, "Holder"), before);
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
 }

@@ -3,7 +3,13 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.database.data.DataTypeUtilities;
 import ghidra.program.model.data.Array;
+import ghidra.program.model.data.BitFieldDataType;
+import ghidra.program.model.data.Dynamic;
+import ghidra.program.model.data.FactoryDataType;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.mem.MemoryBufferImpl;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
@@ -166,10 +172,11 @@ final class TypeCommands {
 
         try {
             DataTypeManager dtm = session.program().getDataTypeManager();
+            DataType registered;
             ProgramTransaction transaction = session.transaction("Create type");
             try {
                 StructureDataType newStruct = new StructureDataType(typeName, 0);
-                dtm.addDataType(newStruct, null);
+                registered = dtm.addDataType(newStruct, null);
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(true);
@@ -178,7 +185,8 @@ final class TypeCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
-            result.addProperty("name", typeName);
+            result.addProperty("name", registered.getName());
+            result.addProperty("path", registered.getPathName());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to create type: " + e.getMessage());
@@ -204,6 +212,28 @@ final class TypeCommands {
                 return errorResult("Type not found: " + typeName);
             }
 
+            // Mirror listing applicability and sizing before any destructive clear.
+            if (dataType instanceof FactoryDataType) {
+                dataType = ((FactoryDataType) dataType).getDataType(
+                    new MemoryBufferImpl(session.program().getMemory(), addr));
+                if (dataType == null) return errorResult("Failed to resolve data type: " + typeName);
+                dataType = dataType.clone(session.program().getDataTypeManager());
+            }
+            if (dataType instanceof BitFieldDataType)
+                return errorResult("Bitfields not supported for Data");
+            DataType baseType = dataType instanceof TypeDef
+                ? ((TypeDef) dataType).getBaseDataType() : dataType;
+            if (baseType instanceof FunctionDefinition)
+                dataType = new PointerDataType(dataType, session.program().getDataTypeManager());
+            int length = dataType instanceof Dynamic
+                ? ((Dynamic) dataType).getLength(new MemoryBufferImpl(session.program().getMemory(), addr), -1)
+                : dataType.getLength();
+            if (length <= 0 || dataType.isZeroLength())
+                return errorResult("Type must have a positive applicable data length: " + typeName);
+            Address clearEnd = addr.addNoWrap(length - 1);
+            if (!session.program().getMemory().contains(addr, clearEnd))
+                return errorResult("Type range extends outside program memory: " + addr + "-" + clearEnd);
+
             // Captured before the clear below (which can silently remove the Function
             // object along with its code) so a `--force` that lands on a function's own
             // entry -- rather than an actual conflicting data unit -- is still reported.
@@ -215,11 +245,9 @@ final class TypeCommands {
             ProgramTransaction transaction = session.transaction("Apply type");
             try {
                 if (force) {
-                    int len = dataType.getLength();
-                    Address clearEnd = len > 0 ? addr.add(len - 1) : addr;
                     listing.clearCodeUnits(addr, clearEnd, false);
                 }
-                listing.createData(addr, dataType);
+                listing.createData(addr, dataType, length);
                 transaction.end(true);
             } catch (ghidra.program.model.util.CodeUnitInsertionException e) {
                 transaction.end(true);
@@ -361,6 +389,7 @@ final class TypeCommands {
 
         try {
             DataTypeManager dtm = session.program().getDataTypeManager();
+            DataType registered;
             ProgramTransaction transaction = session.transaction("Create enum");
             try {
                 EnumDataType enumDt = new EnumDataType(name, size);
@@ -373,7 +402,7 @@ final class TypeCommands {
                     long value = Long.decode(kv[1].trim());
                     enumDt.add(key, value);
                 }
-                dtm.addDataType(enumDt, null);
+                registered = dtm.addDataType(enumDt, null);
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(true);
@@ -382,7 +411,8 @@ final class TypeCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
-            result.addProperty("name", name);
+            result.addProperty("name", registered.getName());
+            result.addProperty("path", registered.getPathName());
             result.addProperty("kind", "enum");
             result.addProperty("size", size);
             return result;
@@ -402,10 +432,11 @@ final class TypeCommands {
             if (baseType == null) return errorResult("Base type not found: " + baseTypeName);
 
             DataTypeManager dtm = session.program().getDataTypeManager();
+            DataType registered;
             ProgramTransaction transaction = session.transaction("Create typedef");
             try {
                 TypedefDataType td = new TypedefDataType(name, baseType);
-                dtm.addDataType(td, null);
+                registered = dtm.addDataType(td, null);
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(true);
@@ -414,7 +445,8 @@ final class TypeCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
-            result.addProperty("name", name);
+            result.addProperty("name", registered.getName());
+            result.addProperty("path", registered.getPathName());
             result.addProperty("kind", "typedef");
             result.addProperty("base_type", baseTypeName);
             return result;
@@ -446,9 +478,23 @@ final class TypeCommands {
                 StructureFields.set(struct, StructureFields.offset(args), fieldName,
                     fieldDataType, null, false, size).apply(struct, session);
             } else {
+                DataTypeUtilities.checkAncestry(struct, fieldDataType);
+                Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
+                Integer size = getArgString(args, "size") == null ? null : getArgInt(args, "size", 0);
+                if (size != null) {
+                    if (size <= 0 || (long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
+                        return errorResult("Field size must be positive and fit within the structure");
+                    DataTypeComponent added = staged.add(fieldDataType, size, fieldName, null);
+                    if (added.getLength() != size)
+                        return errorResult("Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
+                } else {
+                    staged.add(fieldDataType, fieldName, null);
+                }
                 ProgramTransaction transaction = session.transaction("Add field to struct");
                 try {
-                    struct.add(fieldDataType, fieldName, null);
+                    // Preserve existing components and their per-field default settings.
+                    if (size != null) struct.add(fieldDataType, size, fieldName, null);
+                    else struct.add(fieldDataType, fieldName, null);
                 } finally {
                     transaction.end(true);
                 }

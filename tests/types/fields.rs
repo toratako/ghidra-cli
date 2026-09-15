@@ -158,7 +158,8 @@ fn set_field_preserves_attributes_and_offsets_while_shrinking_and_growing() {
         .as_str()
         .unwrap()
         .is_empty());
-    assert_eq!(anonymous["after"]["type_path"], "/uint");
+    assert_eq!(anonymous["after"]["type_path"], "/dword");
+    assert_eq!(anonymous["after"]["size"], 4);
     let comment_cleared = success(set(&name, "16", &["--comment", ""]));
     assert_eq!(comment_cleared["after"].get("comment"), Some(&Value::Null));
     assert_eq!(comment_cleared["after"]["name"], "data");

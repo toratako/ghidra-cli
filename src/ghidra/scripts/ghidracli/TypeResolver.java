@@ -3,6 +3,14 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.ByteDataType;
+import ghidra.program.model.data.WordDataType;
+import ghidra.program.model.data.DWordDataType;
+import ghidra.program.model.data.QWordDataType;
+import ghidra.program.model.data.SignedByteDataType;
+import ghidra.program.model.data.SignedWordDataType;
+import ghidra.program.model.data.SignedDWordDataType;
+import ghidra.program.model.data.SignedQWordDataType;
 import ghidra.program.model.data.BuiltInDataTypeManager;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeManager;
@@ -34,28 +42,12 @@ final class TypeResolver {
 
     /**
      * Common C spellings that aren't registered under that literal name in
-     * Ghidra's data type managers (fixed-width stdint names, "unsigned X")
+     * Ghidra's data type managers ("unsigned X")
      * -- mapped to the canonical Ghidra builtin name that resolveDataType()
      * can find directly.
      */
     private static Map<String, String> buildTypeNameAliases() {
         Map<String, String> m = new HashMap<>();
-        m.put("uint8_t", "byte");
-        m.put("u8", "byte");
-        m.put("int8_t", "sbyte");
-        m.put("s8", "sbyte");
-        m.put("uint16_t", "ushort");
-        m.put("u16", "ushort");
-        m.put("int16_t", "short");
-        m.put("s16", "short");
-        m.put("uint32_t", "uint");
-        m.put("u32", "uint");
-        m.put("int32_t", "int");
-        m.put("s32", "int");
-        m.put("uint64_t", "ulonglong");
-        m.put("u64", "ulonglong");
-        m.put("int64_t", "longlong");
-        m.put("s64", "longlong");
         m.put("unsigned", "uint");
         m.put("unsigned int", "uint");
         m.put("unsigned long", "ulong");
@@ -106,7 +98,22 @@ final class TypeResolver {
         }
         if (found != null) return found.clone(dtm);
 
-        // Retry under the canonical alias (uint32_t -> uint, u32 -> uint, etc.)
+        // Fixed-width aliases must not inherit the target ABI's int/long sizes
+        // or a program type shadowing a canonical primitive name.
+        DataType fixed = switch (trimmed) {
+            case "uint8_t", "u8" -> ByteDataType.dataType;
+            case "int8_t", "s8" -> SignedByteDataType.dataType;
+            case "uint16_t", "u16" -> WordDataType.dataType;
+            case "int16_t", "s16" -> SignedWordDataType.dataType;
+            case "uint32_t", "u32" -> DWordDataType.dataType;
+            case "int32_t", "s32" -> SignedDWordDataType.dataType;
+            case "uint64_t", "u64" -> QWordDataType.dataType;
+            case "int64_t", "s64" -> SignedQWordDataType.dataType;
+            default -> null;
+        };
+        if (fixed != null) return fixed.clone(dtm);
+
+        // Retry ordinary C spellings under their canonical ABI-dependent name.
         String canonical = TYPE_NAME_ALIASES.get(trimmed);
         if (canonical != null) {
             found = findDataTypeByName(dtm, canonical, trimmed);
