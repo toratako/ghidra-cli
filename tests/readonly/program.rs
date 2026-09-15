@@ -283,6 +283,158 @@ fn test_program_export_json_write_failure() {
 
 #[test]
 #[serial]
+fn test_program_export_gzf_reopens_and_preserves_selection() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let original = client.program_info().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("program.gzf");
+    fs::write(&path, b"previous export").unwrap();
+    let exported = client
+        .program_export("gzf", Some(path.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(exported["status"], "exported");
+    assert!(fs::metadata(&path).unwrap().len() > 0);
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.listing.Program;
+import java.io.File;
+public class VerifyPackedExport extends GhidraScript {
+    public void run() throws Exception {
+        var root = state.getProject().getProjectData().getRootFolder();
+        var file = root.createFile(getScriptArgs()[1], new File(getScriptArgs()[0]), monitor);
+        Object consumer = new Object();
+        try {
+            Program reopened = (Program) file.getDomainObject(consumer, true, false, monitor);
+            try {
+                if (!reopened.getName().equals(currentProgram.getName()) ||
+                    reopened.getFunctionManager().getFunctionCount() !=
+                        currentProgram.getFunctionManager().getFunctionCount() ||
+                    reopened.getMemory().getSize() != currentProgram.getMemory().getSize()) {
+                    throw new IllegalStateException("Packed export differs from current program");
+                }
+            } finally {
+                reopened.release(consumer);
+            }
+        } finally {
+            file.delete();
+        }
+    }
+}
+"#,
+            &[
+                path.to_str().unwrap().to_owned(),
+                format!("gzf-{}", uuid::Uuid::new_v4()),
+            ],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert_eq!(client.program_info().unwrap(), original);
+    assert!(
+        client.stats().unwrap()["stats"]["functions"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+}
+
+#[test]
+#[serial]
+fn test_program_export_gzf_save_failure_preserves_existing_output() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let original = client.program_info().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("program.gzf");
+    fs::write(&path, b"previous export").unwrap();
+    let blocked = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class BlockPackedExportSave extends GhidraScript {
+    public void run() throws Exception {
+        println(Integer.toString(currentProgram.startTransaction("block packed export save")));
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap_err();
+    let blocked = blocked
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap();
+    let transaction = blocked.detail["command_response"]["data"]["stdout"]
+        .as_str()
+        .unwrap()
+        .trim()
+        .to_owned();
+    let exported = client.program_export("gzf", Some(path.to_str().unwrap()));
+    // Restore the shared session before assertions about the expected failure.
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class UnblockPackedExportSave extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
+    }
+}
+"#,
+            &[transaction],
+            &[],
+            false,
+        )
+        .unwrap();
+    let error = exported.unwrap_err();
+    let error = error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap();
+    assert_eq!(error.detail["save_failed"], true);
+    assert_eq!(fs::read(&path).unwrap(), b"previous export");
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    assert_eq!(client.program_info().unwrap(), original);
+    client
+        .program_export("gzf", Some(path.to_str().unwrap()))
+        .unwrap();
+}
+
+#[test]
+#[serial]
+fn test_program_export_gzf_publish_failure_cleans_staging() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let original = client.program_info().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let destination = directory.path().join("existing-directory");
+    fs::create_dir(&destination).unwrap();
+    let sentinel = destination.join("keep");
+    fs::write(&sentinel, b"existing data").unwrap();
+    let error = client
+        .program_export("gzf", Some(destination.to_str().unwrap()))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Failed to export (gzf)"),
+        "{error}"
+    );
+    assert_eq!(fs::read(sentinel).unwrap(), b"existing data");
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    assert_eq!(client.program_info().unwrap(), original);
+    assert!(
+        client.stats().unwrap()["stats"]["functions"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+}
+
+#[test]
+#[serial]
 fn test_program_close() {
     require_ghidra!();
     let harness = harness();

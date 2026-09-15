@@ -14,6 +14,7 @@ final class ProgramSession {
     private final Object consumer = new Object();
     private ProgramTransaction requestTransaction;
     private boolean requestActive;
+    private Exception exportSaveFailure;
 
     ProgramSession(ScriptAccess script) {
         this.script = script;
@@ -33,6 +34,7 @@ final class ProgramSession {
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
 
     void beginRequest(String command) {
+        exportSaveFailure = null;
         requestActive = true;
         if (program() != null) requestTransaction = transaction("ghidra-cli: " + command);
     }
@@ -46,7 +48,24 @@ final class ProgramSession {
 
     boolean finishRequest() throws Exception {
         requestActive = false;
+        if (exportSaveFailure != null) {
+            Exception failure = exportSaveFailure;
+            exportSaveFailure = null;
+            throw failure;
+        }
         return save();
+    }
+
+    /** Packed export requires a saved program with no active transaction. */
+    void preparePackedExport() throws Exception {
+        try {
+            save();
+        } catch (Exception failure) {
+            // Preserve the first save failure for the dispatcher's save_failed
+            // response instead of implicitly retrying it at request completion.
+            exportSaveFailure = failure;
+            throw failure;
+        }
     }
 
     /** Flush committed changes before acknowledging a request or releasing a program. */

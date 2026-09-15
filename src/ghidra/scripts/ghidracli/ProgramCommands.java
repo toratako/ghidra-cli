@@ -26,6 +26,9 @@ import ghidra.util.task.TaskMonitor;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -428,7 +431,32 @@ final class ProgramCommands {
                 }
 
                 TaskMonitor mon = session.monitor();
-                Object exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+                Object exported;
+                if ("gzf".equalsIgnoreCase(exportFormat)) {
+                    session.preparePackedExport();
+                    Path destination = new File(outputPath).toPath().toAbsolutePath();
+                    // GzfExporter deletes its output before writing it. Keep that
+                    // file in a private directory beside the destination, and only
+                    // replace the destination once packing has fully succeeded.
+                    Path staging = Files.createTempDirectory(destination.getParent(), ".ghidra-cli-gzf-");
+                    Path packed = staging.resolve("program.gzf");
+                    try {
+                        exported = exportMethod.invoke(exporter, packed.toFile(), session.program(), null, mon);
+                        if (Boolean.TRUE.equals(exported)) {
+                            mon.checkCancelled();
+                            Files.move(packed, destination, StandardCopyOption.ATOMIC_MOVE,
+                                StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    } finally {
+                        try {
+                            Files.deleteIfExists(packed);
+                        } finally {
+                            Files.deleteIfExists(staging);
+                        }
+                    }
+                } else {
+                    exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+                }
                 if (!Boolean.TRUE.equals(exported)) {
                     Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
                     return errorResult("Failed to export (" + exportFormat + "): " + log);
