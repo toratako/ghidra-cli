@@ -38,7 +38,7 @@ jobs:
         run: cargo build --verbose
 
       - name: Run unit tests
-        run: cargo test --lib --verbose
+        run: cargo test --lib --bin ghidra-cli --verbose
 
       - name: Run CLI tests
         run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
