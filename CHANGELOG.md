@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0]
+
 ### Added
 
 - `type set-field STRUCT --offset OFFSET` creates or updates a field's name,
@@ -16,9 +18,21 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Type expressions support fixed-length arrays, including pointer arrays and
   multidimensional arrays, using the target program's pointer width. Ambiguous
   short type names return full-path candidates instead of selecting a match.
+- `batch FILE --on-error continue|stop` selects whether ordinary command errors
+  allow subsequent lines to run. The default is `continue`; nested batches
+  inherit the policy unless they override it. Completed edits are not rolled back.
 
 ### Changed
 
+- Renamed the executable from `ghidra` to `ghidra-cli`, with no compatibility
+  alias. Update command invocations in scripts and automation. Command examples
+  below use the new executable name.
+- Bridge discovery and startup locking now identify the project's `.rep`
+  directory, so equivalent paths share one bridge, including directory aliases
+  and Windows case variations on case-insensitive filesystems. Old discovery
+  keys are not migrated: before upgrading from v0.3.0, stop each running project
+  with the old executable (`ghidra stop --project P`), using the same project path
+  used to start it. Start the bridges again after updating.
 - Struct offsets accept decimal and `0x` hexadecimal. `add-field --offset`
   shares the new placement checks, rejecting interior offsets, overlaps with
   other defined fields, and packed layouts before editing the database.
@@ -35,9 +49,75 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   success. `program save` retries pending saves without restarting the bridge;
   save failures return an error with the original command result. Failed or
   cancelled operations can retain partial changes, which are also saved.
-- Renamed the executable from `ghidra` to `ghidra-cli`, with no compatibility
-  alias. Update command invocations in scripts and automation. Command examples
-  below use the new executable name.
+  Switching or closing a program saves first and keeps it open if saving fails.
+  Saving a stopped bridge remains a no-op.
+- Local, setup, and bridge-management commands now follow the shared output
+  defaults: human-readable on TTY and compact JSON on non-TTY. `--json` selects
+  compact JSON, `--pretty` selects indented JSON, and an explicit output format
+  takes precedence. Progress and verbose diagnostics go to stderr; JSON-mode
+  errors include `status`, `message`, `exit_code`, and available bridge details.
+  Argument errors retain exit code 2, command failures 1, and timeouts 75.
+- CLI help lists supported query types, output formats, and `set-default` choices;
+  invalid choices fail during argument parsing before bridge startup.
+- Split Rust CLI definitions by command family, isolated guarded symbol edits
+  and script preparation, and separated bridge startup from discovery/liveness.
+  Integration tests are organized by behavior domain, with new routing and
+  target-layout memory coverage in CI. Local CLI suites no longer require Ghidra;
+  Ghidra-dependent suites still fail when prerequisites are unavailable.
+
+### Fixed
+
+- Batch commands preserve quoted arguments, empty strings, escapes, and trailing
+  escaped whitespace without evaluating shell syntax. Malformed quoting is
+  reported for the affected line. Each line honors its project/program targets
+  and query options through the same routing as standalone commands.
+- List commands fetch all required rows before client-side filtering, sorting,
+  counting, and pagination. Field selection now runs after sorting and pagination,
+  so omitting a sort field from `--fields` no longer changes the selected rows.
+- Filters reject incomplete expressions and trailing input, honor `NOT`/`AND`/`OR`
+  precedence and parentheses, and correctly evaluate existence checks, `IN`,
+  nested fields, and quoted values. Integer and address comparisons preserve all
+  bits instead of rounding through floating point.
+- CSV and TSV correctly escape delimiters, quotes, and embedded newlines.
+  Compact output truncates strings at UTF-8 boundaries; NDJSON and other framed
+  output no longer gain an extra blank line. Closed output pipes no longer panic
+  or turn completed operations into failures.
+- `doctor` returns a nonzero status when readiness checks fail, including in JSON
+  mode. Handler diagnostics survive bridge error conversion, including failed
+  scripts' captured stdout, artifact checks, and partial-save details.
+- Bridge connection attempts and retry backoff obey one overall deadline. Socket
+  timeout setup failures are reported before sending a request. An unexpected
+  EOF reports that the command outcome is unknown and directs callers to inspect
+  state before repeating edits.
+- `program delete` can delete the initial/current program and closed programs
+  without selecting the deletion target. Deleting another program preserves the
+  current selection; save failures and other consumers prevent unsafe deletion.
+  Stopped bridges, empty projects, and batch deletion use the same ownership rules.
+- Project management and imports share artifact and persisted-data checks,
+  preserve dotted project names, and resolve relative project paths consistently.
+  `--projects-dir` and `GHIDRA_INSTALL_DIR` overrides apply to management, doctor,
+  and execution. Project listing returns actual project names; deletion removes
+  `.gpr`/`.rep` artifacts while preserving a nonempty same-named directory.
+- Import, export, and patch-export paths resolve relative to the CLI's working
+  directory, including when a bridge was started elsewhere. JDK detection follows
+  executable symlinks while keeping `JAVA_HOME` usable by Windows launchers.
+- `memory read` decodes pointers using the target program's pointer width, byte
+  order, and address spaces. Function-pointer detection handles high addresses,
+  overlays, and partial reads instead of assuming 64-bit little-endian pointers
+  within a fixed address range.
+- `graph callers` and `graph callees` traverse by shortest distance so a longer
+  path cannot hide nodes reachable within the depth limit through a shortcut.
+  Traversal retains reference rows, result limits, and cancellation checks.
+- `function set-signature` checks Ghidra's application result and reports its
+  diagnostic when a parsed signature cannot be applied, instead of returning
+  success. Decompilation, high PCode, variable inspection, and program diff
+  initialize decompiler options explicitly.
+- `patch bytes` validates complete hexadecimal byte pairs before editing memory;
+  `patch nop` rejects non-x86 processors. Program and patch exports report file
+  write failures, exporter rejection, and underlying reflective errors.
+- Test fixtures prefer exact function names before decorated-name fallbacks and
+  honor installation overrides. Windows lifecycle output capture and test path
+  handling no longer hang or misinterpret separators, spaces, or apostrophes.
 
 ## [0.3.0]
 
@@ -357,7 +437,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/toratako/ghidra-cli/compare/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79...v0.3.0
 [0.2.2]: https://github.com/toratako/ghidra-cli/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/toratako/ghidra-cli/compare/v0.2.0...v0.2.1
