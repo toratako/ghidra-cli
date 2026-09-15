@@ -5,6 +5,44 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Removed `--detach` from import and analysis; commands wait for completion.
+- Bridge lifecycle operations use persistent OS-backed `.starting` locks. Stop
+  every running bridge with the old CLI before upgrading: old and new lock
+  protocols cannot coordinate. Recovery never deletes Ghidra project locks or
+  force-terminates an unverified discovery PID.
+- Shutdown uses one total timeout across lock acquisition, connection, response,
+  and process exit. Timeout errors preserve discovery and the live process.
+
+### Fixed
+
+- Unsupported `memory write`/`memory search` fail with `patch bytes`/`find bytes`
+  alternatives. Function rename rejects `--filter`/`--all`; ambiguous function
+  names return candidates and require an address.
+- GZF export ends and saves its transaction before packing, stages output beside
+  the destination, and atomically replaces an existing file only on success.
+- Fixed-width type aliases retain their widths across target ABIs. Type/field
+  applicability, size, memory-range, and field-layout checks precede destructive
+  edits. Type creation reports the actual registered name and path.
+- Symbol edits revalidate selected IDs and metadata before changing any target;
+  address selectors accept equivalent hex spellings while retaining address spaces.
+- Byte patches validate their complete range before clearing code. Comments at
+  interior addresses are readable, search rejects incomplete hex and treats glob
+  punctuation literally, long raw-string results retain the match, and DOT output
+  escapes identifiers and labels. Pcode work uses the active cancellation monitor.
+- Configured output format is honored after explicit flags. Default limits apply
+  after client filtering, sorting, and offset, except for counts or explicit zero.
+  Batch query lines inherit the batch selection despite environment defaults.
+- Compatibility restart preserves the actual selected program file path and
+  propagates stop failures instead of starting a replacement JVM.
+- Configuration updates use locked atomic replacement and preserve config
+  symlinks. Setup validates private staging before publication, reuses valid
+  installations, refuses incomplete existing destinations, and saves absolute paths.
+- Job cancellation is isolated, completed history retains metadata only, and
+  shutdown remains responsive with a full queue. Artifact hash failures return errors.
+- CI unit coverage includes both library and binary targets.
+
 ## [0.4.0]
 
 ### Added

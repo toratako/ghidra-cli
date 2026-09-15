@@ -21,12 +21,15 @@ GhidraCliBridge -> BridgeRuntime
 
 `BridgeServer` owns networking and request/shutdown callbacks. `JobScheduler`
 owns the FIFO (256 jobs), history (100 jobs), cancellation, and status snapshots.
+Completed history retains metadata only, releasing response futures/payloads.
+Per-job cancellation must not cancel the parent script monitor or later jobs.
 Queued cancellation removes jobs immediately; active jobs cancel cooperatively
 via per-job monitors. Connection handlers enqueue without waiting on program
 futures; completed futures use a separate bounded response pool. Neither waiting
 clients nor socket writes may block controls or the program thread. Shutdown
 closes the listener, rejects new jobs, and drains accepted work before returning
-to Ghidra.
+to Ghidra. Shutdown signaling must remain responsive when the queue is full;
+control handlers must not block while trying to append a shutdown sentinel.
 
 `ProgramSession` owns request transactions, saving, switching, and release; it
 reads the current Program, GhidraState, and monitor from the script. Handlers/helpers
@@ -94,6 +97,16 @@ units or changing block permissions. NOP patching supports only x86; other
 processors must supply verified bytes through `patch_bytes`. Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
+GZF packing first ends the request transaction and saves through
+`ProgramSession.preparePackedExport()`. It writes to private sibling staging and
+atomically replaces the destination after successful packing and a cancellation
+check; never let GzfExporter delete the user's previous destination directly.
+
+`TypeResolver` uses fixed-width primitives for fallback stdint/short aliases;
+ordinary C aliases remain ABI-dependent. Validate type sizes, field definitions,
+and enum members before mutation, especially before force-clearing existing data.
+Function lookup rejects ambiguous names with candidates instead of selecting the
+first match. Artifact hashing failures propagate as validation errors.
 
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A

@@ -21,8 +21,8 @@ ghidra-cli stop --project target
 ```
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
-Use `import --detach` to return while import continues, `--no-analyze` to omit
-analysis, and `analyze --project target --program target.bin` to reanalyze.
+Import waits for completion. Use `import --no-analyze` to omit analysis and
+`analyze --project target --program target.bin` to reanalyze.
 `stats` reports program statistics; `summary` reports the loaded program's
 metadata.
 
@@ -69,6 +69,10 @@ signature edits.
 There is no native time limit by default; inspect long work with
 `jobs` and request a stop with `cancel`.
 
+Function names must identify one function; ambiguous names return candidates.
+Use the function address to select the intended target. `function rename` does
+not accept `--filter` or `--all`.
+
 `function edit-var FUNCTION --var CURRENT_NAME` edits a local variable or parameter
 by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
 or both. Omitted attributes are not explicitly reassigned. `before` reports the
@@ -89,7 +93,9 @@ Query controls:
 
 `--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
 run in Rust after a full fetch; small limits may not bound underlying work.
-Output precedence: explicit format, `--pretty`, `--json`, TTY detection.
+An explicit limit overrides the default cap; `--count` and `--limit 0` bypass it.
+Output precedence: explicit format, `--pretty`, `--json`, configured default,
+TTY detection.
 
 ```bash
 ghidra-cli function list --count --project target
@@ -161,7 +167,12 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `--all` to affect every match. `type create` accepts a bare name and creates an
 empty struct; use `set-field`, `add-field`, or `import-c` for its definition.
 
+`memory write` and `memory search` are unsupported and return errors. Use
+`patch bytes ADDRESS "HEX BYTES"` and `find bytes "HEX BYTES"` instead.
+
 `type apply --force` clears a conflicting data unit before applying the type.
+Type applicability, size, memory range, and field-layout checks precede
+destructive edits. Later execution failures can still retain partial changes.
 
 Type expressions accept pointers and fixed-length arrays, such as `byte[16]`,
 `Hook *[8]`, and `byte[2][3]`. Array counts are positive decimal integers; sizes
@@ -169,6 +180,11 @@ use the selected program's data organization. Ambiguous short names fail with
 full paths in `detail.candidates`. Use `/Recovered/Hook` or
 `/Recovered/Hook *[8]` to select a category explicitly; an incorrect full path
 does not fall back to another category.
+
+Fallback aliases `uint8_t`/`u8`, `uint16_t`/`u16`, `uint32_t`/`u32`, and
+`uint64_t`/`u64` have fixed widths of 1, 2, 4, and 8 bytes. Signed equivalents
+use `intN_t`/`sN`. Existing types with the requested name take precedence;
+ordinary C spellings such as `unsigned int` use the target ABI.
 
 ### Growing recovered structures
 
@@ -276,16 +292,24 @@ Variables, command substitutions, and wildcards are never expanded. Empty lines
 and lines starting with `#` are ignored; malformed quoting fails that line and
 follows the selected `--on-error` policy.
 Per-line `--project`/`--program` override the batch project/current selection;
-program switches persist for subsequent lines in that project. Filters, fields,
+omitted targets inherit the batch project/current selection even when standalone
+query environment defaults exist. Program switches persist for subsequent lines
+in that project. Filters, fields,
 sorting, limits, and counts apply within each result.
 Import inputs and program/patch export destinations resolve relative to the CLI's
 working directory, including when reusing a bridge started elsewhere.
 
 Script paths resolve absolutely; results include arguments after `--` and captured
-stdout. Repeat `--expect PATH[:MIN_ROWS]` to reject missing/empty/short artifacts;
+stdout. Artifact hash/read failures return errors. Repeat `--expect PATH[:MIN_ROWS]` to reject missing/empty/short artifacts;
 `--allow-empty` permits expected empty files. Inline `script python`/`script java`
 are disabled: there is no embedded Python, and Java needs Ghidra's bundle/compile
 path. Use `script run PATH` or `script run -` with Java source on stdin.
+
+`program export gzf -o PATH` saves the program before packing, stages the archive
+beside its destination, and atomically replaces the destination only after a
+successful export. Failure or cancellation before publication preserves an
+existing destination; a filesystem without atomic replacement support returns
+an error.
 
 `patch nop --count N` walks up to N consecutive instructions (default 1), including
 variable-length instructions. A missing first instruction is an error; a later
