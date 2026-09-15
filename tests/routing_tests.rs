@@ -253,6 +253,119 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
 }
 
 #[test]
+fn batch_on_error_controls_command_and_syntax_failures() {
+    for failing_line in [
+        "symbol rename missing renamed",
+        "comment set 1000 'unfinished",
+        "comment set",
+    ] {
+        for policy in [None, Some("continue"), Some("stop")] {
+            let bridge = RecordedBridge::new();
+            std::fs::write(
+                bridge.root.path().join("batch.txt"),
+                format!("comment set 1000 before\n{failing_line}\ncomment set 1001 after\n"),
+            )
+            .unwrap();
+            let mut command = bridge.command();
+            command.args(["batch", "batch.txt"]);
+            if let Some(policy) = policy {
+                command.args(["--on-error", policy]);
+            }
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(1), "{policy:?}: {output:?}");
+            assert!(output.stdout.is_empty());
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            let detail = &error["detail"];
+            let stopped = policy == Some("stop");
+            assert_eq!(detail["commands_parsed"], 3);
+            assert_eq!(detail["commands_executed"], if stopped { 2 } else { 3 });
+            assert_eq!(detail["failed"], 1);
+            assert_eq!(detail["not_executed"], usize::from(stopped));
+            assert!(detail["results"][0]["result"].is_object());
+            assert_eq!(detail["results"][1]["line"], 2);
+            assert_eq!(detail["results"][1]["exit_code"], 1);
+            let requests = bridge.requests.lock().unwrap();
+            let comments: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "comment_set")
+                .map(|r| r["args"]["text"].as_str().unwrap())
+                .collect();
+            assert_eq!(
+                comments,
+                if stopped {
+                    vec!["before"]
+                } else {
+                    vec!["before", "after"]
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_batch_inherits_on_error_unless_overridden() {
+    for (parent_policy, child_policy, expected_comments, child_stopped) in [
+        ("stop", None, vec!["before"], true),
+        (
+            "continue",
+            None,
+            vec!["before", "inner-after", "outer-after"],
+            false,
+        ),
+        (
+            "stop",
+            Some("continue"),
+            vec!["before", "inner-after"],
+            false,
+        ),
+        (
+            "continue",
+            Some("stop"),
+            vec!["before", "outer-after"],
+            true,
+        ),
+    ] {
+        let bridge = RecordedBridge::new();
+        let child_option = child_policy
+            .map(|policy| format!(" --on-error {policy}"))
+            .unwrap_or_default();
+        std::fs::write(
+            bridge.root.path().join("batch.txt"),
+            format!(
+                "comment set 1000 before\nbatch nested.txt{child_option}\ncomment set 1003 outer-after\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            bridge.root.path().join("nested.txt"),
+            "symbol rename missing renamed\ncomment set 1002 inner-after\n",
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .args(["batch", "batch.txt", "--on-error", parent_policy])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        let detail = &error["detail"];
+        assert_eq!(detail["failed"], 1);
+        assert_eq!(detail["not_executed"], usize::from(parent_policy == "stop"));
+        let nested = &detail["results"][1]["detail"];
+        assert_eq!(nested["failed"], 1);
+        assert_eq!(nested["not_executed"], usize::from(child_stopped));
+        let requests = bridge.requests.lock().unwrap();
+        let comments: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "comment_set")
+            .map(|r| r["args"]["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(comments, expected_comments);
+    }
+}
+
+#[test]
 fn batch_routes_each_target_and_keeps_explicit_program_switches() {
     let first = RecordedBridge::new();
     let second = RecordedBridge::new();

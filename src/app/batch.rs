@@ -1,3 +1,4 @@
+use crate::cli::BatchErrorPolicy;
 use crate::ipc::protocol::{BridgeCommandError, BridgeTimeoutError};
 
 /// Split one command with shell-style quoting, without evaluating shell syntax.
@@ -49,9 +50,10 @@ pub(super) fn split_arguments(line: &str) -> anyhow::Result<Vec<String>> {
     Ok(arguments)
 }
 
-/// Retain every attempted result; stop on an unresolved save or running job.
+/// Retain attempted results; save failures and timeouts always stop execution.
 pub(super) fn execute_batch(
     content: &str,
+    on_error: BatchErrorPolicy,
     mut execute: impl FnMut(&str) -> anyhow::Result<serde_json::Value>,
 ) -> anyhow::Result<serde_json::Value> {
     use serde_json::json;
@@ -73,7 +75,7 @@ pub(super) fn execute_batch(
                 failed += 1;
                 row["error"] = json!(error.to_string());
                 let timeout = error.downcast_ref::<BridgeTimeoutError>().is_some();
-                let mut stop = timeout;
+                let mut stop = timeout || on_error == BatchErrorPolicy::Stop;
                 if let Some(error) = error.downcast_ref::<BridgeCommandError>() {
                     row["detail"] = error.detail.clone();
                     save_failed |=
@@ -148,74 +150,109 @@ mod tests {
 
     #[test]
     fn batch_keeps_successes_and_error_detail_and_returns_failure() {
-        let error = execute_batch("# commands\nfirst\n\nconflict\nlast", |command| {
-            if command == "conflict" {
-                Err(BridgeCommandError {
-                    message: "Already exists".to_owned(),
-                    detail: serde_json::json!({"address": "1000"}),
+        for (policy, executed) in [(BatchErrorPolicy::Continue, 3), (BatchErrorPolicy::Stop, 2)] {
+            let mut calls = Vec::new();
+            let error = execute_batch("# commands\nfirst\n\nconflict\nlast", policy, |command| {
+                calls.push(command.to_owned());
+                if command == "conflict" {
+                    Err(BridgeCommandError {
+                        message: "Already exists".to_owned(),
+                        detail: serde_json::json!({"address": "1000", "partial_changes_saved": true}),
+                    }
+                    .into())
+                } else {
+                    Ok(serde_json::json!({"executed": command}))
                 }
-                .into())
-            } else {
-                Ok(serde_json::json!({"executed": command}))
+            })
+            .unwrap_err();
+            let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
+            assert_eq!(calls.len(), executed);
+            assert_eq!(detail["commands_parsed"], 3);
+            assert_eq!(detail["commands_executed"], executed);
+            assert_eq!(detail["failed"], 1);
+            assert_eq!(detail["not_executed"], 3 - executed);
+            assert_eq!(detail["results"][0]["result"]["executed"], "first");
+            assert_eq!(detail["results"][1]["line"], 4);
+            assert_eq!(detail["results"][1]["detail"]["address"], "1000");
+            assert_eq!(
+                detail["results"][1]["detail"]["partial_changes_saved"],
+                true
+            );
+            if policy == BatchErrorPolicy::Continue {
+                assert_eq!(detail["results"][2]["result"]["executed"], "last");
             }
-        })
-        .unwrap_err();
-        let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
-        assert_eq!(detail["commands_executed"], 3);
-        assert_eq!(detail["failed"], 1);
-        assert_eq!(detail["not_executed"], 0);
-        assert_eq!(detail["results"][0]["result"]["executed"], "first");
-        assert_eq!(detail["results"][1]["line"], 4);
-        assert_eq!(detail["results"][1]["detail"]["address"], "1000");
-        assert_eq!(detail["results"][2]["result"]["executed"], "last");
+        }
     }
 
     #[test]
     fn batch_stops_on_save_failure_including_at_end_of_nested_batch() {
-        let mut calls = 0;
-        let error = execute_batch("nested\nmust-not-run", |_| {
-            calls += 1;
-            execute_batch("edit", |_| Err(BridgeCommandError {
-                message: "Auto-save failed".to_owned(),
-                detail: serde_json::json!({"save_failed": true, "command_response": {"status": "success", "data": {"created": true}}}),
-            }.into()))
-        }).unwrap_err();
-        let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
-        assert_eq!(calls, 1);
-        assert_eq!(detail["not_executed"], 1);
-        assert_eq!(detail["save_failed"], true);
-        assert_eq!(
-            detail["results"][0]["detail"]["results"][0]["detail"]["command_response"]["data"]
-                ["created"],
-            true
-        );
+        for policy in [BatchErrorPolicy::Continue, BatchErrorPolicy::Stop] {
+            let mut calls = 0;
+            let error = execute_batch("nested\nmust-not-run", policy, |_| {
+                calls += 1;
+                execute_batch("edit", policy, |_| {
+                    Err(BridgeCommandError {
+                        message: "Auto-save failed".to_owned(),
+                        detail: serde_json::json!({
+                            "save_failed": true,
+                            "command_response": {"status": "success", "data": {"created": true}},
+                        }),
+                    }
+                    .into())
+                })
+            })
+            .unwrap_err();
+            let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
+            assert_eq!(calls, 1);
+            assert_eq!(detail["not_executed"], 1);
+            assert_eq!(detail["save_failed"], true);
+            assert_eq!(
+                detail["results"][0]["detail"]["results"][0]["detail"]["command_response"]["data"]
+                    ["created"],
+                true
+            );
+        }
     }
 
     #[test]
     fn batch_timeout_retains_exit_classification_and_stops() {
-        let mut calls = 0;
-        let error = execute_batch("slow\nmust-not-run", |_| {
-            calls += 1;
-            Err(BridgeTimeoutError {
-                command: "slow".to_owned(),
-                timeout_secs: 1,
-            }
-            .into())
-        })
-        .unwrap_err();
-        assert_eq!(calls, 1);
-        assert!(error.downcast_ref::<BridgeTimeoutError>().is_some());
-        let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
-        assert_eq!(detail["results"][0]["exit_code"], 75);
-        assert_eq!(detail["not_executed"], 1);
+        for policy in [BatchErrorPolicy::Continue, BatchErrorPolicy::Stop] {
+            let mut calls = 0;
+            let error = execute_batch("nested\nmust-not-run", policy, |_| {
+                calls += 1;
+                execute_batch("slow\nmust-not-run", policy, |command| {
+                    assert_eq!(command, "slow");
+                    Err(BridgeTimeoutError {
+                        command: "slow".to_owned(),
+                        timeout_secs: 1,
+                    }
+                    .into())
+                })
+            })
+            .unwrap_err();
+            assert_eq!(calls, 1);
+            assert!(error.downcast_ref::<BridgeTimeoutError>().is_some());
+            let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
+            assert_eq!(detail["results"][0]["exit_code"], 75);
+            assert_eq!(
+                detail["results"][0]["detail"]["results"][0]["exit_code"],
+                75
+            );
+            assert_eq!(detail["results"][0]["detail"]["not_executed"], 1);
+            assert_eq!(detail["not_executed"], 1);
+        }
     }
 
     #[test]
     fn successful_batch_returns_all_results() {
-        let result =
-            execute_batch("first\nsecond", |command| Ok(serde_json::json!(command))).unwrap();
-        assert_eq!(result["failed"], 0);
-        assert_eq!(result["commands_executed"], 2);
-        assert_eq!(result["results"][1]["result"], "second");
+        for policy in [BatchErrorPolicy::Continue, BatchErrorPolicy::Stop] {
+            let result = execute_batch("first\nsecond", policy, |command| {
+                Ok(serde_json::json!(command))
+            })
+            .unwrap();
+            assert_eq!(result["failed"], 0);
+            assert_eq!(result["commands_executed"], 2);
+            assert_eq!(result["results"][1]["result"], "second");
+        }
     }
 }

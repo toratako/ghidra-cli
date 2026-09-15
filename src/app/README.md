@@ -11,7 +11,7 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 | `execute.rs` | Dispatch bridge requests, with shared list-fetch limits, range parsing, and comment input resolution |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets; share rename handling with the top-level alias |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
-| `batch.rs` | Aggregate attempted command results and stop on save failures or timeouts |
+| `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
 | `management.rs` | Start/stop/restart/status/ping/jobs/cancel handlers and explicit save without auto-start |
@@ -28,10 +28,11 @@ does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
 
 Batch error envelopes retain attempted results and structured detail. Ordinary
-errors permit later commands; save failures/timeouts stop them. Preserve the
-timeout type for exit 75. Each line uses normal target resolution and recovery:
-omitted project inherits the batch project, omitted program keeps that project's
-selection, and query modifiers apply within each result.
+errors follow `--on-error continue|stop` (default: continue); nested batches
+inherit the policy unless overridden. Save failures/timeouts always stop them.
+Preserve the timeout type for exit 75. Each line uses normal target resolution
+and recovery: omitted project inherits the batch project, omitted program keeps
+that project's selection, and query modifiers apply within each result.
 
 Output precedence: explicit format, pretty JSON, compact JSON, then TTY detection.
 Extract response envelopes before query processing. `output.rs` renders reports;

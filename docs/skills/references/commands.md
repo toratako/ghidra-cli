@@ -198,6 +198,7 @@ ghidra-cli script run ./scripts/Inspect.java --project target -- --arg value
 ghidra-cli script run ./scripts/Inspect.java --expect ./out.csv:10 --project target
 ghidra-cli script run - --project target < ./scripts/Inspect.java
 ghidra-cli batch ./queries.ghidra --project target
+ghidra-cli batch ./edits.ghidra --on-error stop --project target
 ghidra-cli program export c --project target -o ./target.c
 ghidra-cli graph export dot --project target | jq -r '.[0].output' \
   > ./calls.dot
@@ -213,7 +214,7 @@ Backslashes escape the next character outside quotes; single quotes preserve
 literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backticks.
 Variables, command substitutions, and wildcards are never expanded. Empty lines
 and lines starting with `#` are ignored; malformed quoting fails that line and
-later lines still run.
+follows the selected `--on-error` policy.
 Per-line `--project`/`--program` override the batch project/current selection;
 program switches persist for subsequent lines in that project. Filters, fields,
 sorting, limits, and counts apply within each result.

@@ -52,9 +52,11 @@ same project/program; it saves in place without repeating the edit.
 Failed or cancelled operations can retain partial changes; do not assume rollback.
 
 `batch` exits nonzero if any command fails; attempted results and error details
-are in `detail.results`. Ordinary errors allow subsequent commands to run; save
-failures and timeouts stop the batch, with `not_executed` counting remaining commands.
-Do not replay successful edits.
+are in `detail.results`. `--on-error continue` (default) runs subsequent commands
+after ordinary errors; use `--on-error stop` for edits that depend on earlier
+commands succeeding. Nested batches inherit the policy unless overridden.
+Save failures and timeouts always stop the batch, with
+`not_executed` counting remaining commands. Do not replay successful edits.
 
 A socket timeout does not cancel the job. Inspect `jobs [ID]` before retrying a
 mutation; `cancel [ID]` requests cancellation. Queued jobs are removed immediately;

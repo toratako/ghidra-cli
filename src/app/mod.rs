@@ -143,7 +143,8 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                 if let Commands::Batch(args) = &cli.command {
                     let content = std::fs::read_to_string(&args.script_file)
                         .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
-                    batch::execute_batch(&content, |line| {
+                    let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
+                    batch::execute_batch(&content, on_error, |line| {
                         let mut sub_cli = Cli::try_parse_from(
                             std::iter::once("ghidra-cli".to_owned())
                                 .chain(batch::split_arguments(line)?),
@@ -155,6 +156,9 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                         }
                         if sub_cli.projects_dir.is_none() {
                             sub_cli.projects_dir = cli.projects_dir.clone();
+                        }
+                        if let Commands::Batch(nested) = &mut sub_cli.command {
+                            nested.on_error.get_or_insert(on_error);
                         }
                         sub_cli.quiet = true;
                         let result = execute_bridge_command(&sub_cli)?;
