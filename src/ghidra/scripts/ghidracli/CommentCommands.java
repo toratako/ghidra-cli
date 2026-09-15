@@ -63,13 +63,11 @@ final class CommentCommands {
                 if (limit > 0 && count >= limit) break;
 
                 Address addr = addrIter.next();
-                CodeUnit cu = listing.getCodeUnitAt(addr);
-                if (cu == null) continue;
 
                 for (int i = 0; i < commentNames.length; i++) {
                     if (limit > 0 && count >= limit) break;
 
-                    String text = cu.getComment(commentTypes[i][0]);
+                    String text = listing.getComment(commentTypes[i][0], addr);
                     if (text != null) {
                         if (nameFilter != null && !text.toLowerCase().contains(nameFilter.toLowerCase())) {
                             continue;
@@ -103,15 +101,13 @@ final class CommentCommands {
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();
-            CodeUnit cu = listing.getCodeUnitAt(addr);
-            if (cu == null) return errorResult("No code unit at address: " + addressStr);
 
             int[] types = {CodeUnit.EOL_COMMENT, CodeUnit.PRE_COMMENT, CodeUnit.POST_COMMENT, CodeUnit.PLATE_COMMENT};
             String[] names = {"EOL", "PRE", "POST", "PLATE"};
 
             JsonArray comments = new JsonArray();
             for (int i = 0; i < types.length; i++) {
-                String text = cu.getComment(types[i]);
+                String text = listing.getComment(types[i], addr);
                 if (text != null) {
                     JsonObject commentObj = new JsonObject();
                     commentObj.addProperty("type", names[i]);

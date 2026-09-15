@@ -14,7 +14,9 @@ import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
@@ -54,19 +56,34 @@ final class MemoryCommands {
 
             Memory memory = session.program().getMemory();
             Listing listing = session.program().getListing();
-            MemoryBlock block = memory.getBlock(addr);
-            boolean restoreReadOnly = block != null && !block.isWrite();
+            Address endAddr = addr.addNoWrap(patchData.length - 1);
+            // Nested request transactions retain changes on failure. Validate the
+            // whole range before clearing any instructions or defined data.
+            if (!memory.getAllInitializedAddressSet().contains(addr, endAddr)) {
+                return errorResult("Patch range must be fully mapped and initialized");
+            }
+            List<MemoryBlock> readOnlyBlocks = new ArrayList<>();
+            Address cursor = addr;
+            while (true) {
+                MemoryBlock block = memory.getBlock(cursor);
+                if (block == null) return errorResult("Patch range must be fully mapped and initialized");
+                if (!block.isWrite()) readOnlyBlocks.add(block);
+                if (block.getEnd().compareTo(endAddr) >= 0) break;
+                cursor = block.getEnd().addNoWrap(1);
+            }
             ProgramTransaction transaction = session.transaction("Patch bytes");
             boolean commit = false;
             try {
-                if (restoreReadOnly) block.setWrite(true);
-                Address endAddr = addr.add(patchData.length - 1);
+                for (MemoryBlock block : readOnlyBlocks) block.setWrite(true);
                 listing.clearCodeUnits(addr, endAddr, false);
                 memory.setBytes(addr, patchData);
                 commit = true;
             } finally {
-                if (restoreReadOnly) block.setWrite(false);
-                transaction.end(commit);
+                try {
+                    for (MemoryBlock block : readOnlyBlocks) block.setWrite(false);
+                } finally {
+                    transaction.end(commit);
+                }
             }
 
             JsonObject result = new JsonObject();

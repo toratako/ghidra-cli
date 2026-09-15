@@ -16,6 +16,7 @@ import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -64,7 +65,8 @@ final class SearchCommands {
             // and on macOS arm64 Rust binaries where literals stay undefined).
             //
             // This is a heuristic: it walks back to the start of the surrounding
-            // printable run and reads forward, capped at MEM_SCAN_MAX_LEN. Strings
+            // printable run and reads a window large enough for the match (normally
+            // capped at MEM_SCAN_MAX_LEN). Strings
             // without a NUL/non-printable separator (e.g. packed Rust &str literals)
             // can't have their exact boundaries recovered from raw bytes alone, so
             // these results are marked with "source":"memory-scan".
@@ -80,20 +82,27 @@ final class SearchCommands {
 
                     // Walk back to the start of the printable run so the result
                     // isn't truncated to the match offset (e.g. losing "Hello, ").
-                    Address start = backScanToStringStart(memory, found, MEM_SCAN_MAX_LEN);
-                    String extracted = extractStringAt(memory, start, MEM_SCAN_MAX_LEN);
-                    if (extracted != null && !extracted.isEmpty()) {
+                    int windowLength = Math.max(MEM_SCAN_MAX_LEN, searchBytes.length);
+                    Address start = backScanToStringStart(memory, found, windowLength - searchBytes.length);
+                    String extracted = extractStringAt(memory, start, windowLength);
+                    if (extracted.contains(pattern)) {
                         JsonObject item = new JsonObject();
                         item.addProperty("address", start.toString());
                         item.addProperty("value", extracted);
                         item.addProperty("length", extracted.length());
                         item.addProperty("source", "memory-scan");
+                        item.addProperty("truncated", hasPrintableNeighbor(memory, start, -1)
+                            || hasPrintableNeighbor(memory, start, extracted.length()));
                         results.add(item);
                     }
 
                     // Advance past this match (use the matched pattern length so we
                     // don't loop forever if extraction came back empty).
-                    addr = found.add(Math.max(1, searchBytes.length));
+                    try {
+                        addr = found.addNoWrap(searchBytes.length);
+                    } catch (ghidra.program.model.address.AddressOverflowException e) {
+                        break;
+                    }
                 }
             }
 
@@ -119,7 +128,7 @@ final class SearchCommands {
         Address start = matchAddr;
         try {
             for (int i = 0; i < maxBack; i++) {
-                Address prev = start.subtract(1);
+                Address prev = start.subtractNoWrap(1);
                 if (prev == null || !memory.contains(prev)) break;
                 byte b = memory.getByte(prev);
                 if (b == 0 || b < 0x20 || b > 0x7e) break;
@@ -136,17 +145,25 @@ final class SearchCommands {
      * Reads until a null byte, non-printable character, or maxLen is reached.
      */
     private String extractStringAt(Memory memory, Address addr, int maxLen) {
+        StringBuilder sb = new StringBuilder();
         try {
-            StringBuilder sb = new StringBuilder();
             for (int i = 0; i < maxLen; i++) {
-                byte b = memory.getByte(addr.add(i));
-                if (b == 0) break;
-                if (b < 0x20 || b > 0x7e) break; // non-printable ASCII
+                byte b = memory.getByte(addr.addNoWrap(i));
+                if (b < 0x20 || b > 0x7e) break;
                 sb.append((char) b);
             }
-            return sb.length() > 0 ? sb.toString() : null;
         } catch (Exception e) {
-            return null;
+            // Retain the readable prefix at an unmapped/uninitialized boundary.
+        }
+        return sb.toString();
+    }
+
+    private boolean hasPrintableNeighbor(Memory memory, Address start, int offset) {
+        try {
+            byte b = memory.getByte(start.addNoWrap(offset));
+            return b >= 0x20 && b <= 0x7e;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -210,6 +227,10 @@ final class SearchCommands {
 
         try {
             String hexClean = hexPattern.replace("0x", "").replace(" ", "");
+            if (hexClean.isEmpty() || (hexClean.length() % 2) != 0
+                    || !hexClean.matches("[0-9a-fA-F]+")) {
+                return errorResult("Hex pattern must contain non-empty complete byte pairs");
+            }
             byte[] searchBytes = new byte[hexClean.length() / 2];
             for (int i = 0; i < searchBytes.length; i++) {
                 searchBytes[i] = (byte) Integer.parseInt(hexClean.substring(i * 2, i * 2 + 2), 16);
@@ -247,6 +268,8 @@ final class SearchCommands {
             FunctionManager fm = session.program().getFunctionManager();
             JsonArray results = new JsonArray();
             boolean isWildcard = pattern.contains("*");
+            String regex = java.util.Arrays.stream(pattern.split("\\*", -1))
+                .map(Pattern::quote).collect(java.util.stream.Collectors.joining(".*"));
 
             FunctionIterator iter = fm.getFunctions(true);
             while (iter.hasNext()) {
@@ -255,8 +278,7 @@ final class SearchCommands {
                 boolean matches;
 
                 if (isWildcard) {
-                    // Simple wildcard matching: convert * to regex .*
-                    String regex = pattern.replace(".", "\\.").replace("*", ".*");
+                    // Only * is special; all other characters are literal.
                     matches = name.matches(regex);
                 } else {
                     matches = name.toLowerCase().contains(pattern.toLowerCase());

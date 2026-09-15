@@ -363,3 +363,89 @@ fn test_patch_output_format_structure() {
         "Should produce output (success or error message)"
     );
 }
+
+#[test]
+#[serial]
+fn test_patch_range_validation_preserves_listing_and_permissions() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("patch-range-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreatePatchRangeFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("patch range fixture");
+            try {
+                var space = program.getAddressFactory().getDefaultAddressSpace();
+                for (long offset : new long[] {0x1000, 0x2000, 0x3000, 0x3002}) {
+                    var block = program.getMemory().createInitializedBlock("code" + offset,
+                        space.getAddress(offset), 2, (byte) 0x90, monitor, false);
+                    block.setExecute(true);
+                    block.setWrite(false);
+                }
+                program.getMemory().createUninitializedBlock("uninitialized",
+                    space.getAddress(0x2002), 2, false);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        for address in ["1000", "2000"] {
+            let instructions = client
+                .send_command(
+                    "disasm_at",
+                    Some(serde_json::json!({"address":address,"count":2})),
+                )
+                .unwrap();
+            assert_eq!(instructions["landed"], true);
+            let map = client.send_command("memory_map", None).unwrap();
+            let error = client.patch_bytes(address, "cccccccc").unwrap_err();
+            assert!(
+                error.to_string().contains("fully mapped and initialized"),
+                "{error}"
+            );
+            let after = client
+                .send_command(
+                    "disasm",
+                    Some(serde_json::json!({"address":address,"count":2})),
+                )
+                .unwrap();
+            assert_eq!(after["instructions"], instructions["instructions"]);
+            assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+        }
+        let map = client.send_command("memory_map", None).unwrap();
+        client.patch_bytes("3000", "11223344").unwrap();
+        let bytes = client
+            .send_command(
+                "read_memory",
+                Some(serde_json::json!({"address":"3000","size":4})),
+            )
+            .unwrap();
+        assert_eq!(bytes["hex"], "11223344");
+        assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

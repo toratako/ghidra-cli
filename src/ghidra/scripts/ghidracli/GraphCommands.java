@@ -233,16 +233,16 @@ final class GraphCommands {
             JsonArray nodes = graphData.getAsJsonArray("nodes");
             for (int i = 0; i < nodes.size(); i++) {
                 JsonObject node = nodes.get(i).getAsJsonObject();
-                String nodeId = node.get("id").getAsString().replace(":", "_");
-                String label = node.get("name").getAsString();
+                String nodeId = dotEscape(node.get("id").getAsString());
+                String label = dotEscape(node.get("name").getAsString());
                 sb.append("  \"").append(nodeId).append("\" [label=\"").append(label).append("\"];\n");
             }
 
             JsonArray edges = graphData.getAsJsonArray("edges");
             for (int i = 0; i < edges.size(); i++) {
                 JsonObject edge = edges.get(i).getAsJsonObject();
-                String fromId = edge.get("from").getAsString().replace(":", "_");
-                String toId = edge.get("to").getAsString().replace(":", "_");
+                String fromId = dotEscape(edge.get("from").getAsString());
+                String toId = dotEscape(edge.get("to").getAsString());
                 sb.append("  \"").append(fromId).append("\" -> \"").append(toId).append("\";\n");
             }
 
@@ -255,5 +255,10 @@ final class GraphCommands {
         } else {
             return errorResult("Unsupported format: " + format);
         }
+    }
+
+    private String dotEscape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+            .replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
     }
 }

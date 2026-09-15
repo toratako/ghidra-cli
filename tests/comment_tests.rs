@@ -258,3 +258,80 @@ fn comment_terminal_stdin_explains_eof_even_when_quiet() {
         "{stderr}"
     );
 }
+
+#[test]
+#[serial]
+fn test_comments_inside_multibyte_instruction_and_data() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("comment-interior-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.data.DWordDataType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateInteriorCommentFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("comment fixture");
+            try {
+                var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
+                var memory = program.getMemory();
+                memory.createInitializedBlock("code", start, 16, (byte) 0, monitor, false);
+                memory.setBytes(start, new byte[] {0x66, (byte) 0x90, (byte) 0xc3});
+                program.getListing().createData(start.add(8), DWordDataType.dataType);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let disasm = client
+            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .unwrap();
+        assert_eq!(disasm["landed"], true);
+        for address in ["1001", "1009"] {
+            for kind in ["EOL", "PRE", "POST", "PLATE"] {
+                let text = format!("interior-{address}-{kind}");
+                client.comment_set(address, &text, Some(kind)).unwrap();
+                let comments = client.comment_get(address).unwrap();
+                assert!(
+                    comments["comments"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|row| row["type"] == kind && row["text"] == text),
+                    "{comments}"
+                );
+                let listed = client.comment_list(None, Some(&text)).unwrap();
+                assert_eq!(listed["count"], 1, "{listed}");
+                assert_eq!(listed["comments"][0]["text"], text);
+            }
+            client.comment_delete(address).unwrap();
+            assert!(client.comment_get(address).unwrap()["comments"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

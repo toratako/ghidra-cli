@@ -95,8 +95,8 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
     client.comment_set(address, &text, Some("EOL")).unwrap();
     assert_saved_comment(&client, address, &text);
 
-    // The address parses, but is outside every memory block. This fails inside
-    // patch_bytes' transaction, after the earlier comment has succeeded.
+    // The address parses, but is outside every memory block. Preflight must
+    // reject it while retaining the previously saved comment.
     let error = client
         .send_command(
             "patch_bytes",
@@ -104,7 +104,7 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
         )
         .unwrap_err();
     assert!(
-        error.to_string().contains("Failed to patch bytes"),
+        error.to_string().contains("fully mapped and initialized"),
         "{error}"
     );
     assert_saved_comment(&client, address, &text);
