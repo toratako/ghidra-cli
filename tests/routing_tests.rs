@@ -377,6 +377,10 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
         let request = requests.iter().find(|r| r["command"] == command).unwrap();
         let actual = PathBuf::from(request["args"][key].as_str().unwrap());
         assert!(actual.is_absolute(), "{request}");
+        assert!(
+            !actual.to_string_lossy().starts_with(r"\\?\"),
+            "Ghidra must receive an ordinary Windows path: {request}"
+        );
         assert_eq!(actual.file_name().unwrap(), filename);
         assert_eq!(
             actual.parent().unwrap().canonicalize().unwrap(),
@@ -482,7 +486,18 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
     let bridge = RecordedBridge::new();
     let source = "// Java source with `literal` $text\n";
     std::fs::write(bridge.root.path().join("Example.java"), source).unwrap();
-    for path in ["Example.java", "missing.java", "-"] {
+    let canonical_script = bridge
+        .root
+        .path()
+        .join("Example.java")
+        .canonicalize()
+        .unwrap();
+    for path in [
+        "Example.java",
+        "missing.java",
+        "-",
+        canonical_script.to_str().unwrap(),
+    ] {
         let output = bridge
             .command()
             .args([
@@ -516,7 +531,7 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
             expected["source"] = json!(source);
         } else {
             let path = bridge.root.path().join(path);
-            expected["path"] = json!(path.canonicalize().unwrap_or(path));
+            expected["path"] = json!(dunce::canonicalize(&path).unwrap_or(path));
         }
         assert_eq!(request["args"], expected);
     }

@@ -21,9 +21,10 @@ pub(super) fn execute(
             } else {
                 // Canonicalize client-side so the bridge receives an absolute
                 // path independent of the working directory its JVM inherited.
+                // Use the ordinary Windows form that Ghidra's Java APIs accept.
                 // Fall back to the raw path if the file is missing; the bridge
                 // then reports a clear "Script not found".
-                let path = std::fs::canonicalize(&args.script_path)
+                let path = dunce::canonicalize(&args.script_path)
                     .or_else(|_| std::path::absolute(&args.script_path))
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_else(|_| args.script_path.clone());

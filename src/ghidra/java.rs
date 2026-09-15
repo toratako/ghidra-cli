@@ -62,7 +62,9 @@ fn bin(home: &Path, name: &str) -> PathBuf {
 
 /// Derive a Java home from a `java` executable path (`.../bin/java` -> `...`).
 fn home_from_java_exe(java_exe: &Path) -> Option<PathBuf> {
-    java_exe.parent()?.parent().map(|p| p.to_path_buf())
+    // Resolve PATH symlinks while keeping JAVA_HOME usable by Ghidra's launcher.
+    let real = dunce::canonicalize(java_exe).unwrap_or_else(|_| java_exe.to_path_buf());
+    real.parent()?.parent().map(|p| p.to_path_buf())
 }
 
 /// Parse the major version from `java -version` output (goes to stderr).
@@ -156,8 +158,7 @@ fn candidate_homes(explicit: Option<&Path>) -> Vec<(PathBuf, String)> {
     }
     // 3. The `java` on PATH -> its home.
     if let Ok(java_exe) = which::which("java") {
-        let real = std::fs::canonicalize(&java_exe).unwrap_or(java_exe);
-        if let Some(home) = home_from_java_exe(&real) {
+        if let Some(home) = home_from_java_exe(&java_exe) {
             push(home, "PATH java");
         }
     }
@@ -312,5 +313,53 @@ pub fn resolve_for_ghidra(
             "No Java found. Ghidra requires a full JDK {min}+.\n\
              Install a JDK and ensure it is on PATH, or set --java-home / GHIDRA_CLI_JAVA_HOME / config `java_home`."
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn java_home_uses_a_launcher_compatible_path() {
+        let root = tempfile::Builder::new()
+            .prefix("JDK path's ")
+            .tempdir()
+            .unwrap();
+        let home = root.path().join("jdk");
+        let java = bin(&home, "java");
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(&java, []).unwrap();
+        let canonical_java = java.canonicalize().unwrap();
+
+        for path in [&java, &canonical_java] {
+            let detected = home_from_java_exe(path).unwrap();
+            assert!(detected.is_absolute());
+            assert!(
+                !detected.to_string_lossy().starts_with(r"\\?\"),
+                "JAVA_HOME must use an ordinary Windows path: {detected:?}"
+            );
+            assert_eq!(
+                bin(&detected, "java").canonicalize().unwrap(),
+                canonical_java
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn java_home_follows_the_path_executable_symlink() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("jdk");
+        let java = bin(&home, "java");
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(&java, []).unwrap();
+        let link = root.path().join("java");
+        std::os::unix::fs::symlink(&java, &link).unwrap();
+
+        assert_eq!(
+            home_from_java_exe(&link).unwrap(),
+            home.canonicalize().unwrap()
+        );
     }
 }

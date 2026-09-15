@@ -1,7 +1,9 @@
 //! Persistent bridge launch: child process, output readers, readiness, and failure cleanup.
 
 use super::headless::{apply_java_home, bridge_failure_hint, find_headless_script};
-use super::{cleanup_stale_files, is_pid_alive, pid_file_path, port_file_path, read_port_file};
+#[cfg(unix)]
+use super::is_pid_alive;
+use super::{cleanup_stale_files, pid_file_path, port_file_path, read_port_file};
 use super::{sources, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
 use anyhow::{Context, Result};

@@ -18,7 +18,8 @@ pub(super) fn run_import(
     if !binary_path.exists() {
         anyhow::bail!("Binary not found: {}", args.binary);
     }
-    let binary_path = std::fs::canonicalize(binary_path)?;
+    // Ghidra's File.getCanonicalFile() rejects Windows verbatim paths (\\?\).
+    let binary_path = dunce::canonicalize(binary_path)?;
     let (one_shot_options, explicit_loader_control) = build_oneshot_import_options(args)?;
 
     // Acquire a bridge connection, the imported program's name, and whether
