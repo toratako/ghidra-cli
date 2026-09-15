@@ -278,6 +278,162 @@ fn test_graph_callees_limit_is_enforced_by_bridge() {
 
 #[test]
 #[serial]
+fn test_graph_depth_uses_shortest_path_through_diamond_and_cycle() {
+    require_ghidra!();
+    let client = harness().client().expect("bridge client");
+    let program = format!("graph-depth-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateGraphDepthFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("graph depth fixture");
+            try {
+                String[] names = {"root", "long1", "long2", "short", "join", "tail", "leaf"};
+                int[][] edges = {{0, 1}, {0, 3}, {1, 2}, {2, 4}, {3, 4}, {4, 5}, {5, 6}, {6, 4}};
+                for (int direction = 0; direction < 2; direction++) {
+                    String prefix = direction == 0 ? "callees_" : "callers_";
+                    Address base = program.getAddressFactory().getDefaultAddressSpace()
+                        .getAddress(0x1000 + direction * 0x1000);
+                    program.getMemory().createInitializedBlock(prefix + "code", base,
+                        0x100, (byte) 0, monitor, false);
+                    for (int i = 0; i < names.length; i++) {
+                        Address entry = base.add(i * 0x10);
+                        program.getFunctionManager().createFunction(prefix + names[i], entry,
+                            new AddressSet(entry, entry.add(0xf)), SourceType.USER_DEFINED);
+                    }
+                    int[] sites = new int[names.length];
+                    for (int[] edge : edges) {
+                        int from = edge[direction];
+                        int to = edge[1 - direction];
+                        program.getReferenceManager().addMemoryReference(
+                            base.add(from * 0x10 + sites[from]++), base.add(to * 0x10),
+                            RefType.UNCONDITIONAL_CALL, SourceType.USER_DEFINED, 0);
+                    }
+                }
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .expect("create isolated graph program");
+    client.open_program(&program).expect("open graph program");
+
+    // Restore the shared suite's selection even if a regression assertion fails.
+    let checked = std::panic::catch_unwind(|| {
+        for (direction, base, sites) in [
+            (
+                "callees",
+                0x1000,
+                [0x00, 0x01, 0x10, 0x30, 0x20, 0x40, 0x50, 0x60],
+            ),
+            (
+                "callers",
+                0x2000,
+                [0x10, 0x30, 0x20, 0x41, 0x40, 0x50, 0x60, 0x42],
+            ),
+        ] {
+            let root = format!("{direction}_root");
+            let query = |depth, limit| {
+                if direction == "callees" {
+                    client.graph_callees(&root, depth, limit)
+                } else {
+                    client.graph_callers(&root, depth, limit)
+                }
+                .expect("query graph")
+            };
+
+            // Both directions traverse this shape, with the long branch first:
+            // root -> long1 -> long2 -> join -> tail -> leaf -> join (cycle)
+            //      -> short ---------> join
+            // DFS expanded join first at distance 3, then missed leaf at depth 4.
+            let bounded = query(Some(4), None);
+            let rows = bounded[direction].as_array().expect("graph rows");
+            assert!(
+                rows.iter()
+                    .any(|row| row["name"] == format!("{direction}_leaf")),
+                "{direction} must include leaf via the shorter branch: {bounded}"
+            );
+
+            let expected = [
+                ("long1", 1, 0),
+                ("short", 3, 0),
+                ("long2", 2, 1),
+                ("join", 4, 1),
+                ("join", 4, 2),
+                ("tail", 5, 2),
+                ("leaf", 6, 3),
+                ("join", 4, 4),
+            ];
+            let unbounded = query(Some(0), Some(0));
+            let all = unbounded[direction].as_array().expect("unbounded rows");
+            assert_eq!(
+                all.len(),
+                expected.len(),
+                "cycle must terminate: {unbounded}"
+            );
+            for ((row, (name, index, depth)), site) in all.iter().zip(expected).zip(sites) {
+                assert_eq!(row.as_object().unwrap().len(), 4, "row shape: {row}");
+                assert_eq!(row["name"], format!("{direction}_{name}"));
+                assert_eq!(row["depth"], depth, "row depth: {row}");
+                for (field, offset) in [("address", index * 0x10), ("call_site", site)] {
+                    assert_eq!(
+                        u64::from_str_radix(row[field].as_str().expect("address string"), 16)
+                            .expect("hex address"),
+                        base + offset,
+                        "{field}: {row}"
+                    );
+                }
+            }
+
+            // Immediate references retain depth 0; depth 0 and limit 0 mean unbounded.
+            for (depth, count) in [(1, 2), (2, 4), (3, 6), (4, 7), (5, 8), (0, 8)] {
+                let result = query(Some(depth), None);
+                assert_eq!(result["function"], root);
+                assert_eq!(result["count"], count);
+                assert_eq!(result[direction].as_array().unwrap(), &all[..count]);
+                for limit in [1, 2, 5, 20] {
+                    let limited = query(Some(depth), Some(limit));
+                    let retained = count.min(limit);
+                    assert_eq!(limited["count"], retained);
+                    assert_eq!(limited[direction].as_array().unwrap(), &all[..retained]);
+                }
+            }
+            assert_eq!(query(None, None)[direction].as_array().unwrap(), &all[..2]);
+        }
+    });
+    client
+        .open_program(TEST_PROGRAM)
+        .expect("restore shared suite program");
+    client
+        .program_delete(&program)
+        .expect("delete graph fixture program");
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_graph_export_dot() {
     require_ghidra!();
     let harness = harness();
