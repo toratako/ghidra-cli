@@ -30,3 +30,19 @@ or recovery guidance.
 See [CLI routing](src/app/README.md), [bridge lifecycle](src/ghidra/README.md),
 [Java ownership/transactions](src/ghidra/scripts/ghidracli/README.md), and
 [wire protocol](src/ipc/README.md) for scoped implementation constraints.
+
+## Cross-platform paths
+
+- Build paths with `Path`/`PathBuf` joins and use `tempfile` for test artifacts;
+  never assume `/tmp` exists. Resolve launcher/executable names per platform.
+- Discovery, startup locks, shutdown, and test harnesses must use the shared
+  bridge helpers. Projects use sibling `.gpr`/`.rep` artifacts; the bare path
+  may not exist. Absolute paths alone do not resolve case or directory aliases;
+  unconditional lowercasing can merge distinct projects.
+- Pass OS paths as individual `Command` arguments. Quote generated CLI batch
+  paths for the batch parser; cover spaces, apostrophes, and backslashes.
+- Wait for JVM exit and close file handles before deleting or reopening files;
+  Windows can retain project/file locks after a shutdown request.
+- Validate path/lifecycle changes on Linux and Windows, including separator,
+  case, and alias variants. Cross-compilation or Wine does not replace native
+  Windows CI.
