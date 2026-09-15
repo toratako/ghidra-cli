@@ -28,6 +28,10 @@ pub enum TypeCommands {
     Typedef(TypedefArgs),
     /// Add a field to a struct type
     AddField(TypeAddFieldArgs),
+    /// Create or update a field at an exact offset without moving other fields
+    SetField(TypeSetFieldArgs),
+    /// Clear a field to undefined bytes, preserving structure size and offsets
+    ClearField(TypeClearFieldArgs),
     /// Remove a field from a struct type
     DelField(TypeDelFieldArgs),
 }
@@ -144,8 +148,8 @@ pub struct TypeAddFieldArgs {
     /// Field type (e.g., "int", "byte", "pointer", a custom struct name)
     #[arg(long = "type")]
     pub field_type: String,
-    /// Offset within the struct (if omitted, appends at end)
-    #[arg(long)]
+    /// Byte offset in decimal or 0x hexadecimal (if omitted, appends at end)
+    #[arg(long, value_parser = parse_field_offset)]
     pub offset: Option<i32>,
     /// Field size override
     #[arg(long)]
@@ -163,6 +167,58 @@ pub struct TypeDelFieldArgs {
     /// Field name to remove
     #[arg(long)]
     pub name: String,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+fn parse_field_offset(value: &str) -> Result<i32, String> {
+    let (digits, radix) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .map(|digits| (digits, 16))
+        .unwrap_or((value, 10));
+    if digits.is_empty()
+        || !digits
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && c.is_digit(radix))
+    {
+        return Err("offset must be a nonnegative decimal or 0x hexadecimal integer".into());
+    }
+    i32::from_str_radix(digits, radix).map_err(|_| "offset exceeds 2147483647".into())
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("field_edit").required(true).multiple(true).args(["name", "field_type", "comment"])))]
+pub struct TypeSetFieldArgs {
+    /// Structure name or full type path
+    pub type_name: String,
+    /// Field starting byte offset, in decimal or 0x hexadecimal
+    #[arg(long, value_parser = parse_field_offset)]
+    pub offset: i32,
+    /// New field name; omit to preserve an existing name
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
+    /// Field type; required when creating a field in undefined space
+    #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub field_type: Option<String>,
+    /// Field comment; an empty string clears it, omission preserves it
+    #[arg(long)]
+    pub comment: Option<String>,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeClearFieldArgs {
+    /// Structure name or full type path
+    pub type_name: String,
+    /// Field starting byte offset, in decimal or 0x hexadecimal
+    #[arg(long, value_parser = parse_field_offset)]
+    pub offset: i32,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

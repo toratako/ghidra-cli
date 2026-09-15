@@ -66,7 +66,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
 | `ProgramCommands`, `ProgramSession` | Program metadata, import/export/analysis, selection and release |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
-| `TypeCommands`, `TypeImportCommands`, `TypeResolver` | Data types, C parsing/import, type-name resolution |
+| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
@@ -80,6 +80,14 @@ Errors use `error` for messages and `detail` for diagnostics. Additional fields
 take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
+
+`StructureFields` stages offset edits on a detached structure copy, validates
+field boundaries and conflicts, then applies the result in a session transaction.
+`set-field`, `clear-field`, and explicit-offset `add-field` share this path;
+append and `del-field` retain their existing behavior. Never use packed
+replacement/clearing for offset edits: Ghidra may repack or delete components.
+Metadata-only edits preserve packing. Zero-length structures report a logical
+size of 0 here despite Ghidra's minimum display length of 1.
 
 Patch validation rejects empty, odd-length, or invalid hex before clearing code
 units or changing block permissions. NOP patching supports only x86; other

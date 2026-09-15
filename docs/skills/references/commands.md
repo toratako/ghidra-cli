@@ -159,7 +159,7 @@ ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 
 Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `--all` to affect every match. `type create` accepts a bare name and creates an
-empty struct; use `add-field` or `import-c` for its definition.
+empty struct; use `set-field`, `add-field`, or `import-c` for its definition.
 
 `type apply --force` clears a conflicting data unit before applying the type.
 
@@ -169,6 +169,41 @@ use the selected program's data organization. Ambiguous short names fail with
 full paths in `detail.candidates`. Use `/Recovered/Hook` or
 `/Recovered/Hook *[8]` to select a category explicitly; an incorrect full path
 does not fall back to another category.
+
+### Growing recovered structures
+
+```bash
+ghidra-cli type set-field Manager --offset 0x1c --name hook --type 'Hook *'
+ghidra-cli type set-field Manager --offset 0x1c --comment 'Called during shutdown'
+ghidra-cli type set-field Manager --offset 0x1c --comment ''
+ghidra-cli type clear-field Manager --offset 0x1c
+```
+
+`set-field` selects a field by its exact starting byte offset. Supply one or more
+of `--name`, `--type`, and `--comment`; omitted attributes keep their current
+values. In undefined space, `--type` is required and `--name` is optional.
+An empty comment clears it; an empty name is rejected. Offsets accept decimal
+and `0x` hexadecimal, including on `add-field`.
+
+Shrinking a field leaves undefined bytes. Growing consumes undefined space or
+extends the structure, but cannot overwrite another defined field. Interior
+offsets and name collisions fail with the existing field in `detail.field`;
+overlaps list `detail.conflicts`. `add-field --offset` uses the same placement
+checks; omitting its offset appends as before.
+
+`clear-field` replaces the field with undefined bytes and preserves structure
+size and later offsets. Clearing existing padding succeeds with `changed: false`;
+an offset outside the structure fails. `del-field --name NAME` still removes
+bytes and shifts later fields.
+
+Layout changes require packing to be disabled. Packed structures allow
+name/comment edits, but reject type changes and clearing defined fields.
+Bit-fields and zero-length fields cannot be edited with these offset commands.
+
+`set-field` and `clear-field` report `changed`, the structure's full `path`,
+`offset`, `size_before`, `size_after`, and `before`/`after` field definitions.
+`type get` includes `packing_enabled` and each field's `type_path` and `comment`.
+An unnamed field has `name: null`; `display_name` gives its generated name.
 
 ## Function tags
 

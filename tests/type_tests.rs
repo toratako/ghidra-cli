@@ -16,6 +16,9 @@ const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 #[path = "types/input.rs"]
 mod input;
 
+#[path = "types/fields.rs"]
+mod fields;
+
 #[path = "types/resolution.rs"]
 mod resolution;
 

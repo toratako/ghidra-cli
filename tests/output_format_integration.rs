@@ -233,6 +233,61 @@ fn type_import_requires_exactly_one_input_source() {
 }
 
 #[test]
+fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    let mut cases = vec![
+        vec!["type", "set-field", "Manager", "--offset", "0x1c"],
+        vec!["type", "set-field", "Manager", "--name", "hook"],
+        vec![
+            "type",
+            "set-field",
+            "Manager",
+            "--offset",
+            "0x1c",
+            "--name",
+            "",
+        ],
+        vec![
+            "type",
+            "set-field",
+            "Manager",
+            "--offset",
+            "0x1c",
+            "--type",
+            "",
+        ],
+        vec!["type", "clear-field", "Manager"],
+    ];
+    for offset in [
+        "",
+        "-1",
+        "+1",
+        "1.5",
+        "0x",
+        "ff",
+        "0xgg",
+        "2147483648",
+        "0x80000000",
+    ] {
+        for command in ["set-field", "clear-field", "add-field"] {
+            let mut args = vec!["type", command, "Manager", "--offset", offset];
+            if command != "clear-field" {
+                args.extend(["--name", "hook", "--type", "int"]);
+            }
+            cases.push(args);
+        }
+    }
+    for args in cases {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["exit_code"], 2);
+    }
+}
+
+#[test]
 fn variable_edit_rejects_missing_or_empty_edits_and_the_removed_command() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();

@@ -343,6 +343,15 @@ pub(super) fn execute_via_bridge(
                         "size": args.size,
                     })),
                 ),
+                TypeCommands::SetField(args) => client.send_command(
+                    "type_set_field",
+                    Some(json!({"type_name": args.type_name, "offset": args.offset,
+                        "field_name": args.name, "field_type": args.field_type, "comment": args.comment})),
+                ),
+                TypeCommands::ClearField(args) => client.send_command(
+                    "type_clear_field",
+                    Some(json!({"type_name": args.type_name, "offset": args.offset})),
+                ),
                 TypeCommands::DelField(args) => client.send_command(
                     "type_del_field",
                     Some(json!({

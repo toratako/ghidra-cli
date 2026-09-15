@@ -207,6 +207,119 @@ fn type_import_reads_code_files_and_stdin_in_the_client() {
 }
 
 #[test]
+fn field_edits_route_offsets_and_preserve_omitted_attributes() {
+    let bridge = RecordedBridge::new();
+    for (offset, flags, name, field_type, comment) in [
+        (
+            "0x1c",
+            vec![
+                "--name",
+                "hook",
+                "--type",
+                "Hook *",
+                "--comment",
+                "callback",
+            ],
+            json!("hook"),
+            json!("Hook *"),
+            json!("callback"),
+        ),
+        (
+            "28",
+            vec!["--name", "hook"],
+            json!("hook"),
+            Value::Null,
+            Value::Null,
+        ),
+        (
+            "0X1C",
+            vec!["--type", "Hook *"],
+            Value::Null,
+            json!("Hook *"),
+            Value::Null,
+        ),
+        (
+            "28",
+            vec!["--comment", ""],
+            Value::Null,
+            Value::Null,
+            json!(""),
+        ),
+    ] {
+        let mut args = vec![
+            "type",
+            "set-field",
+            "/Recovered/Manager",
+            "--offset",
+            offset,
+            "--program",
+            "B",
+        ];
+        args.extend(flags);
+        bridge.run(&args);
+        let mut requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "type_set_field")
+            .collect();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(
+            edits[0]["args"],
+            json!({
+                "type_name": "/Recovered/Manager", "offset": 28,
+                "field_name": name, "field_type": field_type, "comment": comment,
+            })
+        );
+        assert!(requests
+            .iter()
+            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        requests.clear();
+    }
+    bridge.run(&[
+        "type",
+        "clear-field",
+        "/Recovered/Manager",
+        "--offset",
+        "0x1c",
+        "--program",
+        "B",
+    ]);
+    {
+        let mut requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "type_clear_field")
+            .collect();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(
+            edits[0]["args"],
+            json!({"type_name": "/Recovered/Manager", "offset": 28})
+        );
+        assert!(requests
+            .iter()
+            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        requests.clear();
+    }
+    bridge.run(&[
+        "type",
+        "add-field",
+        "Manager",
+        "--offset",
+        "0x1c",
+        "--name",
+        "hook",
+        "--type",
+        "Hook *",
+    ]);
+    let requests = bridge.requests.lock().unwrap();
+    let added = requests
+        .iter()
+        .find(|r| r["command"] == "type_add_field")
+        .unwrap();
+    assert_eq!(added["args"]["offset"], 28);
+}
+
+#[test]
 fn variable_edits_send_one_request_with_only_requested_attributes() {
     let bridge = RecordedBridge::new();
     for (flags, name, data_type) in [

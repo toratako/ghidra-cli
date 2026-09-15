@@ -127,6 +127,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::CreateEnum(args) => args.project.clone(),
             cli::TypeCommands::Typedef(args) => args.project.clone(),
             cli::TypeCommands::AddField(args) => args.project.clone(),
+            cli::TypeCommands::SetField(args) => args.project.clone(),
+            cli::TypeCommands::ClearField(args) => args.project.clone(),
             cli::TypeCommands::DelField(args) => args.project.clone(),
         },
         Commands::Tag(cmd) => match cmd {
@@ -271,6 +273,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::CreateEnum(args) => args.program.clone(),
             cli::TypeCommands::Typedef(args) => args.program.clone(),
             cli::TypeCommands::AddField(args) => args.program.clone(),
+            cli::TypeCommands::SetField(args) => args.program.clone(),
+            cli::TypeCommands::ClearField(args) => args.program.clone(),
             cli::TypeCommands::DelField(args) => args.program.clone(),
         },
         Commands::Tag(cmd) => match cmd {

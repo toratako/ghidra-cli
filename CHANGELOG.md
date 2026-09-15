@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `type set-field STRUCT --offset OFFSET` creates or updates a field's name,
+  type, and comment without moving other fields. `type clear-field` leaves
+  undefined bytes while preserving the structure size and later offsets.
+  Results include before/after definitions, sizes, and whether anything changed.
 - `type import-c --file PATH` and `--stdin` accept C definitions alongside the
   existing inline input, with exactly one source per invocation.
 - Type expressions support fixed-length arrays, including pointer arrays and
@@ -15,6 +19,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Struct offsets accept decimal and `0x` hexadecimal. `add-field --offset`
+  shares the new placement checks, rejecting interior offsets, overlaps with
+  other defined fields, and packed layouts before editing the database.
+  `type get` includes field comments, full type paths, generated display names,
+  and the structure's packing status.
 - Replaced `function set-var-type` with `function edit-var FUNCTION --var NAME
   [--name NEW_NAME] [--type TYPE]`. Rename and type changes share one request;
   either attribute can be changed alone. Results include the variable kind and

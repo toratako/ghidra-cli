@@ -102,6 +102,8 @@ final class CommandDispatcher {
             case "type_create_enum": return typeCommands.handleTypeCreateEnum(args);
             case "type_typedef":    return typeCommands.handleTypeTypedef(args);
             case "type_add_field":  return typeCommands.handleTypeAddField(args);
+            case "type_set_field":  return typeCommands.handleTypeSetField(args);
+            case "type_clear_field": return typeCommands.handleTypeClearField(args);
             case "type_del_field":  return typeCommands.handleTypeDelField(args);
             // Tag commands
             case "tag_list":        return tagCommands.handleTagList(args);

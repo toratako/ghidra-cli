@@ -98,14 +98,10 @@ final class TypeCommands {
         if (dataType instanceof Structure) {
             typeInfo.addProperty("kind", "struct");
             Structure struct = (Structure) dataType;
+            typeInfo.addProperty("packing_enabled", struct.isPackingEnabled());
             JsonArray components = new JsonArray();
             for (DataTypeComponent comp : struct.getComponents()) {
-                JsonObject compObj = new JsonObject();
-                compObj.addProperty("name", comp.getFieldName());
-                compObj.addProperty("type", comp.getDataType().getName());
-                compObj.addProperty("offset", comp.getOffset());
-                compObj.addProperty("size", comp.getLength());
-                components.add(compObj);
+                components.add(StructureFields.describe(comp));
             }
             typeInfo.add("components", components);
         } else if (dataType instanceof Union) {
@@ -445,38 +441,17 @@ final class TypeCommands {
             if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
 
             Structure struct = (Structure) structType;
-            ProgramTransaction transaction = session.transaction("Add field to struct");
-            try {
-                int offset = getArgInt(args, "offset", -1);
-                if (offset >= 0) {
-                    // replaceAtOffset() places the field at that exact byte offset,
-                    // never shifting components that sit elsewhere -- insertAtOffset()
-                    // instead shifts every later field by the new field's size, which
-                    // silently corrupts a struct being built (or patched) offset-by-offset
-                    // out of order. Unlike insertAtOffset(), replaceAtOffset() does not
-                    // grow the structure itself, so grow it first when the field falls
-                    // past the current end (the common case: fields added in ascending
-                    // offset order into a struct that's only as big as its last field).
-                    int fieldSize = getArgInt(args, "size", fieldDataType.getLength());
-                    // A brand-new struct (StructureDataType(name, 0)) has zero real
-                    // components but getLength() still reports 1 (Ghidra's minimum
-                    // displayable data type length) rather than the true internal 0 --
-                    // growing off that reported length silently comes up 1 byte short
-                    // for the first field. Use 0 as the starting length until a
-                    // component actually exists, when getLength() is accurate.
-                    int currentLength = struct.getNumComponents() == 0 ? 0 : struct.getLength();
-                    int needed = (offset + fieldSize) - currentLength;
-                    if (needed > 0) {
-                        struct.growStructure(needed);
-                    }
-                    struct.replaceAtOffset(offset, fieldDataType, fieldSize, fieldName, null);
-                } else {
+            if (getArgString(args, "offset") != null) {
+                Integer size = getArgString(args, "size") == null ? null : getArgInt(args, "size", 0);
+                StructureFields.set(struct, StructureFields.offset(args), fieldName,
+                    fieldDataType, null, false, size).apply(struct, session);
+            } else {
+                ProgramTransaction transaction = session.transaction("Add field to struct");
+                try {
                     struct.add(fieldDataType, fieldName, null);
+                } finally {
+                    transaction.end(true);
                 }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
             }
 
             JsonObject result = new JsonObject();
@@ -487,6 +462,40 @@ final class TypeCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to add field: " + e.getMessage(), e);
+        }
+    }
+
+    private Structure findStructure(JsonObject args) {
+        String name = getArgString(args, "type_name");
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("Structure name required");
+        DataType type = typeResolver.resolveDataType(name);
+        if (type == null) throw new IllegalArgumentException("Type not found: " + name);
+        if (!(type instanceof Structure)) throw new IllegalArgumentException("Type is not a struct: " + name);
+        return (Structure) type;
+    }
+
+    JsonObject handleTypeSetField(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            Structure struct = findStructure(args);
+            String typeName = getArgString(args, "field_type");
+            DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
+            if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
+            String comment = getArgString(args, "comment");
+            return StructureFields.set(struct, StructureFields.offset(args),
+                getArgString(args, "field_name"), type, comment, comment != null, null).apply(struct, session);
+        } catch (Exception e) {
+            return errorResult("Failed to set field: " + e.getMessage(), e);
+        }
+    }
+
+    JsonObject handleTypeClearField(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            Structure struct = findStructure(args);
+            return StructureFields.clear(struct, StructureFields.offset(args)).apply(struct, session);
+        } catch (Exception e) {
+            return errorResult("Failed to clear field: " + e.getMessage(), e);
         }
     }
 
