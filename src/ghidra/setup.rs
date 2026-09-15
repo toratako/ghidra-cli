@@ -164,21 +164,27 @@ pub fn extract_zip(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<Pa
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = match file.enclosed_name() {
-            Some(path) => target_dir.join(path),
-            None => continue,
-        };
-
-        // Capture the root directory (first path component)
-        if root_dir.is_none() {
-            if let Some(first_component) = file
-                .enclosed_name()
-                .as_ref()
-                .and_then(|p| p.components().next())
-            {
-                root_dir = Some(target_dir.join(first_component.as_os_str()));
-            }
+        let enclosed = file
+            .enclosed_name()
+            .ok_or_else(|| anyhow!("Archive contains an invalid path"))?;
+        let first = enclosed
+            .components()
+            .next()
+            .ok_or_else(|| anyhow!("Archive contains an empty path"))?;
+        anyhow::ensure!(
+            matches!(first, std::path::Component::Normal(_)),
+            "Archive must contain a named root directory"
+        );
+        let entry_root = target_dir.join(first.as_os_str());
+        if let Some(root) = &root_dir {
+            anyhow::ensure!(
+                *root == entry_root,
+                "Archive contains multiple root directories"
+            );
+        } else {
+            root_dir = Some(entry_root);
         }
+        let outpath = target_dir.join(enclosed);
 
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&outpath)?;
@@ -217,32 +223,136 @@ pub async fn install_ghidra(
     quiet: bool,
 ) -> Result<PathBuf> {
     // Resolve version and get download URL
-    let (download_url, filename, tag) = resolve_version_url(version, quiet).await?;
+    let (download_url, _filename, tag) = resolve_version_url(version, quiet).await?;
 
     if !quiet {
         eprintln!("Installing Ghidra {} to: {}", tag, target_dir.display());
     }
 
-    // Download the zip file
-    let zip_path = target_dir.join(&filename);
+    std::fs::create_dir_all(&target_dir)?;
+    // Download and extraction never share filenames with another invocation or
+    // write into a live installation. TempDir cleans up interrupted failures.
+    let download = tempfile::Builder::new()
+        .prefix(".ghidra-download-")
+        .tempdir_in(&target_dir)?;
+    let zip_path = download.path().join("distribution.zip");
     download_file(&download_url, &zip_path, quiet).await?;
+    publish_archive(&zip_path, &target_dir, quiet)
+}
 
-    // Extract the zip
-    let install_path = extract_zip(&zip_path, &target_dir, quiet)?;
-
-    // Cleanup zip file
-    if let Err(e) = std::fs::remove_file(&zip_path) {
-        if !quiet {
-            eprintln!("⚠ Could not remove zip file: {}", e);
-        }
+fn publish_archive(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<PathBuf> {
+    std::fs::create_dir_all(target_dir)?;
+    let staged = tempfile::Builder::new()
+        .prefix(".ghidra-extract-")
+        .tempdir_in(target_dir)?;
+    let extracted = extract_zip(zip_path, staged.path(), quiet)?;
+    super::bridge::find_headless_script(&extracted)
+        .context("Installation verification failed before publication")?;
+    let root = extracted
+        .file_name()
+        .ok_or_else(|| anyhow!("Missing installation directory name"))?;
+    let destination = target_dir.join(root);
+    // Serialize publication; never replace an existing version, including an
+    // incomplete tree. --force only bypasses the Java prerequisite check.
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(target_dir.join(".ghidra-setup.lock"))?;
+    lock.lock()?;
+    if destination.try_exists()? {
+        super::bridge::find_headless_script(&destination).with_context(|| format!(
+            "Existing installation at {} is incomplete; choose another --dir or repair it before retrying", destination.display()))?;
+    } else {
+        std::fs::rename(&extracted, &destination)?;
     }
-
-    Ok(install_path)
+    Ok(dunce::canonicalize(destination)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture_archive(path: &Path, valid: bool) -> Result<()> {
+        let mut archive = zip::ZipWriter::new(File::create(path)?);
+        let name = if valid {
+            if cfg!(windows) {
+                "ghidra_test/support/analyzeHeadless.bat"
+            } else {
+                "ghidra_test/support/analyzeHeadless"
+            }
+        } else {
+            "ghidra_test/incomplete"
+        };
+        archive.start_file(name, zip::write::SimpleFileOptions::default())?;
+        archive.write_all(b"launcher")?;
+        archive.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn publication_rejects_invalid_archive_and_preserves_existing_tree() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let target = temp.path().join("install");
+        let old = target.join("ghidra_test");
+        std::fs::create_dir_all(&old)?;
+        std::fs::write(old.join("keep"), "existing data")?;
+        let archive = temp.path().join("bad.zip");
+        fixture_archive(&archive, false)?;
+        assert!(publish_archive(&archive, &target, true).is_err());
+        assert_eq!(std::fs::read_to_string(old.join("keep"))?, "existing data");
+        assert_eq!(std::fs::read_dir(&target)?.count(), 1);
+        // A valid replacement still cannot overwrite an incomplete destination.
+        fixture_archive(&archive, true)?;
+        assert!(publish_archive(&archive, &target, true).is_err());
+        assert_eq!(std::fs::read_to_string(old.join("keep"))?, "existing data");
+        assert!(!old.join("support").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_publication_reuses_existing_installation() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let archive = temp.path().join("valid.zip");
+        fixture_archive(&archive, true)?;
+        let target = temp.path().join("install");
+        let workers: Vec<_> = (0..4)
+            .map(|_| {
+                let archive = archive.clone();
+                let target = target.clone();
+                std::thread::spawn(move || publish_archive(&archive, &target, true).unwrap())
+            })
+            .collect();
+        let paths: Vec<_> = workers.into_iter().map(|w| w.join().unwrap()).collect();
+        assert!(paths.iter().all(|p| p == &paths[0]));
+        std::fs::write(paths[0].join("keep"), "existing data")?;
+        assert_eq!(publish_archive(&archive, &target, true)?, paths[0]);
+        assert_eq!(
+            std::fs::read_to_string(paths[0].join("keep"))?,
+            "existing data"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn relative_install_directory_returns_absolute_path() -> Result<()> {
+        let temp = tempfile::tempdir_in(".")?;
+        let relative = temp
+            .path()
+            .strip_prefix(std::env::current_dir()?)
+            .unwrap_or(temp.path());
+        assert!(relative.is_relative());
+        let archive = relative.join("valid.zip");
+        fixture_archive(&archive, true)?;
+        let installed = publish_archive(&archive, &relative.join("install"), true)?;
+        assert!(installed.is_absolute());
+        assert_eq!(
+            installed,
+            dunce::canonicalize(relative.join("install/ghidra_test"))?
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_extract_zip_preserves_root_and_contents() -> Result<()> {

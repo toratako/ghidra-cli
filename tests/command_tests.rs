@@ -169,3 +169,80 @@ fn test_set_default_project() {
         .success()
         .stdout(predicate::str::contains("Default project set"));
 }
+
+#[test]
+fn config_updates_from_multiple_processes_preserve_independent_values() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.yaml");
+    let changes = [
+        ("default_program", "program-a"),
+        ("default_project", "project-a"),
+        ("default_limit", "47"),
+        ("launch_timeout_secs", "241"),
+        ("ghidra_install_dir", "install-a"),
+        ("ghidra_project_dir", "projects-a"),
+    ];
+    let mut children = Vec::new();
+    for (key, value) in changes {
+        children.push(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .env("GHIDRA_CLI_CONFIG", &path)
+                .env("XDG_DATA_HOME", temp.path())
+                .args(["config", "set", key, value])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+    }
+    for mut child in children {
+        assert!(child.wait().unwrap().success());
+    }
+    let config: ghidra_cli::config::Config =
+        serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(config.default_program.as_deref(), Some("program-a"));
+    assert_eq!(config.default_project.as_deref(), Some("project-a"));
+    assert_eq!(config.default_limit, Some(47));
+    assert_eq!(config.launch_timeout_secs, Some(241));
+    assert_eq!(config.ghidra_install_dir, Some("install-a".into()));
+    assert_eq!(config.ghidra_project_dir, Some("projects-a".into()));
+}
+
+#[test]
+fn config_invalid_format_preserves_previous_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.yaml");
+    let original = "default_program: keep-me\naliases: {}\n";
+    std::fs::write(&path, original).unwrap();
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .env("GHIDRA_CLI_CONFIG", &path)
+        .env("XDG_DATA_HOME", temp.path())
+        .args(["config", "set", "default_output_format", "unknown-format"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown format"));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+}
+
+#[test]
+fn config_relative_filename_and_init_preserve_existing_settings() {
+    let temp = tempfile::tempdir().unwrap();
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .current_dir(temp.path())
+        .env("GHIDRA_CLI_CONFIG", "config.yaml")
+        .env("XDG_DATA_HOME", temp.path())
+        .args(["config", "set", "default_program", "keep-me"])
+        .assert()
+        .success();
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .current_dir(temp.path())
+        .env("GHIDRA_CLI_CONFIG", "config.yaml")
+        .env("XDG_DATA_HOME", temp.path())
+        .arg("init")
+        .assert()
+        .success();
+    let config: ghidra_cli::config::Config =
+        serde_yaml::from_str(&std::fs::read_to_string(temp.path().join("config.yaml")).unwrap())
+            .unwrap();
+    assert_eq!(config.default_program.as_deref(), Some("keep-me"));
+    assert!(config.ghidra_project_dir.is_some());
+}

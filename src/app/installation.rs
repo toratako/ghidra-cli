@@ -57,14 +57,13 @@ pub(crate) async fn run_setup(cli: Cli) -> anyhow::Result<()> {
         ghidra::setup::install_ghidra(args.version, install_base, output.quiet || output.json)
             .await?;
 
-    // 4. Update Config
-    let mut config = Config::load()?;
-    config.ghidra_install_dir = Some(final_path.clone());
-    config.save()?;
-
-    // Report success only after the installed launcher has been verified.
+    // Verify before publishing the selected path to configuration.
     output.progress("Verifying installation...");
     verify_setup(&final_path)?;
+    Config::update(|config| {
+        config.ghidra_install_dir = Some(final_path.clone());
+        Ok(())
+    })?;
     output.result(
         &json!({"installed": true, "path": final_path, "config_path": Config::config_path()?}),
         &format!(
