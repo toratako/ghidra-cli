@@ -4,8 +4,12 @@ use ghidra_cli::ghidra::bridge;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+fn batch_path_argument(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
+}
 
 struct RecordedBridge {
     root: tempfile::TempDir,
@@ -17,8 +21,12 @@ struct RecordedBridge {
 
 impl RecordedBridge {
     fn new() -> Self {
-        let root = tempfile::tempdir().unwrap();
-        let project = root.path().join("projects/project");
+        let root = tempfile::Builder::new()
+            .prefix("routing tests' ")
+            .tempdir()
+            .unwrap();
+        // Match CLI normalization before hashing the discovery path on Windows.
+        let project = std::path::absolute(root.path().join("projects/project")).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::fs::write(bridge::port_file_path(&project).unwrap(), port.to_string()).unwrap();
@@ -255,7 +263,7 @@ fn batch_routes_each_target_and_keeps_explicit_program_switches() {
     .unwrap();
     std::fs::write(first.root.path().join("batch.txt"), format!(
         "comment set 1000 marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
-        second.project.display(),
+        batch_path_argument(&second.project),
     )).unwrap();
     let result = first.run(&["batch", "batch.txt", "--program", "A"]);
     let rows = &result[0]["results"];
@@ -308,7 +316,7 @@ fn batch_save_of_a_stopped_project_does_not_start_it() {
     let stopped = bridge.root.path().join("stopped");
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        format!("program save --project {}\n", stopped.display(),),
+        format!("program save --project {}\n", batch_path_argument(&stopped)),
     )
     .unwrap();
     let result = bridge.run(&["batch", "batch.txt"]);
