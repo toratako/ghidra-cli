@@ -125,11 +125,13 @@ impl DaemonTestHarness {
     /// detailed error messages (e.g., "program file(s) not found") propagate
     /// correctly to callers like try_start_daemon().
     pub fn new(project: &str, program: &str) -> Result<Self> {
-        // Resolve the project path (must match the CLI's default via get_project_dir)
-        let project_path = ghidra_cli::config::Config::load()?
-            .get_project_dir()
-            .context("Could not determine default project dir")?
-            .join(project);
+        // Match CLI normalization before hashing discovery paths, including Windows separators.
+        let project_path = std::path::absolute(
+            ghidra_cli::config::Config::load()?
+                .get_project_dir()
+                .context("Could not determine default project dir")?
+                .join(project),
+        )?;
 
         // Load config to find Ghidra installation
         let config = ghidra_cli::config::Config::load().context("Failed to load config")?;

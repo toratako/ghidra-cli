@@ -156,21 +156,20 @@ fn test_patch_export() {
     require_ghidra!();
     let harness = harness();
 
-    // Use a unique output path to avoid conflicts
-    let output_path = format!("/tmp/ghidra-test-export-{}.bin", uuid::Uuid::new_v4());
+    let directory = tempfile::tempdir().unwrap();
+    let output_path = directory.path().join("patched.bin");
 
     let result = ghidra(harness)
         .arg("patch")
         .arg("export")
         .arg("--output")
-        .arg(&output_path)
+        .arg(output_path.to_str().unwrap())
         .arg("--program")
         .arg(TEST_PROGRAM)
         .run();
 
     result.assert_success();
     assert!(std::fs::metadata(&output_path).unwrap().len() > 0);
-    let directory = tempfile::tempdir().unwrap();
     let error = harness
         .client()
         .unwrap()
@@ -180,9 +179,6 @@ fn test_patch_export() {
         error.to_string().contains("Failed to export binary"),
         "{error}"
     );
-
-    // Clean up
-    let _ = std::fs::remove_file(&output_path);
 }
 
 /// Test patching at function boundary (start of a function).
