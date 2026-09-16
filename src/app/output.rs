@@ -184,7 +184,10 @@ fn output_format(cli: &Cli) -> OutputFormat {
 fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> OutputFormat {
     // Explicit -o > --json/--pretty > configured format > TTY detection.
     let opts = extract_query_options(&cli.command);
-    let explicit_format = opts.as_ref().and_then(|o| o.format);
+    let explicit_format = match &cli.command {
+        Commands::Diff(cli::DiffCommands::Functions(args)) => args.format,
+        _ => opts.as_ref().and_then(|o| o.format),
+    };
 
     if let Some(fmt) = explicit_format {
         fmt
@@ -271,7 +274,11 @@ mod tests {
 
     #[test]
     fn output_format_preserves_explicit_flag_precedence() {
-        for command in [["query", "functions"], ["function", "list"]] {
+        for command in [
+            ["query", "functions"].as_slice(),
+            ["function", "list"].as_slice(),
+            ["diff", "functions", "first", "second"].as_slice(),
+        ] {
             for (flags, expected) in [
                 (vec!["--json"], OutputFormat::JsonCompact),
                 (vec!["--pretty"], OutputFormat::Json),
@@ -283,9 +290,13 @@ mod tests {
                 ),
                 (vec!["--pretty", "-o", "NDJSON"], OutputFormat::JsonStream),
             ] {
-                let cli =
-                    Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain(flags))
-                        .unwrap();
+                let cli = Cli::try_parse_from(
+                    ["ghidra-cli"]
+                        .into_iter()
+                        .chain(command.iter().copied())
+                        .chain(flags),
+                )
+                .unwrap();
                 assert_eq!(
                     output_format_with_default(&cli, Some(OutputFormat::Csv)),
                     expected

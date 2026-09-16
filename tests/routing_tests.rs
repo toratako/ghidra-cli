@@ -93,6 +93,9 @@ impl RecordedBridge {
                     "decompile" => {
                         json!({"name": "main", "address": "1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
+                    "diff_functions" => {
+                        json!({"func1": {"name": args["func1"]}, "func2": {"name": args["func2"]}, "differences": [], "diff_count": 0})
+                    }
                     "disasm" | "disasm_range" | "function_disasm" | "find_instruction" => {
                         let mut rows = vec![
                             json!({"address": "1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
@@ -1259,6 +1262,61 @@ fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
             .as_str()
             .unwrap()
             .contains("invalid --filter expression"),
+        "{error}"
+    );
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn function_diff_honors_formats_and_rejects_unknown_choices_before_dispatch() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args([
+            "diff",
+            "functions",
+            "first",
+            "second",
+            "--format",
+            "table",
+            "--json",
+            "--pretty",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains("diff_count") && text.contains("first") && text.contains("second"),
+        "{text}"
+    );
+    assert!(serde_json::from_str::<Value>(&text).is_err(), "{text}");
+    assert_eq!(
+        bridge.run(&["diff", "functions", "first", "second", "-o", "JSON-COMPACT"])[0]
+            ["diff_count"],
+        0
+    );
+
+    bridge.requests.lock().unwrap().clear();
+    let invalid = bridge
+        .command()
+        .args([
+            "diff",
+            "functions",
+            "first",
+            "second",
+            "--format",
+            "unknown",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(invalid.status.code(), Some(2), "{invalid:?}");
+    let error: Value = serde_json::from_slice(&invalid.stderr).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("possible values"),
         "{error}"
     );
     assert!(bridge.requests.lock().unwrap().is_empty());

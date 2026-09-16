@@ -253,8 +253,9 @@ pub struct DiffFunctionsArgs {
     pub func1: String,
     /// Second function (name or address)
     pub func2: String,
-    #[arg(long)]
-    pub format: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    pub format: Option<OutputFormat>,
     #[arg(long)]
     pub project: Option<String>,
 }

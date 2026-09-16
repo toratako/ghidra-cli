@@ -53,6 +53,8 @@ Output precedence: explicit format, pretty JSON, compact JSON, configured
 whether it happens in Java or Rust. Count ignores the configured cap; explicit
 zero is unlimited. The residual query travels with each command result so
 standalone and batch output cannot apply a server offset twice.
+`diff functions` participates in the same explicit-format selection without
+adding list-query modifiers to its command arguments.
 Extract response envelopes before query processing. `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
