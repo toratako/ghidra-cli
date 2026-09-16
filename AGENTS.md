@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This CLI primarily serves AI agents. The [skill](docs/skills/SKILL.md) is for AI
+This CLI primarily serves AI agents. The [skill](docs/skills/ghidra-cli/SKILL.md) is for AI
 agents doing reverse engineering (RE) with this CLI. Keep the skill and its
 references self-contained: agents must not need other project docs to do RE work.
 Include only information those agents need for that work.

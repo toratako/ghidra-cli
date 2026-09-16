@@ -22,7 +22,7 @@ For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
 
 ## Usage
 
-- [ghidra-cli skill](docs/skills/SKILL.md): commands and operational semantics for RE agents.
+- [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
 - [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
 
 Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),

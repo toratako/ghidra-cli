@@ -1,0 +1,19 @@
+# Scripting
+
+Use Java scripts for processing that the built-in commands do not cover.
+
+```bash
+ghidra-cli script list --project target
+ghidra-cli script run ./scripts/Inspect.java --project target -- --arg value
+ghidra-cli script run ./scripts/Inspect.java --expect ./out.csv:10 --project target
+ghidra-cli script run - --project target < ./scripts/Inspect.java
+```
+
+Script paths resolve absolutely; results include arguments after `--` and captured
+stdout. Artifact hash/read failures return errors. Repeat `--expect PATH[:MIN_ROWS]`
+to reject missing/empty/short artifacts; `--allow-empty` permits expected empty files.
+Inline `script python`/`script java` are disabled: there is no embedded Python,
+and Java needs Ghidra's bundle/compile path. Use `script run PATH` or
+`script run -` with Java source on stdin.
+
+Scripts follow the shared [save and failure behavior](../SKILL.md#results-edits-and-jobs).
