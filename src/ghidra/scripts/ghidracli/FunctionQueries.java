@@ -93,7 +93,7 @@ final class FunctionQueries {
 
         StringBuilder hint = new StringBuilder();
         hint.append("Cannot resolve function target: ").append(target)
-            .append(". Try: ghidra-cli function list --filter ").append(target);
+            .append(". Try: ghidra-cli function list --help");
         if (!suggestions.isEmpty()) {
             hint.append(". Closest matches: ").append(String.join(", ", suggestions));
         }

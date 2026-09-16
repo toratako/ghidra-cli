@@ -41,6 +41,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/BridgeServer.java"),
     ),
     (
+        "ghidracli/CallReferences.java",
+        include_str!("../scripts/ghidracli/CallReferences.java"),
+    ),
+    (
         "ghidracli/CommandDispatcher.java",
         include_str!("../scripts/ghidracli/CommandDispatcher.java"),
     ),

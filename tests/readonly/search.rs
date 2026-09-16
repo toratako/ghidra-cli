@@ -544,7 +544,7 @@ public class CreateSearchWindowFixture extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_call_search_direction_thunks_and_import_pointers() {
+fn test_call_search_and_callers_validate_thunks_import_pointers_and_call_sites() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let name = format!("call-search-{}", uuid::Uuid::new_v4());
@@ -575,6 +575,13 @@ public class CreateCallSearchFixture extends GhidraScript {
                     var entry = space.getAddress(0x1000 + i * 0x100);
                     fm.createFunction(names[i], entry, new AddressSet(entry, entry.add(0xff)), source);
                 }
+                for (int address : new int[] {0x1000, 0x1008, 0x1010, 0x1100, 0x1060}) {
+                    var site = space.getAddress(address);
+                    program.getMemory().setBytes(site, new byte[] {(byte)0xff, (byte)0xd0});
+                    if (!new DisassembleCommand(site, new AddressSet(site, site.add(1)), false).applyTo(program, monitor)) {
+                        throw new IllegalStateException("Could not disassemble call at " + site);
+                    }
+                }
                 refs.addMemoryReference(space.getAddress(0x1000), space.getAddress(0x1100), RefType.UNCONDITIONAL_CALL, source, 0);
                 refs.addMemoryReference(space.getAddress(0x1100), space.getAddress(0x1200), RefType.UNCONDITIONAL_CALL, source, 0);
                 var external = program.getExternalManager().addExtFunction("KERNEL32.dll", "CreateProcessA", null, source);
@@ -590,8 +597,28 @@ public class CreateCallSearchFixture extends GhidraScript {
                 program.getMemory().setBytes(indirect, new byte[] {(byte)0xff, 0x15, (byte)0xda, 0x1f, 0, 0});
                 new DisassembleCommand(indirect, new AddressSet(indirect, indirect.add(5)), false).applyTo(program, monitor);
                 refs.addMemoryReference(indirect, slot, RefType.READ, source, 0);
-                // A non-call reference to the API is not a call site.
+                // A pointer to local code can use the flow-type INDIRECTION.
+                var localSlot = space.getAddress(0x3010);
+                program.getListing().createData(localSlot, PointerDataType.dataType);
+                refs.addMemoryReference(localSlot, space.getAddress(0x1100), RefType.INDIRECTION, source, 0);
+                var localIndirect = space.getAddress(0x1040);
+                program.getMemory().setBytes(localIndirect, new byte[] {(byte)0xff, 0x15, (byte)0xca, 0x1f, 0, 0});
+                if (!new DisassembleCommand(localIndirect, new AddressSet(localIndirect, localIndirect.add(5)), false).applyTo(program, monitor)) {
+                    throw new IllegalStateException("Could not disassemble local indirect call");
+                }
+                refs.addMemoryReference(localIndirect, localSlot, RefType.READ, source, 0);
+                // Argument references do not call the API, including on an unrelated CALL.
+                for (int address : new int[] {0x1030, 0x1050, 0x1070}) {
+                    var site = space.getAddress(address);
+                    program.getMemory().setByte(site, (byte)0x90);
+                    new DisassembleCommand(site, new AddressSet(site, site), false).applyTo(program, monitor);
+                }
                 refs.addExternalReference(space.getAddress(0x1030), 0, external, source, RefType.DATA);
+                refs.addExternalReference(space.getAddress(0x1050), 0, external, source, RefType.PARAM);
+                refs.addExternalReference(space.getAddress(0x1060), 0, external, source, RefType.PARAM);
+                // Even a mislabeled CALL reference from a NOP or undefined bytes is not a call.
+                refs.addExternalReference(space.getAddress(0x1070), 0, external, source, RefType.UNCONDITIONAL_CALL);
+                refs.addExternalReference(space.getAddress(0x1080), 0, external, source, RefType.UNCONDITIONAL_CALL);
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
         } finally { program.release(this); }
@@ -601,8 +628,18 @@ public class CreateCallSearchFixture extends GhidraScript {
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
         let incoming = client.find_calls("search_helper").unwrap();
-        assert_eq!(incoming["count"], 1, "{incoming}");
+        assert_eq!(incoming["count"], 2, "{incoming}");
         assert_eq!(incoming["results"][0]["caller"], "search_caller");
+        let local = client
+            .graph_callers("search_helper", Some(1), None)
+            .unwrap();
+        let local_sites: Vec<_> = local["callers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap())
+            .collect();
+        assert_eq!(local_sites, [0x1000, 0x1040], "{local}");
         let outgoing = client.function_calls("search_helper").unwrap();
         assert_eq!(outgoing["count"], 1, "{outgoing}");
         assert_eq!(outgoing["results"][0]["callee"], "search_leaf");
@@ -615,6 +652,26 @@ public class CreateCallSearchFixture extends GhidraScript {
                 .map(|row| u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap())
                 .collect();
             assert_eq!(sites, [0x1008, 0x1010, 0x1020], "{target}: {found}");
+            let graph = client.graph_callers(target, Some(1), None).unwrap();
+            let mut caller_sites: Vec<_> = graph["callers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| {
+                    assert_eq!(row["name"], "search_caller");
+                    assert_eq!(row["depth"], 0);
+                    u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap()
+                })
+                .collect();
+            caller_sites.sort_unstable();
+            assert_eq!(caller_sites, sites, "{target}: {graph}");
+            for limit in [1, 2] {
+                assert_eq!(
+                    client.graph_callers(target, Some(0), Some(limit)).unwrap()["count"],
+                    limit,
+                    "caller traversal must retain its bridge-side cap"
+                );
+            }
         }
         assert_eq!(client.find_calls("search_caller").unwrap()["count"], 0);
     });

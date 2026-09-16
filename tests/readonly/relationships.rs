@@ -288,6 +288,7 @@ fn test_graph_depth_uses_shortest_path_through_diamond_and_cycle() {
         .script_run_source(
             r#"
 import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
@@ -321,8 +322,13 @@ public class CreateGraphDepthFixture extends GhidraScript {
                     for (int[] edge : edges) {
                         int from = edge[direction];
                         int to = edge[1 - direction];
+                        Address site = base.add(from * 0x10 + 2 * sites[from]++);
+                        program.getMemory().setBytes(site, new byte[] {(byte)0xff, (byte)0xd0});
+                        if (!new DisassembleCommand(site, new AddressSet(site, site.add(1)), false).applyTo(program, monitor)) {
+                            throw new IllegalStateException("Could not disassemble call at " + site);
+                        }
                         program.getReferenceManager().addMemoryReference(
-                            base.add(from * 0x10 + sites[from]++), base.add(to * 0x10),
+                            site, base.add(to * 0x10),
                             RefType.UNCONDITIONAL_CALL, SourceType.USER_DEFINED, 0);
                     }
                 }
@@ -346,12 +352,12 @@ public class CreateGraphDepthFixture extends GhidraScript {
             (
                 "callees",
                 0x1000,
-                [0x00, 0x01, 0x10, 0x30, 0x20, 0x40, 0x50, 0x60],
+                [0x00, 0x02, 0x10, 0x30, 0x20, 0x40, 0x50, 0x60],
             ),
             (
                 "callers",
                 0x2000,
-                [0x10, 0x30, 0x20, 0x41, 0x40, 0x50, 0x60, 0x42],
+                [0x10, 0x30, 0x20, 0x42, 0x40, 0x50, 0x60, 0x44],
             ),
         ] {
             let root = format!("{direction}_root");

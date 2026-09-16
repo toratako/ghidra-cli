@@ -79,6 +79,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   erase deletion receipts in standalone or batch output.
 - `find crypto` uses correct SHA-256 and MD5 round constants in both little- and
   big-endian word order. SHA-512 constants are no longer mislabeled as SHA-256.
+- `graph callers` and `find calls` share call-site validation and thunk/pointer
+  traversal. Argument references and non-call instructions are not callers.
+- Function lookup errors recommend an executable help command instead of an
+  invalid bare-word filter.
 - Search and list output share one query limit plan. `find bytes`, raw-memory
   `find string`, and `find interesting` no longer truncate at 100/50 matches,
   so counts, filters, sorts and offsets can use the complete result set.

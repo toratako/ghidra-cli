@@ -6,7 +6,6 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
-import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.exception.CancelledException;
@@ -87,13 +86,13 @@ final class GraphCommands {
         int depth = getArgInt(args, "depth", 1);
         int limit = getArgInt(args, "limit", 0);
 
-        Function targetFunc = functionQueries.findFunctionByNameOrAddress(funcName);
+        CallReferences calls = new CallReferences(session, new AddressResolver(session));
+        Function targetFunc = calls.resolveTarget(funcName);
         if (targetFunc == null) return errorResult(functionQueries.buildFunctionTargetHint(funcName));
 
-        ReferenceManager refMgr = session.program().getReferenceManager();
         FunctionManager fm = session.program().getFunctionManager();
         JsonArray callers = new JsonArray();
-        findCallers(targetFunc, depth, limit, callers, refMgr, fm);
+        findCallers(targetFunc, depth, limit, callers, calls, fm);
 
         JsonObject result = new JsonObject();
         result.addProperty("function", funcName);
@@ -107,7 +106,7 @@ final class GraphCommands {
     }
 
     private void findCallers(Function root, int maxDepth, int limit,
-            JsonArray callers, ReferenceManager refMgr, FunctionManager fm) throws CancelledException {
+            JsonArray callers, CallReferences calls, FunctionManager fm) throws CancelledException {
         Deque<Function> pending = new ArrayDeque<>();
         Set<Address> visited = new HashSet<>();
         pending.addLast(root);
@@ -120,28 +119,27 @@ final class GraphCommands {
             for (int i = 0; i < levelSize; i++) {
                 session.monitor().checkCancelled();
                 Function func = pending.removeFirst();
-                for (Reference ref : refMgr.getReferencesTo(func.getEntryPoint())) {
-                    session.monitor().checkCancelled();
-                    RefType refType = ref.getReferenceType();
-                    if (refType.isCall() || refType == RefType.PARAM || refType == RefType.INDIRECTION) {
-                        Address fromAddr = ref.getFromAddress();
-                        Function callerFunc = fm.getFunctionContaining(fromAddr);
-                        if (callerFunc == null) continue;
+                int rowDepth = currentDepth;
+                boolean completed = calls.visitCallsTo(func, (ref, destination) -> {
+                    Address fromAddr = ref.getFromAddress();
+                    Function callerFunc = fm.getFunctionContaining(fromAddr);
+                    if (callerFunc == null) return true;
 
-                        JsonObject callerInfo = new JsonObject();
-                        callerInfo.addProperty("name", callerFunc.getName());
-                        callerInfo.addProperty("address", callerFunc.getEntryPoint().toString());
-                        callerInfo.addProperty("call_site", fromAddr.toString());
-                        callerInfo.addProperty("depth", currentDepth);
-                        callers.add(callerInfo);
+                    JsonObject callerInfo = new JsonObject();
+                    callerInfo.addProperty("name", callerFunc.getName());
+                    callerInfo.addProperty("address", callerFunc.getEntryPoint().toString());
+                    callerInfo.addProperty("call_site", fromAddr.toString());
+                    callerInfo.addProperty("depth", rowDepth);
+                    callers.add(callerInfo);
 
-                        if (graphLimitReached(callers, limit)) return;
-                        if ((maxDepth == 0 || currentDepth + 1 < maxDepth)
-                                && visited.add(callerFunc.getEntryPoint())) {
-                            pending.addLast(callerFunc);
-                        }
+                    if (graphLimitReached(callers, limit)) return false;
+                    if ((maxDepth == 0 || rowDepth + 1 < maxDepth)
+                            && visited.add(callerFunc.getEntryPoint())) {
+                        pending.addLast(callerFunc);
                     }
-                }
+                    return true;
+                });
+                if (!completed) return;
             }
         }
     }

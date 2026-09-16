@@ -90,6 +90,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `MemoryCommands`, `AnalysisCommands` | Memory/patch/disassembly operations, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Shared lookup and diagnostic logic; no handler-to-handler dependencies |
+| `CallReferences` | Shared incoming call-site validation and thunk/typed-pointer traversal for search and caller graphs |
 
 Handlers construct domain results; the dispatcher adds the wire envelope.
 Errors use `error` for messages and `detail` for diagnostics. Additional fields
