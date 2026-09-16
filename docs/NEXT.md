@@ -4,13 +4,6 @@ Future direction, not implemented guarantees. See [bridge](../src/ghidra/README.
 and [runtime](runtime.md) for current behavior; [PLAN.md](PLAN.md) owns proposed
 CLI/module contracts, implementation requirements, and acceptance criteria.
 
-## Current baseline
-
-Per-project persistent JVMs, responsive controls with bounded serialized jobs and
-cooperative cancellation, single-file scripts (args, absolute paths/stdin,
-captured stdout, artifact validation), and explicit save already exist. Do not
-re-plan them as future work.
-
 ## Architectural invariants
 
 - Keep one coordinated Ghidra program-execution lane per open project. Do not infer that apparently read-only `Program` operations are safe to run concurrently.

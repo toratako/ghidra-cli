@@ -16,30 +16,58 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reversed ranges, and bounds in different address spaces. Range queries honor
   `--limit` (including zero), filtering, sorting, offsets, and counts.
 - Explicit `--format c` and `--format asm` render decompiled C and instruction
-  text. Output defaults remain human-readable on TTY and compact JSON on non-TTY;
-  rows without the relevant code fields retain JSON rendering.
+  text, including addresses, bytes, mnemonics, and operands for disassembly.
+  Output defaults remain human-readable on TTY and compact JSON on non-TTY.
+  Results containing rows without the required code fields, including after
+  `--fields` projection, retain a single JSON document.
+- `doctor --runtime` creates a disposable project, starts and pings the real
+  Ghidra bridge, verifies clean shutdown, and removes the project. It reports
+  Ghidra's settings/cache paths and retains the diagnostic project if shutdown
+  fails. Without `--runtime`, JVM startup is explicitly reported as `not_checked`.
 
 ### Changed
 
 - Function, symbol, type, string and comment lists push a single contains filter
-  and safe offset/limit into Ghidra, including query/dump aliases. Sort, count,
+  and safe offset/limit into Ghidra, including query/dump aliases, reducing JSON
+  generation and transfer. Supported filter fields are `name` for functions,
+  symbols, and types, `value` for strings, and `text` for comments. Sort, count,
   projection and other filters stay in Rust. Default limits, unlimited requests,
   page counts and batch output retain their semantics. Restart running bridges
-  after upgrading; this adds no old-bridge query compatibility handling.
+  after upgrading; there is no old-bridge query fallback. Java/Rust Unicode
+  lowercasing differences can still miss contains matches or shift page results;
+  see [query execution](src/query/README.md#boundaries-and-validation).
 - `batch` writes attempted results to stdout even on partial failure, preserving
   nonzero exit codes and stop policies. Stderr no longer carries `detail.results`.
 - `find calls TARGET` searches the selected program for incoming call sites;
   `function calls TARGET` retains outgoing calls. Resolved thunks and import
   pointers are followed without treating ordinary data references as calls.
-- `doctor` checks storage writes and loopback TCP. `doctor --runtime` also creates
-  a disposable project, starts and pings Ghidra, and verifies clean shutdown.
-- Removed `--detach` from import and analysis; commands wait for completion.
-- Bridge lifecycle operations use persistent OS-backed `.starting` locks. Stop
-  every running bridge with the old CLI before upgrading: old and new lock
-  protocols cannot coordinate. Recovery never deletes Ghidra project locks or
-  force-terminates an unverified discovery PID.
+  Incoming rows include `caller`, `caller_address`, and `via` alongside the call
+  site and callee; unresolved function-pointer calls are not inferred.
+- `doctor` checks storage create/write/rename/delete operations and loopback TCP
+  bind/connect, with resolved paths and configuration sources in its report.
+- Bridge lifecycle operations use persistent OS-backed `.starting` locks. Save
+  and stop every running bridge with the old CLI before upgrading: old and new lock
+  protocols cannot coordinate. The new CLI also refuses to stop a legacy bridge
+  that cannot confirm its final save through `shutdown_wait`.
+  See [upgrade instructions](docs/runtime.md#upgrading).
+  Recovery never deletes Ghidra project locks or force-terminates a discovery PID.
 - Shutdown uses one total timeout across lock acquisition, connection, response,
-  and process exit. Timeout errors preserve discovery and the live process.
+  and process exit. Timeout errors retain exit code 75 and preserve discovery
+  and the live process instead of force-terminating it. Status checks no longer
+  remove discovery files; a live recorded PID prevents cleanup or replacement
+  startup even when its port is unreachable. `.starting` files persist after
+  lock release and must not be deleted.
+- Rust library list APIs (`BridgeClient::list_functions`, `list_strings`,
+  `symbol_list`, `type_list`, and `comment_list`) now require an `offset` argument.
+  `OneShotImportOptions` gains `program` for the saved file name, and
+  `BridgeClient::find_calls` now requests incoming calls; use `function_calls`
+  for outgoing calls.
+- Moved the RE agent skill from `docs/skills/SKILL.md` to
+  [docs/skills/ghidra-cli/SKILL.md](docs/skills/ghidra-cli/SKILL.md), with
+  task-specific references for exploration, refinement, low-level analysis,
+  programs, scripting, and batch workflows.
+- Credited hitori-chan's downstream work in `LICENSE` for the instruction search,
+  bounded disassembly, and C/assembly output feature inspiration.
 
 ### Fixed
 
@@ -52,9 +80,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   comparing them with native filesystem paths.
 - Project deletion holds the CLI lifecycle lock through removal and acquires
   Ghidra's project lock, refusing deletion while an external Ghidra owner is active.
+  Deleting `.gpr`/`.rep` artifacts now requires a working Ghidra/JDK installation;
+  missing prerequisites preserve project files. Empty reservations can still be
+  deleted without Ghidra, and unrelated files in the bare project directory remain.
 - Stop, restart, and project deletion report final save failures and retain the
   JVM/program for recovery. Successful shutdown waits for accepted jobs and saving.
-- Import rejects unsupported loader option names before loading or saving a program.
+- Import rejects unsupported loader option names before loading or saving a
+  program, reporting `import_status: not_started`. `--compiler-spec` now requires
+  `--language`, and an explicit `--program` must be a single nonempty file name.
 - Program metadata, status, operation responses, and artifact manifests use the
   saved project file name. `program info` and `summary` also expose its `path`;
   internal Ghidra names and original executable paths remain unchanged.
@@ -72,26 +105,53 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   names return candidates and require an address.
 - GZF export ends and saves its transaction before packing, stages output beside
   the destination, and atomically replaces an existing file only on success.
-- Fixed-width type aliases retain their widths across target ABIs. Type/field
+- Fallback fixed-width type aliases retain their widths across target ABIs. Type/field
   applicability, size, memory-range, and field-layout checks precede destructive
-  edits. Type creation reports the actual registered name and path.
+  edits. Struct, enum, and typedef creation report the actual registered name and
+  path, including conflict suffixes. `type add-field --size` is honored when
+  appending, or rejected before mutation if Ghidra cannot represent that size;
+  existing field settings are preserved.
 - Symbol edits revalidate selected IDs and metadata before changing any target;
   address selectors accept equivalent hex spellings while retaining address spaces.
-- Byte patches validate their complete range before clearing code. Comments at
-  interior addresses are readable, search rejects incomplete hex and treats glob
-  punctuation literally, long raw-string results retain the match, and DOT output
-  escapes identifiers and labels. Pcode work uses the active cancellation monitor.
+- `patch bytes` validates that the complete range is mapped and initialized
+  before clearing code. Patches spanning multiple memory blocks restore every
+  affected block's write permission.
+- `comment get` and `comment list` return comments at interior addresses of
+  instructions and data, instead of requiring a code-unit start address.
+- `find bytes` rejects empty or incomplete hexadecimal patterns. `find function`
+  treats glob punctuation other than `*` literally. Raw-memory `find string`
+  results retain the match in long printable runs and add a `truncated` flag
+  indicating printable bytes outside the returned window.
+- DOT graph output escapes identifiers and labels, preserving address-space
+  separators instead of replacing them with underscores.
 - Configured output format is honored after explicit flags. Default limits apply
   after client filtering, sorting, and offset, except for counts or explicit zero.
   Batch query lines inherit the batch selection despite environment defaults.
 - Compatibility restart preserves the actual selected program file path and
   propagates stop failures instead of starting a replacement JVM.
 - Configuration updates use locked atomic replacement and preserve config
-  symlinks. Setup validates private staging before publication, reuses valid
-  installations, refuses incomplete existing destinations, and saves absolute paths.
+  symlinks and unrelated settings, including concurrent updates on Windows.
+  `init` preserves existing configuration; invalid output-format values and
+  dangling config symlinks fail without replacing the previous file. Setup
+  validates private staging before publication, reuses valid installations,
+  refuses incomplete existing destinations, and saves absolute paths.
+- Unavailable file logging no longer prevents commands from running. The CLI
+  reports logging setup failures only when verbose diagnostics are requested
+  without `--quiet`.
 - Job cancellation is isolated, completed history retains metadata only, and
-  shutdown remains responsive with a full queue. Artifact hash failures return errors.
-- CI unit coverage includes both library and binary targets.
+  shutdown remains responsive with a full queue. Pcode work uses the active
+  cancellation monitor. Artifact hash failures return errors.
+- CI unit coverage includes both library and binary targets. Ghidra integration
+  jobs initialize and verify the runtime with `doctor --runtime` before parallel
+  JVM startup, and infrastructure coverage includes import/bootstrap recovery.
+  Shutdown deadline tests no longer hang waiting for mock TCP servers.
+
+### Removed
+
+- Removed the unused `--detach` flags from import and analysis; commands wait
+  for completion.
+- Removed the bridge's `find_calls` request. Direct protocol clients must use
+  `find_calls_to` for incoming calls or `function_calls` for outgoing calls.
 
 ## [0.4.0]
 
