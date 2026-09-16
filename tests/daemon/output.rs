@@ -106,13 +106,16 @@ fn test_batch_failure_exit_and_results() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    assert!(output.stdout.is_empty());
     let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(error["detail"]["commands_executed"], 3);
     assert_eq!(error["detail"]["failed"], 1);
-    assert!(error["detail"]["results"][0]["result"]["function_count"].is_number());
-    assert!(error["detail"]["results"][1]["detail"].is_object());
-    assert!(error["detail"]["results"][2]["result"]["function_count"].is_number());
+    assert!(error["detail"].get("results").is_none());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["commands_executed"], 3);
+    assert_eq!(report[0]["failed"], 1);
+    assert!(report[0]["results"][0]["result"]["function_count"].is_number());
+    assert!(report[0]["results"][1]["detail"].is_object());
+    assert!(report[0]["results"][2]["result"]["function_count"].is_number());
     std::fs::write(batch.path(), "program info\nprogram save\n").unwrap();
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args(["--json", "batch"])

@@ -310,12 +310,15 @@ public class PreventAutoSave extends GhidraScript {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    assert!(output.stdout.is_empty());
     let batch_error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(batch_error["detail"]["save_failed"], true);
     assert_eq!(batch_error["detail"]["not_executed"], 1);
+    assert!(batch_error["detail"].get("results").is_none());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["save_failed"], true);
+    assert_eq!(report[0]["not_executed"], 1);
     assert_eq!(
-        batch_error["detail"]["results"][0]["detail"]["command_response"]["status"],
+        report[0]["results"][0]["detail"]["command_response"]["status"],
         "success"
     );
 

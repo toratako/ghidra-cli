@@ -110,7 +110,7 @@ pub(super) fn execute_batch(
                  Do not replay completed edits. Last error: {error}"
             );
             // Context preserves the timeout's type (exit 75) while the outer
-            // error carries the batch results for normal JSON error rendering.
+            // error carries the batch report for the outer CLI output boundary.
             Err(error.context(BridgeCommandError { message, detail }))
         }
         None => Ok(detail),

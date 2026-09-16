@@ -68,6 +68,14 @@ impl RecordedBridge {
                 }
                 captured.lock().unwrap().push(request.clone());
                 let args = &request["args"];
+                if args["text"] == "test-save-failure" {
+                    writeln!(connection, "{}", json!({"status": "error", "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
+                    continue;
+                }
+                if args["text"] == "test-timeout" {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    continue;
+                }
                 let data = match request["command"].as_str().unwrap() {
                     "bridge_info" => json!({"auto_save": true, "named_import": true}),
                     "open_program" => {
@@ -516,9 +524,11 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    assert!(output.stdout.is_empty());
+    assert!(!output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    let detail = &error["detail"];
+    assert!(error["detail"].get("results").is_none());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let detail = &report[0];
     assert_eq!(detail["commands_parsed"], 4);
     assert_eq!(detail["commands_executed"], 4);
     assert_eq!(detail["failed"], 3);
@@ -568,9 +578,11 @@ fn batch_on_error_controls_command_and_syntax_failures() {
             }
             let output = command.output().unwrap();
             assert_eq!(output.status.code(), Some(1), "{policy:?}: {output:?}");
-            assert!(output.stdout.is_empty());
+            assert!(!output.stdout.is_empty());
             let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-            let detail = &error["detail"];
+            assert!(error["detail"].get("results").is_none());
+            let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+            let detail = &report[0];
             let stopped = policy == Some("stop");
             assert_eq!(detail["commands_parsed"], 3);
             assert_eq!(detail["commands_executed"], if stopped { 2 } else { 3 });
@@ -642,9 +654,11 @@ fn nested_batch_inherits_on_error_unless_overridden() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(1), "{output:?}");
-        assert!(output.stdout.is_empty());
+        assert!(!output.stdout.is_empty());
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        let detail = &error["detail"];
+        assert!(error["detail"].get("results").is_none());
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let detail = &report[0];
         assert_eq!(detail["failed"], 1);
         assert_eq!(detail["not_executed"], usize::from(parent_policy == "stop"));
         let nested = &detail["results"][1]["detail"];
@@ -1087,10 +1101,12 @@ fn batch_continues_after_unsupported_memory_commands_without_selecting_their_pro
     assert_eq!(error["detail"]["failed"], 2);
     assert_eq!(error["detail"]["not_executed"], 0);
     for index in [0, 1] {
-        assert!(error["detail"]["results"][index]["error"]
-            .as_str()
-            .unwrap()
-            .contains("not implemented (WIP)"));
+        assert!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap()[0]["results"][index]["error"]
+                .as_str()
+                .unwrap()
+                .contains("not implemented (WIP)")
+        );
     }
     let requests = bridge.requests.lock().unwrap();
     let domain: Vec<_> = requests
@@ -1100,4 +1116,42 @@ fn batch_continues_after_unsupported_memory_commands_without_selecting_their_pro
     assert_eq!(domain.len(), 1, "{domain:?}");
     assert_eq!(domain[0]["command"], "comment_set");
     assert_eq!(domain[0]["args"]["text"], "after");
+}
+
+#[test]
+fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
+    for (failure, code) in [("test-save-failure", 1), ("test-timeout", 75)] {
+        let bridge = RecordedBridge::new();
+        std::fs::write(
+            bridge.root.path().join("nested.txt"),
+            format!("comment set 1000 {failure}\ncomment set 1000 must-not-run\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            bridge.root.path().join("batch.txt"),
+            "program info\nbatch nested.txt\ncomment set 1000 must-not-run\n",
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .env("GHIDRA_CLI_READ_TIMEOUT", "1")
+            .args(["batch", "batch.txt", "--on-error", "continue"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(code), "{output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report[0]["commands_executed"], 2);
+        assert_eq!(report[0]["not_executed"], 1);
+        assert_eq!(report[0]["results"][1]["exit_code"], code);
+        assert_eq!(report[0]["results"][1]["detail"]["not_executed"], 1);
+        let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(diagnostic["detail"].get("results").is_none());
+        assert_eq!(diagnostic["exit_code"], code);
+        assert!(!bridge
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r["args"]["text"] == "must-not-run"));
+    }
 }

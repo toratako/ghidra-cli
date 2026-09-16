@@ -31,7 +31,10 @@ Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
 
-Batch error envelopes retain attempted results and structured detail. Ordinary
+Batch errors retain attempted results internally, including nested reports. The
+outer invocation prints the report to stdout using the same format as a successful
+batch, then reports summary diagnostics on stderr and exits nonzero. Stderr no
+longer contains `detail.results`. Ordinary
 errors follow `--on-error continue|stop` (default: continue); nested batches
 inherit the policy unless overridden. Save failures/timeouts always stop them.
 Preserve the timeout type for exit 75. Each line uses normal target resolution

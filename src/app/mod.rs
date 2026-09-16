@@ -52,8 +52,30 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
 
 /// Run a command that requires the bridge.
 fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
-    let result = execute_bridge_command(&cli)?;
-    output::print_result(&cli, result)
+    match execute_bridge_command(&cli) {
+        Ok(result) => output::print_result(&cli, result),
+        Err(error) => {
+            if matches!(cli.command, Commands::Batch(_)) {
+                if let Some(batch) =
+                    error.downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+                {
+                    if batch.detail.get("results").is_some() {
+                        // A batch report is a result even when some rows failed. Only
+                        // the outer invocation writes it; nested reports stay in rows.
+                        output::print_result(&cli, batch.detail.clone())?;
+                        let mut summary = batch.detail.clone();
+                        summary.as_object_mut().unwrap().remove("results");
+                        let message = batch.message.clone();
+                        return Err(error.context(crate::ipc::protocol::BridgeCommandError {
+                            message,
+                            detail: summary,
+                        }));
+                    }
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {

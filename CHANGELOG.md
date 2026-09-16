@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `batch` writes attempted results to stdout even on partial failure, preserving
+  nonzero exit codes and stop policies. Stderr no longer carries `detail.results`.
 - `doctor` checks storage writes and loopback TCP. `doctor --runtime` also creates
   a disposable project, starts and pings Ghidra, and verifies clean shutdown.
 - Removed `--detach` from import and analysis; commands wait for completion.

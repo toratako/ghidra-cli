@@ -56,8 +56,10 @@ After a save failure, keep the bridge running and retry `program save` with the
 same project/program; it saves in place without repeating the edit.
 Failed or cancelled operations can retain partial changes; do not assume rollback.
 
-`batch` exits nonzero if any command fails; attempted results and error details
-are in `detail.results`. `--on-error continue` (default) runs subsequent commands
+`batch` exits nonzero if any command fails, but writes its report to stdout even
+on partial failure. In JSON output, read `.[0].results` for attempted results and
+per-command error details; stderr contains only the batch diagnostic and summary.
+`--on-error continue` (default) runs subsequent commands
 after ordinary errors; use `--on-error stop` for edits that depend on earlier
 commands succeeding. Nested batches inherit the policy unless overridden.
 Save failures and timeouts always stop the batch, with

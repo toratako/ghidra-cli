@@ -154,14 +154,17 @@ program info
 
     result.assert_failure();
     assert_eq!(result.exit_code, 1);
-    assert!(result.stdout.is_empty());
-    let error: serde_json::Value = serde_json::from_str(&result.stderr).unwrap();
-    assert_eq!(error["detail"]["commands_executed"], 3);
-    assert_eq!(error["detail"]["failed"], 1);
-    assert_eq!(error["detail"]["not_executed"], 0);
-    assert!(error["detail"]["results"][0]["result"].is_object());
-    assert!(error["detail"]["results"][1]["error"].is_string());
-    assert!(error["detail"]["results"][2]["result"].is_object());
+    assert!(!result.stdout.is_empty());
+    let diagnostic: serde_json::Value = serde_json::from_str(&result.stderr).unwrap();
+    assert!(diagnostic["detail"].get("results").is_none());
+    let report: serde_json::Value = serde_json::from_str(&result.stdout).unwrap();
+    let error = &report[0];
+    assert_eq!(error["commands_executed"], 3);
+    assert_eq!(error["failed"], 1);
+    assert_eq!(error["not_executed"], 0);
+    assert!(error["results"][0]["result"].is_object());
+    assert!(error["results"][1]["error"].is_string());
+    assert!(error["results"][2]["result"].is_object());
 
     fs::remove_file(batch_file).ok();
 }
