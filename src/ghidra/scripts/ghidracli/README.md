@@ -136,6 +136,14 @@ typed pointer references, and emits only call sites. `function_calls` retains th
 outgoing scan of one function. Distinct wire names cause an older bridge to report
 an unknown command instead of silently returning results for the wrong direction.
 
+`find_instruction` scans existing listing instructions using literal text matching
+(`Locale.ROOT` when case-insensitive). It and `disasm_range` share inclusive,
+same-address-space bounds in `AddressResolver.instructionRange`; one-sided search
+bounds stay in the supplied address space. Both check cancellation during iteration
+and have no hidden scan cap. The client sends an uncapped fetch when filtering,
+sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct wire
+name so an older bridge cannot silently ignore `disasm --end`.
+
 ## Validation
 
 `bridge/sources.rs` tests source inventory/publication; `daemon_tests` exercises

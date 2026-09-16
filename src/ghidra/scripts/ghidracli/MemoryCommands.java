@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
@@ -268,6 +269,27 @@ final class MemoryCommands {
         } catch (Exception e) {
             return errorResult("Failed to disassemble: " + e.getMessage());
         }
+    }
+
+    JsonObject handleDisasmRange(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        String start = getArgString(args, "start");
+        String end = getArgString(args, "end");
+        if (start == null || end == null) return errorResult("Start and end addresses required");
+        AddressSetView range = addressResolver.instructionRange(start, end);
+        int limit = getArgInt(args, "limit", 0);
+        if (limit < 0) return errorResult("Limit must be non-negative (0 means unlimited)");
+        JsonArray instructions = new JsonArray();
+        for (Instruction instruction : session.program().getListing().getInstructions(range, true)) {
+            session.monitor().checkCancelled();
+            if (!range.contains(instruction.getAddress())) continue;
+            instructions.add(instructionToJson(instruction));
+            if (limit > 0 && instructions.size() >= limit) break;
+        }
+        JsonObject result = new JsonObject();
+        result.add("instructions", instructions);
+        result.addProperty("count", instructions.size());
+        return result;
     }
 
     private JsonObject instructionToJson(Instruction instr) throws MemoryAccessException {

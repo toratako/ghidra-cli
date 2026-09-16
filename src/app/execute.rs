@@ -436,6 +436,13 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 FindCommands::String(args) => client.find_string(&args.pattern),
                 FindCommands::Bytes(args) => client.find_bytes(&args.hex),
+                FindCommands::Instruction(args) => client.find_instruction(
+                    &args.pattern,
+                    args.start.as_deref(),
+                    args.end.as_deref(),
+                    args.case_sensitive,
+                    list_limit,
+                ),
                 FindCommands::Function(args) => client.find_function(&args.pattern),
                 FindCommands::Calls(args) => client.find_calls(args.resolved_target()),
                 FindCommands::Crypto(_) => client.find_crypto(),
@@ -462,7 +469,10 @@ pub(super) fn execute_via_bridge(
             }
         }
         Commands::Script(cmd) => scripts::execute(client, cmd),
-        Commands::Disasm(args) => client.disasm(args.resolved_target(), args.num_instructions),
+        Commands::Disasm(args) => match &args.end {
+            Some(end) => client.disasm_range(args.resolved_target(), end, list_limit),
+            None => client.disasm(args.resolved_target(), args.num_instructions),
+        },
         Commands::DisasmAt(args) => client.disasm_at(&args.address, args.count),
         Commands::Clear(args) => {
             let (start, end) = split_range(&args.range).ok_or_else(|| {

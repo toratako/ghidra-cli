@@ -2,6 +2,8 @@ package ghidracli;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
@@ -89,6 +91,29 @@ final class AddressResolver {
                 + candidates + "; use an explicit address");
         }
         return candidates.isEmpty() ? null : candidates.iterator().next();
+    }
+
+    /** Inclusive range of instruction start addresses, restricted to mapped memory.
+     * A one-sided range stays in the supplied endpoint's address space. */
+    AddressSetView instructionRange(String startText, String endText) {
+        Address start = startText == null ? null : resolveAddress(startText);
+        Address end = endText == null ? null : resolveAddress(endText);
+        if (startText != null && start == null) {
+            throw new IllegalArgumentException("Invalid start address: " + startText);
+        }
+        if (endText != null && end == null) {
+            throw new IllegalArgumentException("Invalid end address: " + endText);
+        }
+        if (start == null && end == null) return session.program().getMemory();
+        if (start == null) start = end.getAddressSpace().getMinAddress();
+        if (end == null) end = start.getAddressSpace().getMaxAddress();
+        if (!start.getAddressSpace().equals(end.getAddressSpace())) {
+            throw new IllegalArgumentException("Start and end must be in the same address space");
+        }
+        if (start.compareTo(end) > 0) {
+            throw new IllegalArgumentException("Start address must not be after end address");
+        }
+        return new AddressSet(start, end).intersect(session.program().getMemory());
     }
 
     /**

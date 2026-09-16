@@ -440,6 +440,23 @@ impl BridgeClient {
         self.send_command("find_bytes", Some(json!({"hex": hex})))
     }
 
+    pub fn find_instruction(
+        &self,
+        pattern: &str,
+        start: Option<&str>,
+        end: Option<&str>,
+        case_sensitive: bool,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "find_instruction",
+            Some(json!({
+                "pattern": pattern, "start": start, "end": end,
+                "case_sensitive": case_sensitive, "limit": limit,
+            })),
+        )
+    }
+
     pub fn find_function(&self, pattern: &str) -> Result<serde_json::Value> {
         self.send_command("find_function", Some(json!({"pattern": pattern})))
     }
@@ -497,6 +514,20 @@ impl BridgeClient {
         self.send_command(
             "disasm",
             Some(json!({"address": address, "count": num_instructions})),
+        )
+    }
+
+    /// Read existing instructions in an inclusive range. A distinct wire name
+    /// prevents older bridges from silently ignoring the end address.
+    pub fn disasm_range(
+        &self,
+        start: &str,
+        end: &str,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "disasm_range",
+            Some(json!({"start": start, "end": end, "limit": limit})),
         )
     }
 

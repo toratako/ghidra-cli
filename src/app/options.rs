@@ -92,6 +92,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
+            cli::FindCommands::Instruction(args) => args.options.project.clone(),
             cli::FindCommands::Function(args) => args.options.project.clone(),
             cli::FindCommands::Calls(args) => args.options.project.clone(),
             cli::FindCommands::Crypto(opts) => opts.project.clone(),
@@ -238,6 +239,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
+            cli::FindCommands::Instruction(args) => args.options.program.clone(),
             cli::FindCommands::Function(args) => args.options.program.clone(),
             cli::FindCommands::Calls(args) => args.options.program.clone(),
             cli::FindCommands::Crypto(opts) => opts.program.clone(),
@@ -405,6 +407,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
+            cli::FindCommands::Instruction(args) => Some(args.options.clone()),
             cli::FindCommands::Function(args) => Some(args.options.clone()),
             cli::FindCommands::Calls(args) => Some(args.options.clone()),
             cli::FindCommands::Crypto(opts) => Some(opts.clone()),

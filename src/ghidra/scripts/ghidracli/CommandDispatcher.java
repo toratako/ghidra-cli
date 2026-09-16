@@ -39,7 +39,7 @@ final class CommandDispatcher {
         programCommands = new ProgramCommands(session);
         listingCommands = new ListingCommands(session);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
-        searchCommands = new SearchCommands(session, functionQueries);
+        searchCommands = new SearchCommands(session, functionQueries, addressResolver);
         symbolCommands = new SymbolCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
@@ -81,6 +81,7 @@ final class CommandDispatcher {
             case "find_string":     return searchCommands.handleFindString(args);
             case "string_refs":     return searchCommands.handleStringRefs(args);
             case "find_bytes":      return searchCommands.handleFindBytes(args);
+            case "find_instruction": return searchCommands.handleFindInstruction(args);
             case "find_function":   return searchCommands.handleFindFunction(args);
             case "find_calls_to":   return searchCommands.handleFindCalls(args);
             case "function_calls":  return searchCommands.handleFunctionCalls(args);
@@ -150,6 +151,7 @@ final class CommandDispatcher {
             case "patch_export":    return memoryCommands.handlePatchExport(args);
             // Other commands
             case "disasm":          return memoryCommands.handleDisasm(args);
+            case "disasm_range":    return memoryCommands.handleDisasmRange(args);
             case "disasm_at":       return memoryCommands.handleDisasmAt(args);
             case "clear_range":     return memoryCommands.handleClearRange(args);
             case "stats":           return programCommands.handleStats();

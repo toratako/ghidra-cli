@@ -83,6 +83,9 @@ pub struct DisasmArgs {
     /// Number of instructions to disassemble
     #[arg(long = "instructions", short = 'n')]
     pub num_instructions: Option<usize>,
+    /// Include instructions whose start address is between TARGET and END (inclusive)
+    #[arg(long, conflicts_with = "num_instructions")]
+    pub end: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
 }

@@ -37,6 +37,7 @@ ghidra-cli strings list --filter "length > 12" --limit 80 --project target
 ghidra-cli find string "password" --project target
 ghidra-cli strings refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
+ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
 ghidra-cli find calls CreateProcessW --project target
 ghidra-cli find crypto --project target
 ghidra-cli find interesting --project target
@@ -52,6 +53,8 @@ String names and external/import names resolve directly. For plain `graph
 callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
 count, or offset may require a broader traversal. See [exports](programs.md#export)
 to write a graph as DOT.
+For instruction-text matching and disassembly ranges, see
+[low-level analysis](low-level.md#disassembly-and-analysis-boundaries).
 
 ## Symbols and memory
 

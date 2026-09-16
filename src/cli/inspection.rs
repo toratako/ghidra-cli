@@ -119,6 +119,8 @@ pub enum FindCommands {
     String(FindStringArgs),
     /// Find byte patterns
     Bytes(FindBytesArgs),
+    /// Find a substring in already-disassembled instructions (does not require xrefs)
+    Instruction(FindInstructionArgs),
     /// Find functions
     #[command(alias = "func", alias = "fn", alias = "functions")]
     Function(FindFunctionArgs),
@@ -143,6 +145,24 @@ pub struct FindStringArgs {
 pub struct FindBytesArgs {
     /// Hex bytes, contiguous or quoted with spaces (e.g. 488b05 or "48 8b 05")
     pub hex: String,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindInstructionArgs {
+    /// Literal substring of Ghidra's instruction text (case-insensitive by default)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub pattern: String,
+    /// Include instructions starting at or after this address
+    #[arg(long)]
+    pub start: Option<String>,
+    /// Include instructions starting at or before this address (same address space)
+    #[arg(long)]
+    pub end: Option<String>,
+    /// Match instruction text case-sensitively
+    #[arg(long)]
+    pub case_sensitive: bool,
     #[command(flatten)]
     pub options: QueryOptions,
 }

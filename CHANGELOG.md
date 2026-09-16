@@ -5,6 +5,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `find instruction PATTERN` searches existing Ghidra instruction text with
+  case-insensitive literal matching, optional `--case-sensitive`, and inclusive
+  `--start`/`--end` bounds. It supports the usual query options and cancellation;
+  it neither disassembles undefined bytes nor requires cross-references.
+- `disasm TARGET --end END` lists existing instructions whose start addresses
+  lie in the inclusive range. It rejects `--instructions` together with `--end`,
+  reversed ranges, and bounds in different address spaces. Range queries honor
+  `--limit` (including zero), filtering, sorting, offsets, and counts.
+
 ### Changed
 
 - `batch` writes attempted results to stdout even on partial failure, preserving

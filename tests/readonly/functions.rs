@@ -335,6 +335,78 @@ fn test_decompile_nonexistent_function() {
 
 #[test]
 #[serial]
+fn test_disasm_end_includes_only_instruction_starts_in_range() {
+    require_ghidra!();
+    let harness = harness();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let client = harness.client().unwrap();
+    let baseline = client.disasm(&address, Some(6)).unwrap();
+    let instructions = baseline["instructions"].as_array().unwrap();
+    assert_eq!(instructions.len(), 6);
+    let start = instructions[0]["address"].as_str().unwrap();
+    let end = instructions[5]["address"].as_str().unwrap();
+    let ranged = client.disasm_range(start, end, Some(0)).unwrap();
+    assert_eq!(ranged["instructions"], baseline["instructions"]);
+    assert_eq!(
+        client.disasm_range(start, start, None).unwrap()["instructions"],
+        serde_json::json!([instructions[0]])
+    );
+    assert_eq!(
+        client.disasm_range(start, end, Some(2)).unwrap()["instructions"],
+        serde_json::json!(&instructions[..2])
+    );
+
+    let result = ghidra(harness)
+        .args(["disasm", start, "--end", end, "--limit", "0"])
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+    result.assert_success();
+    assert_eq!(result.json::<serde_json::Value>(), baseline["instructions"]);
+    let result = ghidra(harness)
+        .args([
+            "disasm",
+            start,
+            "--end",
+            end,
+            "--sort=-address",
+            "--offset",
+            "1",
+            "--limit",
+            "1",
+            "--fields",
+            "address",
+        ])
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+    result.assert_success();
+    assert_eq!(
+        result.json::<serde_json::Value>(),
+        serde_json::json!([{"address": instructions[4]["address"]}])
+    );
+
+    // An interior lower boundary must not rewind to the containing instruction.
+    if instructions[0]["bytes"].as_str().unwrap().len() > 2 {
+        let interior = format!("{:x}", u64::from_str_radix(start, 16).unwrap() + 1);
+        let ranged = client.disasm_range(&interior, end, None).unwrap();
+        assert_eq!(
+            ranged["instructions"],
+            serde_json::json!(&instructions[1..])
+        );
+    }
+    for (range_start, range_end, expected) in [
+        (end, start, "Start address"),
+        (start, "not_an_address_or_symbol", "Invalid end"),
+        ("not_an_address_or_symbol", end, "Invalid start"),
+    ] {
+        let error = client
+            .disasm_range(range_start, range_end, None)
+            .unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+}
+
+#[test]
+#[serial]
 fn test_disasm_at_main() {
     require_ghidra!();
     let harness = harness();

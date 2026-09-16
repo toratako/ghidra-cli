@@ -3,6 +3,54 @@ use crate::format::OutputFormat;
 use clap::ValueEnum;
 
 #[test]
+fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "find",
+        "instruction",
+        "mov",
+        "--start",
+        "1000",
+        "--end",
+        "2000",
+        "--case-sensitive",
+        "--limit",
+        "0",
+    ])
+    .unwrap();
+    let Commands::Find(FindCommands::Instruction(args)) = cli.command else {
+        panic!("expected instruction search");
+    };
+    assert_eq!(args.start.as_deref(), Some("1000"));
+    assert_eq!(args.end.as_deref(), Some("2000"));
+    assert!(args.case_sensitive);
+    assert_eq!(args.options.limit, Some(0));
+    assert!(Cli::try_parse_from(["ghidra-cli", "find", "instruction", ""]).is_err());
+}
+
+#[test]
+fn disasm_end_conflicts_with_instruction_count() {
+    for target in [vec!["main"], vec!["--target", "main"]] {
+        let mut args = vec!["ghidra-cli", "disasm"];
+        args.extend(target);
+        args.extend(["--end", "2000"]);
+        let cli = Cli::try_parse_from(&args).unwrap();
+        let Commands::Disasm(disasm) = cli.command else {
+            panic!("expected disasm");
+        };
+        assert_eq!(disasm.end.as_deref(), Some("2000"));
+        for flag in ["-n", "--instructions"] {
+            let mut conflict = args.clone();
+            conflict.extend([flag, "10"]);
+            let error = Cli::try_parse_from(conflict)
+                .err()
+                .expect("conflicting bounds must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+    }
+}
+
+#[test]
 fn query_help_lists_only_routed_types() {
     for help_flag in ["-h", "--help"] {
         let help = Cli::try_parse_from(["ghidra-cli", "query", help_flag])

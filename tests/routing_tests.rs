@@ -83,6 +83,22 @@ impl RecordedBridge {
                         json!({"program": program})
                     }
                     "import" => json!({"program": "imported"}),
+                    "disasm" | "disasm_range" | "find_instruction" => {
+                        let mut rows = vec![
+                            json!({"address": "1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
+                            json!({"address": "1001", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
+                            json!({"address": "1002", "bytes": "c3", "mnemonic": "RET", "operands": [], "disasm": "RET"}),
+                        ];
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        let key = if request["command"] == "find_instruction" {
+                            "results"
+                        } else {
+                            "instructions"
+                        };
+                        json!({key: rows, "count": rows.len()})
+                    }
                     "symbol_get" => json!({"symbols": if args["name"] == "missing" {
                         vec![]
                     } else {
@@ -160,6 +176,70 @@ impl Drop for RecordedBridge {
         let _ = self.worker.take().unwrap().join();
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
+    let bridge = RecordedBridge::new();
+    for command in [
+        vec![
+            "find",
+            "instruction",
+            "NOP",
+            "--start",
+            "1000",
+            "--end",
+            "1002",
+            "--case-sensitive",
+        ],
+        vec!["disasm", "1000", "--end", "1002"],
+    ] {
+        let rows = bridge.run(&command);
+        assert_eq!(
+            rows.as_array().unwrap().len(),
+            1,
+            "configured default limit"
+        );
+        let mut all = command.clone();
+        all.extend(["--limit", "0"]);
+        assert_eq!(bridge.run(&all).as_array().unwrap().len(), 3);
+        let mut filtered = command.clone();
+        filtered.extend([
+            "--filter",
+            "address != '1000'",
+            "--fields",
+            "address",
+            "--sort=-address",
+            "--offset",
+            "1",
+            "--limit",
+            "1",
+        ]);
+        assert_eq!(bridge.run(&filtered), json!([{"address": "1001"}]));
+        let mut count = command.clone();
+        count.push("--count");
+        assert_eq!(bridge.run(&count), 3);
+        let requests = bridge.requests.lock().unwrap();
+        let wire = if command[0] == "find" {
+            "find_instruction"
+        } else {
+            "disasm_range"
+        };
+        let sent: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+        assert_eq!(sent.len(), 4);
+        assert_eq!(sent[0]["args"]["limit"], 1);
+        for request in &sent {
+            assert_eq!(request["args"]["start"], "1000");
+            assert_eq!(request["args"]["end"], "1002");
+            if wire == "find_instruction" {
+                assert_eq!(request["args"]["pattern"], "NOP");
+                assert_eq!(request["args"]["case_sensitive"], true);
+            }
+        }
+        for request in &sent[1..] {
+            assert!(request["args"]["limit"].is_null());
+        }
     }
 }
 

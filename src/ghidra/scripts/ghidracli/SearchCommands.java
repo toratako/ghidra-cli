@@ -5,28 +5,69 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import static ghidracli.JsonProtocol.errorResult;
+import static ghidracli.JsonProtocol.getArgBool;
+import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class SearchCommands {
     private final ProgramSession session;
     private final FunctionQueries functionQueries;
+    private final AddressResolver addressResolver;
 
-    SearchCommands(ProgramSession session, FunctionQueries functionQueries) {
+    SearchCommands(ProgramSession session, FunctionQueries functionQueries, AddressResolver addressResolver) {
         this.session = session;
         this.functionQueries = functionQueries;
+        this.addressResolver = addressResolver;
+    }
+
+    JsonObject handleFindInstruction(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        String pattern = getArgString(args, "pattern");
+        if (pattern == null || pattern.isEmpty()) return errorResult("Non-empty pattern required");
+        boolean caseSensitive = getArgBool(args, "case_sensitive", false);
+        int limit = getArgInt(args, "limit", 0);
+        if (limit < 0) return errorResult("Limit must be non-negative (0 means unlimited)");
+        AddressSetView range = addressResolver.instructionRange(
+            getArgString(args, "start"), getArgString(args, "end"));
+        String needle = caseSensitive ? pattern : pattern.toLowerCase(Locale.ROOT);
+        JsonArray results = new JsonArray();
+        for (Instruction instruction : session.program().getListing().getInstructions(range, true)) {
+            session.monitor().checkCancelled();
+            Address address = instruction.getAddress();
+            // Match start addresses, even if a listing iterator includes a
+            // code unit that overlaps the lower boundary.
+            if (!range.contains(address)) continue;
+            String text = instruction.toString();
+            String haystack = caseSensitive ? text : text.toLowerCase(Locale.ROOT);
+            if (!haystack.contains(needle)) continue;
+            JsonObject row = new JsonObject();
+            row.addProperty("address", address.toString());
+            row.addProperty("disasm", text);
+            Function function = session.program().getFunctionManager().getFunctionContaining(address);
+            if (function != null) row.addProperty("function", function.getName());
+            results.add(row);
+            if (limit > 0 && results.size() >= limit) break;
+        }
+        JsonObject result = new JsonObject();
+        result.add("results", results);
+        result.addProperty("count", results.size());
+        return result;
     }
 
     JsonObject handleFindString(JsonObject args) {
