@@ -62,26 +62,6 @@ fn removed_flags_are_rejected_before_loading_config() {
     }
 }
 
-#[test]
-fn unfinished_memory_commands_report_wip_before_loading_config() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
-    for (args, alternative) in [
-        (vec!["memory", "write", "0x1000", "90"], "patch bytes"),
-        (vec!["memory", "search", "90"], "find bytes"),
-    ] {
-        let output = isolated_command(&temp).args(&args).output().unwrap();
-        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
-        assert!(output.stdout.is_empty());
-        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
-        let message = error["message"].as_str().unwrap();
-        assert!(
-            message.contains("WIP") && message.contains(alternative),
-            "{error}"
-        );
-    }
-}
-
 #[cfg(target_os = "linux")]
 #[test]
 fn unavailable_file_logging_does_not_prevent_commands() {
@@ -589,7 +569,6 @@ fn invalid_choices_list_valid_values_before_loading_config() {
                 vec!["query", "symbols"],
                 "functions, strings, imports, exports, memory",
             ),
-            (vec!["set-default", "potato", "foo"], "program, project"),
             (
                 vec!["query", "functions", "--format", "potato"],
                 "json, json-compact, json-stream",
@@ -795,4 +774,43 @@ fn config_io_failure_retains_operation_path_and_os_cause() {
     assert!(error["detail"]["cause"].is_string());
     assert!(error["detail"]["io_kind"].is_string());
     assert!(error["detail"]["os_error"].is_number());
+}
+
+#[test]
+fn removed_commands_are_rejected_before_loading_config() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
+    for args in [
+        vec!["patch", "bytes", "1000", "90"],
+        vec!["patch", "nop", "1000"],
+        vec!["patch", "export", "-o", "out.bin"],
+        vec!["memory", "search", "90"],
+        vec!["dump", "imports"],
+        vec!["export", "imports"],
+        vec!["summary"],
+        vec!["info"],
+        vec!["set-default", "program", "sample"],
+        vec!["find", "interesting"],
+        vec!["find", "crypto"],
+        vec!["find", "function", "main"],
+        vec!["script", "java", "code"],
+        vec!["script", "python", "code"],
+        vec!["diff", "functions", "a", "b"],
+        vec!["function", "x-refs", "main"],
+        vec!["function", "decompile", "main"],
+        vec!["function", "tag", "list"],
+        vec!["graph", "export", "dot"],
+    ] {
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("unrecognized subcommand"),
+            "{args:?}: {error}"
+        );
+    }
 }

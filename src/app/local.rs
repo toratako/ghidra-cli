@@ -130,33 +130,6 @@ pub(super) fn handle_config_command(
     Ok(())
 }
 
-pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> anyhow::Result<()> {
-    match args.kind {
-        cli::DefaultKind::Program => {
-            Config::update(|config| {
-                config.default_program = Some(args.value.clone());
-                Ok(())
-            })?;
-            output.result(
-                &json!({"message": "Default program set", "program": args.value}),
-                &format!("Default program set to: {}", args.value),
-            )?;
-        }
-        cli::DefaultKind::Project => {
-            Config::update(|config| {
-                config.default_project = Some(args.value.clone());
-                Ok(())
-            })?;
-            output.result(
-                &json!({"message": "Default project set", "project": args.value}),
-                &format!("Default project set to: {}", args.value),
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
 pub(super) fn handle_project_command(
     cmd: cli::ProjectCommands,
     project: &Option<String>,

@@ -1,6 +1,6 @@
 use super::options::extract_query_options;
 use super::CommandResult;
-use crate::cli::{self, Cli, Commands};
+use crate::cli::{Cli, Commands};
 use crate::error::GhidraError;
 use crate::format::{auto_detect_format, DefaultFormatter, Formatter, OutputFormat};
 use crate::terminal::write_stdout;
@@ -66,10 +66,7 @@ pub(super) fn describe_query_error(err: GhidraError) -> anyhow::Error {
 
 /// Check if a decompile result looks like .NET managed code and warn the user.
 fn check_dotnet_decompile_warning(command: &Commands, result: &serde_json::Value) {
-    let is_decompile = matches!(
-        command,
-        Commands::Decompile(_) | Commands::Function(cli::FunctionCommands::Decompile(_))
-    );
+    let is_decompile = matches!(command, Commands::Decompile(_));
     if !is_decompile {
         return;
     }
@@ -184,10 +181,7 @@ fn output_format(cli: &Cli) -> OutputFormat {
 fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> OutputFormat {
     // Explicit -o > --json/--pretty > configured format > TTY detection.
     let opts = extract_query_options(&cli.command);
-    let explicit_format = match &cli.command {
-        Commands::Diff(cli::DiffCommands::Functions(args)) => args.format,
-        _ => opts.as_ref().and_then(|o| o.format),
-    };
+    let explicit_format = opts.as_ref().and_then(|o| o.format);
 
     if let Some(fmt) = explicit_format {
         fmt
@@ -277,7 +271,7 @@ mod tests {
         for command in [
             ["query", "functions"].as_slice(),
             ["function", "list"].as_slice(),
-            ["diff", "functions", "first", "second"].as_slice(),
+            ["program", "info"].as_slice(),
         ] {
             for (flags, expected) in [
                 (vec!["--json"], OutputFormat::JsonCompact),

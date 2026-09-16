@@ -31,8 +31,6 @@ pub(super) fn execute(
                 client.script_run(&path, &args.args, &expect, args.allow_empty)
             }
         }
-        ScriptCommands::Python(args) => client.script_python(&args.code),
-        ScriptCommands::Java(args) => client.script_java(&args.code),
         ScriptCommands::List => client.script_list(),
     }
 }

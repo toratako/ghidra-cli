@@ -16,10 +16,10 @@ the batch envelope; it does not truncate nested fields of a single object.
 
 | List | Server filter field |
 |---|---|
-| `function list`, `query functions`, `dump functions` | `name` |
+| `function list`, `query functions` | `name` |
 | `symbol list` | `name` |
 | `type list` | `name` |
-| `strings list`, `query strings`, `dump strings` | `value` |
+| `strings list`, `query strings` | `value` |
 | `comment list` | `text` |
 
 Only a single `field~value` expression on the listed field is pushed down.
@@ -48,10 +48,9 @@ configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.
 Batch row selection and output formats retain their existing behavior.
 
-`find bytes`, both `find string` search paths, and `find interesting` use this
-same limit contract, without separate 100/50-result caps. `find interesting`
-still scans and ranks candidates before limiting its results. Raw string
-search remains a fallback when no defined string matches.
+`find bytes` and both `find string` search paths use this same limit contract,
+without a separate fixed result cap. Raw string search remains a fallback when
+no defined string matches.
 
 ## Boundaries and validation
 

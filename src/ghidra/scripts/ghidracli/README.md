@@ -87,7 +87,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers; see [query execution](../../../query/README.md) |
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
-| `MemoryCommands`, `AnalysisCommands` | Memory/patch/disassembly operations, analyzer configuration |
+| `MemoryCommands`, `AnalysisCommands` | Memory/disassembly operations, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Shared lookup and diagnostic logic; no handler-to-handler dependencies |
 | `CallReferences` | Shared incoming call-site validation and thunk/typed-pointer traversal for search and caller graphs |
@@ -107,11 +107,13 @@ replacement/clearing for offset edits: Ghidra may repack or delete components.
 Metadata-only edits preserve packing. Zero-length structures report a logical
 size of 0 here despite Ghidra's minimum display length of 1.
 
-Patch validation rejects empty, odd-length, or invalid hex before clearing code
-units or changing block permissions. NOP patching supports only x86; other
-processors must supply verified bytes through `patch_bytes`. Export success
+Memory write validation rejects empty, odd-length, or invalid hex before clearing code
+units or changing block permissions. Callers supply verified bytes through
+`memory_write`. Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
+`ProgramCommands` references `Exporter` directly so OSGi imports the exporter
+package even though concrete exporter names are selected dynamically.
 GZF packing first ends the request transaction and saves through
 `ProgramSession.preparePackedExport()`. It writes to private sibling staging and
 atomically replaces the destination after successful packing and a cancellation

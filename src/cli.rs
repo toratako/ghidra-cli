@@ -149,18 +149,6 @@ pub enum Commands {
     /// through inline data), optionally re-disassembling at a precise address
     Clear(ClearArgs),
 
-    /// Diff operations
-    #[command(subcommand)]
-    Diff(DiffCommands),
-
-    /// Dump/export data
-    #[command(subcommand, alias = "export")]
-    Dump(DumpCommands),
-
-    /// Patch binary
-    #[command(subcommand)]
-    Patch(PatchCommands),
-
     /// Script execution
     #[command(subcommand, alias = "scripts")]
     Script(ScriptCommands),
@@ -171,13 +159,6 @@ pub enum Commands {
     /// Configuration management
     #[command(subcommand)]
     Config(ConfigCommands),
-
-    /// Set default values
-    SetDefault(SetDefaultArgs),
-
-    /// Program summary
-    #[command(alias = "info")]
-    Summary(SummaryArgs),
 
     /// Program statistics
     Stats(StatsArgs),

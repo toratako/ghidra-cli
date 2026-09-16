@@ -1,4 +1,3 @@
-use super::annotations::FunctionTagCommands;
 use super::options::QueryOptions;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -11,18 +10,12 @@ pub enum FunctionCommands {
     /// Get function details
     #[command(alias = "show", alias = "detail")]
     Get(FunctionGetArgs),
-    /// Decompile function
-    #[command(alias = "decomp")]
-    Decompile(FunctionDecompileArgs),
     /// List existing instructions in the function body, including disjoint ranges.
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(alias = "disassemble", alias = "dis")]
     Disasm(FunctionGetArgs),
     /// List outgoing call sites and callees inside this function
     Calls(FunctionGetArgs),
-    /// Get cross-references to function
-    #[command(alias = "xrefs", alias = "crossrefs", alias = "references")]
-    XRefs(FunctionGetArgs),
     /// Rename function
     Rename(FunctionRenameArgs),
     /// Create function
@@ -41,9 +34,6 @@ pub enum FunctionCommands {
     /// decompiled fallthrough tails at every call site in one shot)
     #[command(name = "set-noreturn")]
     SetNoReturn(SetNoReturnArgs),
-    /// Function tag operations (subsystem/module grouping)
-    #[command(subcommand)]
-    Tag(FunctionTagCommands),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -126,33 +116,6 @@ pub struct CreateFunctionArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct FunctionDecompileArgs {
-    /// Function target (name/address/FUN_...)
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
-    /// Include local variable details (name, type, storage)
-    #[arg(long)]
-    pub with_vars: bool,
-    /// Include parameter details (name, type, storage)
-    #[arg(long)]
-    pub with_params: bool,
-    #[command(flatten)]
-    pub options: QueryOptions,
-}
-
-impl FunctionDecompileArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -63,8 +63,6 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 "name",
             ),
             (["query", "strings"], "list_strings", "strings", "value"),
-            (["dump", "functions"], "list_functions", "functions", "name"),
-            (["dump", "strings"], "list_strings", "strings", "value"),
         ] {
             let all = client.send_command(wire, Some(json!({"limit":0}))).unwrap();
             let rows = all[key].as_array().unwrap();

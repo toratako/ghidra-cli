@@ -8,10 +8,8 @@ pub enum MemoryCommands {
     Map(QueryOptions),
     /// Read memory
     Read(MemReadArgs),
-    /// Write memory (WIP; use patch bytes instead)
+    /// Write hex bytes to memory
     Write(MemWriteArgs),
-    /// Search memory (WIP; use find bytes instead)
-    Search(MemSearchArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -26,19 +24,14 @@ pub struct MemReadArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct MemWriteArgs {
+    /// Start address in hex or a symbol name
     pub address: String,
-    pub bytes: String,
+    /// Hex bytes, contiguous or quoted with spaces
+    pub hex: String,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct MemSearchArgs {
-    pub pattern: String,
-    #[command(flatten)]
-    pub options: QueryOptions,
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -122,47 +115,6 @@ pub struct ClearArgs {
     /// Re-disassemble at this address immediately after clearing
     #[arg(long)]
     pub disasm_at: Option<String>,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum PatchCommands {
-    /// Patch bytes
-    Bytes(PatchBytesArgs),
-    /// NOP instructions
-    Nop(PatchNopArgs),
-    /// Export patched binary
-    Export(PatchExportArgs),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct PatchBytesArgs {
-    pub address: String,
-    pub hex: String,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct PatchNopArgs {
-    pub address: String,
-    #[arg(long)]
-    pub count: Option<usize>,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct PatchExportArgs {
-    #[arg(short, long)]
-    pub output: String,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

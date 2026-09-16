@@ -442,10 +442,6 @@ impl BridgeClient {
         )
     }
 
-    pub fn graph_export(&self, format: &str) -> Result<serde_json::Value> {
-        self.send_command("graph_export", Some(json!({"format": format})))
-    }
-
     #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
     pub fn find_string(&self, pattern: &str) -> Result<serde_json::Value> {
         self.find_string_with_limit(pattern, None)
@@ -492,10 +488,6 @@ impl BridgeClient {
         )
     }
 
-    pub fn find_function(&self, pattern: &str) -> Result<serde_json::Value> {
-        self.send_command("find_function", Some(json!({"pattern": pattern})))
-    }
-
     pub fn find_calls(&self, function: &str) -> Result<serde_json::Value> {
         self.send_command("find_calls_to", Some(json!({"function": function})))
     }
@@ -504,39 +496,11 @@ impl BridgeClient {
         self.send_command("function_calls", Some(json!({"function": function})))
     }
 
-    pub fn find_crypto(&self) -> Result<serde_json::Value> {
-        self.send_command("find_crypto", None)
-    }
-
-    #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
-    pub fn find_interesting(&self) -> Result<serde_json::Value> {
-        self.find_interesting_with_limit(None)
-    }
-
-    pub fn find_interesting_with_limit(&self, limit: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command("find_interesting", Some(json!({"limit": limit})))
-    }
-
-    pub fn diff_functions(&self, func1: &str, func2: &str) -> Result<serde_json::Value> {
+    pub fn memory_write(&self, address: &str, hex: &str) -> Result<serde_json::Value> {
         self.send_command(
-            "diff_functions",
-            Some(json!({"func1": func1, "func2": func2})),
+            "memory_write",
+            Some(json!({"address": address, "hex": hex})),
         )
-    }
-
-    pub fn patch_bytes(&self, address: &str, hex: &str) -> Result<serde_json::Value> {
-        self.send_command("patch_bytes", Some(json!({"address": address, "hex": hex})))
-    }
-
-    pub fn patch_nop(&self, address: &str, count: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command(
-            "patch_nop",
-            Some(json!({"address": address, "count": count})),
-        )
-    }
-
-    pub fn patch_export(&self, output: &str) -> Result<serde_json::Value> {
-        self.send_command("patch_export", Some(json!({"output": output})))
     }
 
     /// Read existing instructions belonging to a function, including disjoint body ranges.
@@ -603,26 +567,6 @@ impl BridgeClient {
         )
     }
 
-    pub fn function_tag_add(&self, target: &str, tag_name: &str) -> Result<serde_json::Value> {
-        self.send_command(
-            "function_tag_add",
-            Some(json!({"target": target, "tag_name": tag_name})),
-        )
-    }
-
-    pub fn function_tag_remove(&self, target: &str, tag_name: &str) -> Result<serde_json::Value> {
-        self.send_command(
-            "function_tag_remove",
-            Some(json!({"target": target, "tag_name": tag_name})),
-        )
-    }
-
-    /// Tags on one function, or every tag definition in the program if
-    /// `target` is `None`.
-    pub fn function_tag_list(&self, target: Option<&str>) -> Result<serde_json::Value> {
-        self.send_command("function_tag_list", Some(json!({"target": target})))
-    }
-
     pub fn stats(&self) -> Result<serde_json::Value> {
         self.send_command("stats", None)
     }
@@ -663,14 +607,6 @@ impl BridgeClient {
             payload["allow_empty"] = json!(allow_empty);
         }
         self.send_command("script_run", Some(payload))
-    }
-
-    pub fn script_python(&self, code: &str) -> Result<serde_json::Value> {
-        self.send_command("script_python", Some(json!({"code": code})))
-    }
-
-    pub fn script_java(&self, code: &str) -> Result<serde_json::Value> {
-        self.send_command("script_java", Some(json!({"code": code})))
     }
 
     pub fn script_list(&self) -> Result<serde_json::Value> {

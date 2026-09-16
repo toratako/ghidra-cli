@@ -76,7 +76,6 @@ public class CreateSearchLimitFixture extends GhidraScript {
             vec!["find", "bytes", bytes],
             vec!["find", "string", "CAP_NEEDLE_"],
             vec!["find", "string", "DEFINED_NEEDLE_"],
-            vec!["find", "interesting"],
         ] {
             let with = |flags: &[&str]| {
                 let mut args = command.clone();
@@ -106,7 +105,6 @@ public class CreateSearchLimitFixture extends GhidraScript {
         for data in [
             client.find_string("CAP_NEEDLE_").unwrap(),
             client.find_bytes(bytes).unwrap(),
-            client.find_interesting().unwrap(),
         ] {
             assert_eq!(data["count"], 160);
             assert_eq!(data["results"].as_array().unwrap().len(), 160);
@@ -116,7 +114,6 @@ public class CreateSearchLimitFixture extends GhidraScript {
                 .find_string_with_limit("DEFINED_NEEDLE_", Some(120))
                 .unwrap(),
             client.find_bytes_with_limit(bytes, Some(120)).unwrap(),
-            client.find_interesting_with_limit(Some(120)).unwrap(),
         ] {
             assert_eq!(data["count"], 120);
             assert_eq!(data["results"].as_array().unwrap().len(), 120);
@@ -124,7 +121,6 @@ public class CreateSearchLimitFixture extends GhidraScript {
         for (wire, mut args) in [
             ("find_string", json!({"pattern":"CAP_NEEDLE_"})),
             ("find_bytes", json!({"hex": bytes})),
-            ("find_interesting", json!({})),
         ] {
             for limit in [json!(0), json!(4294967296u64)] {
                 args["limit"] = limit;
@@ -142,7 +138,10 @@ public class CreateSearchLimitFixture extends GhidraScript {
             }
         }
         for (command, total) in [
-            (vec!["find", "function", "password_case_"], 160),
+            (
+                vec!["function", "list", "--filter", "name~password_case_"],
+                160,
+            ),
             (vec!["strings", "refs", "DEFINED_NEEDLE_000"], 160),
             (vec!["x-ref", "to", "8000"], 160),
             (vec!["memory", "map"], 3),
@@ -161,11 +160,10 @@ public class CreateSearchLimitFixture extends GhidraScript {
             assert_eq!(run(&projected).as_array().unwrap().len(), 2);
         }
         let batch_path = temp.path().join("limits.txt");
-        std::fs::write(&batch_path, "find function password_case_\nfind function password_case_ --fields name\nfind bytes 4341505f4e4545444c455f --count\nfind interesting --offset 100 --limit 0\n").unwrap();
+        std::fs::write(&batch_path, "function list --filter name~password_case_\nfunction list --filter name~password_case_ --fields name\nfind bytes 4341505f4e4545444c455f --count\nfunction list --offset 100 --limit 0\n").unwrap();
         let batch = run(&["batch", batch_path.to_str().unwrap()]);
         let results = &batch[0]["results"];
-        assert_eq!(results[0]["result"]["count"], 2);
-        assert_eq!(results[0]["result"]["results"].as_array().unwrap().len(), 2);
+        assert_eq!(results[0]["result"].as_array().unwrap().len(), 2);
         assert_eq!(results[1]["result"].as_array().unwrap().len(), 2);
         assert_eq!(results[2]["result"], 160);
         assert_eq!(results[3]["result"].as_array().unwrap().len(), 60);

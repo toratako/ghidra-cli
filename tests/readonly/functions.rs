@@ -3,7 +3,7 @@ use crate::common::{
     get_function_address, get_function_addresses, ghidra,
     helpers::matches_function_name,
     schemas::{DisasmResult, Function, Validate},
-    test_project, GhidraCommand,
+    test_project,
 };
 use serial_test::serial;
 
@@ -849,66 +849,4 @@ fn test_disasm_zero_instructions() {
             );
         }
     }
-}
-
-// Diff Tests
-
-#[test]
-#[serial]
-fn test_diff_functions() {
-    require_ghidra!();
-    let harness = harness();
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let result = GhidraCommand::new()
-        .arg("diff")
-        .arg("functions")
-        .arg(&main_addr)
-        .arg(&main_addr)
-        .arg("--project")
-        .arg(test_project())
-        .run();
-
-    result.assert_success();
-}
-
-#[test]
-#[serial]
-fn test_diff_functions_different() {
-    require_ghidra!();
-    let harness = harness();
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    // Select one entry explicitly: the fixture may have multiple functions named main.
-    let result = GhidraCommand::new()
-        .arg("diff")
-        .arg("functions")
-        .arg(&main_addr)
-        .arg(&main_addr)
-        .arg("--project")
-        .arg(test_project())
-        .run();
-
-    result.assert_success();
-    // Self-diff should succeed (output may be empty for identical functions)
-}
-
-#[test]
-#[serial]
-fn test_diff_functions_with_fun_style_targets() {
-    require_ghidra!();
-    let harness = harness();
-
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-    let fun_target = to_fun_style_target(&main_addr);
-
-    let result = ghidra(harness)
-        .arg("diff")
-        .arg("functions")
-        .arg(&fun_target)
-        .arg(&fun_target)
-        .with_project(test_project(), TEST_PROGRAM)
-        .run();
-
-    result.assert_success();
 }

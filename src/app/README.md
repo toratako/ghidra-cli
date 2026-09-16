@@ -23,7 +23,7 @@ Command-level project/program options override global options and configured
 defaults. `project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
-Validate filters and reject unsupported memory operations before bridge work.
+Validate filters before bridge work.
 Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Recovery retries at most once
 after dispatch; preflight `bridge_info` upgrades bridges lacking automatic saving
 before program commands. Compatibility restart captures the selected project
@@ -53,8 +53,6 @@ Output precedence: explicit format, pretty JSON, compact JSON, configured
 whether it happens in Java or Rust. Count ignores the configured cap; explicit
 zero is unlimited. The residual query travels with each command result so
 standalone and batch output cannot apply a server offset twice.
-`diff functions` participates in the same explicit-format selection without
-adding list-query modifiers to its command arguments.
 Extract response envelopes before query processing. `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge

@@ -162,7 +162,7 @@ pub struct PatchResult {
     pub original_bytes: Option<String>,
 }
 
-/// Export result from `ghidra-cli patch export`.
+/// Export result from `ghidra-cli program export binary`.
 #[derive(Debug, Deserialize)]
 pub struct ExportResult {
     pub status: String,

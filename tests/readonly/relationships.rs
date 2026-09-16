@@ -439,20 +439,3 @@ public class CreateGraphDepthFixture extends GhidraScript {
         std::panic::resume_unwind(panic);
     }
 }
-
-#[test]
-#[serial]
-fn test_graph_export_dot() {
-    require_ghidra!();
-    let harness = harness();
-
-    let result = ghidra(harness)
-        .arg("graph")
-        .arg("export")
-        .arg("dot")
-        .with_project(test_project(), TEST_PROGRAM)
-        .run();
-
-    result.assert_success();
-    result.assert_stdout_contains("digraph");
-}

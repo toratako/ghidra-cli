@@ -5,7 +5,7 @@
 //! - command_tests.rs (version, doctor, config)
 //! - project_tests.rs (project management, import, analyze)
 //! - daemon_tests.rs (daemon lifecycle)
-//! - query_tests.rs (function, strings, memory, decompile, dump)
+//! - query_tests.rs (function, strings, memory, decompile, query)
 //! - unimplemented_tests.rs (graceful error messages)
 
 use predicates::prelude::*;

@@ -13,8 +13,6 @@ import ghidra.program.model.mem.ByteMemBufferImpl;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.util.task.TaskMonitor;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,7 +31,7 @@ final class MemoryCommands {
         this.functionQueries = functionQueries;
     }
 
-    JsonObject handlePatchBytes(JsonObject args) {
+    JsonObject handleMemoryWrite(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressStr = getArgString(args, "address");
@@ -96,127 +94,6 @@ final class MemoryCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to patch bytes: " + e.getMessage());
-        }
-    }
-
-    JsonObject handlePatchNop(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String addressStr = getArgString(args, "address");
-        if (addressStr == null) return errorResult("Address required");
-
-        int count = getArgInt(args, "count", 1);
-        if (count < 1) return errorResult("count must be >= 1");
-
-        try {
-            Address addr = addressResolver.resolveAddress(addressStr);
-            if (addr == null) return errorResult("Invalid address: " + addressStr);
-
-            Listing listing = session.program().getListing();
-            Memory memory = session.program().getMemory();
-            MemoryBlock block = memory.getBlock(addr);
-            boolean restoreReadOnly = block != null && !block.isWrite();
-            String processor = session.program().getLanguage().getProcessor().toString();
-            if (!processor.equalsIgnoreCase("x86")) {
-                return errorResult("patch nop supports only x86; processor " + processor
-                    + " is unsupported. Use `ghidra-cli patch bytes` with verified instruction bytes "
-                    + "for this processor instead.");
-            }
-            byte nopByte = (byte) 0x90;
-
-            JsonArray nopped = new JsonArray();
-            int totalBytes = 0;
-            ProgramTransaction transaction = session.transaction("NOP instructions");
-            boolean commit = false;
-            try {
-                if (restoreReadOnly) block.setWrite(true);
-                Address cur = addr;
-                for (int i = 0; i < count; i++) {
-                    Instruction instruction = listing.getInstructionAt(cur);
-                    if (instruction == null) {
-                        if (i == 0) {
-                            return errorResult("No instruction at address: " + cur.toString());
-                        }
-                        break;
-                    }
-
-                    int instrLength = instruction.getLength();
-                    Address next = cur.add(instrLength);
-                    byte[] nopBytes = new byte[instrLength];
-                    Arrays.fill(nopBytes, nopByte);
-                    listing.clearCodeUnits(cur, cur.add(instrLength - 1), false);
-                    memory.setBytes(cur, nopBytes);
-
-                    JsonObject entry = new JsonObject();
-                    entry.addProperty("address", cur.toString());
-                    entry.addProperty("bytes", instrLength);
-                    nopped.add(entry);
-                    totalBytes += instrLength;
-                    cur = next;
-                }
-                commit = true;
-            } finally {
-                if (restoreReadOnly) block.setWrite(false);
-                transaction.end(commit);
-            }
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "nopped");
-            result.addProperty("address", addr.toString());
-            result.addProperty("count", nopped.size());
-            result.addProperty("bytes", totalBytes);
-            result.add("instructions", nopped);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to NOP instruction: " + e.getMessage());
-        }
-    }
-
-    JsonObject handlePatchExport(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String outputPath = getArgString(args, "output");
-        if (outputPath == null || outputPath.isEmpty()) {
-            return errorResult("Output path required");
-        }
-
-        try {
-            // Use reflection to access BinaryExporter which may not always be available.
-            // The base Exporter.export() declares its second parameter as DomainObject
-            // (not Program), and the exact signature has drifted across Ghidra versions,
-            // so resolve the method by name + 4-arg arity rather than exact param types
-            // (a hardcoded Program.class lookup throws NoSuchMethodException on Ghidra 12).
-            Class<?> exporterClass = Class.forName("ghidra.app.util.exporter.BinaryExporter");
-            Object exporter = exporterClass.getDeclaredConstructor().newInstance();
-
-            java.lang.reflect.Method exportMethod = null;
-            for (java.lang.reflect.Method m : exporterClass.getMethods()) {
-                if (m.getName().equals("export") && m.getParameterCount() == 4) {
-                    exportMethod = m;
-                    break;
-                }
-            }
-            if (exportMethod == null) {
-                return errorResult(
-                    "BinaryExporter.export(File, DomainObject, AddressSetView, TaskMonitor) not found");
-            }
-
-            File outputFile = new File(outputPath);
-            TaskMonitor mon = session.monitor();
-            Object exported = exportMethod.invoke(exporter, outputFile, session.program(), null, mon);
-            if (!Boolean.TRUE.equals(exported)) {
-                Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
-                return errorResult("Failed to export binary: " + log);
-            }
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "exported");
-            result.addProperty("output", outputPath);
-            return result;
-        } catch (Exception e) {
-            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
-                && e.getCause() != null ? e.getCause() : e;
-            return errorResult("Failed to export binary: " + cause.getMessage());
         }
     }
 

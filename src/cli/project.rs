@@ -31,7 +31,7 @@ pub enum ProgramCommands {
     /// Delete a program
     Delete(ProgramTargetArgs),
     /// Show program information
-    Info(ProgramTargetArgs),
+    Info(super::options::QueryOptions),
     /// Export program
     Export(ExportArgs),
     /// Retry saving pending changes without restarting the bridge.
@@ -50,7 +50,7 @@ pub struct ProgramTargetArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ExportArgs {
-    /// Export format (xml, json, asm, c)
+    /// Export format (json, xml, c, binary/bin, gzf, ascii/asm, hex, html)
     pub format: String,
     #[arg(long)]
     pub program: Option<String>,

@@ -54,11 +54,10 @@ impl Project {
     }
     fn assert_program_identity(&self, name: &str) {
         let path = format!("/{name}");
-        for command in [vec!["program", "info"], vec!["summary"]] {
-            let result = self.ok(&command);
-            assert_eq!(result[0]["name"], name, "{command:?}: {result}");
-            assert_eq!(result[0]["path"], path, "{command:?}: {result}");
-        }
+        let command = ["program", "info"];
+        let result = self.ok(&command);
+        assert_eq!(result[0]["name"], name, "{command:?}: {result}");
+        assert_eq!(result[0]["path"], path, "{command:?}: {result}");
         let client = self.client();
         assert_eq!(
             client.list_programs().unwrap()["current_program_name"],

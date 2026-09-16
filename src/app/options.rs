@@ -11,8 +11,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Function(_)
             | Commands::Strings(_)
             | Commands::Memory(_)
-            | Commands::Dump(_)
-            | Commands::Summary(_)
             | Commands::XRef(_)
             | Commands::Symbol(_)
             | Commands::Type(_)
@@ -22,8 +20,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Comment(_)
             | Commands::Graph(_)
             | Commands::Find(_)
-            | Commands::Diff(_)
-            | Commands::Patch(_)
             | Commands::Script(_)
             | Commands::Disasm(_)
             | Commands::DisasmAt(_)
@@ -41,15 +37,12 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Import(args) => args.project.clone(),
         Commands::Analyze(args) => args.project.clone(),
         Commands::Query(args) => args.project.clone(),
-        Commands::Summary(args) => args.options.project.clone(),
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.project.clone(),
-            cli::FunctionCommands::Decompile(args) => args.options.project.clone(),
             cli::FunctionCommands::Get(args) => args.options.project.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.project.clone(),
             cli::FunctionCommands::Calls(args) => args.options.project.clone(),
-            cli::FunctionCommands::XRefs(args) => args.options.project.clone(),
             cli::FunctionCommands::Rename(args) => args.project.clone(),
             cli::FunctionCommands::Create(args) => args.project.clone(),
             cli::FunctionCommands::Delete(args) => args.options.project.clone(),
@@ -58,11 +51,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetCallingConvention(args) => args.project.clone(),
             cli::FunctionCommands::EditVar(args) => args.project.clone(),
             cli::FunctionCommands::SetNoReturn(args) => args.project.clone(),
-            cli::FunctionCommands::Tag(cmd) => match cmd {
-                cli::FunctionTagCommands::Add(args) => args.project.clone(),
-                cli::FunctionTagCommands::Remove(args) => args.project.clone(),
-                cli::FunctionTagCommands::List(args) => args.options.project.clone(),
-            },
         },
         Commands::Strings(cmd) => match cmd {
             cli::StringsCommands::List(opts) => opts.project.clone(),
@@ -72,13 +60,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::MemoryCommands::Map(opts) => opts.project.clone(),
             cli::MemoryCommands::Read(args) => args.options.project.clone(),
             cli::MemoryCommands::Write(args) => args.project.clone(),
-            cli::MemoryCommands::Search(args) => args.options.project.clone(),
-        },
-        Commands::Dump(cmd) => match cmd {
-            cli::DumpCommands::Imports(opts) => opts.project.clone(),
-            cli::DumpCommands::Exports(opts) => opts.project.clone(),
-            cli::DumpCommands::Functions(opts) => opts.project.clone(),
-            cli::DumpCommands::Strings(opts) => opts.project.clone(),
         },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.project.clone(),
@@ -93,16 +74,12 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::String(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
             cli::FindCommands::Instruction(args) => args.options.project.clone(),
-            cli::FindCommands::Function(args) => args.options.project.clone(),
             cli::FindCommands::Calls(args) => args.options.project.clone(),
-            cli::FindCommands::Crypto(opts) => opts.project.clone(),
-            cli::FindCommands::Interesting(opts) => opts.project.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.project.clone(),
             cli::GraphCommands::Callers(args) => args.options.project.clone(),
             cli::GraphCommands::Callees(args) => args.options.project.clone(),
-            cli::GraphCommands::Export(args) => args.options.project.clone(),
         },
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => opts.project.clone(),
@@ -151,15 +128,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::AnalyzerCommands::Set(args) => args.project.clone(),
             cli::AnalyzerCommands::Run(args) => args.project.clone(),
         },
-        Commands::Patch(cmd) => match cmd {
-            cli::PatchCommands::Bytes(args) => args.project.clone(),
-            cli::PatchCommands::Nop(args) => args.project.clone(),
-            cli::PatchCommands::Export(args) => args.project.clone(),
-        },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.project.clone(),
-            cli::ScriptCommands::Python(args) => args.project.clone(),
-            cli::ScriptCommands::Java(args) => args.project.clone(),
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
@@ -170,9 +140,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Info(args) => args.project.clone(),
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
-        },
-        Commands::Diff(cmd) => match cmd {
-            cli::DiffCommands::Functions(args) => args.project.clone(),
         },
         Commands::Batch(args) => args.project.clone(),
         Commands::Rename(args) => args.project.clone(),
@@ -187,15 +154,12 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
     match command {
         Commands::Analyze(args) => args.program.clone(),
         Commands::Query(args) => args.program.clone(),
-        Commands::Summary(args) => args.options.program.clone(),
         Commands::Decompile(args) => args.options.program.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.program.clone(),
-            cli::FunctionCommands::Decompile(args) => args.options.program.clone(),
             cli::FunctionCommands::Get(args) => args.options.program.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.program.clone(),
             cli::FunctionCommands::Calls(args) => args.options.program.clone(),
-            cli::FunctionCommands::XRefs(args) => args.options.program.clone(),
             cli::FunctionCommands::Rename(args) => args.program.clone(),
             cli::FunctionCommands::Create(args) => args.program.clone(),
             cli::FunctionCommands::Delete(args) => args.options.program.clone(),
@@ -204,11 +168,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetCallingConvention(args) => args.program.clone(),
             cli::FunctionCommands::EditVar(args) => args.program.clone(),
             cli::FunctionCommands::SetNoReturn(args) => args.program.clone(),
-            cli::FunctionCommands::Tag(cmd) => match cmd {
-                cli::FunctionTagCommands::Add(args) => args.program.clone(),
-                cli::FunctionTagCommands::Remove(args) => args.program.clone(),
-                cli::FunctionTagCommands::List(args) => args.options.program.clone(),
-            },
         },
         Commands::Strings(cmd) => match cmd {
             cli::StringsCommands::List(opts) => opts.program.clone(),
@@ -218,13 +177,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::MemoryCommands::Map(opts) => opts.program.clone(),
             cli::MemoryCommands::Read(args) => args.options.program.clone(),
             cli::MemoryCommands::Write(args) => args.program.clone(),
-            cli::MemoryCommands::Search(args) => args.options.program.clone(),
-        },
-        Commands::Dump(cmd) => match cmd {
-            cli::DumpCommands::Imports(opts) => opts.program.clone(),
-            cli::DumpCommands::Exports(opts) => opts.program.clone(),
-            cli::DumpCommands::Functions(opts) => opts.program.clone(),
-            cli::DumpCommands::Strings(opts) => opts.program.clone(),
         },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.program.clone(),
@@ -239,16 +191,12 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::String(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
             cli::FindCommands::Instruction(args) => args.options.program.clone(),
-            cli::FindCommands::Function(args) => args.options.program.clone(),
             cli::FindCommands::Calls(args) => args.options.program.clone(),
-            cli::FindCommands::Crypto(opts) => opts.program.clone(),
-            cli::FindCommands::Interesting(opts) => opts.program.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.program.clone(),
             cli::GraphCommands::Callers(args) => args.options.program.clone(),
             cli::GraphCommands::Callees(args) => args.options.program.clone(),
-            cli::GraphCommands::Export(args) => args.options.program.clone(),
         },
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => opts.program.clone(),
@@ -297,15 +245,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::AnalyzerCommands::Set(args) => args.program.clone(),
             cli::AnalyzerCommands::Run(args) => args.program.clone(),
         },
-        Commands::Patch(cmd) => match cmd {
-            cli::PatchCommands::Bytes(args) => args.program.clone(),
-            cli::PatchCommands::Nop(args) => args.program.clone(),
-            cli::PatchCommands::Export(args) => args.program.clone(),
-        },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.program.clone(),
-            cli::ScriptCommands::Python(args) => args.program.clone(),
-            cli::ScriptCommands::Java(args) => args.program.clone(),
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
@@ -338,21 +279,16 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             count: args.count,
             json: args.json,
         }),
-        Commands::Summary(args) => Some(args.options.clone()),
         Commands::Decompile(args) => Some(args.options.clone()),
         Commands::Disasm(args) => Some(args.options.clone()),
         Commands::Stats(args) => Some(args.options.clone()),
+        Commands::Program(cli::ProgramCommands::Info(opts)) => Some(opts.clone()),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some(args.options.clone()),
-            cli::FunctionCommands::Decompile(args) => Some(args.options.clone()),
             cli::FunctionCommands::Disasm(args) => Some(args.options.clone()),
             cli::FunctionCommands::Calls(args) => Some(args.options.clone()),
-            cli::FunctionCommands::XRefs(args) => Some(args.options.clone()),
             cli::FunctionCommands::Delete(args) => Some(args.options.clone()),
-            cli::FunctionCommands::Tag(cli::FunctionTagCommands::List(args)) => {
-                Some(args.options.clone())
-            }
             _ => None,
         },
         Commands::Strings(cmd) => match cmd {
@@ -362,14 +298,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Memory(cmd) => match cmd {
             cli::MemoryCommands::Map(opts) => Some(opts.clone()),
             cli::MemoryCommands::Read(args) => Some(args.options.clone()),
-            cli::MemoryCommands::Search(args) => Some(args.options.clone()),
             _ => None,
-        },
-        Commands::Dump(cmd) => match cmd {
-            cli::DumpCommands::Imports(opts) => Some(opts.clone()),
-            cli::DumpCommands::Exports(opts) => Some(opts.clone()),
-            cli::DumpCommands::Functions(opts) => Some(opts.clone()),
-            cli::DumpCommands::Strings(opts) => Some(opts.clone()),
         },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => Some(args.options.clone()),
@@ -401,16 +330,12 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::GraphCommands::Calls(opts) => Some(opts.clone()),
             cli::GraphCommands::Callers(args) => Some(args.options.clone()),
             cli::GraphCommands::Callees(args) => Some(args.options.clone()),
-            cli::GraphCommands::Export(args) => Some(args.options.clone()),
         },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
             cli::FindCommands::Instruction(args) => Some(args.options.clone()),
-            cli::FindCommands::Function(args) => Some(args.options.clone()),
             cli::FindCommands::Calls(args) => Some(args.options.clone()),
-            cli::FindCommands::Crypto(opts) => Some(opts.clone()),
-            cli::FindCommands::Interesting(opts) => Some(opts.clone()),
         },
         _ => None,
     }
@@ -422,10 +347,8 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
     match command {
         Commands::Function(cli::FunctionCommands::List(_))
         | Commands::Symbol(cli::SymbolCommands::List(_))
-        | Commands::Type(cli::TypeCommands::List(_))
-        | Commands::Dump(cli::DumpCommands::Functions(_)) => Paged("name"),
-        Commands::Strings(cli::StringsCommands::List(_))
-        | Commands::Dump(cli::DumpCommands::Strings(_)) => Paged("value"),
+        | Commands::Type(cli::TypeCommands::List(_)) => Paged("name"),
+        Commands::Strings(cli::StringsCommands::List(_)) => Paged("value"),
         Commands::Comment(cli::CommentCommands::List(_)) => Paged("text"),
         Commands::Query(args) => match args.data_type {
             cli::QueryDataType::Functions => Paged("name"),
@@ -433,8 +356,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             cli::QueryDataType::Imports | cli::QueryDataType::Exports => Limit,
             _ => Client,
         },
-        Commands::Dump(cli::DumpCommands::Imports(_) | cli::DumpCommands::Exports(_))
-        | Commands::Function(cli::FunctionCommands::Disasm(_))
+        Commands::Function(cli::FunctionCommands::Disasm(_))
         | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
         | Commands::Graph(
             cli::GraphCommands::Calls(_)
@@ -444,8 +366,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         | Commands::Find(
             cli::FindCommands::String(_)
             | cli::FindCommands::Bytes(_)
-            | cli::FindCommands::Instruction(_)
-            | cli::FindCommands::Interesting(_),
+            | cli::FindCommands::Instruction(_),
         ) => Limit,
         Commands::Disasm(args) if args.end.is_some() => Limit,
         _ => Client,

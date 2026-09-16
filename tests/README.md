@@ -91,7 +91,7 @@ Symbol tests cover generated-label rejection and deletion failures retaining
 partial results through successful and failed saves; type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
-supported list handlers and query/dump aliases, including Unicode under a Turkish
+supported list handlers and query aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds
 beyond Java `int`. Planner and routing tests separately verify residual processing
 and standalone/batch equivalence.

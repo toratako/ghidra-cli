@@ -81,23 +81,23 @@ fn test_memory_map_schema_validation() {
     );
 }
 
-// Summary Tests
+// Program info Tests
 
 #[test]
 #[serial]
-fn test_summary_contains_expected_fields() {
+fn test_program_info_contains_expected_fields() {
     require_ghidra!();
     let harness = harness();
 
     let result = ghidra(harness)
-        .arg("summary")
+        .args(["program", "info"])
         .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
     assert!(
         !result.stdout.trim().is_empty(),
-        "Summary should produce output"
+        "Program info should produce output"
     );
     result.assert_stdout_contains("sample_binary");
 }

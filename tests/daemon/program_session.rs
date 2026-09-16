@@ -99,7 +99,7 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
     // reject it while retaining the previously saved comment.
     let error = client
         .send_command(
-            "patch_bytes",
+            "memory_write",
             Some(serde_json::json!({"address": "0", "hex": "00"})),
         )
         .unwrap_err();

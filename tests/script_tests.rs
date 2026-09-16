@@ -186,33 +186,6 @@ fn test_script_run_java_args() {
     );
 }
 
-#[test]
-#[serial]
-fn test_script_python_inline() {
-    require_ghidra!();
-    let _harness = harness();
-
-    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("script")
-        .arg("python")
-        .arg("output = 'Hello from Python'")
-        .arg("--project")
-        .arg(test_project())
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .output()
-        .expect("Failed to run command");
-
-    // Python execution is not available in Java bridge mode
-    // Accept either success or "not available" error
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success() || stderr.contains("not available") || stderr.contains("Python"),
-        "Expected success or Python-not-available error, got: {}",
-        stderr
-    );
-}
-
 /// Phase 4.2: a declared JSONL artifact is validated and a manifest (row count,
 /// checksum, binary provenance) is attached; a missing declared artifact fails
 /// the job closed. Absolute paths are used for both the script's output arg and

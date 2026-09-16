@@ -121,17 +121,8 @@ pub enum FindCommands {
     Bytes(FindBytesArgs),
     /// Find a substring in already-disassembled instructions (does not require xrefs)
     Instruction(FindInstructionArgs),
-    /// Find functions
-    #[command(alias = "func", alias = "fn", alias = "functions")]
-    Function(FindFunctionArgs),
     /// Find calls to the target across the selected program (including resolved thunks/import pointers)
     Calls(FindCallsArgs),
-    /// Find crypto constants
-    #[command(alias = "encryption")]
-    Crypto(QueryOptions),
-    /// Find interesting functions
-    #[command(alias = "suspicious", alias = "notable")]
-    Interesting(QueryOptions),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -168,13 +159,6 @@ pub struct FindInstructionArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct FindFunctionArgs {
-    pub pattern: String,
-    #[command(flatten)]
-    pub options: QueryOptions,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FindCallsArgs {
     /// Function target (name | 0xaddr | FUN_<hex>)
     #[arg(value_name = "TARGET", required_unless_present = "target")]
@@ -205,8 +189,6 @@ pub enum GraphCommands {
     /// Get callees of function
     #[command(alias = "calls-to", alias = "outgoing")]
     Callees(GraphFunctionArgs),
-    /// Export graph
-    Export(GraphExportArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -230,52 +212,6 @@ impl GraphFunctionArgs {
             .or(self.positional_target.as_deref())
             .expect("clap should ensure target is provided")
     }
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct GraphExportArgs {
-    /// Export format (e.g., dot, json)
-    #[arg(id = "export_format")]
-    pub format: String,
-    #[command(flatten)]
-    pub options: QueryOptions,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum DiffCommands {
-    /// Compare functions
-    Functions(DiffFunctionsArgs),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct DiffFunctionsArgs {
-    /// First function (name or address)
-    pub func1: String,
-    /// Second function (name or address)
-    pub func2: String,
-    /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
-    pub format: Option<OutputFormat>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum DumpCommands {
-    /// Dump imports
-    Imports(QueryOptions),
-    /// Dump exports
-    Exports(QueryOptions),
-    /// Dump functions
-    Functions(QueryOptions),
-    /// Dump strings
-    Strings(QueryOptions),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct SummaryArgs {
-    #[command(flatten)]
-    pub options: QueryOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

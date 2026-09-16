@@ -2,36 +2,6 @@ use super::options::QueryOptions;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum FunctionTagCommands {
-    /// Add a tag to a function
-    Add(FunctionTagArgs),
-    /// Remove a tag from a function
-    Remove(FunctionTagArgs),
-    /// List tags on a function, or every tag definition in the program
-    List(FunctionTagListArgs),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct FunctionTagArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
-    pub target: String,
-    /// Tag name
-    pub tag_name: String,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct FunctionTagListArgs {
-    /// Function target; omit to list every tag definition in the program
-    pub target: Option<String>,
-    #[command(flatten)]
-    pub options: QueryOptions,
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct RenameArgs {
     pub old_name: String,

@@ -176,7 +176,7 @@ fn test_init() {
 }
 
 #[test]
-fn test_set_default_program() {
+fn test_config_set_default_program() {
     require_ghidra!();
 
     let temp = tempfile::tempdir().unwrap();
@@ -184,16 +184,15 @@ fn test_set_default_program() {
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("set-default")
-        .arg("program")
+        .args(["config", "set", "default_program"])
         .arg("sample_binary")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Default program set"));
+        .stdout(predicate::str::contains("Configuration updated"));
 }
 
 #[test]
-fn test_set_default_project() {
+fn test_config_set_default_project() {
     require_ghidra!();
 
     let temp = tempfile::tempdir().unwrap();
@@ -201,12 +200,11 @@ fn test_set_default_project() {
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("set-default")
-        .arg("project")
+        .args(["config", "set", "default_project"])
         .arg("test-project")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Default project set"));
+        .stdout(predicate::str::contains("Configuration updated"));
 }
 
 #[test]

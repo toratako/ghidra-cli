@@ -4,22 +4,6 @@ mod symbols;
 use crate::cli::{self, Commands};
 use crate::ipc::client::BridgeClient;
 
-pub(super) fn validate_supported_command(command: &Commands) -> anyhow::Result<()> {
-    match command {
-        Commands::Memory(cli::MemoryCommands::Write(_)) => {
-            anyhow::bail!(
-                "memory write is not implemented (WIP); use patch bytes for supported byte edits"
-            )
-        }
-        Commands::Memory(cli::MemoryCommands::Search(_)) => {
-            anyhow::bail!(
-                "memory search is not implemented (WIP); use find bytes for byte-pattern searches"
-            )
-        }
-        _ => Ok(()),
-    }
-}
-
 /// Resolve `comment set`'s text from `--stdin`, `--text-file`, or the TEXT
 /// positional (in that priority order; clap already rejects combining them).
 /// Reading from stdin/a file bypasses the shell entirely, so callers building
@@ -107,11 +91,6 @@ pub(super) fn execute_via_bridge(
                     args.untagged,
                     fetch.offset,
                 ),
-                FunctionCommands::Decompile(args) => client.decompile(
-                    args.resolved_target().to_string(),
-                    args.with_vars,
-                    args.with_params,
-                ),
                 FunctionCommands::Get(args) => client.send_command(
                     "get_function",
                     Some(json!({"address": args.resolved_target()})),
@@ -120,9 +99,6 @@ pub(super) fn execute_via_bridge(
                     client.function_disasm(args.resolved_target(), list_limit)
                 }
                 FunctionCommands::Calls(args) => client.function_calls(args.resolved_target()),
-                FunctionCommands::XRefs(args) => {
-                    client.xrefs_to(args.resolved_target().to_string())
-                }
                 FunctionCommands::Rename(args) => client.send_command(
                     "rename_function",
                     Some(json!({
@@ -177,20 +153,6 @@ pub(super) fn execute_via_bridge(
                 FunctionCommands::SetNoReturn(args) => {
                     client.function_set_noreturn(args.resolved_target(), args.value)
                 }
-                FunctionCommands::Tag(cmd) => {
-                    use cli::FunctionTagCommands;
-                    match cmd {
-                        FunctionTagCommands::Add(args) => {
-                            client.function_tag_add(&args.target, &args.tag_name)
-                        }
-                        FunctionTagCommands::Remove(args) => {
-                            client.function_tag_remove(&args.target, &args.tag_name)
-                        }
-                        FunctionTagCommands::List(args) => {
-                            client.function_tag_list(args.target.as_deref())
-                        }
-                    }
-                }
             }
         }
         Commands::Strings(cmd) => {
@@ -206,6 +168,7 @@ pub(super) fn execute_via_bridge(
             use cli::MemoryCommands;
             match cmd {
                 MemoryCommands::Map(_) => client.memory_map(),
+                MemoryCommands::Write(args) => client.memory_write(&args.address, &args.hex),
                 MemoryCommands::Read(args) => client.send_command(
                     "read_memory",
                     Some(json!({
@@ -213,30 +176,8 @@ pub(super) fn execute_via_bridge(
                         "size": args.size,
                     })),
                 ),
-                MemoryCommands::Write(_) | MemoryCommands::Search(_) => {
-                    validate_supported_command(command)?;
-                    unreachable!("unsupported memory commands are rejected")
-                }
             }
         }
-        Commands::Dump(cmd) => {
-            use cli::DumpCommands;
-            match cmd {
-                DumpCommands::Imports(_) => client.list_imports(list_limit),
-                DumpCommands::Exports(_) => client.list_exports(list_limit),
-                DumpCommands::Functions(_) => client.list_functions(
-                    list_limit,
-                    fetch.filter.clone(),
-                    &[],
-                    false,
-                    fetch.offset,
-                ),
-                DumpCommands::Strings(_) => {
-                    client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
-                }
-            }
-        }
-        Commands::Summary(_) => client.program_info(),
         Commands::XRef(cmd) => {
             use cli::XRefCommands;
             match cmd {
@@ -411,7 +352,6 @@ pub(super) fn execute_via_bridge(
                 GraphCommands::Callees(args) => {
                     client.graph_callees(args.resolved_target(), args.depth, list_limit)
                 }
-                GraphCommands::Export(args) => client.graph_export(&args.format),
             }
         }
         Commands::Find(cmd) => {
@@ -428,26 +368,7 @@ pub(super) fn execute_via_bridge(
                     args.case_sensitive,
                     list_limit,
                 ),
-                FindCommands::Function(args) => client.find_function(&args.pattern),
                 FindCommands::Calls(args) => client.find_calls(args.resolved_target()),
-                FindCommands::Crypto(_) => client.find_crypto(),
-                FindCommands::Interesting(_) => client.find_interesting_with_limit(list_limit),
-            }
-        }
-        Commands::Diff(cmd) => {
-            use cli::DiffCommands;
-            match cmd {
-                DiffCommands::Functions(args) => client.diff_functions(&args.func1, &args.func2),
-            }
-        }
-        Commands::Patch(cmd) => {
-            use cli::PatchCommands;
-            match cmd {
-                PatchCommands::Bytes(args) => client.patch_bytes(&args.address, &args.hex),
-                PatchCommands::Nop(args) => client.patch_nop(&args.address, args.count),
-                PatchCommands::Export(args) => {
-                    client.patch_export(&std::path::absolute(&args.output)?.to_string_lossy())
-                }
             }
         }
         Commands::Script(cmd) => scripts::execute(client, cmd),

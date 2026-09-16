@@ -45,14 +45,6 @@ pub struct AnalyzerRunArgs {
 pub enum ScriptCommands {
     /// Run a script file (pass "-" to read Java source from stdin instead of a path)
     Run(ScriptRunArgs),
-    /// Disabled by design: use `script run -` (stdin) for a Python-authored
-    /// one-off ported to Java, or `script run PATH` for a checked-in file.
-    /// See `ghidra-cli doctor` for why inline eval isn't offered as a shortcut.
-    Python(ScriptInlineArgs),
-    /// Disabled by design: use `script run -` to pipe Java source on stdin
-    /// instead -- it goes through the same compile/execute path as a file on
-    /// disk rather than a second, less-sandboxed eval path. See `ghidra-cli doctor`.
-    Java(ScriptInlineArgs),
     /// List available scripts
     List,
 }
@@ -76,15 +68,6 @@ pub struct ScriptRunArgs {
     /// Script arguments (after --)
     #[arg(last = true)]
     pub args: Vec<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct ScriptInlineArgs {
-    pub code: String,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]

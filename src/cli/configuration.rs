@@ -1,4 +1,4 @@
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -9,7 +9,7 @@ pub enum ConfigCommands {
     Get { key: String },
     /// Set configuration value
     #[command(
-        after_help = "Examples:\n  ghidra-cli config set default_limit 100\n  ghidra-cli config set ghidra_install_dir /opt/ghidra\n  ghidra-cli config set java_home /opt/jdk-21\n  ghidra-cli config set launch_timeout_secs 240"
+        after_help = "Examples:\n  ghidra-cli config set default_program sample_binary\n  ghidra-cli config set default_project target\n  ghidra-cli config set default_limit 100\n  ghidra-cli config set ghidra_install_dir /opt/ghidra\n  ghidra-cli config set java_home /opt/jdk-21\n  ghidra-cli config set launch_timeout_secs 240"
     )]
     Set {
         /// Key to set: ghidra_install_dir, ghidra_project_dir, java_home, default_program,
@@ -20,25 +20,6 @@ pub enum ConfigCommands {
     },
     /// Reset configuration
     Reset,
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, ValueEnum)]
-#[serde(rename_all = "lowercase")]
-pub enum DefaultKind {
-    Program,
-    Project,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-#[command(
-    after_help = "Examples:\n  ghidra-cli set-default program sample_binary\n  ghidra-cli set-default project target"
-)]
-pub struct SetDefaultArgs {
-    /// Default to update
-    #[arg(value_enum)]
-    pub kind: DefaultKind,
-    /// Program name (e.g. sample_binary) or project name/path (e.g. target)
-    pub value: String,
 }
 
 /// Arguments for the setup command

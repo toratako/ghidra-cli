@@ -33,7 +33,7 @@ fn harness() -> &'static DaemonTestHarness {
 /// - Status indicates success
 #[test]
 #[serial]
-fn test_patch_bytes_success() {
+fn test_memory_write_success() {
     require_ghidra!();
     let harness = harness();
 
@@ -41,8 +41,8 @@ fn test_patch_bytes_success() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg(&main_addr)
         .arg("90909090") // 4 NOP bytes
         .arg("--program")
@@ -57,96 +57,6 @@ fn test_patch_bytes_success() {
         "Expected success or instruction conflict, got: stderr={}",
         result.stderr
     );
-}
-
-/// Verify the ISA guard on actual x86 and AArch64 programs, independent of the host.
-#[test]
-#[serial]
-fn test_patch_nop_processor_guard() {
-    require_ghidra!();
-    let client = harness().client().unwrap();
-    for (language, hex, supported) in [
-        ("x86:LE:64:default", "6690c3", true),
-        ("AARCH64:LE:64:v8A", "1f2003d5c0035fd6", false),
-    ] {
-        let name = format!("nop-{}", uuid::Uuid::new_v4());
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateNopGuardProgram extends GhidraScript {
-    public void run() throws Exception {
-        String[] args = getScriptArgs();
-        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID(args[1]));
-        var program = new ProgramDB(args[0], language, language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("test code");
-            try {
-                byte[] bytes = java.util.HexFormat.of().parseHex(args[2]);
-                var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
-                var block = program.getMemory().createInitializedBlock("code", address,
-                    new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
-                block.setExecute(true);
-                block.setWrite(false);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder().createFile(args[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#, &[name.clone(), language.to_owned(), hex.to_owned()], &[], false).unwrap();
-        client.open_program(&name).unwrap();
-        let instruction = client
-            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
-            .unwrap();
-        assert_eq!(instruction["landed"], true, "{instruction}");
-        let before = client
-            .send_command(
-                "read_memory",
-                Some(serde_json::json!({"address":"1000", "size":hex.len()/2})),
-            )
-            .unwrap();
-        let map_before = client.send_command("memory_map", None).unwrap();
-        let result = client.send_command(
-            "patch_nop",
-            Some(serde_json::json!({"address":"1000", "count":1})),
-        );
-        let after = client
-            .send_command(
-                "read_memory",
-                Some(serde_json::json!({"address":"1000", "size":hex.len()/2})),
-            )
-            .unwrap();
-        if supported {
-            let result = result.unwrap();
-            assert_eq!(result["bytes"], 2);
-            assert_eq!(after["hex"], "9090c3");
-        } else {
-            let error = result.unwrap_err();
-            assert!(error.to_string().contains("supports only x86"), "{error}");
-            assert!(error.to_string().contains("patch bytes"), "{error}");
-            assert_eq!(after, before);
-            let unchanged = client
-                .send_command(
-                    "disasm",
-                    Some(serde_json::json!({"address":"1000", "count":1})),
-                )
-                .unwrap();
-            assert_eq!(unchanged["instructions"], instruction["instructions"]);
-        }
-        assert_eq!(client.send_command("memory_map", None).unwrap(), map_before);
-        // IntelHexExporter returns false, rather than throwing, for this 64-bit address space.
-        let output = tempfile::tempdir().unwrap();
-        let error = client
-            .program_export(
-                "hex",
-                Some(output.path().join("code.hex").to_str().unwrap()),
-            )
-            .unwrap_err();
-        assert!(error.to_string().contains("32 bits"), "{error}");
-        client.open_program(TEST_PROGRAM).unwrap();
-        client.program_delete(&name).unwrap();
-    }
 }
 
 /// Disassembly failures retain diagnostics, stop dependent edits, and save any clearing.
@@ -286,7 +196,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
 /// Test exporting patched binary.
 #[test]
 #[serial]
-fn test_patch_export() {
+fn test_program_export_binary() {
     require_ghidra!();
     let harness = harness();
 
@@ -294,8 +204,7 @@ fn test_patch_export() {
     let output_path = directory.path().join("patched.bin");
 
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("export")
+        .args(["program", "export", "binary"])
         .arg("--output")
         .arg(output_path.to_str().unwrap())
         .arg("--program")
@@ -307,12 +216,9 @@ fn test_patch_export() {
     let error = harness
         .client()
         .unwrap()
-        .patch_export(directory.path().to_str().unwrap())
+        .program_export("binary", directory.path().to_str())
         .unwrap_err();
-    assert!(
-        error.to_string().contains("Failed to export binary"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("export"), "{error}");
 }
 
 /// Test patching at function boundary (start of a function).
@@ -330,8 +236,8 @@ fn test_patch_at_function_boundary() {
 
     // Patch with RET instruction (c3 on x86)
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg(&func_addr)
         .arg("c3")
         .arg("--program")
@@ -359,8 +265,8 @@ fn test_patch_invalid_address_fails() {
 
     // Use an address that's definitely outside the program's memory
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg("0xffffffffffffffff") // Very high address, unlikely to be mapped
         .arg("90")
         .arg("--program")
@@ -392,8 +298,8 @@ fn test_patch_invalid_hex_fails() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg(&main_addr)
         .arg("ZZZZ") // Invalid hex
         .arg("--program")
@@ -432,7 +338,7 @@ fn test_patch_odd_hex_length() {
     let before_memory = memory();
     let before_map = client.send_command("memory_map", None).unwrap();
     for hex in ["909", "0x9", "", "0x", "  ", "ZZ", "+1"] {
-        let error = client.patch_bytes(&address, hex).unwrap_err();
+        let error = client.memory_write(&address, hex).unwrap_err();
         assert!(
             error.to_string().contains("complete byte pairs"),
             "{hex:?}: {error}"
@@ -453,8 +359,8 @@ fn test_patch_without_program_arg() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg(&main_addr)
         .arg("90")
         // Note: --program is missing, should use default from bridge
@@ -472,7 +378,7 @@ fn test_patch_without_program_arg() {
 // Snapshot tests for output format regression detection
 // ============================================================================
 
-/// Test that patch bytes command produces meaningful output.
+/// Test that memory write produces meaningful output.
 #[test]
 #[serial]
 fn test_patch_output_format_structure() {
@@ -482,8 +388,8 @@ fn test_patch_output_format_structure() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("patch")
-        .arg("bytes")
+        .arg("memory")
+        .arg("write")
         .arg(&main_addr)
         .arg("90")
         .arg("--program")
@@ -552,7 +458,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
                 .unwrap();
             assert_eq!(instructions["landed"], true);
             let map = client.send_command("memory_map", None).unwrap();
-            let error = client.patch_bytes(address, "cccccccc").unwrap_err();
+            let error = client.memory_write(address, "cccccccc").unwrap_err();
             assert!(
                 error.to_string().contains("fully mapped and initialized"),
                 "{error}"
@@ -567,7 +473,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             assert_eq!(client.send_command("memory_map", None).unwrap(), map);
         }
         let map = client.send_command("memory_map", None).unwrap();
-        client.patch_bytes("3000", "11223344").unwrap();
+        client.memory_write("3000", "11223344").unwrap();
         let bytes = client
             .send_command(
                 "read_memory",
@@ -575,6 +481,16 @@ public class CreatePatchRangeFixture extends GhidraScript {
             )
             .unwrap();
         assert_eq!(bytes["hex"], "11223344");
+        // IntelHexExporter returns false for this 64-bit address space.
+        let output = tempfile::tempdir().unwrap();
+        let error = client
+            .program_export(
+                "hex",
+                Some(output.path().join("code.hex").to_str().unwrap()),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("32 bits"), "{error}");
+
         assert_eq!(client.send_command("memory_map", None).unwrap(), map);
     });
     client.open_program(TEST_PROGRAM).unwrap();

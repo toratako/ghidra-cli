@@ -19,7 +19,6 @@ final class CommandDispatcher {
     private final AnalysisCommands analysisCommands;
     private final CommentCommands commentCommands;
     private final GraphCommands graphCommands;
-    private final DiffCommands diffCommands;
     private final MemoryCommands memoryCommands;
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
@@ -47,7 +46,6 @@ final class CommandDispatcher {
         analysisCommands = new AnalysisCommands(session);
         commentCommands = new CommentCommands(session);
         graphCommands = new GraphCommands(session, functionQueries);
-        diffCommands = new DiffCommands(session, functionQueries);
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
@@ -83,11 +81,8 @@ final class CommandDispatcher {
             case "string_refs":     return searchCommands.handleStringRefs(args);
             case "find_bytes":      return searchCommands.handleFindBytes(args);
             case "find_instruction": return searchCommands.handleFindInstruction(args);
-            case "find_function":   return searchCommands.handleFindFunction(args);
             case "find_calls_to":   return searchCommands.handleFindCalls(args);
             case "function_calls":  return searchCommands.handleFunctionCalls(args);
-            case "find_crypto":     return searchCommands.handleFindCrypto();
-            case "find_interesting": return searchCommands.handleFindInteresting(args);
             // Symbol commands
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);
@@ -123,9 +118,6 @@ final class CommandDispatcher {
             case "function_set_return_type": return functionSignatureCommands.handleFunctionSetReturnType(args);
             case "function_set_calling_convention": return functionSignatureCommands.handleFunctionSetCallingConvention(args);
             case "function_set_noreturn": return functionSignatureCommands.handleFunctionSetNoReturn(args);
-            case "function_tag_add":    return tagCommands.handleFunctionTagAdd(args);
-            case "function_tag_remove": return tagCommands.handleFunctionTagRemove(args);
-            case "function_tag_list":   return tagCommands.handleFunctionTagList(args);
             case "function_edit_var": return functionSignatureCommands.handleFunctionEditVar(args);
             // PCode commands
             case "pcode_at":        return pcodeCommands.handlePcodeAt(args);
@@ -143,13 +135,8 @@ final class CommandDispatcher {
             case "graph_calls":     return graphCommands.handleGraphCalls(args);
             case "graph_callers":   return graphCommands.handleGraphCallers(args);
             case "graph_callees":   return graphCommands.handleGraphCallees(args);
-            case "graph_export":    return graphCommands.handleGraphExport(args);
-            // Diff commands
-            case "diff_functions":  return diffCommands.handleDiffFunctions(args);
-            // Patch commands
-            case "patch_bytes":     return memoryCommands.handlePatchBytes(args);
-            case "patch_nop":       return memoryCommands.handlePatchNop(args);
-            case "patch_export":    return memoryCommands.handlePatchExport(args);
+            // Memory writes
+            case "memory_write":    return memoryCommands.handleMemoryWrite(args);
             // Other commands
             case "disasm":          return memoryCommands.handleDisasm(args);
             case "disasm_range":    return memoryCommands.handleDisasmRange(args);
@@ -158,8 +145,6 @@ final class CommandDispatcher {
             case "stats":           return programCommands.handleStats();
             // Script commands
             case "script_run":      return scriptCommands.handleScriptRun(args);
-            case "script_java":     return scriptCommands.handleScriptJava(args);
-            case "script_python":   return scriptCommands.handleScriptPython(args);
             case "script_list":     return scriptCommands.handleScriptList();
             // Batch
             case "batch":           return errorResult("Batch operations are handled by the CLI, not via bridge script");

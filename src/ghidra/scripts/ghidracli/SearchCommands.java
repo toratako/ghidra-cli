@@ -3,13 +3,11 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
@@ -17,10 +15,7 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.exception.CancelledException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgInt;
@@ -320,51 +315,6 @@ final class SearchCommands {
         }
     }
 
-    JsonObject handleFindFunction(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String pattern = getArgString(args, "pattern");
-        if (pattern == null) pattern = "";
-
-        try {
-            FunctionManager fm = session.program().getFunctionManager();
-            JsonArray results = new JsonArray();
-            boolean isWildcard = pattern.contains("*");
-            String regex = java.util.Arrays.stream(pattern.split("\\*", -1))
-                .map(Pattern::quote).collect(java.util.stream.Collectors.joining(".*"));
-
-            FunctionIterator iter = fm.getFunctions(true);
-            while (iter.hasNext()) {
-                session.monitor().checkCancelled();
-                Function func = iter.next();
-                String name = func.getName();
-                boolean matches;
-
-                if (isWildcard) {
-                    // Only * is special; all other characters are literal.
-                    matches = name.matches(regex);
-                } else {
-                    matches = name.toLowerCase().contains(pattern.toLowerCase());
-                }
-
-                if (matches) {
-                    JsonObject item = new JsonObject();
-                    item.addProperty("name", name);
-                    item.addProperty("address", func.getEntryPoint().toString());
-                    item.addProperty("size", func.getBody().getNumAddresses());
-                    results.add(item);
-                }
-            }
-
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to find functions: " + e.getMessage());
-        }
-    }
-
     JsonObject handleFunctionCalls(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
@@ -451,121 +401,4 @@ final class SearchCommands {
         }
     }
 
-    JsonObject handleFindCrypto() {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        try {
-            Memory memory = session.program().getMemory();
-            JsonArray results = new JsonArray();
-
-            String[][] cryptoPatterns = {
-                {"AES S-box", "637c777bf26b6fc53001672bfed7ab76"},
-                // First four 32-bit round constants, in big- and little-endian order.
-                {"SHA-256", "428a2f9871374491b5c0fbcfe9b5dba5"},
-                {"SHA-256", "982f8a4291443771cffbc0b5a5dbb5e9"},
-                {"MD5", "d76aa478e8c7b756242070dbc1bdceee"},
-                {"MD5", "78a46ad756b7c7e8db702024eecebdc1"}
-            };
-
-            for (String[] cp : cryptoPatterns) {
-                session.monitor().checkCancelled();
-                String name = cp[0];
-                String hexPattern = cp[1];
-                byte[] searchBytes = new byte[hexPattern.length() / 2];
-                for (int i = 0; i < searchBytes.length; i++) {
-                    searchBytes[i] = (byte) Integer.parseInt(hexPattern.substring(i * 2, i * 2 + 2), 16);
-                }
-
-                Address addr = memory.getMinAddress();
-                Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
-                session.monitor().checkCancelled();
-                if (found != null) {
-                    JsonObject item = new JsonObject();
-                    item.addProperty("type", name);
-                    item.addProperty("address", found.toString());
-                    item.addProperty("pattern", hexPattern);
-                    results.add(item);
-                }
-            }
-
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to find crypto: " + e.getMessage());
-        }
-    }
-
-    JsonObject handleFindInteresting(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        try {
-            long limit = ListQuery.pageArgument(args, "limit");
-            FunctionManager fm = session.program().getFunctionManager();
-            ReferenceManager refMgr = session.program().getReferenceManager();
-            List<JsonObject> resultsList = new ArrayList<>();
-
-            String[] suspiciousNames = {"password", "key", "encrypt", "decrypt", "crypt",
-                "auth", "login", "admin", "secret"};
-
-            FunctionIterator iter = fm.getFunctions(true);
-            while (iter.hasNext()) {
-                session.monitor().checkCancelled();
-                Function func = iter.next();
-                String funcName = func.getName();
-                Address funcAddr = func.getEntryPoint();
-                long funcSize = func.getBody().getNumAddresses();
-
-                int xrefCount = 0;
-                for (Reference ref : refMgr.getReferencesTo(funcAddr)) {
-                    session.monitor().checkCancelled();
-                    xrefCount++;
-                }
-
-                JsonArray reasons = new JsonArray();
-
-                if (funcSize > 1000) {
-                    reasons.add(new JsonPrimitive("large function (" + funcSize + " bytes)"));
-                }
-                if (xrefCount > 50) {
-                    reasons.add(new JsonPrimitive("many xrefs (" + xrefCount + ")"));
-                }
-                for (String sus : suspiciousNames) {
-                    if (funcName.toLowerCase().contains(sus)) {
-                        reasons.add(new JsonPrimitive("suspicious name"));
-                        break;
-                    }
-                }
-
-                if (reasons.size() > 0) {
-                    JsonObject item = new JsonObject();
-                    item.addProperty("name", funcName);
-                    item.addProperty("address", funcAddr.toString());
-                    item.addProperty("size", funcSize);
-                    item.addProperty("xrefs", xrefCount);
-                    item.add("reasons", reasons);
-                    resultsList.add(item);
-                }
-            }
-
-            // Sort by number of reasons (descending)
-            session.monitor().checkCancelled();
-            resultsList.sort((a, b) -> b.getAsJsonArray("reasons").size() - a.getAsJsonArray("reasons").size());
-
-            JsonArray results = new JsonArray();
-            for (JsonObject item : resultsList) {
-                session.monitor().checkCancelled();
-                if (limit > 0 && results.size() >= limit) break;
-                results.add(item);
-            }
-
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to find interesting functions: " + e.getMessage());
-        }
-    }
 }

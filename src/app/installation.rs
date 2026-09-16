@@ -265,22 +265,6 @@ pub(super) fn handle_doctor(
         report,
         "                              staged to a temp file, same compile/execute path as PATH"
     )?;
-    writeln!(
-        report,
-        "  `ghidra-cli script python/java <code>` — disabled by design, not a bug: every script,"
-    )?;
-    writeln!(
-        report,
-        "                              including one-offs, is required to go through Ghidra's"
-    )?;
-    writeln!(
-        report,
-        "                              normal script bundle/compile gate rather than a second,"
-    )?;
-    writeln!(
-        report,
-        "                              less-sandboxed eval path. Use `script run -` instead."
-    )?;
 
     writeln!(report, "\nDone!")?;
     output.result(&json!({"name": "Ghidra CLI Doctor", "ok": failures.is_empty(), "failures": failures, "storage": storage, "loopback": loopback, "runtime": runtime_check, "report": report}), report.trim_end())?;
