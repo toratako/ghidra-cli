@@ -16,10 +16,12 @@ import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Listing;
+import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.util.GhidraProgramUtilities;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
@@ -105,7 +107,7 @@ final class ProgramCommands {
 
         try {
             // Use GhidraScript's built-in analyzeAll which works across Ghidra versions
-            session.analyzeAll(session.program());
+            session.analyzeAll();
 
             FunctionManager fm = session.program().getFunctionManager();
             JsonObject result = new JsonObject();
@@ -126,10 +128,8 @@ final class ProgramCommands {
         }
 
         try {
-            ProjectData projectData = project.getProjectData();
-            DomainFolder rootFolder = projectData.getRootFolder();
             JsonArray programs = new JsonArray();
-            appendPrograms(rootFolder, programs);
+            for (DomainFile file : session.programFiles()) programs.add(programMetadata(file));
 
             JsonObject result = new JsonObject();
             result.add("programs", programs);
@@ -145,55 +145,59 @@ final class ProgramCommands {
         }
     }
 
-    private void appendPrograms(DomainFolder folder, JsonArray programs) throws CancelledException {
+    private JsonObject programMetadata(DomainFile domainFile) throws CancelledException {
         session.monitor().checkCancelled();
-        for (DomainFile domainFile : folder.getFiles()) {
-            session.monitor().checkCancelled();
-            boolean isCurrent = session.isCurrent(domainFile);
+        boolean isCurrent = session.isCurrent(domainFile);
 
-            JsonObject prog = new JsonObject();
-            prog.addProperty("name", domainFile.getName());
-            prog.addProperty("path", domainFile.getPathname());
-            prog.addProperty("type", domainFile.getContentType());
-            prog.addProperty("version", domainFile.getVersion());
-            prog.addProperty("current", isCurrent);
+        JsonObject prog = new JsonObject();
+        prog.addProperty("name", domainFile.getName());
+        prog.addProperty("path", domainFile.getPathname());
+        prog.addProperty("type", domainFile.getContentType());
+        prog.addProperty("version", domainFile.getVersion());
+        prog.addProperty("current", isCurrent);
+        prog.add("analyzed", JsonNull.INSTANCE);
 
-            // Add analysis metadata
-            if (isCurrent && session.program() != null) {
-                // For current program, use live data
-                FunctionManager fm = session.program().getFunctionManager();
-                int funcCount = fm.getFunctionCount();
-                prog.addProperty("function_count", funcCount);
-                prog.addProperty("analyzed", funcCount > 1);
-                prog.addProperty("executable_format", session.program().getExecutableFormat());
-            } else {
-                // For other programs, use DomainFile metadata
-                try {
-                    java.util.Map<String, String> metadata = domainFile.getMetadata();
-                    if (metadata != null) {
-                        String funcCountStr = metadata.get("# of Functions");
-                        int funcCount = 0;
-                        if (funcCountStr != null) {
-                            try { funcCount = Integer.parseInt(funcCountStr.trim()); }
-                            catch (NumberFormatException ignored) {}
-                        }
-                        prog.addProperty("function_count", funcCount);
-                        prog.addProperty("analyzed", funcCount > 1);
-                        String exeFmt = metadata.get("Executable Format");
-                        if (exeFmt != null) {
-                            prog.addProperty("executable_format", exeFmt);
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // metadata not available for this file
-                }
+        // Add analysis metadata
+        if (isCurrent && session.program() != null) {
+            // For current program, use live data
+            FunctionManager fm = session.program().getFunctionManager();
+            int funcCount = fm.getFunctionCount();
+            prog.addProperty("function_count", funcCount);
+            var options = session.program().getOptions(Program.PROGRAM_INFO);
+            if (options.contains(Program.ANALYZED_OPTION_NAME)
+                    && options.getType(Program.ANALYZED_OPTION_NAME)
+                        == ghidra.framework.options.OptionType.BOOLEAN_TYPE) {
+                prog.addProperty("analyzed", GhidraProgramUtilities.isAnalyzed(session.program()));
             }
+            prog.addProperty("executable_format", session.program().getExecutableFormat());
+        } else {
+            // For other programs, use DomainFile metadata
+            try {
+                java.util.Map<String, String> metadata = domainFile.getMetadata();
+                if (metadata != null) {
+                    String funcCountStr = metadata.get("# of Functions");
+                    int funcCount = 0;
+                    if (funcCountStr != null) {
+                        try { funcCount = Integer.parseInt(funcCountStr.trim()); }
+                        catch (NumberFormatException ignored) {}
+                    }
+                    prog.addProperty("function_count", funcCount);
+                    String analyzed = metadata.get(Program.ANALYZED_OPTION_NAME);
+                    if (analyzed != null && ("true".equalsIgnoreCase(analyzed.trim())
+                            || "false".equalsIgnoreCase(analyzed.trim()))) {
+                        prog.addProperty("analyzed", Boolean.parseBoolean(analyzed.trim()));
+                    }
+                    String exeFmt = metadata.get("Executable Format");
+                    if (exeFmt != null) {
+                        prog.addProperty("executable_format", exeFmt);
+                    }
+                }
+            } catch (Exception ignored) {
+                // metadata not available for this file
+            }
+        }
 
-            programs.add(prog);
-        }
-        for (DomainFolder child : folder.getFolders()) {
-            appendPrograms(child, programs);
-        }
+        return prog;
     }
 
     JsonObject handleOpenProgram(JsonObject args) {

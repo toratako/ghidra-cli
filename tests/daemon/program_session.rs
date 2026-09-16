@@ -129,6 +129,11 @@ fn test_handlers_follow_program_switch_and_close() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
+    let initial_count = client.list_programs().unwrap()["count"].as_u64().unwrap();
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        initial_count
+    );
     let folder = format!("switch-{}", uuid::Uuid::new_v4());
     client.script_run_source(r#"
 import ghidra.app.script.GhidraScript;
@@ -154,6 +159,11 @@ public class CopyBridgeProgram extends GhidraScript {
     let programs = client.send_command("list_programs", None).unwrap();
     let rows = programs["programs"].as_array().unwrap();
     assert_eq!(programs["count"].as_u64(), Some(rows.len() as u64));
+    assert_eq!(programs["count"], initial_count + 2);
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        programs["count"]
+    );
     for path in [&alternate, &deeper_alternate] {
         let row = rows.iter().find(|row| row["path"] == *path).unwrap();
         assert_eq!(row["name"], "alternate");
@@ -238,6 +248,81 @@ public class CopyBridgeProgram extends GhidraScript {
         .contains("No program loaded"));
     client.open_program(TEST_PROGRAM).unwrap();
     client.comment_get(address).unwrap();
+    drop(harness);
+    let restarted = start_daemon();
+    let client = restarted.client().unwrap();
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        initial_count + 2
+    );
+    client.program_delete(&deeper_alternate).unwrap();
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        initial_count + 1
+    );
+    client.program_delete(&alternate).unwrap();
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        initial_count
+    );
+    assert_eq!(client.list_programs().unwrap()["count"], initial_count);
+}
+
+#[test]
+#[serial]
+fn test_program_list_analysis_flag_uses_live_and_saved_options() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let folder = format!("analysis-flags-{}", uuid::Uuid::new_v4());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class CopyAnalysisFlagProgram extends GhidraScript {
+    public void run() throws Exception {
+        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
+        currentProgram.getDomainFile().copyTo(folder, monitor);
+    }
+}
+"#, std::slice::from_ref(&folder), &[], false).unwrap();
+    let copied = format!("/{folder}/{TEST_PROGRAM}");
+    for (flag, expected) in [
+        ("false", serde_json::json!(false)),
+        ("missing", serde_json::Value::Null),
+        ("invalid", serde_json::Value::Null),
+        ("true", serde_json::json!(true)),
+    ] {
+        client.open_program(&copied).unwrap();
+        client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.listing.Program;
+public class SetAnalysisFlagForMetadata extends GhidraScript {
+    public void run() throws Exception {
+        var options = currentProgram.getOptions(Program.PROGRAM_INFO);
+        options.removeOption(Program.ANALYZED_OPTION_NAME);
+        String flag = getScriptArgs()[0];
+        if (flag.equals("invalid")) options.setString(Program.ANALYZED_OPTION_NAME, "unknown");
+        else if (!flag.equals("missing")) options.setBoolean(Program.ANALYZED_OPTION_NAME, Boolean.parseBoolean(flag));
+    }
+}
+"#, &[flag.to_owned()], &[], false).unwrap();
+        for current in [true, false] {
+            if !current {
+                client.open_program(TEST_PROGRAM).unwrap();
+            }
+            let listing = client.list_programs().unwrap();
+            let row = listing["programs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["path"] == copied)
+                .unwrap();
+            assert_eq!(row["current"], current);
+            assert!(row["function_count"].as_u64().unwrap() > 1, "{row}");
+            assert_eq!(row.get("analyzed"), Some(&expected), "{flag}: {row}");
+        }
+    }
+    client.program_delete(&copied).unwrap();
 }
 
 #[test]

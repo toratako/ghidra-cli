@@ -18,6 +18,7 @@ import ghidra.framework.model.Project;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
+import ghidra.program.util.GhidraProgramUtilities;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
 import java.util.ArrayList;
@@ -84,6 +85,7 @@ public final class ImportSupport {
                         .initializeOptions();
                     analysis.run(program);
                     monitor.checkCancelled();
+                    GhidraProgramUtilities.markProgramAnalyzed(program);
                     completed = true;
                 } finally {
                     transaction.end(completed);

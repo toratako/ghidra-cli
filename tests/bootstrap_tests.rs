@@ -214,6 +214,142 @@ public class CheckProgramIdentity extends GhidraScript {
     }
 }
 
+#[test]
+fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    // No entry point or function is needed to record a completed analysis.
+    project.ok(&[
+        "import",
+        raw.to_str().unwrap(),
+        "--program",
+        "analyzed-raw",
+        "--language",
+        "x86:LE:32:default",
+        "--base-address",
+        "0x8000",
+    ]);
+    let client = project.client();
+    let assert_flag = |name: &str, expected: Value| {
+        let listing = project.client().list_programs().unwrap();
+        let row = listing["programs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == name)
+            .unwrap();
+        assert!(row["function_count"].as_u64().unwrap() <= 1, "{row}");
+        assert_eq!(row.get("analyzed"), Some(&expected), "{row}");
+    };
+    assert_flag("analyzed-raw", serde_json::json!(true));
+    client.program_close().unwrap();
+    assert_flag("analyzed-raw", serde_json::json!(true));
+    project.ok(&[
+        "import",
+        raw.to_str().unwrap(),
+        "--program",
+        "skipped-raw",
+        "--language",
+        "x86:LE:32:default",
+        "--base-address",
+        "0x8000",
+        "--no-analyze",
+    ]);
+    // Imports with explicit loader settings restart the bridge.
+    let client = project.client();
+    let skipped = client.list_programs().unwrap();
+    let skipped = skipped["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "skipped-raw")
+        .unwrap();
+    // Opening initializes Ghidra's default false option; an unregistered or
+    // unavailable saved flag remains null. Neither records completed analysis.
+    assert!(
+        skipped["analyzed"].is_null() || skipped["analyzed"] == false,
+        "{skipped}"
+    );
+    client.send_command("analyze", None).unwrap();
+    assert_flag("skipped-raw", serde_json::json!(true));
+
+    let prepare = |flag: &str, cancel: bool| {
+        client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
+import ghidra.app.services.AbstractAnalyzer;
+import ghidra.app.services.AnalysisPriority;
+import ghidra.app.services.AnalyzerType;
+import ghidra.app.util.importer.MessageLog;
+import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.listing.Program;
+import ghidra.util.task.TaskMonitor;
+public class PrepareAnalysisCompletionTest extends GhidraScript {
+    public void run() throws Exception {
+        var options = currentProgram.getOptions(Program.PROGRAM_INFO);
+        options.removeOption(Program.ANALYZED_OPTION_NAME);
+        String flag = getScriptArgs()[0];
+        if (!flag.equals("missing")) options.setBoolean(Program.ANALYZED_OPTION_NAME, Boolean.parseBoolean(flag));
+        if (Boolean.parseBoolean(getScriptArgs()[1])) {
+            var analyzer = new AbstractAnalyzer("Cancel Completion Test", "Cancel analysis deterministically", AnalyzerType.BYTE_ANALYZER) {
+                { setPriority(AnalysisPriority.HIGHEST_PRIORITY); }
+                public boolean added(Program program, AddressSetView set, TaskMonitor taskMonitor, MessageLog log) {
+                    taskMonitor.cancel();
+                    return false;
+                }
+            };
+            AutoAnalysisManager.getAnalysisManager(currentProgram)
+                .scheduleOneTimeAnalysis(analyzer, currentProgram.getMemory());
+        }
+    }
+}
+"#, &[flag.to_owned(), cancel.to_string()], &[], false).unwrap();
+    };
+    prepare("false", false);
+    assert_flag("skipped-raw", serde_json::json!(false));
+    client.analyze_run().unwrap();
+    assert_flag("skipped-raw", serde_json::json!(true));
+    client.program_close().unwrap();
+    assert_flag("skipped-raw", serde_json::json!(true));
+    client.open_program("skipped-raw").unwrap();
+
+    for (flag, expected) in [
+        ("missing", Value::Null),
+        ("false", serde_json::json!(false)),
+        ("true", serde_json::json!(true)),
+    ] {
+        prepare(flag, true);
+        let result = if flag == "false" {
+            client.analyze_run()
+        } else {
+            client.send_command("analyze", None)
+        };
+        let error = result.expect_err("cancelled analysis must fail");
+        assert!(
+            error.to_string().contains("Operation cancelled"),
+            "{flag}: {error}"
+        );
+        assert_flag("skipped-raw", expected.clone());
+        client.program_close().unwrap();
+        assert_flag("skipped-raw", expected);
+        client.open_program("skipped-raw").unwrap();
+    }
+    // Per-job cancellation must not affect the next completed analysis or save.
+    client.send_command("analyze", None).unwrap();
+    project.ok(&["stop"]);
+    project.ok(&["start", "--program", "skipped-raw"]);
+    let listing = project.client().list_programs().unwrap();
+    assert!(
+        listing["programs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["analyzed"] == true),
+        "{listing}"
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn saved_import_survives_bridge_state_directory_failure() {

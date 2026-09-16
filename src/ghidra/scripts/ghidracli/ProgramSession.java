@@ -2,11 +2,16 @@ package ghidracli;
 
 import ghidra.app.script.GhidraState;
 import ghidra.framework.model.DomainFile;
+import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.DomainObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
+import ghidra.program.util.GhidraProgramUtilities;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Live view of script state; never caches a Program or a per-job monitor. */
 final class ProgramSession {
@@ -43,8 +48,40 @@ final class ProgramSession {
         return new ProgramTransaction(program(), description);
     }
     boolean disassemble(Address address) throws Exception { return script.disassemble(address); }
-    void analyzeAll(Program program) { script.analyzeAll(program); }
+    void analyzeAll() throws CancelledException {
+        monitor().checkCancelled();
+        script.analyzeAll(program());
+        // Ghidra's analysis entry point can return normally after cancellation.
+        // Preserve an earlier completed analysis flag, but never create one for
+        // the cancelled first run.
+        monitor().checkCancelled();
+        ProgramTransaction transaction = transaction("Record completed analysis");
+        try {
+            GhidraProgramUtilities.markProgramAnalyzed(program());
+            transaction.end(true);
+        } catch (RuntimeException failure) {
+            transaction.end(false);
+            throw failure;
+        }
+    }
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
+
+    /** Shared project-file traversal for program list and control snapshots. */
+    List<DomainFile> programFiles() throws CancelledException {
+        List<DomainFile> files = new ArrayList<>();
+        appendProgramFiles(state().getProject().getProjectData().getRootFolder(), files);
+        return files;
+    }
+
+    private void appendProgramFiles(DomainFolder folder, List<DomainFile> files)
+            throws CancelledException {
+        monitor().checkCancelled();
+        for (DomainFile file : folder.getFiles()) {
+            monitor().checkCancelled();
+            files.add(file);
+        }
+        for (DomainFolder child : folder.getFolders()) appendProgramFiles(child, files);
+    }
 
     void beginRequest(String command) {
         exportSaveFailure = null;

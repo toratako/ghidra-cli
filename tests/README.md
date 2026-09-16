@@ -82,6 +82,9 @@ the same JVM. Stop/restart/project deletion also preserve unsaved state on final
 save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
+They also verify analysis-completion flags for raw imports, reanalysis and
+cancelled jobs. Program-session tests compare live and saved flags independently
+of function count and check recursive status counts across restart and deletion.
 Real bridge tests cover OSGi loading of the whole source bundle.
 Script tests exercise JDK parsing of stdin declarations through that OSGi path.
 Symbol tests cover generated-label rejection and deletion failures retaining

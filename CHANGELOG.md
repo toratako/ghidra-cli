@@ -27,6 +27,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `program list` reports Ghidra's recorded analysis-completion flag instead of
+  estimating it from the function count. Missing or unreadable flags are `null`.
+  Import analysis, `analyze`, and `analyzer run` record successful completion;
+  a cancelled first analysis does not create a completed flag.
 - Function, symbol, type, string and comment lists push a single contains filter
   and safe offset/limit into Ghidra, including query/dump aliases, reducing JSON
   generation and transfer. Supported filter fields are `name` for functions,
@@ -88,6 +92,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Java source on stdin is parsed for its top-level public class, accepting
   modifiers and ignoring apparent declarations in comments, strings, and nested
   classes. Invalid syntax reports its line and column before execution.
+- `status` counts project files in subfolders consistently with `program list`.
 - Function lookup errors recommend an executable help command instead of an
   invalid bare-word filter.
 - Search and list output share one query limit plan. `find bytes`, raw-memory

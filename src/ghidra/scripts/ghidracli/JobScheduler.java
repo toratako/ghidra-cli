@@ -4,9 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
-import ghidra.framework.model.ProjectData;
 import ghidra.util.task.TaskMonitor;
 import java.util.ArrayDeque;
 import java.util.Iterator;
@@ -498,9 +496,7 @@ final class JobScheduler {
         programCountSnapshot = 0;
         if (project != null) {
             try {
-                ProjectData projectData = project.getProjectData();
-                DomainFolder rootFolder = projectData.getRootFolder();
-                programCountSnapshot = rootFolder.getFiles().length;
+                programCountSnapshot = session.programFiles().size();
             } catch (Exception ignored) {
                 programCountSnapshot = 0;
             }

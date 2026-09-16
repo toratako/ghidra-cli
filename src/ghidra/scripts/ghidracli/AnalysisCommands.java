@@ -86,7 +86,7 @@ final class AnalysisCommands {
             manager.reAnalyzeAll(null);
             // Use the same cross-version GhidraScript entry point as the normal
             // `analyze` command after marking all analyzers for re-analysis.
-            session.analyzeAll(session.program());
+            session.analyzeAll();
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "analysis_complete");
