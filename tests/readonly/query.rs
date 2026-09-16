@@ -35,7 +35,10 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
     let checked = std::panic::catch_unwind(|| {
         let config_dir = tempfile::tempdir().unwrap();
         let config = config_dir.path().join("config.yaml");
-        std::fs::write(&config, "aliases: {}\ndefault_limit: 2\n").unwrap();
+        let mut test_config = ghidra_cli::config::Config::load().unwrap();
+        test_config.aliases.clear();
+        test_config.default_limit = Some(2);
+        std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
         let cli = |command: &[&str], flags: &[&str]| -> Value {
             let result = ghidra(harness)
                 .args(command.iter().copied())
