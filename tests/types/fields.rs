@@ -318,6 +318,82 @@ fn validation_rejects_interior_overlap_collision_and_invalid_sizes_without_chang
 
 #[test]
 #[serial]
+fn offset_field_size_is_honored_or_rejected_before_changing_the_structure() {
+    require_ghidra!();
+    let name = create_struct();
+    success(set(
+        &name,
+        "4",
+        &["--name", "anchor", "--type", "byte[4]", "--comment", "keep"],
+    ));
+    command(&[
+        "add-field",
+        &name,
+        "--offset",
+        "12",
+        "--name",
+        "sized",
+        "--type",
+        "string",
+        "--size",
+        "8",
+    ])
+    .assert_success();
+    let before = definition(&name);
+    assert_eq!(field(&before, "sized")["size"], 8);
+    assert_eq!(before["size"], 20);
+
+    // Exercise replacement, placement in padding, and structure growth. Ghidra
+    // ignores a requested size larger than this fixed type's own length.
+    for offset in ["4", "8", "24"] {
+        rejected_unchanged(
+            &name,
+            &before,
+            command(&[
+                "add-field",
+                &name,
+                "--offset",
+                offset,
+                "--name",
+                "invalid",
+                "--type",
+                "byte",
+                "--size",
+                "4",
+            ]),
+            "Ghidra cannot honor --size",
+        );
+    }
+
+    // Ghidra can honor a smaller component length even for a fixed-size array.
+    // Accept it only when the stored component and structure use that length.
+    command(&[
+        "add-field",
+        &name,
+        "--offset",
+        "24",
+        "--name",
+        "bounded",
+        "--type",
+        "byte[4]",
+        "--size",
+        "1",
+    ])
+    .assert_success();
+    let after = definition(&name);
+    assert_eq!(field(&after, "bounded")["offset"], 24);
+    assert_eq!(field(&after, "bounded")["size"], 1);
+    assert_eq!(after["size"], 25);
+    assert_eq!(field(&after, "anchor"), field(&before, "anchor"));
+    assert_eq!(field(&after, "sized"), field(&before, "sized"));
+    let client = harness().client().unwrap();
+    client.program_close().unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    assert_eq!(definition(&name), after);
+}
+
+#[test]
+#[serial]
 fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() {
     require_ghidra!();
     let name = create_struct();

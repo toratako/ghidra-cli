@@ -121,7 +121,11 @@ final class StructureFields {
         } else {
             int desiredLength = Math.max(length(struct), offset + newSize);
             if (desiredLength > length(staged)) staged.growStructure(desiredLength - length(staged));
-            staged.replaceAtOffset(offset, type, newSize, effectiveName, effectiveComment);
+            DataTypeComponent replacement = staged.replaceAtOffset(
+                offset, type, newSize, effectiveName, effectiveComment);
+            if (sizeOverride != null && replacement.getLength() != sizeOverride)
+                throw new IllegalArgumentException("Ghidra cannot honor --size " + sizeOverride
+                    + " for field type " + type.getName());
         }
         verifyOtherFields(struct, staged, old);
         DataTypeComponent after = target(staged, offset);
