@@ -31,6 +31,14 @@ by Florent Daigniere, based on akiselev/ghidra-cli pull request #24 at commit
 49edebcd82b9a2b2c01edbbc9de6988b7357888c, adapted to the split command handlers
 and extended to high PCode access.
 
+It also incorporates ideas from:
+  https://github.com/hitori-chan/ghidra-cli
+
+The hitori-chan-inspired changes include instruction text search, bounded
+disassembly, and explicit C and assembly output, with accompanying agent
+documentation, informed by downstream work through commit
+09626352836da2d7432312bebc6a938c9d35ddf5.
+
 The project is distributed under the GNU General Public License, version 3.
 The GNU GPL v3 license text below is reproduced verbatim.
 
