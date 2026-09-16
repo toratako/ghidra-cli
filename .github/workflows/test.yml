@@ -153,6 +153,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Initialize the runner-local Ghidra cache before parallel JVM startup.
+      - name: Initialize and verify Ghidra runtime
+        run: cargo run -- doctor --runtime
+        timeout-minutes: 5
+
       - name: Run read-only integration tests
         run: cargo test-run --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
@@ -214,6 +219,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Initialize the runner-local Ghidra cache before parallel JVM startup.
+      - name: Initialize and verify Ghidra runtime
+        run: cargo run -- doctor --runtime
+        timeout-minutes: 5
+
       - name: Run mutation integration tests
         run: cargo test-run --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
         timeout-minutes: 80
@@ -274,6 +284,11 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Initialize the runner-local Ghidra cache before parallel JVM startup.
+      - name: Initialize and verify Ghidra runtime
+        run: cargo run -- doctor --runtime
+        timeout-minutes: 5
 
       - name: Run infrastructure tests
         run: cargo test-run --test daemon_tests --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests --verbose -- --nocapture
