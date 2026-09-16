@@ -19,7 +19,7 @@ public final class BridgeRuntime {
         boolean readyPublished = false;
         try {
             server = new BridgeServer(jobs::handleRequest, jobs::beginShutdown,
-                jobs::isShutdownRequested, script::logError);
+                jobs::isShutdownComplete, script::logError);
             if (initialProgram != null) {
                 stage = "bridge.program_open";
                 path = initialProgram;
@@ -30,7 +30,7 @@ public final class BridgeRuntime {
                     throw new IllegalArgumentException(response.get("message").getAsString());
                 }
             }
-            jobs.start(server::closeServerSocket);
+            jobs.start();
             stage = "bridge.port_write";
             path = portFilePath;
             Path portFile = Path.of(portFilePath);

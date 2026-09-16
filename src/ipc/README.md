@@ -22,6 +22,11 @@ Shutdown uses the caller's remaining total deadline for connect, write, and read
 it must not fall back to an independent generic socket timeout. The lifecycle
 caller also budgets lock acquisition and process exit, preserves the typed
 timeout error, and retains live discovery on failure.
+`BridgeClient` sends `shutdown_wait`, advertised by `bridge_info.durable_shutdown`,
+to receive final save failures as errors. Legacy `shutdown` only acknowledges
+drain acceptance and cannot confirm saving; clients must not use it as a fallback.
+The new request waits outside the bounded program queue and leaves controls
+available. Save failure retains the JVM and reopens the queue for recovery.
 
 ## Wire format
 

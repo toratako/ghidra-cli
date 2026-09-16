@@ -93,7 +93,9 @@ while bridges are running.
   returning the port from that check to avoid a separate discovery-file read.
 - `bridge_status()` uses `BridgeClient::ping()` for protocol-level verification.
 - `stop_bridge()` uses deadline-aware shutdown and waits for accepted jobs to
-  drain and the JVM to exit. One budget includes lifecycle-lock acquisition,
+  drain, the final save to succeed, and the JVM to exit. A save failure restores
+  request acceptance and retains the same program/JVM for recovery. One budget
+  includes lifecycle-lock acquisition,
   connection, reply, and exit. Expiry returns the typed timeout (exit 75),
   preserving discovery and the live process; discovery PIDs are never force-killed.
 - Startup and shutdown clean stale port/PID files only under the lifecycle lock.

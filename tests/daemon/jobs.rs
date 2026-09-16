@@ -314,13 +314,35 @@ public class HoldQueueForShutdown extends GhidraScript {
     // detects a blocked shutdown without depending on how quickly jobs execute.
     let shutdown =
         control.send_command_with_timeout("shutdown", None, Some(Duration::from_secs(5)));
+    let mut receipt = TcpStream::connect(("127.0.0.1", harness.port())).unwrap();
+    writeln!(receipt, "{{\"command\":\"shutdown_wait\"}}").unwrap();
+    receipt
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    let mut receipt = BufReader::new(receipt);
+    let mut response = String::new();
+    let waiting = receipt.read_line(&mut response);
+    let draining = control.status();
     std::fs::write(&release, b"release").unwrap();
     script.join().unwrap().unwrap();
     shutdown.expect("shutdown must acknowledge before the active job is released");
+    assert!(
+        matches!(waiting, Err(ref error) if matches!(error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock)),
+        "shutdown_wait replied before draining: {waiting:?}, {response}"
+    );
+    assert_eq!(draining.unwrap()["bridge_state"], "draining");
     for socket in pending {
         let mut line = String::new();
         BufReader::new(socket).read_line(&mut line).unwrap();
         let response: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(response["status"], "success", "{response}");
     }
+    receipt
+        .get_ref()
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .unwrap();
+    receipt.read_line(&mut response).unwrap();
+    let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(response["status"], "shutdown", "{response}");
 }

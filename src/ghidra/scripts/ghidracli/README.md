@@ -28,7 +28,11 @@ Queued cancellation removes jobs immediately; active jobs cancel cooperatively
 via per-job monitors. Connection handlers enqueue without waiting on program
 futures; completed futures use a separate bounded response pool. Neither waiting
 clients nor socket writes may block controls or the program thread. Shutdown
-closes the listener, rejects new jobs, and drains accepted work before returning
+rejects new program jobs and drains accepted work, keeping controls available.
+`shutdown` acknowledges acceptance immediately; `shutdown_wait` completes only
+after the program thread saves and releases the session. On save failure it
+returns structured error detail and restores request acceptance with the same
+session/listener. Only successful completion closes the listener and returns
 to Ghidra. Shutdown signaling must remain responsive when the queue is full;
 control handlers must not block while trying to append a shutdown sentinel.
 

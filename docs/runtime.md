@@ -107,19 +107,22 @@ The shutdown timeout reports an error (exit 75) and preserves discovery files an
 the live process; it does not force termination. Inspect the process and retry
 stop after accepted work finishes. Cancellation state is isolated per job, and
 history retains metadata rather than completed response payloads.
+If the final save fails, stop/restart/project deletion return an error and keep
+the same JVM and program open. Resolve the cause, retry `program save`, then stop.
 
 Program commands, including analysis, scripts, and each batch operation, save
 before reporting success. Switching/closing also saves first; failure keeps the
 program open. Before sending program commands to a bridge predating automatic
-saving, the CLI upgrades it with a normal stop/start of the current Java bundle.
+saving, the CLI attempts a save and bridge upgrade. Older bridges without final
+save confirmation require the [manual upgrade procedure](#upgrading).
 
 `program delete --program NAME` deletes the project file without selecting it.
 Deleting the current program saves and closes it first; deleting another file
 preserves the current selection. Other consumers and checkouts can prevent
 deletion.
 
-Save errors carry `detail.save_failed: true` and the editing response in
-`detail.command_response`. Changes may remain in memory: keep the bridge running,
+Save errors carry `detail.save_failed: true`; program commands also retain the
+editing response in `detail.command_response`. Changes may remain in memory: keep the bridge running,
 resolve the reported cause, and retry `program save` for the same project/program
 without restarting or repeating the edit.
 Saving a stopped bridge is a no-op. Auto-save covers the bridge's current program;
@@ -137,6 +140,9 @@ project using the old CLI and the same project path used to start it. Old PID-fi
 startup locks and new OS-backed lifecycle locks do not coordinate, so do not run
 old and new CLI versions concurrently for a project. Start
 bridges again after updating; old discovery keys are not preserved or migrated.
+The current CLI requires the `shutdown_wait` protocol to confirm a final save.
+It cannot safely stop an older bridge that only acknowledges shutdown acceptance;
+save and stop that bridge with the old CLI before replacing it.
 
 ## Installation failures
 

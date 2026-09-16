@@ -380,6 +380,36 @@ mod tests {
     }
 
     #[test]
+    fn shutdown_does_not_fall_back_to_an_unconfirmed_legacy_stop() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+            assert_eq!(request["command"], "shutdown_wait");
+            writeln!(
+                stream,
+                "{{\"status\":\"error\",\"message\":\"Unknown command: shutdown_wait\"}}"
+            )
+            .unwrap();
+            listener
+        });
+        let error = client
+            .shutdown_with_deadline(Some(std::time::Instant::now() + Duration::from_secs(2)))
+            .unwrap_err();
+        assert!(error.to_string().contains("previous CLI"), "{error:#}");
+        assert!(format!("{error:#}").contains("Unknown command: shutdown_wait"));
+        let listener = server.join().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    }
+
+    #[test]
     fn expired_shutdown_deadline_does_not_connect() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();

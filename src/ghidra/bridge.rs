@@ -404,6 +404,13 @@ fn stop_bridge_with(
         let port = read_port_file(project_path)?.ok_or_else(||
             anyhow::anyhow!("Bridge process {pid} is alive but its port is unavailable; preserving project state"))?;
         let shutdown_result = request_shutdown(port, deadline);
+        if shutdown_result.as_ref().err().is_some_and(|error| {
+            error
+                .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+                .is_some_and(|error| error.detail["save_failed"] == true)
+        }) {
+            return Err(shutdown_result.unwrap_err());
+        }
         // A response can be lost during successful shutdown. If the process
         // has already exited, cleanup is still safe; otherwise retain state.
         while check_alive(pid) {

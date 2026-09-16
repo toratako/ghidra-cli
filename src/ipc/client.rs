@@ -49,17 +49,31 @@ impl BridgeClient {
         }
     }
 
-    /// Shutdown the bridge.
+    /// Drain accepted jobs and confirm the final save before shutdown.
     #[allow(dead_code)] // Public library API; CLI shutdown uses a shared deadline.
     pub fn shutdown(&self) -> Result<()> {
-        self.send_command("shutdown", None)?;
+        self.send_command("shutdown_wait", None)
+            .map_err(Self::shutdown_error)?;
         Ok(())
     }
 
     /// Shutdown using the lifecycle caller's remaining total time budget.
     pub fn shutdown_with_deadline(&self, deadline: Option<Instant>) -> Result<()> {
-        self.send_command_with_deadline("shutdown", None, deadline)?;
+        self.send_command_with_deadline("shutdown_wait", None, deadline)
+            .map_err(Self::shutdown_error)?;
         Ok(())
+    }
+
+    fn shutdown_error(error: anyhow::Error) -> anyhow::Error {
+        if error.to_string() == "Unknown command: shutdown_wait"
+            && !error
+                .downcast_ref::<super::protocol::BridgeCommandError>()
+                .is_some_and(|error| error.detail["save_failed"] == true)
+        {
+            error.context("This bridge cannot confirm its final save. Save and stop it with the previous CLI before upgrading; the bridge has been left running")
+        } else {
+            error
+        }
     }
 
     /// Get bridge status.

@@ -294,6 +294,39 @@ public class PreventAutoSave extends GhidraScript {
         .unwrap()
         .trim()
         .to_owned();
+    let project_path = std::path::Path::new(test_project());
+    let pid = ghidra_cli::ghidra::bridge::read_pid_file(project_path).unwrap();
+    for args in [
+        vec!["stop", "--project", test_project()],
+        vec!["restart", "--project", test_project()],
+        vec!["project", "delete", test_project()],
+    ] {
+        let output = common::run_command_with_output(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .args(&args)
+                .arg("--json"),
+            std::time::Duration::from_secs(30),
+        )
+        .unwrap();
+        assert!(!output.status.success(), "{args:?}: {output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["detail"]["save_failed"], true, "{error}");
+        assert_eq!(error["detail"]["stage"], "bridge.shutdown_save");
+        assert_eq!(
+            ghidra_cli::ghidra::bridge::read_pid_file(project_path).unwrap(),
+            pid
+        );
+        assert!(
+            client.ping().unwrap(),
+            "failed shutdown must retain the listener"
+        );
+        assert_eq!(
+            client.bridge_info().unwrap()["current_program"],
+            TEST_PROGRAM
+        );
+        assert!(project_path.with_added_extension("gpr").is_file());
+        assert!(project_path.with_added_extension("rep").is_dir());
+    }
     assert!(client.program_save().is_err());
     assert!(client.program_close().is_err());
     let deletion = client.program_delete(TEST_PROGRAM).unwrap_err();
@@ -335,11 +368,25 @@ public class AllowAutoSave extends GhidraScript {
         println("edit-count:" + currentProgram.getOptions("AutoSaveTest").getInt(getScriptArgs()[1], 0));
     }
 }
-"#, &[transaction, key], &[], false).unwrap();
+"#, &[transaction, key.clone()], &[], false).unwrap();
     assert!(repaired["stdout"]
         .as_str()
         .unwrap()
         .contains("edit-count:1"));
     assert_eq!(client.program_save().unwrap()["saved"], true);
     assert!(client.ping().unwrap());
+    drop(harness);
+    let restarted = start_daemon();
+    let saved = restarted.client().unwrap().script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class CheckRecoveredShutdownEdit extends GhidraScript {
+    public void run() throws Exception {
+        println("edit-count:" + currentProgram.getOptions("AutoSaveTest").getInt(getScriptArgs()[0], 0));
+    }
+}
+"#, &[key], &[], false).unwrap();
+    assert!(
+        saved["stdout"].as_str().unwrap().contains("edit-count:1"),
+        "{saved}"
+    );
 }

@@ -31,9 +31,10 @@ final class JobScheduler {
     private final long startTime = System.currentTimeMillis();
     private final ProgramSession session;
     private final CommandDispatcher commands;
-    private Runnable closeListener;
     private volatile boolean acceptingJobs;
     private volatile boolean shutdownRequested;
+    private volatile boolean shutdownComplete;
+    private CompletableFuture<JsonObject> shutdownCompletion;
     private volatile JobRecord activeJob;
 
     // Published only by the program thread; control requests never dereference Ghidra state.
@@ -47,13 +48,12 @@ final class JobScheduler {
         this.commands = commands;
     }
 
-    void start(Runnable closeListener) {
-        this.closeListener = closeListener;
+    void start() {
         refreshBridgeSnapshot();
         acceptingJobs = true;
     }
 
-    boolean isShutdownRequested() { return shutdownRequested; }
+    boolean isShutdownComplete() { return shutdownComplete; }
 
     private static class JobRecord {
         final long id;
@@ -99,13 +99,18 @@ final class JobScheduler {
                             beginShutdown();
                         }
                     }
-                    if (programQueue.isEmpty()) return;
-                    job = programQueue.removeFirst();
-                    activeJob = job.record;
-                    job.record.state = "running";
-                    job.record.startedAt = System.currentTimeMillis();
+                    job = programQueue.pollFirst();
+                    if (job != null) {
+                        activeJob = job.record;
+                        job.record.state = "running";
+                        job.record.startedAt = System.currentTimeMillis();
+                    }
                 }
-                executeProgramJob(job);
+                if (job != null) {
+                    executeProgramJob(job);
+                } else if (finishShutdown()) {
+                    return;
+                }
             }
         } finally {
             if (interrupted) Thread.currentThread().interrupt();
@@ -151,17 +156,47 @@ final class JobScheduler {
     }
 
     void beginShutdown() {
-        Runnable listenerToClose;
         synchronized (lifecycleLock) {
             if (shutdownRequested) return;
+            shutdownCompletion = new CompletableFuture<>();
             shutdownRequested = true;
             acceptingJobs = false;
-            listenerToClose = closeListener;
             // Wake an idle script thread without consuming bounded queue capacity.
             // The script thread exits only after all accepted jobs have drained.
             lifecycleLock.notifyAll();
         }
-        if (listenerToClose != null) listenerToClose.run();
+    }
+
+    /** Runs on the program thread after every accepted job has completed. */
+    private boolean finishShutdown() {
+        JsonObject response;
+        boolean saved = false;
+        try {
+            session.closeProgram();
+            response = new JsonObject();
+            response.addProperty("status", "shutdown");
+            saved = true;
+        } catch (Exception error) {
+            JsonObject detail = new JsonObject();
+            detail.addProperty("stage", "bridge.shutdown_save");
+            detail.addProperty("save_failed", true);
+            detail.addProperty("saved", false);
+            detail.addProperty("program", session.programPath());
+            response = errorResponse("Shutdown save failed: " + error.getMessage()
+                + ". Bridge left running; resolve the cause and retry program save before stopping.", detail);
+        }
+        refreshBridgeSnapshot();
+        CompletableFuture<JsonObject> completion;
+        synchronized (lifecycleLock) {
+            completion = shutdownCompletion;
+            shutdownComplete = saved;
+            if (!saved) {
+                shutdownRequested = false;
+                acceptingJobs = true;
+            }
+        }
+        completion.complete(response);
+        return saved;
     }
 
     CompletableFuture<JsonObject> handleRequest(String line) {
@@ -179,6 +214,15 @@ final class JobScheduler {
      * the message, so callers can act on it without a follow-up round trip.
      */
                     errorResponse("Command required"));
+            }
+
+            // Wait outside the bounded program queue, without occupying a
+            // connection thread. Controls remain available throughout draining.
+            if ("shutdown_wait".equals(command)) {
+                synchronized (lifecycleLock) {
+                    beginShutdown();
+                    return shutdownCompletion;
+                }
             }
 
             if (isControlCommand(command)) {
@@ -273,6 +317,7 @@ final class JobScheduler {
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
         result.addProperty("named_import", true);
+        result.addProperty("durable_shutdown", true);
         if (programName != null) {
             result.addProperty("current_program", programName);
         }
