@@ -26,6 +26,21 @@ Program name can differ and is not used as the CLI display name.
 metadata. See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 
+## Imported and exported symbols
+
+`program imports` lists external symbols with `name`, `address`, and `library`.
+`program exports` lists symbols Ghidra marks as external entry points, with
+`name` and `address`. These reflect Ghidra's loaded program, not raw file tables;
+import addresses identify external symbols, not necessarily call sites or import
+pointer slots. Both accept the shared query options, for example:
+
+```bash
+ghidra-cli program imports --filter 'library~libc' --fields name,address --limit 0
+ghidra-cli program exports --sort name --limit 0
+```
+
+For writing a program to a file, use `program export` (singular).
+
 ## Import and reanalysis
 
 Import waits for completion. Use `import --no-analyze` to omit analysis and

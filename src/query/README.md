@@ -16,10 +16,10 @@ the batch envelope; it does not truncate nested fields of a single object.
 
 | List | Server filter field |
 |---|---|
-| `function list`, `query functions` | `name` |
+| `function list` | `name` |
 | `symbol list` | `name` |
 | `type list` | `name` |
-| `strings list`, `query strings` | `value` |
+| `strings list` | `value` |
 | `comment list` | `text` |
 
 Only a single `field~value` expression on the listed field is pushed down.
@@ -69,7 +69,7 @@ no defined string matches.
 - Planner tests compare pushed and full-fetch results across filters, sort,
   count, projection, limits and offsets. Routing tests cover actual wire arguments
   and standalone/batch equivalence. `tests/readonly/query.rs` checks all five
-  handlers and aliases against full rows, including Unicode samples under a
+  handlers against full rows, including Unicode samples under a
   Turkish JVM locale, tag predicates, comment types, empty pages and numeric bounds.
   These samples do not establish identical Unicode casing tables across every
   Rust/JDK release; repeat the cross-runtime checks when upgrading toolchains.

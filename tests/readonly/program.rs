@@ -102,6 +102,48 @@ fn test_program_info_contains_expected_fields() {
     result.assert_stdout_contains("sample_binary");
 }
 
+#[test]
+#[serial]
+fn test_program_imports_and_exports_match_bridge_rows() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    for (kind, wire) in [("imports", "list_imports"), ("exports", "list_exports")] {
+        let all = client.send_command(wire, None).unwrap();
+        let rows = all[kind].as_array().unwrap();
+        assert!(!rows.is_empty(), "fixture must contain {kind}: {all}");
+        let run = |flags: &[&str]| -> serde_json::Value {
+            let result = ghidra(harness)
+                .args(["program", kind])
+                .args(flags.iter().copied())
+                .with_project(test_project(), TEST_PROGRAM)
+                .json_format()
+                .run();
+            result.assert_success();
+            result.json()
+        };
+        assert_eq!(run(&["--limit", "0"]), all[kind]);
+        assert_eq!(run(&["--count"]), serde_json::json!(rows.len()));
+        for row in rows {
+            assert!(row["name"].is_string(), "{row}");
+            assert!(row["address"].is_string(), "{row}");
+            if kind == "imports" {
+                assert!(row["library"].is_string(), "{row}");
+            }
+        }
+        let first = rows
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .min()
+            .unwrap();
+        assert_eq!(
+            run(&["--sort", "name", "--fields", "name", "--limit", "1"]),
+            serde_json::json!([{"name": first}]),
+        );
+    }
+}
+
 // Stats Tests
 
 #[test]

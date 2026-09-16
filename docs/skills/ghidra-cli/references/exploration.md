@@ -75,12 +75,11 @@ See [patching](low-level.md#patching) for edit behavior.
 
 ## Query controls
 
-`query functions|strings|imports|exports|memory` selects a data family. Standalone
-`query` also reads `GHIDRA_DEFAULT_PROJECT` and `GHIDRA_DEFAULT_PROGRAM` when
-its corresponding target flag is omitted; pass `--project` and `--program`
-explicitly to select a different target. In batch lines, omitted targets inherit
-the batch project and that project's current program instead of these variables.
-
+Use `function list`, `strings list`, and `memory map` for their respective lists,
+and `program imports` / `program exports` for external symbols and entry points.
+These commands share filtering, field selection, sorting, pagination, and counts.
+In batch lines, omitted targets inherit the batch project and that project's
+current program.
 
 `--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
 run in Rust after a full fetch; small limits may not bound underlying work.

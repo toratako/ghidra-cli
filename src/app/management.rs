@@ -73,7 +73,7 @@ fn handle_bridge_start(
     // Determine start mode
     let mode = if let Some(prog) = program {
         BridgeStartMode::Process { program_name: prog }
-    } else if let Some(prog) = config.get_default_program() {
+    } else if let Some(prog) = config.default_program.clone() {
         BridgeStartMode::Process { program_name: prog }
     } else {
         BridgeStartMode::Project

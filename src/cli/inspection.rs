@@ -1,68 +1,6 @@
 use super::options::QueryOptions;
-use crate::format::OutputFormat;
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
-
-// Only types routed by execute_via_bridge belong here; query::DataType also
-// contains types that the query command does not implement.
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, ValueEnum)]
-#[serde(rename_all = "lowercase")]
-pub enum QueryDataType {
-    Functions,
-    Strings,
-    Imports,
-    Exports,
-    Memory,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct QueryArgs {
-    /// Data type to query
-    #[arg(value_enum)]
-    pub data_type: QueryDataType,
-
-    /// Target program
-    #[arg(long, env = "GHIDRA_DEFAULT_PROGRAM")]
-    pub program: Option<String>,
-
-    /// Project name
-    #[arg(long, env = "GHIDRA_DEFAULT_PROJECT")]
-    pub project: Option<String>,
-
-    /// Filter expression: <field><op><value>, e.g. 'name~PK' (contains),
-    /// 'name=~"^PK_"' (regex), 'size>100'. Ops: = != > >= < <= ~ ^ $ =~.
-    /// Combine with AND/OR/NOT. Bare words are rejected.
-    #[arg(short, long)]
-    pub filter: Option<String>,
-
-    /// Field selection (comma-separated)
-    #[arg(long)]
-    pub fields: Option<String>,
-
-    /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
-    pub format: Option<OutputFormat>,
-
-    /// Maximum number of results (0 = unlimited; default 1000)
-    #[arg(long)]
-    pub limit: Option<usize>,
-
-    /// Skip first N results
-    #[arg(long)]
-    pub offset: Option<usize>,
-
-    /// Sort by field(s) (comma-separated, prefix with - for descending)
-    #[arg(long, allow_hyphen_values = true)]
-    pub sort: Option<String>,
-
-    /// Only return count
-    #[arg(long)]
-    pub count: bool,
-
-    /// Output compact JSON (shorthand for --format=json-compact)
-    #[arg(long)]
-    pub json: bool,
-}
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum StringsCommands {

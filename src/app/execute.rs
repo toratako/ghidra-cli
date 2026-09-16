@@ -65,17 +65,6 @@ pub(super) fn execute_via_bridge(
                 "data": result
             }))
         }
-        Commands::Query(args) => match args.data_type {
-            cli::QueryDataType::Functions => {
-                client.list_functions(list_limit, fetch.filter.clone(), &[], false, fetch.offset)
-            }
-            cli::QueryDataType::Strings => {
-                client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
-            }
-            cli::QueryDataType::Imports => client.list_imports(list_limit),
-            cli::QueryDataType::Exports => client.list_exports(list_limit),
-            cli::QueryDataType::Memory => client.memory_map(),
-        },
         Commands::Decompile(args) => client.decompile(
             args.resolved_target().to_string(),
             args.with_vars,
@@ -209,6 +198,8 @@ pub(super) fn execute_via_bridge(
                 }
                 ProgramCommands::Info(_) => client.program_info(),
                 ProgramCommands::Stats(_) => client.stats(),
+                ProgramCommands::Imports(_) => client.list_imports(list_limit),
+                ProgramCommands::Exports(_) => client.list_exports(list_limit),
                 ProgramCommands::Export(args) => {
                     let output = args
                         .output

@@ -208,8 +208,6 @@ impl RecordedBridge {
                 "GHIDRA_INSTALL_DIR",
                 self.root.path().join("unused-install"),
             )
-            .env_remove("GHIDRA_DEFAULT_PROJECT")
-            .env_remove("GHIDRA_DEFAULT_PROGRAM")
             .arg("--project")
             .arg(&self.project)
             .timeout(std::time::Duration::from_secs(15));
@@ -421,7 +419,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     .unwrap();
     let output = bridge
         .command()
-        .args(["query", "imports"])
+        .args(["program", "imports"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -429,7 +427,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     for flags in [vec!["--json"], vec!["--pretty"], vec!["-o", "json-compact"]] {
         let output = bridge
             .command()
-            .args(["query", "imports"])
+            .args(["program", "imports"])
             .args(&flags)
             .output()
             .unwrap();
@@ -446,7 +444,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     .unwrap();
     let output = bridge
         .command()
-        .args(["query", "imports"])
+        .args(["program", "imports"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -965,8 +963,6 @@ fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
             "GHIDRA_PROJECT_DIR",
             bridge.root.path().join("wrong-projects"),
         )
-        .env_remove("GHIDRA_DEFAULT_PROJECT")
-        .env_remove("GHIDRA_DEFAULT_PROGRAM")
         .args([
             "--projects-dir",
             "projects",
@@ -1000,7 +996,7 @@ fn batch_save_of_a_stopped_project_does_not_start_it() {
 #[test]
 fn imports_and_exports_paginate_after_fetching_for_queries_and_batches() {
     let bridge = RecordedBridge::new();
-    let command = "query";
+    let command = "program";
     for kind in ["imports", "exports"] {
         let args = [command, kind, "--offset", "1", "--limit", "1"];
         assert_eq!(bridge.run(&args), json!([{"name": "second"}]));
@@ -1074,8 +1070,6 @@ fn project_directory_overrides_are_local_to_each_batch_line() {
             "GHIDRA_PROJECT_DIR",
             first.root.path().join("wrong-projects"),
         )
-        .env_remove("GHIDRA_DEFAULT_PROJECT")
-        .env_remove("GHIDRA_DEFAULT_PROGRAM")
         .arg("--projects-dir")
         .arg(first.project.parent().unwrap())
         .args(["--project", "project", "batch", "batch.txt"])
@@ -1098,7 +1092,7 @@ fn ndjson_contains_exactly_one_document_per_line() {
     let bridge = RecordedBridge::new();
     let output = bridge
         .command()
-        .args(["query", "imports", "--limit", "0", "-o", "ndjson"])
+        .args(["program", "imports", "--limit", "0", "-o", "ndjson"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -1367,7 +1361,7 @@ fn batch_queries_inherit_targets_without_environment_overrides() {
     let second = RecordedBridge::new();
     let env_project = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "query memory\ncomment set 1000 marker --program B\nquery memory\nquery memory --program C\nquery memory --project {} --program D\nquery memory\n",
+        "memory map\ncomment set 1000 marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let output = first
@@ -1402,57 +1396,56 @@ fn batch_queries_inherit_targets_without_environment_overrides() {
 #[test]
 fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch() {
     let bridge = RecordedBridge::new();
-    for command in [vec!["query", "functions"], vec!["function", "list"]] {
-        for (flags, expected) in [
-            (
-                vec!["--filter", "size>0"],
-                json!([{"name": "small", "size": 10}]),
-            ),
-            (vec!["--sort=-size"], json!([{"name": "large", "size": 30}])),
-            (
-                vec!["--offset", "1"],
-                json!([{"name": "small", "size": 10}]),
-            ),
-            (
-                vec!["--filter", "size>0", "--sort=-size", "--offset", "1"],
-                json!([{"name": "medium", "size": 20}]),
-            ),
-            (
-                vec![
-                    "--filter",
-                    "size>0",
-                    "--sort=-size",
-                    "--offset",
-                    "1",
-                    "--limit",
-                    "0",
-                ],
-                json!([{"name": "medium", "size": 20}, {"name": "small", "size": 10}]),
-            ),
-            (vec!["--filter", "size>0", "--count"], json!(3)),
-        ] {
-            let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
-            for batch in [false, true] {
-                bridge.requests.lock().unwrap().clear();
-                let result = if batch {
-                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
-                } else {
-                    bridge.run(&args)
-                };
-                assert_eq!(result, expected, "{args:?}, batch={batch}");
-                let requests = bridge.requests.lock().unwrap();
-                let lists: Vec<_> = requests
-                    .iter()
-                    .filter(|r| r["command"] == "list_functions")
-                    .collect();
-                assert_eq!(lists.len(), 1);
-                if flags == ["--offset", "1"] {
-                    assert_eq!(lists[0]["args"]["offset"], 1);
-                    assert_eq!(lists[0]["args"]["limit"], 1);
-                } else {
-                    assert!(lists[0]["args"]["limit"].is_null(), "{lists:?}");
-                }
+    let command = ["function", "list"];
+    for (flags, expected) in [
+        (
+            vec!["--filter", "size>0"],
+            json!([{"name": "small", "size": 10}]),
+        ),
+        (vec!["--sort=-size"], json!([{"name": "large", "size": 30}])),
+        (
+            vec!["--offset", "1"],
+            json!([{"name": "small", "size": 10}]),
+        ),
+        (
+            vec!["--filter", "size>0", "--sort=-size", "--offset", "1"],
+            json!([{"name": "medium", "size": 20}]),
+        ),
+        (
+            vec![
+                "--filter",
+                "size>0",
+                "--sort=-size",
+                "--offset",
+                "1",
+                "--limit",
+                "0",
+            ],
+            json!([{"name": "medium", "size": 20}, {"name": "small", "size": 10}]),
+        ),
+        (vec!["--filter", "size>0", "--count"], json!(3)),
+    ] {
+        let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(result, expected, "{args:?}, batch={batch}");
+            let requests = bridge.requests.lock().unwrap();
+            let lists: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "list_functions")
+                .collect();
+            assert_eq!(lists.len(), 1);
+            if flags == ["--offset", "1"] {
+                assert_eq!(lists[0]["args"]["offset"], 1);
+                assert_eq!(lists[0]["args"]["limit"], 1);
+            } else {
+                assert!(lists[0]["args"]["limit"].is_null(), "{lists:?}");
             }
         }
     }
@@ -1578,60 +1571,59 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
 #[test]
 fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
     let bridge = RecordedBridge::new();
-    for command in [vec!["function", "list"], vec!["query", "functions"]] {
-        for (flags, expected, server_limit, server_offset) in [
-            (
-                vec!["--filter", "name~L", "--offset", "1"],
-                json!([{"name":"small", "size":10}]),
-                json!(1),
-                json!(1),
-            ),
-            (
-                vec!["--filter", "name~L", "--offset", "1", "--limit", "0"],
-                json!([{"name":"small", "size":10}, {"name":"large", "size":30}]),
-                json!(null),
-                json!(1),
-            ),
-            (
-                vec!["--filter", "name~L", "--offset", "1", "--count"],
-                json!(2),
-                json!(null),
-                json!(null),
-            ),
-            (
-                vec![
-                    "--filter",
-                    "name~L",
-                    "--sort=-size",
-                    "--fields",
-                    "name",
-                    "--offset",
-                    "1",
-                ],
-                json!([{"name":"small"}]),
-                json!(null),
-                json!(null),
-            ),
-        ] {
-            let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
-            for batch in [false, true] {
-                bridge.requests.lock().unwrap().clear();
-                let actual = if batch {
-                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
-                } else {
-                    bridge.run(&args)
-                };
-                assert_eq!(actual, expected, "{args:?}, batch={batch}");
-                let requests = bridge.requests.lock().unwrap();
-                let list = requests
-                    .iter()
-                    .find(|r| r["command"] == "list_functions")
-                    .unwrap();
-                assert_eq!(list["args"]["filter"], "L");
-                assert_eq!(list["args"]["limit"], server_limit);
-                assert_eq!(list["args"]["offset"], server_offset);
-            }
+    let command = ["function", "list"];
+    for (flags, expected, server_limit, server_offset) in [
+        (
+            vec!["--filter", "name~L", "--offset", "1"],
+            json!([{"name":"small", "size":10}]),
+            json!(1),
+            json!(1),
+        ),
+        (
+            vec!["--filter", "name~L", "--offset", "1", "--limit", "0"],
+            json!([{"name":"small", "size":10}, {"name":"large", "size":30}]),
+            json!(null),
+            json!(1),
+        ),
+        (
+            vec!["--filter", "name~L", "--offset", "1", "--count"],
+            json!(2),
+            json!(null),
+            json!(null),
+        ),
+        (
+            vec![
+                "--filter",
+                "name~L",
+                "--sort=-size",
+                "--fields",
+                "name",
+                "--offset",
+                "1",
+            ],
+            json!([{"name":"small"}]),
+            json!(null),
+            json!(null),
+        ),
+    ] {
+        let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let actual = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(actual, expected, "{args:?}, batch={batch}");
+            let requests = bridge.requests.lock().unwrap();
+            let list = requests
+                .iter()
+                .find(|r| r["command"] == "list_functions")
+                .unwrap();
+            assert_eq!(list["args"]["filter"], "L");
+            assert_eq!(list["args"]["limit"], server_limit);
+            assert_eq!(list["args"]["offset"], server_offset);
         }
     }
 }
@@ -1639,7 +1631,7 @@ fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
 #[test]
 fn unsupported_list_offset_fetches_enough_rows() {
     let bridge = RecordedBridge::new();
-    for command in [vec!["query", "imports"], vec!["query", "exports"]] {
+    for command in [vec!["program", "imports"], vec!["program", "exports"]] {
         let args: Vec<_> = command
             .into_iter()
             .chain(["--offset", "1", "--limit", "1"])
@@ -1811,49 +1803,61 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
 }
 
 #[test]
-fn standalone_query_uses_environment_targets_and_explicit_targets_override_them() {
-    let bridge = RecordedBridge::new();
+fn standalone_targets_use_config_or_explicit_flags_and_ignore_removed_environment_defaults() {
+    let configured = RecordedBridge::new();
+    let explicit = RecordedBridge::new();
     let environment = RecordedBridge::new();
-    for explicit in [false, true] {
-        bridge.requests.lock().unwrap().clear();
-        environment.requests.lock().unwrap().clear();
-        let mut command = bridge.command();
-        // command() supplies --project globally; omit it to exercise query's env fallback.
-        if !explicit {
-            command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
-            command
-                .env("GHIDRA_CLI_CONFIG", bridge.root.path().join("config.yaml"))
-                .env(
-                    "GHIDRA_INSTALL_DIR",
-                    bridge.root.path().join("unused-install"),
-                );
-        }
+    let config = configured.root.path().join("config.yaml");
+    std::fs::write(
+        &config,
+        serde_yaml::to_string(&json!({
+            "aliases": {}, "default_project": configured.project,
+            "default_program": "configured-startup-program",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    for with_flags in [false, true] {
+        configured.requests.lock().unwrap().clear();
+        explicit.requests.lock().unwrap().clear();
+        let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
         command
+            .env("GHIDRA_CLI_CONFIG", &config)
+            .env(
+                "GHIDRA_INSTALL_DIR",
+                configured.root.path().join("unused-install"),
+            )
             .env("GHIDRA_DEFAULT_PROJECT", &environment.project)
             .env("GHIDRA_DEFAULT_PROGRAM", "environment-program")
-            .args(["query", "imports"]);
-        if explicit {
-            command.args([
-                "--project",
-                bridge.project.to_str().unwrap(),
-                "--program",
-                "explicit-program",
-            ]);
+            .args(["program", "imports"]);
+        if with_flags {
+            command
+                .arg("--project")
+                .arg(&explicit.project)
+                .args(["--program", "explicit-program"]);
         }
         let output = command.output().unwrap();
         assert!(output.status.success(), "{output:?}");
-        let (selected, unused, program) = if explicit {
-            (&bridge, &environment, "explicit-program")
+        assert!(environment.requests.lock().unwrap().is_empty());
+        let (selected, unused) = if with_flags {
+            (&explicit, &configured)
         } else {
-            (&environment, &bridge, "environment-program")
+            (&configured, &explicit)
         };
         assert!(unused.requests.lock().unwrap().is_empty());
-        assert!(selected
-            .requests
-            .lock()
-            .unwrap()
+        let requests = selected.requests.lock().unwrap();
+        assert!(requests.iter().any(|r| r["command"] == "list_imports"));
+        let opened: Vec<_> = requests
             .iter()
-            .any(|r| r["command"] == "open_program" && r["args"]["program"] == program));
+            .filter(|r| r["command"] == "open_program")
+            .collect();
+        if with_flags {
+            assert_eq!(opened.len(), 1);
+            assert_eq!(opened[0]["args"]["program"], "explicit-program");
+        } else {
+            // A running bridge keeps its current selection, even with a configured default.
+            assert!(opened.is_empty(), "{opened:?}");
+        }
     }
 }
 

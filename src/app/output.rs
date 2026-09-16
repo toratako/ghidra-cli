@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn output_format_preserves_explicit_flag_precedence() {
         for command in [
-            ["query", "functions"].as_slice(),
+            ["program", "imports"].as_slice(),
             ["function", "list"].as_slice(),
             ["program", "info"].as_slice(),
         ] {

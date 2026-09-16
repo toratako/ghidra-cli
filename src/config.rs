@@ -299,12 +299,6 @@ impl Config {
             .or_else(|| self.java_home.clone())
     }
 
-    pub fn get_default_program(&self) -> Option<String> {
-        std::env::var("GHIDRA_DEFAULT_PROGRAM")
-            .ok()
-            .or_else(|| self.default_program.clone())
-    }
-
     /// Bounded cap for bridge launch readiness. `GHIDRA_CLI_LAUNCH_TIMEOUT`
     /// (seconds) overrides the config value, which overrides the 180s default.
     pub fn get_launch_timeout(&self) -> std::time::Duration {

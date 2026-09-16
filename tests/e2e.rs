@@ -5,7 +5,7 @@
 //! - command_tests.rs (version flags, doctor, config)
 //! - project_tests.rs (project management, import, analyze)
 //! - daemon_tests.rs (daemon lifecycle)
-//! - query_tests.rs (function, strings, memory, decompile, query)
+//! - readonly_tests.rs (functions, strings, memory, program listings, decompile)
 //! - unimplemented_tests.rs (graceful error messages)
 
 /// Smoke test - verifies basic CLI commands work

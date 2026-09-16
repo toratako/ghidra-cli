@@ -37,10 +37,9 @@ ghidra-cli batch ./edits.ghidra --on-error stop --project target --program targe
 ## Target selection and query controls
 
 Per-line `--project`/`--program` override the batch project/current selection;
-omitted targets inherit the batch project/current selection even when standalone
-query environment defaults exist. Program switches persist for subsequent lines
-in that project. Filters, fields, sorting, limits, and counts apply within each
-result; see [query controls](exploration.md#query-controls).
+omitted targets inherit the batch project/current selection. Program switches
+persist for subsequent lines in that project. Filters, fields, sorting, limits,
+and counts apply within each result; see [query controls](exploration.md#query-controls).
 
 For import inputs and program export destinations, see
 [artifact paths](programs.md#export).

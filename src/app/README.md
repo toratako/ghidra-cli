@@ -44,8 +44,10 @@ errors follow `--on-error continue|stop` (default: continue); nested batches
 inherit the policy unless overridden. Save failures/timeouts always stop them.
 Preserve the timeout type for exit 75. Each line uses normal target resolution
 and recovery: omitted project inherits the batch project, omitted program keeps
-that project's selection, and query modifiers apply within each result. Suppress
-standalone query environment defaults when a batch line omits its targets.
+that project's selection, and query modifiers apply within each result.
+Target defaults come from config; CLI target selection does not read environment
+variables. Config `default_program` applies at bridge startup, while a running
+bridge retains its selected program unless explicitly overridden.
 
 Output precedence: explicit format, pretty JSON, compact JSON, configured
 `default_output_format`, then TTY detection. The shared

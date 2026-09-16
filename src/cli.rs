@@ -68,9 +68,6 @@ pub struct Cli {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum Commands {
-    /// Query functions, strings, imports, exports, or memory
-    Query(QueryArgs),
-
     /// Project management commands
     Project(ProjectArgs),
 

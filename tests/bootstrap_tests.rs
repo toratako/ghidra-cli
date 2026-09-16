@@ -76,6 +76,59 @@ impl Drop for Project {
 }
 
 #[test]
+fn configured_startup_targets_ignore_removed_environment_defaults() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    project.ok(&[
+        "import",
+        raw.to_str().unwrap(),
+        "--program",
+        "configured-program",
+        "--language",
+        "x86:LE:32:default",
+        "--no-analyze",
+    ]);
+    let config = project.root.path().join("config.yaml");
+    std::fs::write(
+        &config,
+        serde_yaml::to_string(&serde_json::json!({
+            "aliases": {}, "default_project": project.path,
+            "default_program": "configured-program",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let batch = project.root.path().join("batch.txt");
+    std::fs::write(&batch, "program imports\nprogram exports\n").unwrap();
+    for args in [
+        vec!["start"],
+        vec!["program", "imports"],
+        vec!["batch", batch.to_str().unwrap()],
+    ] {
+        project.ok(&["stop"]);
+        let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
+        command
+            .args(&args)
+            .arg("--json")
+            .env("GHIDRA_CLI_CONFIG", &config)
+            .env(
+                "GHIDRA_DEFAULT_PROJECT",
+                project.root.path().join("missing-project"),
+            )
+            .env("GHIDRA_DEFAULT_PROGRAM", "missing-program");
+        let output =
+            common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        project.assert_program_identity("configured-program");
+    }
+}
+
+#[test]
 fn import_names_are_saved_and_selected_across_all_routes() {
     require_ghidra!();
     let project = Project::new();

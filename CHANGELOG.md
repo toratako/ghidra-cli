@@ -7,8 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move `query imports` and `query exports` to `program imports` and
+  `program exports`, retaining their fields and shared query options.
 - Move top-level `stats` to `program stats`, preserving statistics and query options.
-
 - Move `patch bytes ADDRESS HEX` to `memory write ADDRESS HEX` and the bridge
   command `memory_write`. Byte validation, code-unit clearing, and automatic saving
   retain their existing behavior.
@@ -17,6 +18,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `query`; use `function list`, `strings list`, `memory map`, and
+  `program imports/exports`. Shared filtering and output options remain available.
+- Remove `GHIDRA_DEFAULT_PROJECT` and `GHIDRA_DEFAULT_PROGRAM` target defaults
+  and the batch-specific environment override handling. Select targets with CLI
+  flags or config; omitted batch targets retain the batch project/current program.
 - Remove the top-level `version` command; use `--version` or `-V`.
 - Remove top-level `rename`/`mv` in favor of `symbol rename`, and remove
   `project create` and `init`. Import creates projects as needed; configuration
@@ -25,7 +31,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   recognizes `.gpr`/`.rep` artifacts and leaves bare directories intact.
 - Remove the `patch`, `dump` (including top-level `export`), and `diff` namespaces,
   and the top-level `info` alias. Use `program export binary` for binary export
-  and `query` for imports/exports, or the corresponding list commands.
+  and `program imports/exports` for symbol listings, or the corresponding list
+  commands.
 - Remove `memory search`, `find interesting`, `find crypto`, `find function`,
   `script java`, `script python`, and `graph export`.
 - Remove `function x-refs`, `function decompile`, and `function tag`; use `x-ref`,

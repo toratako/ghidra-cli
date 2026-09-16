@@ -6,7 +6,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
         command,
         Commands::Import(_)
             | Commands::Analyze(_)
-            | Commands::Query(_)
             | Commands::Decompile(_)
             | Commands::Function(_)
             | Commands::Strings(_)
@@ -34,7 +33,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
     match command {
         Commands::Import(args) => args.project.clone(),
         Commands::Analyze(args) => args.project.clone(),
-        Commands::Query(args) => args.project.clone(),
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.project.clone(),
@@ -134,9 +132,10 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.project.clone(),
             cli::ProgramCommands::Close(args) => args.project.clone(),
             cli::ProgramCommands::Delete(args) => args.project.clone(),
-            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
-                args.project.clone()
-            }
+            cli::ProgramCommands::Info(args)
+            | cli::ProgramCommands::Stats(args)
+            | cli::ProgramCommands::Imports(args)
+            | cli::ProgramCommands::Exports(args) => args.project.clone(),
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
         },
@@ -151,7 +150,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
 pub(super) fn extract_program_from_command(command: &Commands) -> Option<String> {
     match command {
         Commands::Analyze(args) => args.program.clone(),
-        Commands::Query(args) => args.program.clone(),
         Commands::Decompile(args) => args.options.program.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.program.clone(),
@@ -251,9 +249,10 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.program.clone(),
             cli::ProgramCommands::Close(args) => args.program.clone(),
             cli::ProgramCommands::Delete(args) => args.program.clone(),
-            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
-                args.program.clone()
-            }
+            cli::ProgramCommands::Info(args)
+            | cli::ProgramCommands::Stats(args)
+            | cli::ProgramCommands::Imports(args)
+            | cli::ProgramCommands::Exports(args) => args.program.clone(),
             cli::ProgramCommands::Export(args) => args.program.clone(),
             cli::ProgramCommands::Save(args) => args.program.clone(),
         },
@@ -265,23 +264,14 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
 /// Extract QueryOptions from a command, if it has them.
 pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> {
     match command {
-        Commands::Query(args) => Some(QueryOptions {
-            program: args.program.clone(),
-            project: args.project.clone(),
-            filter: args.filter.clone(),
-            fields: args.fields.clone(),
-            format: args.format,
-            limit: args.limit,
-            offset: args.offset,
-            sort: args.sort.clone(),
-            count: args.count,
-            json: args.json,
-        }),
         Commands::Decompile(args) => Some(args.options.clone()),
         Commands::Disasm(args) => Some(args.options.clone()),
-        Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
-            Some(opts.clone())
-        }
+        Commands::Program(
+            cli::ProgramCommands::Info(opts)
+            | cli::ProgramCommands::Stats(opts)
+            | cli::ProgramCommands::Imports(opts)
+            | cli::ProgramCommands::Exports(opts),
+        ) => Some(opts.clone()),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some(args.options.clone()),
@@ -349,12 +339,9 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         | Commands::Type(cli::TypeCommands::List(_)) => Paged("name"),
         Commands::Strings(cli::StringsCommands::List(_)) => Paged("value"),
         Commands::Comment(cli::CommentCommands::List(_)) => Paged("text"),
-        Commands::Query(args) => match args.data_type {
-            cli::QueryDataType::Functions => Paged("name"),
-            cli::QueryDataType::Strings => Paged("value"),
-            cli::QueryDataType::Imports | cli::QueryDataType::Exports => Limit,
-            _ => Client,
-        },
+        Commands::Program(cli::ProgramCommands::Imports(_) | cli::ProgramCommands::Exports(_)) => {
+            Limit
+        }
         Commands::Function(cli::FunctionCommands::Disasm(_))
         | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
         | Commands::Graph(

@@ -568,11 +568,7 @@ fn invalid_choices_list_valid_values_before_loading_config() {
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         for (args, choices) in [
             (
-                vec!["query", "symbols"],
-                "functions, strings, imports, exports, memory",
-            ),
-            (
-                vec!["query", "functions", "--format", "potato"],
+                vec!["program", "imports", "--format", "potato"],
                 "json, json-compact, json-stream",
             ),
             (vec!["function", "list", "-o", "auto"], "csv, tsv, table"),
@@ -788,6 +784,11 @@ fn removed_commands_are_rejected_before_loading_config() {
         vec!["init"],
         vec!["version"],
         vec!["stats"],
+        vec!["query", "functions"],
+        vec!["query", "strings"],
+        vec!["query", "memory"],
+        vec!["query", "imports"],
+        vec!["query", "exports"],
         vec!["summary"],
         vec!["info"],
         vec!["set-default", "program", "sample"],

@@ -51,28 +51,6 @@ fn disasm_end_conflicts_with_instruction_count() {
 }
 
 #[test]
-fn query_help_lists_only_routed_types() {
-    for help_flag in ["-h", "--help"] {
-        let help = Cli::try_parse_from(["ghidra-cli", "query", help_flag])
-            .err()
-            .expect("expected help");
-        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
-        assert!(help
-            .to_string()
-            .contains("[possible values: functions, strings, imports, exports, memory]"));
-    }
-    for data_type in ["functions", "strings", "imports", "exports", "memory"] {
-        Cli::try_parse_from(["ghidra-cli", "query", data_type]).unwrap();
-    }
-    for unsupported in ["symbols", "xrefs", "sections", "function", "FUNCTIONS"] {
-        let error = Cli::try_parse_from(["ghidra-cli", "query", unsupported])
-            .err()
-            .expect("unsupported query type must fail before bridge startup");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-    }
-}
-
-#[test]
 fn output_formats_keep_existing_spellings_and_aliases() {
     for (name, expected) in [
         ("full", OutputFormat::Full),
@@ -94,7 +72,7 @@ fn output_formats_keep_existing_spellings_and_aliases() {
     ] {
         for spelling in [name.to_string(), name.to_uppercase()] {
             assert_eq!(OutputFormat::from_str(&spelling).unwrap(), expected);
-            for command in [["query", "functions"], ["function", "list"]] {
+            for command in [["program", "imports"], ["function", "list"]] {
                 for flag in ["-o", "--format"] {
                     let cli = Cli::try_parse_from([
                         "ghidra-cli",
@@ -105,7 +83,7 @@ fn output_formats_keep_existing_spellings_and_aliases() {
                     ])
                     .unwrap();
                     let format = match cli.command {
-                        Commands::Query(args) => args.format,
+                        Commands::Program(ProgramCommands::Imports(opts)) => opts.format,
                         Commands::Function(FunctionCommands::List(args)) => args.options.format,
                         _ => panic!("unexpected command"),
                     };
@@ -118,7 +96,10 @@ fn output_formats_keep_existing_spellings_and_aliases() {
 
 #[test]
 fn shared_format_help_lists_choices_and_legacy_rendering() {
-    for command in [["query"].as_slice(), ["memory", "read"].as_slice()] {
+    for command in [
+        ["program", "exports"].as_slice(),
+        ["memory", "read"].as_slice(),
+    ] {
         for flag in ["-h", "--help"] {
             let help = Cli::try_parse_from(
                 ["ghidra-cli"]

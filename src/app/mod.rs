@@ -13,7 +13,7 @@ use crate::format::OutputFormat;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
 use crate::query::{Query, QueryPlan};
-use clap::{CommandFactory, FromArgMatches};
+use clap::Parser;
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
@@ -157,7 +157,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
             } else {
                 selected_program
                     .clone()
-                    .or_else(|| config.get_default_program())
+                    .or_else(|| config.default_program.clone())
             };
             // For all bridge commands (including Analyze), ensure bridge is running
             let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
@@ -193,7 +193,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
                         .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
                     let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
                     batch::execute_batch(&content, on_error, |line| {
-                        let mut sub_cli = parse_batch_command(
+                        let mut sub_cli = Cli::try_parse_from(
                             std::iter::once("ghidra-cli".to_owned())
                                 .chain(batch::split_arguments(line)?),
                         )?;
@@ -269,26 +269,6 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         value: output::limit_response_rows(result, plan.fallback_limit),
         query: plan.post,
     })
-}
-
-fn parse_batch_command(args: impl IntoIterator<Item = String>) -> anyhow::Result<Cli> {
-    use clap::parser::ValueSource;
-    let matches = Cli::command().try_get_matches_from(args)?;
-    let mut cli = Cli::from_arg_matches(&matches)?;
-    if let Commands::Query(query) = &mut cli.command {
-        let query_matches = matches.subcommand().expect("query has command matches").1;
-        // Environment defaults apply to standalone queries; an omitted batch
-        // target inherits the batch project and its current program instead.
-        if query_matches.value_source("project") == Some(ValueSource::EnvVariable) {
-            query.project = None;
-            cli.project = None;
-        }
-        if query_matches.value_source("program") == Some(ValueSource::EnvVariable) {
-            query.program = None;
-            cli.program = None;
-        }
-    }
-    Ok(cli)
 }
 
 fn current_program_path(client: &BridgeClient) -> anyhow::Result<Option<String>> {

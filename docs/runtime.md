@@ -56,6 +56,11 @@ Output precedence is explicit format, `--pretty`, `--json`, configured
 otherwise). `default_limit` also applies after client filtering, sorting, and
 offset when no explicit limit is given; `--count` and `--limit 0` bypass that cap.
 
+Project selection uses `--project`, then config `default_project`. Explicit
+`--program` selects a program; a running bridge otherwise keeps its current
+selection. When starting a bridge, config `default_program` supplies the default
+program if no explicit program was given.
+
 ## Environment
 
 | Variable | Purpose |
@@ -64,8 +69,6 @@ offset when no explicit limit is given; `--count` and `--limit 0` bypass that ca
 | `GHIDRA_PROJECT_DIR` | Base project directory |
 | `GHIDRA_CLI_JAVA_HOME` | Full JDK override; also `--java-home` or `config set java_home PATH` |
 | `GHIDRA_CLI_CONFIG` | Config file path override |
-| `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra-cli query` |
-| `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra-cli query` and auto-selection |
 
 On Linux, `XDG_CONFIG_HOME` controls the CLI configuration and Java source bundle,
 and `XDG_DATA_HOME` controls bridge discovery/lock files and CLI logs.
