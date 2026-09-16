@@ -105,7 +105,8 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
     let output = Output::new(cli);
     // Parse once, before any bridge work. The same plan travels with the result
     // through standalone and batch output, so paging is never applied twice.
-    let query = extract_query_options(&cli.command)
+    let query_options = extract_query_options(&cli.command);
+    let query = query_options
         .as_ref()
         .map(|opts| Query::from_options(opts, OutputFormat::JsonCompact))
         .transpose()
@@ -114,8 +115,8 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
     let config = load_config(&cli.projects_dir)?;
     let plan = QueryPlan::new(
         query,
-        config.default_limit,
-        options::list_query_field(&cli.command),
+        query_options.as_ref().and(config.default_limit),
+        options::query_fetch_support(&cli.command),
     );
 
     // Extract project from command args, fall back to global --project, then config default
@@ -261,7 +262,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
     };
 
     Ok(CommandResult {
-        value: result,
+        value: output::limit_response_rows(result, plan.fallback_limit),
         query: plan.post,
     })
 }

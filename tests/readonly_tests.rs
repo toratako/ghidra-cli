@@ -19,6 +19,8 @@ mod query;
 mod relationships;
 #[path = "readonly/search.rs"]
 mod search;
+#[path = "readonly/search_limits.rs"]
+mod search_limits;
 
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 

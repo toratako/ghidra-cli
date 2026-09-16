@@ -87,7 +87,7 @@ final class CommandDispatcher {
             case "find_calls_to":   return searchCommands.handleFindCalls(args);
             case "function_calls":  return searchCommands.handleFunctionCalls(args);
             case "find_crypto":     return searchCommands.handleFindCrypto();
-            case "find_interesting": return searchCommands.handleFindInteresting();
+            case "find_interesting": return searchCommands.handleFindInteresting(args);
             // Symbol commands
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);

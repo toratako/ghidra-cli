@@ -417,8 +417,10 @@ pub(super) fn execute_via_bridge(
         Commands::Find(cmd) => {
             use cli::FindCommands;
             match cmd {
-                FindCommands::String(args) => client.find_string(&args.pattern),
-                FindCommands::Bytes(args) => client.find_bytes(&args.hex),
+                FindCommands::String(args) => {
+                    client.find_string_with_limit(&args.pattern, list_limit)
+                }
+                FindCommands::Bytes(args) => client.find_bytes_with_limit(&args.hex, list_limit),
                 FindCommands::Instruction(args) => client.find_instruction(
                     &args.pattern,
                     args.start.as_deref(),
@@ -429,7 +431,7 @@ pub(super) fn execute_via_bridge(
                 FindCommands::Function(args) => client.find_function(&args.pattern),
                 FindCommands::Calls(args) => client.find_calls(args.resolved_target()),
                 FindCommands::Crypto(_) => client.find_crypto(),
-                FindCommands::Interesting(_) => client.find_interesting(),
+                FindCommands::Interesting(_) => client.find_interesting_with_limit(list_limit),
             }
         }
         Commands::Diff(cmd) => {

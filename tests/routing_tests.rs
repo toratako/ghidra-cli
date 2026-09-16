@@ -11,6 +11,13 @@ fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
+fn batch_arguments(args: &[&str]) -> String {
+    args.iter()
+        .map(|arg| format!("'{}'", arg.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn symbol_fixture(id: &str, address: &str, kind: &str) -> Value {
     json!({
         "id": id, "name": "shared", "address": address, "namespace": "Global",
@@ -101,6 +108,28 @@ impl RecordedBridge {
                             "instructions"
                         };
                         json!({key: rows, "count": rows.len()})
+                    }
+                    "find_string" | "find_bytes" | "find_interesting" => {
+                        let mut rows: Vec<_> = (0..160)
+                            .map(|i| json!({"address": format!("{i:04x}")}))
+                            .collect();
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        json!({"results": rows, "count": rows.len()})
+                    }
+                    "find_function" | "memory_map" => {
+                        let rows = vec![
+                            json!({"name":"first"}),
+                            json!({"name":"second"}),
+                            json!({"name":"third"}),
+                        ];
+                        let key = if request["command"] == "memory_map" {
+                            "blocks"
+                        } else {
+                            "results"
+                        };
+                        json!({key: rows, "count": rows.len(), "current_program_name": program})
                     }
                     "string_refs" => {
                         let rows = if args["string"] == "absent" {
@@ -1288,10 +1317,12 @@ fn batch_queries_inherit_targets_without_environment_overrides() {
     assert!(output.status.success(), "{output:?}");
     let result: Value = serde_json::from_slice(&output.stdout).unwrap();
     for (index, program) in [(0, "A"), (1, "B"), (2, "B"), (3, "C"), (4, "D"), (5, "C")] {
-        assert_eq!(
-            result[0]["results"][index]["result"]["observed_program"],
-            program
-        );
+        let key = if index == 1 {
+            "observed_program"
+        } else {
+            "current_program_name"
+        };
+        assert_eq!(result[0]["results"][index]["result"][key], program);
     }
     assert!(env_project.requests.lock().unwrap().is_empty());
     for (bridge, expected) in [(&first, vec!["A", "B", "C"]), (&second, vec!["D"])] {
@@ -1567,5 +1598,139 @@ fn unsupported_list_offset_fetches_enough_rows() {
         .filter(|r| r["command"] == "list_imports" || r["command"] == "list_exports")
     {
         assert!(list["args"]["limit"].is_null());
+    }
+}
+
+#[test]
+fn search_queries_use_planned_limits_without_truncating_selection() {
+    let bridge = RecordedBridge::new();
+    for (command, wire) in [
+        (vec!["find", "string", "needle"], "find_string"),
+        (vec!["find", "bytes", "90"], "find_bytes"),
+        (vec!["find", "interesting"], "find_interesting"),
+    ] {
+        for (flags, expected_len, first, fetch_limit) in [
+            (vec![], 1, "0000", json!(1)),
+            (vec!["--fields", "address"], 1, "0000", json!(1)),
+            (vec!["--limit", "0"], 160, "0000", Value::Null),
+            (vec!["--limit", "120"], 120, "0000", json!(120)),
+            (vec!["--filter", "address='009f'"], 1, "009f", Value::Null),
+            (vec!["--sort=-address"], 1, "009f", Value::Null),
+            (
+                vec!["--offset", "100", "--limit", "2"],
+                2,
+                "0064",
+                Value::Null,
+            ),
+            (vec!["--count"], 160, "", Value::Null),
+            (
+                vec!["--count", "--offset", "100", "--limit", "2"],
+                2,
+                "",
+                Value::Null,
+            ),
+        ] {
+            for batch in [false, true] {
+                let mut args = command.clone();
+                args.extend(&flags);
+                bridge.requests.lock().unwrap().clear();
+                let result = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                        .unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                if flags.contains(&"--count") {
+                    assert_eq!(result, expected_len, "{args:?}, batch={batch}");
+                } else {
+                    let rows = if batch && flags.is_empty() {
+                        assert_eq!(result["count"], expected_len);
+                        &result["results"]
+                    } else {
+                        &result
+                    };
+                    assert_eq!(
+                        rows.as_array().unwrap().len(),
+                        expected_len,
+                        "{args:?}, batch={batch}"
+                    );
+                    assert_eq!(rows[0]["address"], first);
+                }
+                let requests = bridge.requests.lock().unwrap();
+                let sent: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+                assert_eq!(sent.len(), 1);
+                assert_eq!(sent[0]["args"]["limit"], fetch_limit, "{args:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn client_only_queries_apply_defaults_with_and_without_query_flags() {
+    let bridge = RecordedBridge::new();
+    for (configured, cap) in [("2", 2), ("0", 3), ("null", 3)] {
+        std::fs::write(
+            bridge.root.path().join("config.yaml"),
+            format!("aliases: {{}}\ndefault_limit: {configured}\n"),
+        )
+        .unwrap();
+        for (command, wire, key) in [
+            (vec!["find", "function", "*"], "find_function", "results"),
+            (vec!["memory", "map"], "memory_map", "blocks"),
+        ] {
+            for (flags, count, first) in [
+                (vec![], cap, "first"),
+                (vec!["--json"], cap, "first"),
+                (vec!["--format", "json"], cap, "first"),
+                (vec!["--fields", "name"], cap, "first"),
+                (vec!["--limit", "0"], 3, "first"),
+                (vec!["--limit", "1"], 1, "first"),
+                (vec!["--sort=-name"], cap, "third"),
+                (vec!["--offset", "1"], 2, "second"),
+                (vec!["--filter", "name=third"], 1, "third"),
+                (vec!["--count"], 3, ""),
+                (vec!["--count", "--offset", "1", "--limit", "1"], 1, ""),
+            ] {
+                for batch in [false, true] {
+                    let mut args = command.clone();
+                    args.extend(&flags);
+                    let result = if batch {
+                        std::fs::write(
+                            bridge.root.path().join("batch.txt"),
+                            batch_arguments(&args),
+                        )
+                        .unwrap();
+                        bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    } else {
+                        bridge.run(&args)
+                    };
+                    if flags.contains(&"--count") {
+                        assert_eq!(result, count);
+                    } else {
+                        let no_query = flags.is_empty()
+                            || flags.contains(&"--json")
+                            || flags.contains(&"--format");
+                        let rows = if batch && no_query {
+                            assert_eq!(result["count"], count);
+                            &result[key]
+                        } else {
+                            &result
+                        };
+                        assert_eq!(
+                            rows.as_array().unwrap().len(),
+                            count,
+                            "{args:?}, default={configured}, batch={batch}"
+                        );
+                        assert_eq!(rows[0]["name"], first);
+                    }
+                }
+            }
+            let requests = bridge.requests.lock().unwrap();
+            assert!(requests
+                .iter()
+                .filter(|r| r["command"] == wire)
+                .all(|r| r["args"]["limit"].is_null()));
+        }
     }
 }

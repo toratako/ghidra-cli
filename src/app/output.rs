@@ -84,22 +84,8 @@ fn check_dotnet_decompile_warning(command: &Commands, result: &serde_json::Value
     }
 }
 
-/// Unwrap bridge response envelopes into a flat array of objects.
-///
-/// Bridge returns envelopes like `{"count": N, "functions": [...]}`.
-/// This extracts the inner array so formatters can render individual items.
-fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
-    // Already an array - return as-is
-    if let serde_json::Value::Array(arr) = &value {
-        return arr.clone();
-    }
-
-    // Must be an object to unwrap
-    let obj = match value {
-        serde_json::Value::Object(ref map) => map,
-        other => return vec![other],
-    };
-
+/// Identify the same top-level row array for default limits and query output.
+fn response_array_key(obj: &serde_json::Map<String, serde_json::Value>) -> Option<&'static str> {
     // Known array keys from bridge responses
     const ARRAY_KEYS: &[&str] = &[
         "functions",
@@ -135,26 +121,54 @@ fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
         "data",
     ];
 
-    // Special case: decompile responses have a "code" key - return as-is for special rendering
     if obj.contains_key("code") {
-        return vec![value];
+        return None;
     }
-
-    // Look for a known array key
-    for &key in ARRAY_KEYS {
-        if let Some(serde_json::Value::Array(arr)) = obj.get(key) {
-            // Verify remaining keys are metadata
-            let all_meta = obj
+    ARRAY_KEYS.iter().copied().find(|key| {
+        obj.get(*key).is_some_and(serde_json::Value::is_array)
+            && obj
                 .keys()
-                .all(|k| k == key || META_KEYS.contains(&k.as_str()));
-            if all_meta {
-                return arr.clone();
+                .all(|k| k == key || META_KEYS.contains(&k.as_str()))
+    })
+}
+
+/// Apply an unconsumed default cap without changing a batch response's shape.
+pub(super) fn limit_response_rows(
+    mut value: serde_json::Value,
+    limit: Option<usize>,
+) -> serde_json::Value {
+    let Some(limit) = limit.filter(|&n| n != 0) else {
+        return value;
+    };
+    if let Some(rows) = value.as_array_mut() {
+        rows.truncate(limit);
+    } else if let Some(obj) = value.as_object_mut() {
+        if let Some(key) = response_array_key(obj) {
+            let rows = obj.get_mut(key).unwrap().as_array_mut().unwrap();
+            rows.truncate(limit);
+            let count = rows.len();
+            if obj.contains_key("count") {
+                obj.insert("count".into(), serde_json::json!(count));
             }
         }
     }
+    value
+}
 
-    // No known array key found - return as single-item vec
-    vec![value]
+/// Extract a bridge envelope's row array for standalone or explicit query output.
+fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
+    match value {
+        serde_json::Value::Array(rows) => rows,
+        serde_json::Value::Object(mut obj) => {
+            if let Some(key) = response_array_key(&obj) {
+                if let Some(serde_json::Value::Array(rows)) = obj.remove(key) {
+                    return rows;
+                }
+            }
+            vec![serde_json::Value::Object(obj)]
+        }
+        other => vec![other],
+    }
 }
 
 fn output_format(cli: &Cli) -> OutputFormat {
@@ -224,6 +238,36 @@ mod tests {
     use super::*;
     use crate::filter;
     use clap::Parser;
+
+    #[test]
+    fn default_caps_keep_envelopes_and_do_not_trim_nested_object_fields() {
+        use serde_json::json;
+        let rows = json!([{"name":"first"}, {"name":"second"}, {"name":"third"}]);
+        let envelope = json!({"results": rows, "count": 3, "pattern": "needle"});
+        let capped = limit_response_rows(envelope.clone(), Some(2));
+        assert_eq!(
+            capped,
+            json!({"results": [rows[0], rows[1]], "count": 2, "pattern": "needle"})
+        );
+        assert_eq!(
+            unwrap_bridge_response(capped),
+            vec![rows[0].clone(), rows[1].clone()]
+        );
+        assert_eq!(
+            limit_response_rows(rows.clone(), Some(2)),
+            json!([rows[0], rows[1]])
+        );
+        for limit in [None, Some(0)] {
+            assert_eq!(limit_response_rows(envelope.clone(), limit), envelope);
+        }
+        for object in [
+            json!({"name":"type", "fields": rows}),
+            json!({"nodes": rows, "edges": [], "node_count": 3}),
+            json!({"code":"return 0;", "instructions": rows}),
+        ] {
+            assert_eq!(limit_response_rows(object.clone(), Some(1)), object);
+        }
+    }
 
     #[test]
     fn output_format_preserves_explicit_flag_precedence() {

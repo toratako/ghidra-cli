@@ -16,6 +16,7 @@ import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.util.exception.CancelledException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -77,6 +78,7 @@ final class SearchCommands {
         if (pattern == null) pattern = "";
 
         try {
+            long limit = ListQuery.pageArgument(args, "limit");
             JsonArray results = new JsonArray();
 
             // Phase 1: Search pre-analyzed string data types from the listing.
@@ -85,6 +87,8 @@ final class SearchCommands {
             DataIterator dataIter = listing.getDefinedData(true);
 
             while (dataIter.hasNext()) {
+                session.monitor().checkCancelled();
+                if (limit > 0 && results.size() >= limit) break;
                 Data data = dataIter.next();
                 if (data.hasStringValue()) {
                     try {
@@ -117,8 +121,10 @@ final class SearchCommands {
                 byte[] searchBytes = pattern.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
                 Address addr = memory.getMinAddress();
-                while (addr != null && results.size() < 100) {
+                while (addr != null && (limit == 0 || results.size() < limit)) {
+                    session.monitor().checkCancelled();
                     Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
+                    session.monitor().checkCancelled();
                     if (found == null) break;
 
                     // Walk back to the start of the printable run so the result
@@ -165,16 +171,19 @@ final class SearchCommands {
      * non-terminated strings (Rust &str literals) there is no separator, so
      * the run may include preceding literals — bounded by maxBack.
      */
-    private Address backScanToStringStart(Memory memory, Address matchAddr, int maxBack) {
+    private Address backScanToStringStart(Memory memory, Address matchAddr, int maxBack) throws CancelledException {
         Address start = matchAddr;
         try {
             for (int i = 0; i < maxBack; i++) {
+                session.monitor().checkCancelled();
                 Address prev = start.subtractNoWrap(1);
                 if (prev == null || !memory.contains(prev)) break;
                 byte b = memory.getByte(prev);
                 if (b == 0 || b < 0x20 || b > 0x7e) break;
                 start = prev;
             }
+        } catch (CancelledException e) {
+            throw e;
         } catch (Exception e) {
             // Hit a block boundary or unreadable byte; current start is fine.
         }
@@ -185,14 +194,17 @@ final class SearchCommands {
      * Extract a printable string starting at the given address.
      * Reads until a null byte, non-printable character, or maxLen is reached.
      */
-    private String extractStringAt(Memory memory, Address addr, int maxLen) {
+    private String extractStringAt(Memory memory, Address addr, int maxLen) throws CancelledException {
         StringBuilder sb = new StringBuilder();
         try {
             for (int i = 0; i < maxLen; i++) {
+                session.monitor().checkCancelled();
                 byte b = memory.getByte(addr.addNoWrap(i));
                 if (b < 0x20 || b > 0x7e) break;
                 sb.append((char) b);
             }
+        } catch (CancelledException e) {
+            throw e;
         } catch (Exception e) {
             // Retain the readable prefix at an unmapped/uninitialized boundary.
         }
@@ -222,6 +234,7 @@ final class SearchCommands {
 
             DataIterator dataIter = listing.getDefinedData(true);
             while (dataIter.hasNext()) {
+                session.monitor().checkCancelled();
                 Data data = dataIter.next();
                 if (!data.hasStringValue()) continue;
 
@@ -233,6 +246,7 @@ final class SearchCommands {
 
                 Address strAddr = data.getAddress();
                 for (Reference ref : refMgr.getReferencesTo(strAddr)) {
+                    session.monitor().checkCancelled();
                     JsonObject item = new JsonObject();
                     item.addProperty("string_address", strAddr.toString());
                     item.addProperty("string_value", val);
@@ -267,6 +281,7 @@ final class SearchCommands {
         }
 
         try {
+            long limit = ListQuery.pageArgument(args, "limit");
             String hexClean = hexPattern.replace("0x", "").replace(" ", "");
             if (hexClean.isEmpty() || (hexClean.length() % 2) != 0
                     || !hexClean.matches("[0-9a-fA-F]+")) {
@@ -281,13 +296,19 @@ final class SearchCommands {
             JsonArray results = new JsonArray();
 
             Address addr = memory.getMinAddress();
-            while (addr != null && results.size() < 100) {
+            while (addr != null && (limit == 0 || results.size() < limit)) {
+                session.monitor().checkCancelled();
                 Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
+                session.monitor().checkCancelled();
                 if (found == null) break;
                 JsonObject item = new JsonObject();
                 item.addProperty("address", found.toString());
                 results.add(item);
-                addr = found.add(1);
+                try {
+                    addr = found.addNoWrap(1);
+                } catch (ghidra.program.model.address.AddressOverflowException e) {
+                    break;
+                }
             }
 
             JsonObject result = new JsonObject();
@@ -314,6 +335,7 @@ final class SearchCommands {
 
             FunctionIterator iter = fm.getFunctions(true);
             while (iter.hasNext()) {
+                session.monitor().checkCancelled();
                 Function func = iter.next();
                 String name = func.getName();
                 boolean matches;
@@ -363,8 +385,10 @@ final class SearchCommands {
             ghidra.program.model.address.AddressIterator srcIter =
                 refMgr.getReferenceSourceIterator(targetFunc.getBody(), true);
             while (srcIter.hasNext()) {
+                session.monitor().checkCancelled();
                 Address fromAddr = srcIter.next();
                 for (Reference ref : refMgr.getReferencesFrom(fromAddr)) {
+                    session.monitor().checkCancelled();
                     if (!ref.getReferenceType().isCall()) continue;
                     Address toAddr = ref.getToAddress();
                     Function calleeFunc = fm.getFunctionAt(toAddr);
@@ -491,6 +515,7 @@ final class SearchCommands {
             };
 
             for (String[] cp : cryptoPatterns) {
+                session.monitor().checkCancelled();
                 String name = cp[0];
                 String hexPattern = cp[1];
                 byte[] searchBytes = new byte[hexPattern.length() / 2];
@@ -500,6 +525,7 @@ final class SearchCommands {
 
                 Address addr = memory.getMinAddress();
                 Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
+                session.monitor().checkCancelled();
                 if (found != null) {
                     JsonObject item = new JsonObject();
                     item.addProperty("type", name);
@@ -518,10 +544,11 @@ final class SearchCommands {
         }
     }
 
-    JsonObject handleFindInteresting() {
+    JsonObject handleFindInteresting(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
         try {
+            long limit = ListQuery.pageArgument(args, "limit");
             FunctionManager fm = session.program().getFunctionManager();
             ReferenceManager refMgr = session.program().getReferenceManager();
             List<JsonObject> resultsList = new ArrayList<>();
@@ -531,6 +558,7 @@ final class SearchCommands {
 
             FunctionIterator iter = fm.getFunctions(true);
             while (iter.hasNext()) {
+                session.monitor().checkCancelled();
                 Function func = iter.next();
                 String funcName = func.getName();
                 Address funcAddr = func.getEntryPoint();
@@ -538,6 +566,7 @@ final class SearchCommands {
 
                 int xrefCount = 0;
                 for (Reference ref : refMgr.getReferencesTo(funcAddr)) {
+                    session.monitor().checkCancelled();
                     xrefCount++;
                 }
 
@@ -568,17 +597,19 @@ final class SearchCommands {
             }
 
             // Sort by number of reasons (descending)
+            session.monitor().checkCancelled();
             resultsList.sort((a, b) -> b.getAsJsonArray("reasons").size() - a.getAsJsonArray("reasons").size());
 
             JsonArray results = new JsonArray();
-            int limit = Math.min(50, resultsList.size());
-            for (int i = 0; i < limit; i++) {
-                results.add(resultsList.get(i));
+            for (JsonObject item : resultsList) {
+                session.monitor().checkCancelled();
+                if (limit > 0 && results.size() >= limit) break;
+                results.add(item);
             }
 
             JsonObject result = new JsonObject();
             result.add("results", results);
-            result.addProperty("count", resultsList.size());
+            result.addProperty("count", results.size());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to find interesting functions: " + e.getMessage());

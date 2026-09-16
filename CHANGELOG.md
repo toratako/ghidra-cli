@@ -71,6 +71,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Search and list output share one query limit plan. `find bytes`, raw-memory
+  `find string`, and `find interesting` no longer truncate at 100/50 matches,
+  so counts, filters, sorts and offsets can use the complete result set.
+  Long searches check cancellation. Commands without bridge-side limits now
+  honor `default_limit` with omitted query options or `--fields` alone, including
+  in batches; explicit `--limit 0` remains unlimited.
 - `function disasm` lists only the selected function's instructions, including
   disjoint body ranges and when selected by an interior address. It honors query
   limits, filtering, sorting, pagination, and counts without a hidden ten-instruction

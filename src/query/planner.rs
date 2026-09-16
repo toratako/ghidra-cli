@@ -3,6 +3,14 @@
 use super::Query;
 use crate::filter::{FilterExpr, StringOp};
 
+/// Operations that the command's adapter actually forwards to the bridge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FetchSupport {
+    Client,
+    Limit,
+    Paged(&'static str),
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct FetchParams {
     pub limit: Option<usize>,
@@ -13,26 +21,30 @@ pub(crate) struct FetchParams {
 pub(crate) struct QueryPlan {
     pub fetch: FetchParams,
     pub post: Option<Query>,
+    /// A client-side default cap when no explicit query was requested. Keeping
+    /// this separate preserves unmodified batch response envelopes.
+    pub fallback_limit: Option<usize>,
 }
 
 impl QueryPlan {
-    /// `list_field` identifies a list handler supporting literal contains and
-    /// offset. Other commands retain the existing complete-fetch rules.
+    /// Resolve the limit once and retain anything the bridge cannot apply.
     pub fn new(
         mut query: Option<Query>,
         default_limit: Option<usize>,
-        list_field: Option<&str>,
+        support: FetchSupport,
     ) -> Self {
-        let mut fetch = FetchParams {
-            limit: default_limit.filter(|&n| n != 0),
-            ..Default::default()
+        let list_field = match support {
+            FetchSupport::Paged(field) => Some(field),
+            _ => None,
         };
+        let mut fetch = FetchParams::default();
+        let mut fallback_limit = None;
         if let Some(post) = &mut query {
             let selects_rows =
                 post.filter.is_some() || post.sort.is_some() || post.offset.is_some();
             // Preserve the output default, including after filtering/sorting.
             // --count ignores the default; an explicit --limit still applies.
-            if post.limit.is_none() && !post.count_only && selects_rows {
+            if post.limit.is_none() && !post.count_only {
                 post.limit = default_limit;
             }
             fetch.filter = match (list_field, post.filter.as_ref().map(|f| &f.expr)) {
@@ -50,17 +62,27 @@ impl QueryPlan {
                 && post.sort.is_none()
                 && !post.count_only
                 && (post.filter.is_none() || fetch.filter.is_some());
-            fetch.limit = if (selects_rows || post.count_only) && !can_page {
+            fetch.limit = if support == FetchSupport::Client
+                || ((selects_rows || post.count_only) && !can_page)
+            {
                 None
             } else {
-                post.limit.or(default_limit).filter(|&n| n != 0)
+                post.limit.filter(|&n| n != 0)
             };
             if can_page {
                 // Offset is not idempotent: never apply it a second time.
                 fetch.offset = post.offset.take().filter(|&n| n != 0);
             }
+        } else if support == FetchSupport::Client {
+            fallback_limit = default_limit.filter(|&n| n != 0);
+        } else {
+            fetch.limit = default_limit.filter(|&n| n != 0);
         }
-        Self { fetch, post: query }
+        Self {
+            fetch,
+            post: query,
+            fallback_limit,
+        }
     }
 }
 
@@ -86,11 +108,11 @@ mod tests {
         }
     }
 
-    fn plan(opts: &QueryOptions, field: Option<&str>) -> QueryPlan {
+    fn plan(opts: &QueryOptions, support: FetchSupport) -> QueryPlan {
         QueryPlan::new(
             Query::from_options(opts, OutputFormat::JsonCompact).unwrap(),
             Some(2),
-            field,
+            support,
         )
     }
 
@@ -99,7 +121,7 @@ mod tests {
         let mut opts = options();
         opts.filter = Some("name~item".into());
         opts.offset = Some(3);
-        let plan = plan(&opts, Some("name"));
+        let plan = plan(&opts, FetchSupport::Paged("name"));
         assert_eq!(
             plan.fetch,
             FetchParams {
@@ -124,13 +146,17 @@ mod tests {
             Some("tags~item"),
             Some("name~item AND size>0"),
         ] {
-            for field in [None, Some("name")] {
+            for support in [
+                FetchSupport::Client,
+                FetchSupport::Limit,
+                FetchSupport::Paged("name"),
+            ] {
                 let mut opts = options();
                 opts.filter = filter.map(str::to_string);
                 opts.offset = Some(2);
                 opts.limit = Some(3);
-                let plan = plan(&opts, field);
-                if filter.is_some() || field.is_none() {
+                let plan = plan(&opts, support);
+                if filter.is_some() || support != FetchSupport::Paged("name") {
                     assert_eq!(plan.fetch, FetchParams::default());
                     assert_eq!(plan.post.unwrap().offset, Some(2));
                 }
@@ -146,7 +172,7 @@ mod tests {
             opts.offset = Some(1);
             opts.count = count;
             opts.sort = (!count).then(|| "-size".into());
-            let plan = plan(&opts, Some("name"));
+            let plan = plan(&opts, FetchSupport::Paged("name"));
             assert_eq!(plan.fetch.filter.as_deref(), Some("item"));
             assert_eq!(plan.fetch.limit, None);
             assert_eq!(plan.fetch.offset, None);
@@ -166,7 +192,11 @@ mod tests {
         ];
         // Exercise the cross-product against the existing full-fetch behavior,
         // including projection that removes the sort key and explicit zero.
-        for field in [None, Some("name")] {
+        for support in [
+            FetchSupport::Client,
+            FetchSupport::Limit,
+            FetchSupport::Paged("name"),
+        ] {
             for filter in [
                 None,
                 Some("name~item"),
@@ -185,7 +215,7 @@ mod tests {
                                 opts.offset = offset;
                                 opts.limit = limit;
                                 opts.fields = Some("name".into());
-                                let plan = plan(&opts, field);
+                                let plan = plan(&opts, support);
                                 let fetched: Vec<Value> = rows
                                     .iter()
                                     .filter(|row| {
@@ -212,7 +242,7 @@ mod tests {
                                         .unwrap()
                                         .unwrap();
                                 let expected = reference.process_results(rows.clone()).unwrap();
-                                assert_eq!(actual, expected, "{opts:?}, field={field:?}");
+                                assert_eq!(actual, expected, "{opts:?}, support={support:?}");
                             }
                         }
                     }
@@ -224,14 +254,29 @@ mod tests {
     #[test]
     fn unmodified_results_and_unlimited_defaults_keep_their_shape() {
         for default in [None, Some(0), Some(2)] {
-            let plan = QueryPlan::new(None, default, Some("name"));
+            let plan = QueryPlan::new(None, default, FetchSupport::Paged("name"));
             assert!(plan.post.is_none());
             assert_eq!(plan.fetch.limit, default.filter(|&n| n != 0));
+            assert_eq!(plan.fallback_limit, None);
+            let client = QueryPlan::new(None, default, FetchSupport::Client);
+            assert!(client.post.is_none());
+            assert_eq!(client.fetch, FetchParams::default());
+            assert_eq!(client.fallback_limit, default.filter(|&n| n != 0));
         }
         let mut opts = options();
         opts.limit = Some(0);
-        let plan = plan(&opts, Some("name"));
+        let plan = plan(&opts, FetchSupport::Paged("name"));
         assert_eq!(plan.fetch.limit, None);
         assert_eq!(plan.post.unwrap().process_results(vec![]).unwrap(), "[]");
+    }
+
+    #[test]
+    fn client_queries_retain_default_limits_even_for_projection_only() {
+        let mut opts = options();
+        opts.fields = Some("name".into());
+        let plan = plan(&opts, FetchSupport::Client);
+        assert_eq!(plan.fetch, FetchParams::default());
+        assert_eq!(plan.fallback_limit, None);
+        assert_eq!(plan.post.unwrap().limit, Some(2));
     }
 }

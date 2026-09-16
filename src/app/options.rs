@@ -416,21 +416,38 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
     }
 }
 
-/// Handlers supporting literal contains on this field and server-side paging.
-pub(super) fn list_query_field(command: &Commands) -> Option<&'static str> {
+/// Must match the fetch arguments forwarded by execute_via_bridge.
+pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupport {
+    use crate::query::FetchSupport::{Client, Limit, Paged};
     match command {
         Commands::Function(cli::FunctionCommands::List(_))
         | Commands::Symbol(cli::SymbolCommands::List(_))
         | Commands::Type(cli::TypeCommands::List(_))
-        | Commands::Dump(cli::DumpCommands::Functions(_)) => Some("name"),
+        | Commands::Dump(cli::DumpCommands::Functions(_)) => Paged("name"),
         Commands::Strings(cli::StringsCommands::List(_))
-        | Commands::Dump(cli::DumpCommands::Strings(_)) => Some("value"),
-        Commands::Comment(cli::CommentCommands::List(_)) => Some("text"),
+        | Commands::Dump(cli::DumpCommands::Strings(_)) => Paged("value"),
+        Commands::Comment(cli::CommentCommands::List(_)) => Paged("text"),
         Commands::Query(args) => match args.data_type {
-            cli::QueryDataType::Functions => Some("name"),
-            cli::QueryDataType::Strings => Some("value"),
-            _ => None,
+            cli::QueryDataType::Functions => Paged("name"),
+            cli::QueryDataType::Strings => Paged("value"),
+            cli::QueryDataType::Imports | cli::QueryDataType::Exports => Limit,
+            _ => Client,
         },
-        _ => None,
+        Commands::Dump(cli::DumpCommands::Imports(_) | cli::DumpCommands::Exports(_))
+        | Commands::Function(cli::FunctionCommands::Disasm(_))
+        | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
+        | Commands::Graph(
+            cli::GraphCommands::Calls(_)
+            | cli::GraphCommands::Callers(_)
+            | cli::GraphCommands::Callees(_),
+        )
+        | Commands::Find(
+            cli::FindCommands::String(_)
+            | cli::FindCommands::Bytes(_)
+            | cli::FindCommands::Instruction(_)
+            | cli::FindCommands::Interesting(_),
+        ) => Limit,
+        Commands::Disasm(args) if args.end.is_some() => Limit,
+        _ => Client,
     }
 }

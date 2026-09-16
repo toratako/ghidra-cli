@@ -78,7 +78,10 @@ See [patching](low-level.md#patching) for edit behavior.
 
 `--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
 run in Rust after a full fetch; small limits may not bound underlying work.
-An explicit limit overrides the default cap; `--count` and `--limit 0` bypass it.
+The default cap also applies with no query options or with only `--fields`.
+An explicit limit overrides it; `--count` ignores the default but honors an
+explicit offset/limit, returning the selected page's count. Byte, string, and
+interesting-function searches have no additional fixed result cap.
 Output precedence: explicit format, `--pretty`, `--json`, configured default,
 TTY detection.
 

@@ -446,12 +446,33 @@ impl BridgeClient {
         self.send_command("graph_export", Some(json!({"format": format})))
     }
 
+    #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
     pub fn find_string(&self, pattern: &str) -> Result<serde_json::Value> {
-        self.send_command("find_string", Some(json!({"pattern": pattern})))
+        self.find_string_with_limit(pattern, None)
     }
 
+    pub fn find_string_with_limit(
+        &self,
+        pattern: &str,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "find_string",
+            Some(json!({"pattern": pattern, "limit": limit})),
+        )
+    }
+
+    #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
     pub fn find_bytes(&self, hex: &str) -> Result<serde_json::Value> {
-        self.send_command("find_bytes", Some(json!({"hex": hex})))
+        self.find_bytes_with_limit(hex, None)
+    }
+
+    pub fn find_bytes_with_limit(
+        &self,
+        hex: &str,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command("find_bytes", Some(json!({"hex": hex, "limit": limit})))
     }
 
     pub fn find_instruction(
@@ -487,8 +508,13 @@ impl BridgeClient {
         self.send_command("find_crypto", None)
     }
 
+    #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
     pub fn find_interesting(&self) -> Result<serde_json::Value> {
-        self.send_command("find_interesting", None)
+        self.find_interesting_with_limit(None)
+    }
+
+    pub fn find_interesting_with_limit(&self, limit: Option<usize>) -> Result<serde_json::Value> {
+        self.send_command("find_interesting", Some(json!({"limit": limit})))
     }
 
     pub fn diff_functions(&self, func1: &str, func2: &str) -> Result<serde_json::Value> {

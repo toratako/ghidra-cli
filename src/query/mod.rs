@@ -1,6 +1,6 @@
 mod planner;
 
-pub(crate) use planner::{FetchParams, QueryPlan};
+pub(crate) use planner::{FetchParams, FetchSupport, QueryPlan};
 
 use crate::cli::QueryOptions;
 use crate::error::{GhidraError, Result};

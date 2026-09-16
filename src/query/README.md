@@ -5,6 +5,13 @@
 fetch arguments and a residual Rust query. `app::CommandResult` carries that
 same residual query to standalone or batch output; output does not rebuild it.
 
+The plan records each command adapter's fetch support: contains/paging, limit
+only, or neither. A limit is sent only if the adapter forwards it and the
+remaining row selection does not need a full fetch. Commands without fetch
+limits retain their cap in Rust. With no explicit query options, the default
+cap truncates the response's row array and updates its count while preserving
+the batch envelope; it does not truncate nested fields of a single object.
+
 ## Conservative list queries
 
 | List | Server filter field |
@@ -34,11 +41,17 @@ The remaining pipeline is filter -> sort -> offset/limit -> count or fields ->
 format. A pushed filter is checked again in Rust; a pushed offset is removed
 from the residual query. Projection never erases keys needed for sorting.
 
-When omitted, the limit defaults to `default_limit`, including after filtering,
-sorting or offset. Explicit `--limit 0` is unlimited. `--count` ignores the
+When omitted, the limit defaults to `default_limit`, including with no query
+options, with projection only, or after filtering, sorting or offset.
+Explicit `--limit 0` is unlimited. `--count` ignores the
 configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.
 Batch row selection and output formats retain their existing behavior.
+
+`find bytes`, both `find string` search paths, and `find interesting` use this
+same limit contract, without separate 100/50-result caps. `find interesting`
+still scans and ranks candidates before limiting its results. Raw string
+search remains a fallback when no defined string matches.
 
 ## Boundaries and validation
 
@@ -61,6 +74,9 @@ Batch row selection and output formats retain their existing behavior.
   Turkish JVM locale, tag predicates, comment types, empty pages and numeric bounds.
   These samples do not establish identical Unicode casing tables across every
   Rust/JDK release; repeat the cross-runtime checks when upgrading toolchains.
+- `tests/readonly/search_limits.rs` exercises searches with 160 matches, client
+  default caps, complete counts/selection, batch output, and cancellation of an
+  uncapped dense byte search followed by a fresh request.
 
 Deferred features and their reasons are in the
 [server-side query plan](../../docs/PLAN.md#4-server-side-query-and-streaming).
