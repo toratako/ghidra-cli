@@ -513,6 +513,14 @@ impl BridgeClient {
         self.send_command("patch_export", Some(json!({"output": output})))
     }
 
+    /// Read existing instructions belonging to a function, including disjoint body ranges.
+    pub fn function_disasm(&self, target: &str, limit: Option<usize>) -> Result<serde_json::Value> {
+        self.send_command(
+            "function_disasm",
+            Some(json!({"target": target, "limit": limit})),
+        )
+    }
+
     pub fn disasm(
         &self,
         address: &str,

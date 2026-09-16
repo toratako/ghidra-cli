@@ -116,7 +116,9 @@ pub(super) fn execute_via_bridge(
                     "get_function",
                     Some(json!({"address": args.resolved_target()})),
                 ),
-                FunctionCommands::Disasm(args) => client.disasm(args.resolved_target(), None),
+                FunctionCommands::Disasm(args) => {
+                    client.function_disasm(args.resolved_target(), list_limit)
+                }
                 FunctionCommands::Calls(args) => client.function_calls(args.resolved_target()),
                 FunctionCommands::XRefs(args) => {
                     client.xrefs_to(args.resolved_target().to_string())

@@ -71,6 +71,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `function disasm` lists only the selected function's instructions, including
+  disjoint body ranges and when selected by an interior address. It honors query
+  limits, filtering, sorting, pagination, and counts without a hidden ten-instruction
+  cap or spillover into neighboring functions.
 - `disasm-at` and incomplete `clear --disasm-at` now fail with retained
   diagnostics, so `batch --on-error stop` stops before dependent edits. Successful
   clearing is still saved and reported as a partial change when redisassembly fails.

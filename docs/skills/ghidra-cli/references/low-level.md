@@ -3,6 +3,7 @@
 ## Disassembly and analysis boundaries
 
 ```bash
+ghidra-cli function disasm main --limit 0 --format asm --project target
 ghidra-cli disasm 0x401000 -n 40 --project target
 ghidra-cli disasm 0x401000 --end 0x401080 --format asm --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target

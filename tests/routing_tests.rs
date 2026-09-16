@@ -86,7 +86,7 @@ impl RecordedBridge {
                     "decompile" => {
                         json!({"name": "main", "address": "1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
-                    "disasm" | "disasm_range" | "find_instruction" => {
+                    "disasm" | "disasm_range" | "function_disasm" | "find_instruction" => {
                         let mut rows = vec![
                             json!({"address": "1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
                             json!({"address": "1001", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
@@ -266,6 +266,81 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
         }
         for request in &sent[1..] {
             assert!(request["args"]["limit"].is_null());
+        }
+    }
+}
+
+#[test]
+fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let all = bridge.run(&["function", "disasm", "main", "--limit", "0"]);
+    assert_eq!(all.as_array().unwrap().len(), 3);
+    for (flags, expected, fetch_limit) in [
+        (vec![], json!([all[0]]), json!(1)),
+        (vec!["--limit", "0"], all.clone(), Value::Null),
+        (vec!["--limit", "2"], json!([all[0], all[1]]), json!(2)),
+        (vec!["--count"], json!(3), Value::Null),
+        (
+            vec!["--filter", "mnemonic=RET"],
+            json!([all[2]]),
+            Value::Null,
+        ),
+        (
+            vec!["--filter", "mnemonic=RET", "--count"],
+            json!(1),
+            Value::Null,
+        ),
+        (vec!["--offset", "1"], json!([all[1]]), Value::Null),
+        (vec!["--sort=-address"], json!([all[2]]), Value::Null),
+        (
+            vec![
+                "--sort=-address",
+                "--offset",
+                "1",
+                "--limit",
+                "1",
+                "--fields",
+                "address",
+            ],
+            json!([{"address": "1001"}]),
+            Value::Null,
+        ),
+        (
+            vec!["--offset", "1", "--limit", "1", "--count"],
+            json!(1),
+            Value::Null,
+        ),
+    ] {
+        let args: Vec<_> = ["function", "disasm", "main"]
+            .into_iter()
+            .chain(flags)
+            .collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            // Batch commands without query flags retain the bridge envelope.
+            let expected_result = if batch && args.len() == 3 {
+                json!({"instructions": expected, "count": expected.as_array().unwrap().len()})
+            } else {
+                expected.clone()
+            };
+            assert_eq!(result, expected_result, "{args:?}, batch={batch}");
+            let requests = bridge.requests.lock().unwrap();
+            let disassembly: Vec<_> = requests
+                .iter()
+                .filter(|r| matches!(r["command"].as_str(), Some("disasm" | "function_disasm")))
+                .collect();
+            assert_eq!(disassembly.len(), 1);
+            assert_eq!(disassembly[0]["command"], "function_disasm");
+            assert_eq!(
+                disassembly[0]["args"],
+                json!({"target": "main", "limit": fetch_limit})
+            );
         }
     }
 }

@@ -14,7 +14,8 @@ pub enum FunctionCommands {
     /// Decompile function
     #[command(alias = "decomp")]
     Decompile(FunctionDecompileArgs),
-    /// Disassemble function
+    /// List existing instructions in the function body, including disjoint ranges.
+    /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(alias = "disassemble", alias = "dis")]
     Disasm(FunctionGetArgs),
     /// List outgoing call sites and callees inside this function

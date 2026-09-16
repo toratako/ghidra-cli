@@ -48,7 +48,7 @@ final class CommandDispatcher {
         commentCommands = new CommentCommands(session);
         graphCommands = new GraphCommands(session, functionQueries);
         diffCommands = new DiffCommands(session, functionQueries);
-        memoryCommands = new MemoryCommands(session, addressResolver);
+        memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
 
@@ -58,6 +58,7 @@ final class CommandDispatcher {
             case "program_info":    return programCommands.handleProgramInfo();
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);
+            case "function_disasm": return memoryCommands.handleFunctionDisasm(args);
             case "rename_function": return functionCommands.handleRenameFunction(args);
             case "create_function": return functionCommands.handleCreateFunction(args);
             case "delete_function": return functionCommands.handleDeleteFunction(args);

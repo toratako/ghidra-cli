@@ -145,6 +145,13 @@ and have no hidden scan cap. The client sends an uncapped fetch when filtering,
 sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct wire
 name so an older bridge cannot silently ignore `disasm --end`.
 
+`function_disasm` resolves a function through `FunctionQueries` and reads existing
+instructions from its complete `getBody()` address set, including disjoint ranges.
+It shares instruction serialization with `disasm_range`; interior targets select
+the whole body. The separate wire operation prevents older bridges from silently
+returning the ten-instruction `disasm` window. Rust fetch planning applies the
+usual query limits and requests all rows before client-side selection when needed.
+
 ## Validation
 
 `bridge/sources.rs` tests source inventory/publication; `daemon_tests` exercises

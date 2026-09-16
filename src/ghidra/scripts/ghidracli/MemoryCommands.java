@@ -25,10 +25,12 @@ import static ghidracli.JsonProtocol.getArgString;
 final class MemoryCommands {
     private final ProgramSession session;
     private final AddressResolver addressResolver;
+    private final FunctionQueries functionQueries;
 
-    MemoryCommands(ProgramSession session, AddressResolver addressResolver) {
+    MemoryCommands(ProgramSession session, AddressResolver addressResolver, FunctionQueries functionQueries) {
         this.session = session;
         this.addressResolver = addressResolver;
+        this.functionQueries = functionQueries;
     }
 
     JsonObject handlePatchBytes(JsonObject args) {
@@ -271,14 +273,26 @@ final class MemoryCommands {
         }
     }
 
+    JsonObject handleFunctionDisasm(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        String target = getArgString(args, "target");
+        if (target == null || target.isEmpty()) return errorResult("Function target required");
+        Function function = functionQueries.findFunctionByNameOrAddress(target);
+        if (function == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+        return instructionsIn(function.getBody(), args);
+    }
+
     JsonObject handleDisasmRange(JsonObject args) throws Exception {
         if (session.program() == null) return errorResult("No program loaded");
         String start = getArgString(args, "start");
         String end = getArgString(args, "end");
         if (start == null || end == null) return errorResult("Start and end addresses required");
         AddressSetView range = addressResolver.instructionRange(start, end);
-        int limit = getArgInt(args, "limit", 0);
-        if (limit < 0) return errorResult("Limit must be non-negative (0 means unlimited)");
+        return instructionsIn(range, args);
+    }
+
+    private JsonObject instructionsIn(AddressSetView range, JsonObject args) throws Exception {
+        long limit = ListQuery.pageArgument(args, "limit");
         JsonArray instructions = new JsonArray();
         for (Instruction instruction : session.program().getListing().getInstructions(range, true)) {
             session.monitor().checkCancelled();

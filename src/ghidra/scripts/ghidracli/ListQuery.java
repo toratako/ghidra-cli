@@ -43,7 +43,7 @@ final class ListQuery {
         returned++;
     }
 
-    private static long pageArgument(JsonObject args, String name) {
+    static long pageArgument(JsonObject args, String name) {
         if (args == null || !args.has(name) || args.get(name).isJsonNull()) return 0;
         JsonElement value = args.get(name);
         try {

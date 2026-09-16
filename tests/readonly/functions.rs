@@ -335,6 +335,211 @@ fn test_decompile_nonexistent_function() {
 
 #[test]
 #[serial]
+fn test_function_disasm_respects_whole_body_and_query_options() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let name = format!("function-disasm-{}", uuid::Uuid::new_v4());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateFunctionDisasmFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("function disassembly fixture");
+            try {
+                byte[] bytes = new byte[0x100];
+                java.util.Arrays.fill(bytes, (byte) 0x90);
+                bytes[0] = 0x48; bytes[1] = (byte) 0x89; bytes[2] = (byte) 0xe5;
+                for (int offset : new int[]{3, 6, 0x34, 0x51, 0x66, 0x81, 0xa1}) {
+                    bytes[offset] = (byte) 0xc3;
+                }
+                // Jump across another function to a disjoint tail.
+                bytes[0x60] = (byte) 0xe9; bytes[0x61] = 0x1b;
+                bytes[0x62] = 0; bytes[0x63] = 0; bytes[0x64] = 0;
+                var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
+                program.getMemory().createInitializedBlock("code", start,
+                    new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false).setExecute(true);
+                var offsets = new java.util.ArrayList<Integer>();
+                for (int offset : new int[]{0, 3, 4, 5, 6, 0x50, 0x51, 0x60, 0x65, 0x66, 0x80, 0x81, 0xa0}) {
+                    offsets.add(offset);
+                }
+                for (int offset = 0x20; offset <= 0x34; offset++) offsets.add(offset);
+                for (int offset : offsets) {
+                    if (!new DisassembleCommand(start.add(offset), null, false).applyTo(program, monitor)) {
+                        throw new IllegalStateException("Could not disassemble fixture at " + offset);
+                    }
+                }
+                var fm = program.getFunctionManager();
+                fm.createFunction("short_case", start, new AddressSet(start, start.add(3)), SourceType.USER_DEFINED);
+                fm.createFunction("neighbor_case", start.add(4), new AddressSet(start.add(4), start.add(6)), SourceType.USER_DEFINED);
+                fm.createFunction("long_case", start.add(0x20), new AddressSet(start.add(0x20), start.add(0x34)), SourceType.USER_DEFINED);
+                var splitBody = new AddressSet(start.add(0x50), start.add(0x51));
+                splitBody.add(start.add(0x60), start.add(0x64));
+                splitBody.add(start.add(0x80), start.add(0x81));
+                fm.createFunction("split_case", start.add(0x60), splitBody, SourceType.USER_DEFINED);
+                fm.createFunction("gap_case", start.add(0x65), new AddressSet(start.add(0x65), start.add(0x66)), SourceType.USER_DEFINED);
+                fm.createFunction("empty_case", start.add(0xb0), new AddressSet(start.add(0xb0)), SourceType.USER_DEFINED);
+                program.getSymbolTable().createLabel(start, "shared_target", SourceType.USER_DEFINED);
+                program.getSymbolTable().createLabel(start.add(0x20), "shared_target", SourceType.USER_DEFINED);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#, std::slice::from_ref(&name), &[], false).unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        use serde_json::{json, Value};
+        let addresses = |rows: &Value| -> Vec<u64> {
+            rows.as_array()
+                .unwrap()
+                .iter()
+                .map(|row| u64::from_str_radix(row["address"].as_str().unwrap(), 16).unwrap())
+                .collect()
+        };
+        for (targets, expected) in [
+            (
+                vec!["short_case", "1000", "1001", "FUN_00001000"],
+                vec![0x1000, 0x1003],
+            ),
+            (vec!["long_case", "1025"], (0x1020..=0x1034).collect()),
+            (
+                vec!["split_case", "1051", "1062", "1081"],
+                vec![0x1050, 0x1051, 0x1060, 0x1080, 0x1081],
+            ),
+            (vec!["empty_case"], vec![]),
+        ] {
+            for target in targets {
+                let result = client.function_disasm(target, None).unwrap();
+                assert_eq!(
+                    addresses(&result["instructions"]),
+                    expected,
+                    "{target}: {result}"
+                );
+                assert_eq!(result["count"], expected.len());
+                let output = ghidra(harness)
+                    .args(["function", "disasm", target, "--limit", "0"])
+                    .with_project(test_project(), &name)
+                    .run();
+                output.assert_success();
+                assert_eq!(output.json::<Value>(), result["instructions"], "{target}");
+            }
+        }
+        let all = client.function_disasm("long_case", Some(0)).unwrap()["instructions"].clone();
+        assert_eq!(
+            client.function_disasm("long_case", Some(12)).unwrap()["instructions"],
+            json!(&all.as_array().unwrap()[..12])
+        );
+        assert_eq!(
+            client
+                .function_disasm("long_case", Some(i32::MAX as usize + 1))
+                .unwrap()["instructions"],
+            all
+        );
+        for (flags, expected) in [
+            (vec!["--limit", "12"], json!(&all.as_array().unwrap()[..12])),
+            (vec!["--count"], json!(21)),
+            (
+                vec!["--filter", "mnemonic=RET", "--limit", "1"],
+                json!([all[20]]),
+            ),
+            (
+                vec!["--offset", "12", "--limit", "2"],
+                json!([all[12], all[13]]),
+            ),
+            (vec!["--offset", "12", "--limit", "2", "--count"], json!(2)),
+            (
+                vec![
+                    "--sort=-address",
+                    "--offset",
+                    "1",
+                    "--limit",
+                    "1",
+                    "--fields",
+                    "address",
+                ],
+                json!([{"address": all[19]["address"]}]),
+            ),
+        ] {
+            let result = ghidra(harness)
+                .args(["function", "disasm", "long_case"])
+                .args(flags)
+                .with_project(test_project(), &name)
+                .run();
+            result.assert_success();
+            assert_eq!(result.json::<Value>(), expected);
+        }
+        let asm = ghidra(harness)
+            .args([
+                "function",
+                "disasm",
+                "short_case",
+                "--format",
+                "asm",
+                "--limit",
+                "0",
+            ])
+            .with_project(test_project(), &name)
+            .run();
+        asm.assert_success();
+        assert_eq!(asm.stdout.lines().count(), 2);
+        assert!(
+            asm.stdout.contains("MOV") && asm.stdout.contains("RET"),
+            "{}",
+            asm.stdout
+        );
+        for target in ["no_such_function", "10a0", "1010"] {
+            let result = ghidra(harness)
+                .args(["function", "disasm", target])
+                .with_project(test_project(), &name)
+                .run();
+            result
+                .assert_failure()
+                .assert_stderr_contains("Cannot resolve function target");
+        }
+        let ambiguous = client.function_disasm("shared_target", None).unwrap_err();
+        assert!(
+            ambiguous.to_string().contains("Ambiguous function target"),
+            "{ambiguous}"
+        );
+        for limit in [json!(-1), json!(1.5), json!(u64::MAX)] {
+            let error = client
+                .send_command(
+                    "function_disasm",
+                    Some(json!({"target": "long_case", "limit": limit})),
+                )
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("limit must be an integer"),
+                "{error}"
+            );
+        }
+        client.program_close().unwrap();
+        assert!(client
+            .function_disasm("short_case", None)
+            .unwrap_err()
+            .to_string()
+            .contains("No program loaded"));
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(error) = checked {
+        std::panic::resume_unwind(error);
+    }
+}
+
+#[test]
+#[serial]
 fn test_disasm_end_includes_only_instruction_starts_in_range() {
     require_ghidra!();
     let harness = harness();
