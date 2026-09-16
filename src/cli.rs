@@ -160,9 +160,6 @@ pub enum Commands {
     #[command(subcommand)]
     Config(ConfigCommands),
 
-    /// Program statistics
-    Stats(StatsArgs),
-
     /// Check installation, storage writes, and local communication
     Doctor {
         /// Also start, ping, and stop Ghidra using a disposable project and the current environment

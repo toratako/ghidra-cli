@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move top-level `stats` to `program stats`, preserving statistics and query options.
+
 - Move `patch bytes ADDRESS HEX` to `memory write ADDRESS HEX` and the bridge
   command `memory_write`. Byte validation, code-unit clearing, and automatic saving
   retain their existing behavior.

@@ -74,6 +74,7 @@ fn test_snapshot_stats_structure() {
     let harness = harness();
 
     let result = ghidra(harness)
+        .arg("program")
         .arg("stats")
         .with_project(test_project(), TEST_PROGRAM)
         .run();

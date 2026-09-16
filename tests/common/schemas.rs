@@ -172,7 +172,7 @@ pub struct ExportResult {
     pub size: Option<u64>,
 }
 
-/// Stats result from `ghidra-cli stats`.
+/// Stats result from `ghidra-cli program stats`.
 #[derive(Debug, Deserialize)]
 pub struct StatsResult {
     #[serde(default)]

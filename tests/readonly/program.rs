@@ -111,6 +111,7 @@ fn test_stats_normal() {
     let harness = harness();
 
     let result = ghidra(harness)
+        .arg("program")
         .arg("stats")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
@@ -128,6 +129,7 @@ fn test_stats_has_all_fields() {
     let harness = harness();
 
     let result = ghidra(harness)
+        .arg("program")
         .arg("stats")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
@@ -173,6 +175,7 @@ fn test_stats_json_format() {
     let harness = harness();
 
     let result = ghidra(harness)
+        .arg("program")
         .arg("stats")
         .with_project(test_project(), TEST_PROGRAM)
         .run();

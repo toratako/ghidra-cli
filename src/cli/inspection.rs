@@ -213,9 +213,3 @@ impl GraphFunctionArgs {
             .expect("clap should ensure target is provided")
     }
 }
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct StatsArgs {
-    #[command(flatten)]
-    pub options: QueryOptions,
-}

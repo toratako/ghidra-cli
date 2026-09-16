@@ -22,7 +22,7 @@ listing for `program_count`. Use `path` to distinguish same-named programs.
 Other program responses and artifact manifests use the saved
 name. `executable_path` identifies the original input file; Ghidra's internal
 Program name can differ and is not used as the CLI display name.
-`stats` reports program statistics; `program info` reports the loaded program's
+`program stats` reports program statistics; `program info` reports the loaded program's
 metadata. See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 

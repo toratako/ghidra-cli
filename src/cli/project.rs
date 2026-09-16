@@ -30,6 +30,8 @@ pub enum ProgramCommands {
     Delete(ProgramTargetArgs),
     /// Show program information
     Info(super::options::QueryOptions),
+    /// Show program statistics
+    Stats(super::options::QueryOptions),
     /// Export program
     Export(ExportArgs),
     /// Retry saving pending changes without restarting the bridge.

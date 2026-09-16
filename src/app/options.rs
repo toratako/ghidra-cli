@@ -25,7 +25,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::DisasmAt(_)
             | Commands::Clear(_)
             | Commands::Batch(_)
-            | Commands::Stats(_)
             | Commands::Program(_)
     )
 }
@@ -65,7 +64,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::XRefCommands::From(args) => args.options.project.clone(),
             cli::XRefCommands::List(args) => args.options.project.clone(),
         },
-        Commands::Stats(args) => args.options.project.clone(),
         Commands::Disasm(args) => args.options.project.clone(),
         Commands::DisasmAt(args) => args.project.clone(),
         Commands::Clear(args) => args.project.clone(),
@@ -136,7 +134,9 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.project.clone(),
             cli::ProgramCommands::Close(args) => args.project.clone(),
             cli::ProgramCommands::Delete(args) => args.project.clone(),
-            cli::ProgramCommands::Info(args) => args.project.clone(),
+            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
+                args.project.clone()
+            }
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
         },
@@ -181,7 +181,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::XRefCommands::From(args) => args.options.program.clone(),
             cli::XRefCommands::List(args) => args.options.program.clone(),
         },
-        Commands::Stats(args) => args.options.program.clone(),
         Commands::Disasm(args) => args.options.program.clone(),
         Commands::DisasmAt(args) => args.program.clone(),
         Commands::Clear(args) => args.program.clone(),
@@ -252,7 +251,9 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.program.clone(),
             cli::ProgramCommands::Close(args) => args.program.clone(),
             cli::ProgramCommands::Delete(args) => args.program.clone(),
-            cli::ProgramCommands::Info(args) => args.program.clone(),
+            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
+                args.program.clone()
+            }
             cli::ProgramCommands::Export(args) => args.program.clone(),
             cli::ProgramCommands::Save(args) => args.program.clone(),
         },
@@ -278,8 +279,9 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         }),
         Commands::Decompile(args) => Some(args.options.clone()),
         Commands::Disasm(args) => Some(args.options.clone()),
-        Commands::Stats(args) => Some(args.options.clone()),
-        Commands::Program(cli::ProgramCommands::Info(opts)) => Some(opts.clone()),
+        Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
+            Some(opts.clone())
+        }
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some(args.options.clone()),

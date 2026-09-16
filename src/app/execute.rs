@@ -208,6 +208,7 @@ pub(super) fn execute_via_bridge(
                     client.program_delete(program)
                 }
                 ProgramCommands::Info(_) => client.program_info(),
+                ProgramCommands::Stats(_) => client.stats(),
                 ProgramCommands::Export(args) => {
                     let output = args
                         .output
@@ -388,7 +389,6 @@ pub(super) fn execute_via_bridge(
             })?;
             client.clear_range(&start, &end, args.disasm_at.as_deref())
         }
-        Commands::Stats(_) => client.stats(),
         Commands::Pcode(cmd) => {
             use cli::PcodeCommands;
             match cmd {

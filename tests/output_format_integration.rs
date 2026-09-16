@@ -787,6 +787,7 @@ fn removed_commands_are_rejected_before_loading_config() {
         vec!["project", "create", "target"],
         vec!["init"],
         vec!["version"],
+        vec!["stats"],
         vec!["summary"],
         vec!["info"],
         vec!["set-default", "program", "sample"],

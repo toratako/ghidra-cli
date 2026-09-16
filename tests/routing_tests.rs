@@ -1858,32 +1858,34 @@ fn standalone_query_uses_environment_targets_and_explicit_targets_override_them(
 }
 
 #[test]
-fn program_info_supports_summary_projection_and_format_in_standalone_and_batch() {
-    let bridge = RecordedBridge::new();
-    let args = [
-        "program",
-        "info",
-        "--program",
-        "B",
-        "--fields",
-        "observed_program",
-        "--format",
-        "json-compact",
-    ];
-    assert_eq!(bridge.run(&args), json!([{"observed_program": "B"}]));
-    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-    assert_eq!(
-        bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"],
-        json!([{"observed_program": "B"}])
-    );
-    assert_eq!(
-        bridge
-            .requests
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|r| r["command"] == "program_info")
-            .count(),
-        2
-    );
+fn program_info_and_stats_support_projection_and_format_in_standalone_and_batch() {
+    for (subcommand, wire_command) in [("info", "program_info"), ("stats", "stats")] {
+        let bridge = RecordedBridge::new();
+        let args = [
+            "program",
+            subcommand,
+            "--program",
+            "B",
+            "--fields",
+            "observed_program",
+            "--format",
+            "json-compact",
+        ];
+        assert_eq!(bridge.run(&args), json!([{"observed_program": "B"}]));
+        std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+        assert_eq!(
+            bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"],
+            json!([{"observed_program": "B"}])
+        );
+        assert_eq!(
+            bridge
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r["command"] == wire_command)
+                .count(),
+            2
+        );
+    }
 }
