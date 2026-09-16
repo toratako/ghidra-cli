@@ -223,7 +223,7 @@ fn test_project_delete_honors_directory_override_and_preserves_source_files() ->
     std::fs::write(&config_path, serde_json::to_vec(&config)?)?;
     let output = common::run_command_with_output(
         std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
-            .env_remove("GHIDRA_PROJECT_DIR")
+            .env("GHIDRA_PROJECT_DIR", &configured)
             .env("GHIDRA_CLI_CONFIG", &config_path)
             .args(["--json", "--projects-dir"])
             .arg(&requested)

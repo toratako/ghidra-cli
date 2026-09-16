@@ -20,7 +20,10 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
 Command-level project/program options override global options and configured
-defaults. Validate filters and reject unsupported memory operations before bridge work.
+defaults. `project info` follows the same rule, with its positional name first.
+`--projects-dir` overrides the environment through a nonserialized Config field,
+so per-line batch overrides do not leak into later commands or saved settings.
+Validate filters and reject unsupported memory operations before bridge work.
 Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Recovery retries at most once
 after dispatch; preflight `bridge_info` upgrades bridges lacking automatic saving
 before program commands. Compatibility restart captures the selected project

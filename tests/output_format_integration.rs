@@ -131,8 +131,10 @@ fn configured_json_default_and_explicit_flags_choose_presentation() {
 fn project_management_honors_directory_override_and_lists_real_project_names() {
     let temp = tempfile::tempdir().unwrap();
     let configured = temp.path().join("configured");
-    let requested = temp.path().join("requested");
+    let environment = temp.path().join("environment");
+    let requested = temp.path().join("requested space's");
     std::fs::create_dir_all(&configured).unwrap();
+    std::fs::create_dir_all(environment.join("target")).unwrap();
     std::fs::create_dir_all(&requested).unwrap();
     std::fs::write(
         temp.path().join("config.yaml"),
@@ -144,7 +146,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
     .unwrap();
     let command = || {
         let mut cmd = isolated_command(&temp);
-        cmd.env_remove("GHIDRA_PROJECT_DIR")
+        cmd.env("GHIDRA_PROJECT_DIR", &environment)
             .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
             .arg("--projects-dir")
             .arg(&requested);
@@ -156,6 +158,14 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .success();
     assert!(requested.join("target").is_dir());
     assert!(!configured.join("target").exists());
+    let info = command()
+        .args(["project", "info", "target"])
+        .output()
+        .unwrap();
+    assert!(info.status.success(), "{info:?}");
+    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(info["path"], serde_json::json!(requested.join("target")));
+    assert_eq!(info["exists"], true);
     std::fs::create_dir(configured.join("target")).unwrap();
     let output = command().args(["project", "list"]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -168,7 +178,17 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .assert()
         .success();
     assert!(configured.join("target").is_dir());
+    assert!(environment.join("target").is_dir());
     assert!(!requested.join("target").exists());
+    let info = command()
+        .args(["project", "info", "target"])
+        .output()
+        .unwrap();
+    assert!(info.status.success(), "{info:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
+        false
+    );
 
     // Listing materialized projects needs no Ghidra. Successful deletion must
     // acquire Ghidra's project lock and is covered by project_tests instead.
@@ -196,6 +216,118 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         std::fs::read_to_string(requested.join("with-source/input.bin")).unwrap(),
         "source data"
     );
+    for (name, exists) in [("target", true), ("with-source", false)] {
+        let info = command().args(["project", "info", name]).output().unwrap();
+        assert!(info.status.success(), "{info:?}");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
+            exists
+        );
+    }
+}
+
+#[test]
+fn project_info_resolves_positional_global_and_configured_targets() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("projects");
+    for name in ["configured", "global", "positional"] {
+        std::fs::create_dir_all(directory.join(name)).unwrap();
+    }
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        "aliases: {}\ndefault_project: configured\n",
+    )
+    .unwrap();
+    for (args, expected) in [
+        (vec!["project", "info"], "configured"),
+        (vec!["--project", "global", "project", "info"], "global"),
+        (
+            vec!["--project", "global", "project", "info", "positional"],
+            "positional",
+        ),
+    ] {
+        let output = isolated_command(&temp)
+            .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let info: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(info["project"], expected);
+        assert_eq!(info["path"], serde_json::json!(directory.join(expected)));
+        assert_eq!(info["exists"], true);
+    }
+    std::fs::write(temp.path().join("config.yaml"), "aliases: {}\n").unwrap();
+    let output = isolated_command(&temp)
+        .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
+        .args(["project", "info"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(error["message"]
+        .as_str()
+        .unwrap()
+        .contains("No project specified"));
+}
+
+#[test]
+fn project_directory_precedence_reaches_management_and_doctor() {
+    let temp = tempfile::tempdir().unwrap();
+    let configured = temp.path().join("configured");
+    let environment = temp.path().join("environment");
+    let requested = temp.path().join("requested space's");
+    let config_path = temp.path().join("config.yaml");
+    let content = serde_json::to_vec(&serde_json::json!({
+        "aliases": {}, "ghidra_project_dir": configured,
+    }))
+    .unwrap();
+    std::fs::write(&config_path, &content).unwrap();
+    for (with_environment, with_flag, expected) in [
+        (false, false, &configured),
+        (true, false, &environment),
+        (true, true, &requested),
+    ] {
+        let mut command = isolated_command(&temp);
+        command.env_remove("GHIDRA_PROJECT_DIR");
+        if with_environment {
+            command.env("GHIDRA_PROJECT_DIR", &environment);
+        }
+        if with_flag {
+            command.arg("--projects-dir").arg(&requested);
+        }
+        let output = command
+            .args(["status", "--project", "missing"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            status["project"],
+            serde_json::json!(expected.join("missing"))
+        );
+    }
+    let output = isolated_command(&temp)
+        .env("GHIDRA_PROJECT_DIR", &environment)
+        .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
+        .env("XDG_CONFIG_HOME", temp.path().join("configuration"))
+        .arg("--projects-dir")
+        .arg(&requested)
+        .arg("doctor")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let projects = report["storage"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "projects")
+        .unwrap();
+    assert_eq!(projects["path"], serde_json::json!(requested));
+    assert_eq!(projects["ok"], true);
+    assert_eq!(std::fs::read(config_path).unwrap(), content);
+    assert!(!environment.exists());
 }
 
 #[test]

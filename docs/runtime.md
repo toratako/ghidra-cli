@@ -23,8 +23,10 @@ or removing it and retrying. Saved installation paths are absolute.
 
 ## Project configuration
 
-`--projects-dir DIR` overrides config `ghidra_project_dir` for project management
-and bridge commands. `GHIDRA_INSTALL_DIR` overrides the configured installation
+Project directory precedence is `--projects-dir DIR`, `GHIDRA_PROJECT_DIR`, config
+`ghidra_project_dir`, then the default, for project management, doctor, and bridge
+commands. The flag does not change the environment or saved configuration.
+`GHIDRA_INSTALL_DIR` overrides the configured installation
 for both doctor and execution.
 Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
 reserved by `project create`; a nonempty same-named directory is retained.

@@ -40,9 +40,12 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Version => handle_version(output),
         Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
         Commands::SetDefault(args) => handle_set_default(args.clone(), output),
-        Commands::Project(args) => {
-            handle_project_command(args.command.clone(), &cli.projects_dir, output)
-        }
+        Commands::Project(args) => handle_project_command(
+            args.command.clone(),
+            &cli.project,
+            &cli.projects_dir,
+            output,
+        ),
         // Saving a stopped project is a no-op; do not auto-start it.
         Commands::Program(cli::ProgramCommands::Save(_)) => handle_program_save(cli),
         // Commands requiring bridge

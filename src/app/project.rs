@@ -2,15 +2,6 @@ use crate::config::Config;
 use crate::ghidra::project::ProjectPaths;
 use std::path::{Path, PathBuf};
 
-/// Whether a Ghidra project already exists on disk for the given project path.
-///
-/// `project_path` is `<parent>/<name>`; analyzeHeadless materializes the project
-/// as sibling `<parent>/<name>.gpr` (project file) and `<parent>/<name>.rep`
-/// (project directory). Either marks an existing project.
-pub(super) fn project_exists(project_path: &Path) -> bool {
-    ProjectPaths::new(project_path).is_some_and(|paths| paths.exists())
-}
-
 /// Whether an import can reuse a project containing persisted program data.
 ///
 /// A stale or newly-created empty project may have both `.gpr` and `.rep`
@@ -21,16 +12,23 @@ pub(super) fn project_has_program_data(project_path: &Path) -> bool {
     ProjectPaths::new(project_path).is_some_and(|paths| paths.has_program_data())
 }
 
-/// Load config, applying the global `--projects-dir` override (if any) onto
-/// `ghidra_project_dir`. This keeps the precedence in [`Config::get_project_dir`]
-/// (env var > config field > default) while letting the CLI flag win in-process
-/// without mutating global state.
+/// Load config with a transient `--projects-dir` override. Directory precedence
+/// is CLI > environment > configuration > default, without changing the process
+/// environment or the persisted configuration.
 pub(super) fn load_config(projects_dir: &Option<PathBuf>) -> anyhow::Result<Config> {
     let mut config = Config::load()?;
-    if let Some(dir) = projects_dir {
-        config.ghidra_project_dir = Some(dir.clone());
-    }
+    config.projects_dir_override = projects_dir.clone();
     Ok(config)
+}
+
+pub(super) fn resolve_project_name(
+    project: &Option<String>,
+    config: &Config,
+) -> anyhow::Result<String> {
+    project
+        .clone()
+        .or_else(|| config.default_project.clone())
+        .ok_or_else(|| anyhow::anyhow!("No project specified and no default project configured"))
 }
 
 /// Resolve a project name to its full path on disk.
@@ -38,10 +36,7 @@ pub(super) fn resolve_project_path(
     project: &Option<String>,
     config: &Config,
 ) -> anyhow::Result<PathBuf> {
-    let project_name = project
-        .clone()
-        .or_else(|| config.default_project.clone())
-        .ok_or_else(|| anyhow::anyhow!("No project specified and no default project configured"))?;
+    let project_name = resolve_project_name(project, config)?;
 
     let project_dir = config.get_project_dir()?;
 
@@ -65,7 +60,6 @@ mod tests {
         std::fs::create_dir_all(temp.path().join("stale.rep/idata")).unwrap();
         std::fs::write(temp.path().join("stale.rep/idata/~index.dat"), []).unwrap();
 
-        assert!(project_exists(&project));
         assert!(!project_has_program_data(&project));
     }
 

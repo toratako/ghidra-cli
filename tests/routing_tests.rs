@@ -862,7 +862,10 @@ fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
             "GHIDRA_INSTALL_DIR",
             bridge.root.path().join("unused-install"),
         )
-        .env_remove("GHIDRA_PROJECT_DIR")
+        .env(
+            "GHIDRA_PROJECT_DIR",
+            bridge.root.path().join("wrong-projects"),
+        )
         .env_remove("GHIDRA_DEFAULT_PROJECT")
         .env_remove("GHIDRA_DEFAULT_PROGRAM")
         .args([
@@ -952,6 +955,44 @@ fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
             "batch {args:?}"
         );
     }
+}
+
+#[test]
+fn project_directory_overrides_are_local_to_each_batch_line() {
+    let first = RecordedBridge::new();
+    let second = RecordedBridge::new();
+    std::fs::write(first.root.path().join("batch.txt"), format!(
+        "program info --program first\nprogram info --project project --projects-dir {} --program second\nprogram info --project project\n",
+        batch_path_argument(second.project.parent().unwrap()),
+    )).unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .current_dir(first.root.path())
+        .env("GHIDRA_CLI_CONFIG", first.root.path().join("config.yaml"))
+        .env(
+            "GHIDRA_INSTALL_DIR",
+            first.root.path().join("unused-install"),
+        )
+        .env(
+            "GHIDRA_PROJECT_DIR",
+            first.root.path().join("wrong-projects"),
+        )
+        .env_remove("GHIDRA_DEFAULT_PROJECT")
+        .env_remove("GHIDRA_DEFAULT_PROGRAM")
+        .arg("--projects-dir")
+        .arg(first.project.parent().unwrap())
+        .args(["--project", "project", "batch", "batch.txt"])
+        .timeout(std::time::Duration::from_secs(15))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let observed: Vec<_> = report[0]["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["result"]["observed_program"].as_str().unwrap())
+        .collect();
+    assert_eq!(observed, ["first", "second", "first"]);
 }
 
 #[test]

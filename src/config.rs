@@ -8,6 +8,9 @@ use std::path::{Component, Path, PathBuf};
 pub struct Config {
     pub ghidra_install_dir: Option<PathBuf>,
     pub ghidra_project_dir: Option<PathBuf>,
+    /// Per-invocation project directory override; never read from or written to YAML.
+    #[serde(skip)]
+    pub projects_dir_override: Option<PathBuf>,
     /// Full JDK home for Ghidra to use (must be a JDK, not a JRE). When unset,
     /// ghidra-cli auto-detects a suitable JDK.
     #[serde(default)]
@@ -30,6 +33,7 @@ impl Default for Config {
         Self {
             ghidra_install_dir: None,
             ghidra_project_dir: None,
+            projects_dir_override: None,
             java_home: None,
             default_program: None,
             default_project: None,
@@ -199,7 +203,10 @@ impl Config {
     }
 
     pub fn get_project_dir(&self) -> Result<PathBuf> {
-        // Check environment variable first
+        if let Some(dir) = &self.projects_dir_override {
+            return Ok(dir.clone());
+        }
+        // Environment overrides the persisted setting.
         if let Ok(dir) = std::env::var("GHIDRA_PROJECT_DIR") {
             return Ok(PathBuf::from(dir));
         }
@@ -320,6 +327,27 @@ fn has_hidden_component(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_directory_override_is_never_persisted() {
+        let temp = tempfile::tempdir().unwrap();
+        let configured = temp.path().join("configured");
+        let requested = temp.path().join("requested");
+        let config = Config {
+            ghidra_project_dir: Some(configured.clone()),
+            projects_dir_override: Some(requested.clone()),
+            ..Config::default()
+        };
+        assert_eq!(config.get_project_dir().unwrap(), requested);
+        let path = temp.path().join("config.yaml");
+        config.save_at(&path).unwrap();
+        assert!(!fs::read_to_string(&path)
+            .unwrap()
+            .contains("projects_dir_override"));
+        let restored = Config::load_from(&path).unwrap();
+        assert_eq!(restored.projects_dir_override, None);
+        assert_eq!(restored.ghidra_project_dir, Some(configured));
+    }
 
     #[cfg(unix)]
     #[test]

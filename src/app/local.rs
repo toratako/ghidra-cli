@@ -1,5 +1,5 @@
 use super::output::Output;
-use super::project::project_exists;
+use super::project::resolve_project_name;
 use crate::cli;
 use crate::config::Config;
 use crate::error::GhidraError;
@@ -158,13 +158,14 @@ pub(super) fn handle_set_default(args: cli::SetDefaultArgs, output: Output) -> a
 
 pub(super) fn handle_project_command(
     cmd: cli::ProjectCommands,
+    project: &Option<String>,
     projects_dir: &Option<PathBuf>,
     output: Output,
 ) -> anyhow::Result<()> {
     use cli::ProjectCommands;
 
     let config = super::project::load_config(projects_dir)?;
-    let client = GhidraClient::new(config)?;
+    let client = GhidraClient::new(config.clone())?;
 
     match cmd {
         ProjectCommands::Create { name } => {
@@ -196,12 +197,12 @@ pub(super) fn handle_project_command(
             )?;
         }
         ProjectCommands::Info { name } => {
-            let project_name = name.unwrap_or_else(|| "default".to_string());
+            let project_name = resolve_project_name(&name.or_else(|| project.clone()), &config)?;
             let project_path = client.get_project_path(&project_name);
-            // The project lives on disk as sibling `<name>.gpr`/`<name>.rep`
-            // artifacts, not a `<name>` directory, so check those (see
-            // `project_exists`) rather than the bare path.
-            let exists = project_exists(&project_path);
+            // Listing and deletion also recognize an empty directory reserved
+            // by `project create`; import still requires actual Ghidra artifacts.
+            let exists = crate::ghidra::project::ProjectPaths::new(&project_path)
+                .is_some_and(|paths| paths.exists() || paths.is_empty_reservation());
             output.result(
                 &json!({"project": project_name, "path": project_path, "exists": exists}),
                 &format!(

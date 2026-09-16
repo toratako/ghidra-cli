@@ -55,7 +55,7 @@ pub struct Cli {
     pub program: Option<String>,
 
     /// Directory under which Ghidra projects are stored.
-    /// Overrides config `ghidra_project_dir` and the default location.
+    /// Overrides `GHIDRA_PROJECT_DIR`, config `ghidra_project_dir`, and the default location.
     /// Note: Ghidra 12.1+ rejects paths containing a dot-prefixed component.
     #[arg(long, global = true)]
     pub projects_dir: Option<std::path::PathBuf>,

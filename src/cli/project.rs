@@ -15,7 +15,7 @@ pub enum ProjectCommands {
     List,
     /// Delete a project
     Delete { name: String },
-    /// Show project information
+    /// Show project information (NAME overrides --project and the configured default)
     Info { name: Option<String> },
 }
 
