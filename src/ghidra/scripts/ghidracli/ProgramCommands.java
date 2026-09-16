@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import ghidra.app.util.exporter.Exporter;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
@@ -383,7 +384,9 @@ final class ProgramCommands {
                         + " (supported: json, xml, c, binary, gzf, ascii/asm, hex, html)");
                 }
 
-                Class<?> exporterClass = Class.forName(className);
+                // Keep the exporter package in this bundle's OSGi imports even
+                // though the concrete class name is selected dynamically.
+                Class<?> exporterClass = Class.forName(className, true, Exporter.class.getClassLoader());
                 Object exporter = exporterClass.getDeclaredConstructor().newInstance();
 
                 // Resolve export(File, DomainObject, AddressSetView, TaskMonitor) by
