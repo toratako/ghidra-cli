@@ -31,8 +31,16 @@ struct GithubRelease {
     assets: Vec<GithubAsset>,
 }
 
+fn release_api_url(version: Option<&str>) -> String {
+    let releases = "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases";
+    match version {
+        Some(version) => format!("{releases}/tags/Ghidra_{version}_build"),
+        None => format!("{releases}/latest"),
+    }
+}
+
 /// Resolve the download URL for a Ghidra release.
-/// If version is None, fetches the latest release.
+/// Version is a release number such as 11.0 or 11.0.1; None fetches the latest release.
 pub async fn resolve_version_url(
     version: Option<String>,
     quiet: bool,
@@ -51,12 +59,9 @@ pub async fn resolve_version_url(
         .default_headers(headers)
         .build()?;
 
+    let url = release_api_url(version.as_deref());
     let release: GithubRelease = if let Some(ver) = version {
         // Fetch specific version
-        let url = format!(
-            "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/Ghidra_{}",
-            ver
-        );
         if !quiet {
             eprintln!("Fetching release info for Ghidra {}...", ver);
         }
@@ -70,7 +75,6 @@ pub async fn resolve_version_url(
             .await?
     } else {
         // Fetch latest release
-        let url = "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest";
         if !quiet {
             eprintln!("Fetching latest Ghidra release info...");
         }
@@ -273,6 +277,30 @@ fn publish_archive(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_numbers_resolve_to_official_build_tags() {
+        for (version, expected) in [
+            (
+                "11.0",
+                "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/Ghidra_11.0_build",
+            ),
+            (
+                "11.0.1",
+                "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/Ghidra_11.0.1_build",
+            ),
+        ] {
+            assert_eq!(release_api_url(Some(version)), expected);
+        }
+    }
+
+    #[test]
+    fn omitted_release_number_resolves_to_latest() {
+        assert_eq!(
+            release_api_url(None),
+            "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest"
+        );
+    }
 
     fn fixture_archive(path: &Path, valid: bool) -> Result<()> {
         let mut archive = zip::ZipWriter::new(File::create(path)?);

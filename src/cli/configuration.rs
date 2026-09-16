@@ -9,10 +9,10 @@ pub enum ConfigCommands {
     Get { key: String },
     /// Set configuration value
     #[command(
-        after_help = "Examples:\n  ghidra-cli config set default_limit 100\n  ghidra-cli config set ghidra_install_dir /opt/ghidra\n  ghidra-cli config set launch_timeout_secs 240"
+        after_help = "Examples:\n  ghidra-cli config set default_limit 100\n  ghidra-cli config set ghidra_install_dir /opt/ghidra\n  ghidra-cli config set java_home /opt/jdk-21\n  ghidra-cli config set launch_timeout_secs 240"
     )]
     Set {
-        /// Key to set: ghidra_install_dir, ghidra_project_dir, default_program,
+        /// Key to set: ghidra_install_dir, ghidra_project_dir, java_home, default_program,
         /// default_project, default_output_format, default_limit, launch_timeout_secs
         key: String,
         /// Value for the key (e.g. 100 for default_limit, /opt/ghidra for ghidra_install_dir)
@@ -44,7 +44,7 @@ pub struct SetDefaultArgs {
 /// Arguments for the setup command
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetupArgs {
-    /// Specific Ghidra version to install (e.g., "11.0"). Defaults to latest.
+    /// Ghidra release number to install (e.g., "11.0" or "11.0.1"). Defaults to latest.
     #[arg(long)]
     pub version: Option<String>,
 

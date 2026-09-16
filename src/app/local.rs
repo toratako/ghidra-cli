@@ -88,6 +88,7 @@ pub(super) fn handle_config_command(
                     )),
                     "ghidra_install_dir" => config.ghidra_install_dir = Some(PathBuf::from(value)),
                     "ghidra_project_dir" => config.ghidra_project_dir = Some(PathBuf::from(value)),
+                    "java_home" => config.java_home = Some(PathBuf::from(value)),
                     "default_program" => config.default_program = Some(value),
                     "default_project" => config.default_project = Some(value),
                     "launch_timeout_secs" => {

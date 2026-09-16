@@ -6,6 +6,8 @@ Follow [the install steps](../README.md#install) using `ghidra-cli setup` or an
 existing Ghidra 11+ installation. A full JDK is required (`javac` and
 `jdk.compiler`, not a JRE); Ghidra 12.x requires JDK 21 (older releases accept
 JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
+Use `ghidra-cli setup --version 11.0` (or a patch release such as `11.0.1`)
+to select a release number; omit `--version` to install the latest release.
 `ghidra-cli doctor` checks the installation, compiles the embedded Java bundle,
 probes storage with temporary create/write/rename/delete operations, and tests
 loopback TCP bind/connect. It reports resolved paths and their configuration
@@ -28,6 +30,10 @@ Project directory precedence is `--projects-dir DIR`, `GHIDRA_PROJECT_DIR`, conf
 commands. The flag does not change the environment or saved configuration.
 `GHIDRA_INSTALL_DIR` overrides the configured installation
 for both doctor and execution.
+Set a persistent JDK with `ghidra-cli config set java_home /opt/jdk-21`.
+JDK selection precedence is `--java-home`, `GHIDRA_CLI_JAVA_HOME`, config
+`java_home`, then automatic detection. Flag and environment overrides do not
+change the saved value.
 Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
 reserved by `project create`; a nonempty same-named directory is retained.
 Deletion first stops the CLI bridge and obtains Ghidra's project lock; another
@@ -52,7 +58,7 @@ offset when no explicit limit is given; `--count` and `--limit 0` bypass that ca
 |---|---|
 | `GHIDRA_INSTALL_DIR` | Ghidra installation; also `config set ghidra_install_dir PATH` |
 | `GHIDRA_PROJECT_DIR` | Base project directory |
-| `GHIDRA_CLI_JAVA_HOME` | Full JDK override; also `--java-home` or config `java_home` |
+| `GHIDRA_CLI_JAVA_HOME` | Full JDK override; also `--java-home` or `config set java_home PATH` |
 | `GHIDRA_CLI_CONFIG` | Config file path override |
 | `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra-cli query` |
 | `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra-cli query` and auto-selection |

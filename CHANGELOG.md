@@ -83,6 +83,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   traversal. Argument references and non-call instructions are not callers.
 - `diff functions --format` uses the shared output formats and flag precedence;
   unknown formats fail during argument parsing.
+- `setup --version` resolves release numbers to official `Ghidra_VERSION_build`
+  tags. `config set java_home PATH` now saves the configured JDK.
 - Function lookup errors recommend an executable help command instead of an
   invalid bare-word filter.
 - Search and list output share one query limit plan. `find bytes`, raw-memory

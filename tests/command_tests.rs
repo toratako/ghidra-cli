@@ -106,6 +106,45 @@ fn test_config_set_launch_timeout() {
 }
 
 #[test]
+fn config_set_java_home_persists_requested_value_and_preserves_other_settings() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    let java_home = temp.path().join("JDK home's directory");
+    std::fs::write(&config_path, "default_program: keep-me\naliases: {}\n").unwrap();
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .env("GHIDRA_CLI_CONFIG", &config_path)
+        .env("XDG_DATA_HOME", temp.path())
+        .env("GHIDRA_CLI_JAVA_HOME", temp.path().join("environment-jdk"))
+        .arg("--java-home")
+        .arg(temp.path().join("invocation-jdk"))
+        .args(["config", "set", "java_home"])
+        .arg(&java_home)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["key"], "java_home");
+
+    let config: ghidra_cli::config::Config =
+        serde_yaml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert_eq!(config.java_home.as_ref(), Some(&java_home));
+    assert_eq!(config.default_program.as_deref(), Some("keep-me"));
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .env("GHIDRA_CLI_CONFIG", &config_path)
+        .env("XDG_DATA_HOME", temp.path())
+        .args(["config", "get", "java_home", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<std::path::PathBuf>(&output.stdout).unwrap(),
+        java_home
+    );
+}
+
+#[test]
 fn test_config_reset() {
     require_ghidra!();
 
@@ -181,6 +220,7 @@ fn config_updates_from_multiple_processes_preserve_independent_values() {
         ("launch_timeout_secs", "241"),
         ("ghidra_install_dir", "install-a"),
         ("ghidra_project_dir", "projects-a"),
+        ("java_home", "jdk-a"),
     ];
     let mut children = Vec::new();
     for (key, value) in changes {
@@ -205,6 +245,7 @@ fn config_updates_from_multiple_processes_preserve_independent_values() {
     assert_eq!(config.launch_timeout_secs, Some(241));
     assert_eq!(config.ghidra_install_dir, Some("install-a".into()));
     assert_eq!(config.ghidra_project_dir, Some("projects-a".into()));
+    assert_eq!(config.java_home, Some("jdk-a".into()));
 }
 
 #[test]
