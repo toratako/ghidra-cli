@@ -650,35 +650,6 @@ fn test_disasm_zero_instructions() {
 
 #[test]
 #[serial]
-fn test_diff_programs() {
-    require_ghidra!();
-    harness();
-
-    let result = GhidraCommand::new()
-        .arg("diff")
-        .arg("programs")
-        .arg(TEST_PROGRAM)
-        .arg(TEST_PROGRAM)
-        .arg("--project")
-        .arg(test_project())
-        .run();
-
-    result.assert_success();
-
-    let output_lower = result.stdout.to_lowercase();
-    assert!(
-        output_lower.contains("identical")
-            || output_lower.contains("0")
-            || result.stdout.trim().is_empty()
-            || output_lower.contains("no diff")
-            || output_lower.contains("same"),
-        "Self-diff should indicate identical/no differences. Got: {}",
-        result.stdout
-    );
-}
-
-#[test]
-#[serial]
 fn test_diff_functions() {
     require_ghidra!();
     let harness = harness();

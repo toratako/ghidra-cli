@@ -243,20 +243,8 @@ pub struct GraphExportArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum DiffCommands {
-    /// Compare two programs
-    Programs(DiffProgramsArgs),
     /// Compare functions
     Functions(DiffFunctionsArgs),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct DiffProgramsArgs {
-    pub program1: String,
-    pub program2: String,
-    #[arg(long)]
-    pub format: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

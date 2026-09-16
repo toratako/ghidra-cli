@@ -144,7 +144,6 @@ final class CommandDispatcher {
             case "graph_callees":   return graphCommands.handleGraphCallees(args);
             case "graph_export":    return graphCommands.handleGraphExport(args);
             // Diff commands
-            case "diff_programs":   return diffCommands.handleDiffPrograms(args);
             case "diff_functions":  return diffCommands.handleDiffFunctions(args);
             // Patch commands
             case "patch_bytes":     return memoryCommands.handlePatchBytes(args);

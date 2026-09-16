@@ -6,10 +6,6 @@ import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionManager;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryBlock;
-import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.task.TaskMonitor;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
@@ -21,51 +17,6 @@ final class DiffCommands {
     DiffCommands(ProgramSession session, FunctionQueries functionQueries) {
         this.session = session;
         this.functionQueries = functionQueries;
-    }
-
-    JsonObject handleDiffPrograms(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String prog1 = getArgString(args, "program1");
-        String prog2 = getArgString(args, "program2");
-        if (prog1 == null) prog1 = "";
-        if (prog2 == null) prog2 = "";
-
-        try {
-            FunctionManager fm = session.program().getFunctionManager();
-            Memory memory = session.program().getMemory();
-            SymbolTable symbolTable = session.program().getSymbolTable();
-
-            JsonObject prog1Stats = new JsonObject();
-            prog1Stats.addProperty("name", prog1);
-            prog1Stats.addProperty("function_count", fm.getFunctionCount());
-            prog1Stats.addProperty("memory_size", memory.getSize());
-            prog1Stats.addProperty("symbol_count", symbolTable.getNumSymbols());
-
-            JsonArray memBlocks = new JsonArray();
-            for (MemoryBlock block : memory.getBlocks()) {
-                JsonObject blockObj = new JsonObject();
-                blockObj.addProperty("name", block.getName());
-                blockObj.addProperty("start", block.getStart().toString());
-                blockObj.addProperty("end", block.getEnd().toString());
-                blockObj.addProperty("size", block.getSize());
-                memBlocks.add(blockObj);
-            }
-            prog1Stats.add("memory_blocks", memBlocks);
-
-            JsonObject prog2Stats = new JsonObject();
-            prog2Stats.addProperty("name", prog2);
-            prog2Stats.addProperty("note", "Comparison requires loading second program");
-
-            JsonObject result = new JsonObject();
-            result.add("program1", prog1Stats);
-            result.add("program2", prog2Stats);
-            result.addProperty("status", "partial");
-            result.addProperty("message", "Single program stats returned (multi-program comparison not implemented)");
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to diff programs: " + e.getMessage());
-        }
     }
 
     JsonObject handleDiffFunctions(JsonObject args) {

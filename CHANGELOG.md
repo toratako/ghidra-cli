@@ -164,6 +164,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Removed `diff programs` and its Rust/bridge APIs. The command returned the
+  current program's statistics without comparing the requested programs.
+  `diff functions` remains available.
 - Removed the unused `--detach` flags from import and analysis; commands wait
   for completion.
 - Removed the bridge's `find_calls` request. Direct protocol clients must use

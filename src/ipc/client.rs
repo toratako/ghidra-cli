@@ -491,13 +491,6 @@ impl BridgeClient {
         self.send_command("find_interesting", None)
     }
 
-    pub fn diff_programs(&self, program1: &str, program2: &str) -> Result<serde_json::Value> {
-        self.send_command(
-            "diff_programs",
-            Some(json!({"program1": program1, "program2": program2})),
-        )
-    }
-
     pub fn diff_functions(&self, func1: &str, func2: &str) -> Result<serde_json::Value> {
         self.send_command(
             "diff_functions",

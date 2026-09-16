@@ -433,9 +433,6 @@ pub(super) fn execute_via_bridge(
         Commands::Diff(cmd) => {
             use cli::DiffCommands;
             match cmd {
-                DiffCommands::Programs(args) => {
-                    client.diff_programs(&args.program1, &args.program2)
-                }
                 DiffCommands::Functions(args) => client.diff_functions(&args.func1, &args.func2),
             }
         }
