@@ -11,12 +11,9 @@ ghidra-cli function create 0x401234 parse_entry --project target
 ```
 
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
-text, case-insensitively unless `--case-sensitive` is given. It returns `address`,
-`disasm`, and `function` when the instruction belongs to a function. Either range
+text, case-insensitively unless `--case-sensitive` is given. Either range
 bound can be omitted; a one-sided range stays in the supplied endpoint's address
-space. It works across Ghidra-supported ISAs and needs no xrefs, but searches only
-already-disassembled instructions. Function names need not appear in the text;
-use `find calls` for resolved call destinations.
+space. Use `find calls` for resolved call destinations.
 
 Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
 operands). The default output format is unchanged.
