@@ -120,6 +120,11 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--program`; supply the name to the importer.
 
+`find_calls_to` resolves a target across the selected program, follows thunk and
+typed pointer references, and emits only call sites. `function_calls` retains the
+outgoing scan of one function. Distinct wire names cause an older bridge to report
+an unknown command instead of silently returning results for the wrong direction.
+
 ## Validation
 
 `bridge/sources.rs` tests source inventory/publication; `daemon_tests` exercises

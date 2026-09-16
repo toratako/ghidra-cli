@@ -431,7 +431,11 @@ impl BridgeClient {
     }
 
     pub fn find_calls(&self, function: &str) -> Result<serde_json::Value> {
-        self.send_command("find_calls", Some(json!({"function": function})))
+        self.send_command("find_calls_to", Some(json!({"function": function})))
+    }
+
+    pub fn function_calls(&self, function: &str) -> Result<serde_json::Value> {
+        self.send_command("function_calls", Some(json!({"function": function})))
     }
 
     pub fn find_crypto(&self) -> Result<serde_json::Value> {

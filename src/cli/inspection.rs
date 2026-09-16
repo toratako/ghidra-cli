@@ -122,7 +122,7 @@ pub enum FindCommands {
     /// Find functions
     #[command(alias = "func", alias = "fn", alias = "functions")]
     Function(FindFunctionArgs),
-    /// Find calls to function
+    /// Find calls to the target across the selected program (including resolved thunks/import pointers)
     Calls(FindCallsArgs),
     /// Find crypto constants
     #[command(alias = "encryption")]

@@ -17,7 +17,7 @@ pub enum FunctionCommands {
     /// Disassemble function
     #[command(alias = "disassemble", alias = "dis")]
     Disasm(FunctionGetArgs),
-    /// Get function calls
+    /// List outgoing call sites and callees inside this function
     Calls(FunctionGetArgs),
     /// Get cross-references to function
     #[command(alias = "xrefs", alias = "crossrefs", alias = "references")]

@@ -254,3 +254,86 @@ public class CreateSearchWindowFixture extends GhidraScript {
         std::panic::resume_unwind(panic);
     }
 }
+
+#[test]
+#[serial]
+fn test_call_search_direction_thunks_and_import_pointers() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("call-search-{}", uuid::Uuid::new_v4());
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateCallSearchFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language, language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("call search fixture");
+            try {
+                var space = program.getAddressFactory().getDefaultAddressSpace();
+                var fm = program.getFunctionManager();
+                var refs = program.getReferenceManager();
+                var source = SourceType.USER_DEFINED;
+                program.getMemory().createInitializedBlock("code", space.getAddress(0x1000), 0x3000, (byte) 0, monitor, false);
+                String[] names = {"search_caller", "search_helper", "search_leaf"};
+                for (int i = 0; i < names.length; i++) {
+                    var entry = space.getAddress(0x1000 + i * 0x100);
+                    fm.createFunction(names[i], entry, new AddressSet(entry, entry.add(0xff)), source);
+                }
+                refs.addMemoryReference(space.getAddress(0x1000), space.getAddress(0x1100), RefType.UNCONDITIONAL_CALL, source, 0);
+                refs.addMemoryReference(space.getAddress(0x1100), space.getAddress(0x1200), RefType.UNCONDITIONAL_CALL, source, 0);
+                var external = program.getExternalManager().addExtFunction("KERNEL32.dll", "CreateProcessA", null, source);
+                var thunkEntry = space.getAddress(0x2000);
+                var thunk = fm.createFunction("CreateProcessA", thunkEntry, new AddressSet(thunkEntry, thunkEntry.add(5)), source);
+                thunk.setThunkedFunction(external.getFunction());
+                refs.addExternalReference(space.getAddress(0x1008), 0, external, source, RefType.UNCONDITIONAL_CALL);
+                refs.addMemoryReference(space.getAddress(0x1010), thunkEntry, RefType.UNCONDITIONAL_CALL, source, 0);
+                var slot = space.getAddress(0x3000);
+                program.getListing().createData(slot, PointerDataType.dataType);
+                refs.addExternalReference(slot, 0, external, source, RefType.DATA);
+                var indirect = space.getAddress(0x1020);
+                program.getMemory().setBytes(indirect, new byte[] {(byte)0xff, 0x15, (byte)0xda, 0x1f, 0, 0});
+                new DisassembleCommand(indirect, new AddressSet(indirect, indirect.add(5)), false).applyTo(program, monitor);
+                refs.addMemoryReference(indirect, slot, RefType.READ, source, 0);
+                // A non-call reference to the API is not a call site.
+                refs.addExternalReference(space.getAddress(0x1030), 0, external, source, RefType.DATA);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#, std::slice::from_ref(&name), &[], false).unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let incoming = client.find_calls("search_helper").unwrap();
+        assert_eq!(incoming["count"], 1, "{incoming}");
+        assert_eq!(incoming["results"][0]["caller"], "search_caller");
+        let outgoing = client.function_calls("search_helper").unwrap();
+        assert_eq!(outgoing["count"], 1, "{outgoing}");
+        assert_eq!(outgoing["results"][0]["callee"], "search_leaf");
+        for target in ["CreateProcessA", "0x2000", "0x3000"] {
+            let found = client.find_calls(target).unwrap();
+            let sites: Vec<_> = found["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap())
+                .collect();
+            assert_eq!(sites, [0x1008, 0x1010, 0x1020], "{target}: {found}");
+        }
+        assert_eq!(client.find_calls("search_caller").unwrap()["count"], 0);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

@@ -302,7 +302,7 @@ final class SearchCommands {
         }
     }
 
-    JsonObject handleFindCalls(JsonObject args) {
+    JsonObject handleFunctionCalls(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
         String functionTarget = getArgString(args, "function");
@@ -346,6 +346,93 @@ final class SearchCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to find calls: " + e.getMessage());
+        }
+    }
+
+    /** Search incoming call sites across the program, resolving thunks and import slots. */
+    JsonObject handleFindCalls(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String target = getArgString(args, "function");
+        if (target == null || target.isEmpty()) return errorResult("No function target provided");
+        try {
+            FunctionManager fm = session.program().getFunctionManager();
+            ReferenceManager refs = session.program().getReferenceManager();
+            Listing listing = session.program().getListing();
+            AddressResolver resolver = new AddressResolver(session);
+            Address explicit = resolver.parseAddress(target);
+            java.util.Set<Address> candidates = explicit == null ? resolver.namedAddresses(target)
+                : java.util.Set.of(explicit);
+            java.util.Map<Address, Function> functions = new java.util.LinkedHashMap<>();
+            for (Address candidate : candidates) {
+                Function function = fm.getFunctionAt(candidate);
+                if (function == null) function = fm.getFunctionContaining(candidate);
+                // Import labels may name the pointer slot instead of the external function.
+                if (function == null) {
+                    for (Reference ref : refs.getReferencesFrom(candidate)) {
+                        if (ref.isExternalReference()) {
+                            Function external = fm.getFunctionAt(ref.getToAddress());
+                            if (external != null) functions.put(external.getEntryPoint(), external);
+                        }
+                    }
+                    continue;
+                }
+                Function canonical = function.isThunk() ? function.getThunkedFunction(true) : function;
+                if (canonical != null) functions.put(canonical.getEntryPoint(), canonical);
+            }
+            if (functions.isEmpty()) return errorResult(functionQueries.buildFunctionTargetHint(target));
+            if (functions.size() > 1) return errorResult("Ambiguous function target '" + target
+                + "' at " + functions.keySet() + "; use an explicit address");
+            Function callee = functions.values().iterator().next();
+            java.util.Deque<Address> pending = new java.util.ArrayDeque<>();
+            java.util.Set<Address> visited = new java.util.HashSet<>();
+            java.util.Map<Address, JsonObject> sites = new java.util.TreeMap<>();
+            pending.add(callee.getEntryPoint());
+            Address[] thunks = callee.getFunctionThunkAddresses(true);
+            if (thunks != null) java.util.Collections.addAll(pending, thunks);
+            while (!pending.isEmpty()) {
+                session.monitor().checkCancelled();
+                Address destination = pending.removeFirst();
+                if (!visited.add(destination)) continue;
+                for (Reference ref : refs.getReferencesTo(destination)) {
+                    session.monitor().checkCancelled();
+                    Address from = ref.getFromAddress();
+                    var instruction = listing.getInstructionAt(from);
+                    boolean call = ref.getReferenceType().isCall();
+                    // A computed call through a known pointer can carry a READ reference.
+                    // Reading/storing an API address in an ordinary instruction is not a call.
+                    if (!call && instruction != null && instruction.getFlowType().isCall()
+                            && instruction.getFlowType().isComputed()) {
+                        call = ref.getReferenceType().isData();
+                    }
+                    if (call) {
+                        JsonObject row = new JsonObject();
+                        Function caller = fm.getFunctionContaining(from);
+                        row.addProperty("call_site", from.toString());
+                        row.addProperty("caller", caller == null ? null : caller.getName());
+                        row.addProperty("caller_address", caller == null ? null : caller.getEntryPoint().toString());
+                        row.addProperty("callee", callee.getName());
+                        row.addProperty("callee_address", callee.getEntryPoint().toString());
+                        row.addProperty("type", ref.getReferenceType().toString());
+                        row.addProperty("via", destination.toString());
+                        sites.putIfAbsent(from, row);
+                    } else if (instruction == null) {
+                        Data data = listing.getDataAt(from);
+                        if (data != null && data.isPointer()
+                                && (ref.getReferenceType().isData() || ref.isExternalReference())) {
+                            pending.addLast(from);
+                        }
+                    }
+                }
+            }
+            JsonArray results = new JsonArray();
+            sites.values().forEach(results::add);
+            JsonObject result = new JsonObject();
+            result.add("results", results);
+            result.addProperty("count", results.size());
+            result.addProperty("target", target);
+            return result;
+        } catch (Exception error) {
+            return errorResult("Failed to find calls: " + error.getMessage());
         }
     }
 

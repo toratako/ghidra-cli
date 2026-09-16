@@ -110,6 +110,16 @@ ghidra-cli function list --filter "size > 100" --fields name,address,size \
 
 ## Search, strings, xrefs, and graphs
 
+`find calls TARGET` searches the entire selected program for calls to TARGET,
+including resolved thunks and import-pointer references. Rows contain `caller`,
+`caller_address`, `call_site`, `callee`, `callee_address`, `type`, and `via` (the
+referenced target or pointer/thunk address). Ordinary data references are excluded.
+It uses Ghidra's references, not decompiler text; unresolved register/function
+pointer calls may still be absent. Names that resolve to distinct functions are
+ambiguous; use an address to select one.
+`function calls TARGET` lists outgoing calls inside TARGET. Use `graph callers`
+or `graph callees` to traverse relationships at a chosen depth.
+
 ```bash
 ghidra-cli find function "*crypt*" --project target
 ghidra-cli strings list --filter "length > 12" --limit 80 --project target

@@ -82,7 +82,8 @@ final class CommandDispatcher {
             case "string_refs":     return searchCommands.handleStringRefs(args);
             case "find_bytes":      return searchCommands.handleFindBytes(args);
             case "find_function":   return searchCommands.handleFindFunction(args);
-            case "find_calls":      return searchCommands.handleFindCalls(args);
+            case "find_calls_to":   return searchCommands.handleFindCalls(args);
+            case "function_calls":  return searchCommands.handleFunctionCalls(args);
             case "find_crypto":     return searchCommands.handleFindCrypto();
             case "find_interesting": return searchCommands.handleFindInteresting();
             // Symbol commands

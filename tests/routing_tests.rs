@@ -1119,6 +1119,22 @@ fn batch_continues_after_unsupported_memory_commands_without_selecting_their_pro
 }
 
 #[test]
+fn incoming_search_and_outgoing_function_calls_use_distinct_requests() {
+    let bridge = RecordedBridge::new();
+    bridge.run(&["find", "calls", "target"]);
+    bridge.run(&["function", "calls", "target"]);
+    let requests = bridge.requests.lock().unwrap();
+    let calls: Vec<_> = requests
+        .iter()
+        .filter_map(|r| {
+            let command = r["command"].as_str()?;
+            command.contains("calls").then_some(command)
+        })
+        .collect();
+    assert_eq!(calls, ["find_calls_to", "function_calls"]);
+}
+
+#[test]
 fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
     for (failure, code) in [("test-save-failure", 1), ("test-timeout", 75)] {
         let bridge = RecordedBridge::new();
