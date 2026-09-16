@@ -20,6 +20,9 @@ and configured defaults.
 Use `ghidra-cli doctor` for prerequisite checks; `doctor --runtime` also verifies
 Ghidra startup, bridge communication, and shutdown.
 
+If an AI agent sandbox restricts writes on Linux, set `XDG_*` values to absolute, writable workspace paths before
+running the CLI.
+
 For a new executable or library:
 
 ```bash
@@ -92,7 +95,7 @@ from a command failure.
 ## Read details as needed
 
 | When | Reference |
-|---|---|
+| --- | --- |
 | Choose queries, follow references, inspect memory, or control result size | [Exploration](references/exploration.md) |
 | Refine names, comments, variables, signatures, types, symbols, or tags | [Refinement](references/refinement.md) |
 | Inspect instructions or PCode, repair analysis boundaries, or patch code | [Low-level analysis](references/low-level.md) |
