@@ -29,7 +29,9 @@ for both doctor and execution.
 Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
 reserved by `project create`; a nonempty same-named directory is retained.
 Deletion first stops the CLI bridge and obtains Ghidra's project lock; another
-Ghidra process using the project prevents deletion.
+Ghidra process using the project prevents deletion. Deleting `.gpr`/`.rep`
+requires a working Ghidra/JDK installation; if it is unavailable, the project
+files are retained. Removing an empty reservation does not launch Ghidra.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
 the default falls back from the cache directory to `~/ghidra-cli-projects`.
 

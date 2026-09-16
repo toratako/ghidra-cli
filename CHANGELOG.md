@@ -24,6 +24,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- CLI tests without Ghidra cover reservation deletion and preservation of project
+  files when Ghidra is unavailable; real project deletion runs in Ghidra integration tests.
 - Windows import tests normalize Ghidra's `/C:/...` executable paths before
   comparing them with native filesystem paths.
 - Project deletion holds the CLI lifecycle lock through removal and acquires

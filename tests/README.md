@@ -36,6 +36,10 @@ cargo test --test e2e --test output_format_integration --test routing_tests --te
 `command_tests::test_doctor` checks a working installation in CI's
 `readonly-integration` job; `output_format_integration` checks doctor's failure
 output/exit status with a missing installation path.
+It also checks project listing, empty reservation deletion, and preservation of
+project files when Ghidra is unavailable. Successful `.gpr`/`.rep` deletion uses
+Ghidra's lock API and belongs in `project_tests`, including directory overrides
+and preservation of unrelated source files.
 
 Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
 reference `.snap` files are not tracked. To run without accepting snapshots:

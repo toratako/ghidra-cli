@@ -204,6 +204,50 @@ fn test_project_delete_nonexistent() {
 
 #[test]
 #[serial]
+fn test_project_delete_honors_directory_override_and_preserves_source_files() -> anyhow::Result<()>
+{
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-delete-override-")
+        .tempdir()?;
+    let configured = root.path().join("configured");
+    let requested = root.path().join("requested");
+    let target = requested.join("project");
+    common::fixture::copy_analyzed_project(&configured.join("project"))?;
+    common::fixture::copy_analyzed_project(&target)?;
+    std::fs::create_dir(&target)?;
+    std::fs::write(target.join("input.bin"), "source data")?;
+    let mut config = ghidra_cli::config::Config::load()?;
+    config.ghidra_project_dir = Some(configured.clone());
+    let config_path = root.path().join("config.yaml");
+    std::fs::write(&config_path, serde_json::to_vec(&config)?)?;
+    let output = common::run_command_with_output(
+        std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+            .env_remove("GHIDRA_PROJECT_DIR")
+            .env("GHIDRA_CLI_CONFIG", &config_path)
+            .args(["--json", "--projects-dir"])
+            .arg(&requested)
+            .args(["project", "delete", "project"]),
+        std::time::Duration::from_secs(60),
+    )?;
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)?,
+        serde_json::json!({"project": "project", "deleted": true})
+    );
+    assert!(!target.with_added_extension("gpr").exists());
+    assert!(!target.with_added_extension("rep").exists());
+    assert_eq!(
+        std::fs::read_to_string(target.join("input.bin"))?,
+        "source data"
+    );
+    assert!(configured.join("project.gpr").is_file());
+    assert!(configured.join("project.rep").is_dir());
+    Ok(())
+}
+
+#[test]
+#[serial]
 fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()> {
     use ghidra_cli::ghidra::bridge;
 

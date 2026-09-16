@@ -157,8 +157,6 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
     assert!(requested.join("target").is_dir());
     assert!(!configured.join("target").exists());
     std::fs::create_dir(configured.join("target")).unwrap();
-    std::fs::create_dir(requested.join("target.rep")).unwrap();
-    std::fs::write(requested.join("target.gpr"), "descriptor").unwrap();
     let output = command().args(["project", "list"]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
@@ -171,34 +169,75 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .success();
     assert!(configured.join("target").is_dir());
     assert!(!requested.join("target").exists());
-    assert!(!requested.join("target.gpr").exists());
-    assert!(!requested.join("target.rep").exists());
 
+    // Listing materialized projects needs no Ghidra. Successful deletion must
+    // acquire Ghidra's project lock and is covered by project_tests instead.
+    std::fs::create_dir(requested.join("target.rep")).unwrap();
+    std::fs::write(requested.join("target.gpr"), "descriptor").unwrap();
     std::fs::create_dir(requested.join("with-source")).unwrap();
     std::fs::write(requested.join("with-source/input.bin"), "source data").unwrap();
-    std::fs::write(requested.join("with-source.gpr"), "descriptor").unwrap();
-    std::fs::create_dir(requested.join("with-source.rep")).unwrap();
-    command()
+    // A source directory alone is neither listed nor recursively removed.
+    let output = command().args(["project", "list"]).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!(["target"])
+    );
+    let output = command()
         .args(["project", "delete", "with-source"])
-        .assert()
-        .success();
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!({"project": "with-source", "deleted": false})
+    );
     assert_eq!(
         std::fs::read_to_string(requested.join("with-source/input.bin")).unwrap(),
         "source data"
     );
-    assert!(!requested.join("with-source.gpr").exists());
-    assert!(!requested.join("with-source.rep").exists());
-    // A remaining source directory alone is neither listed nor recursively removed.
-    let output = command().args(["project", "list"]).output().unwrap();
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
-        serde_json::json!([])
+}
+
+#[test]
+fn project_delete_without_ghidra_preserves_project_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let requested = temp.path().join("requested");
+    std::fs::create_dir_all(requested.join("target.rep")).unwrap();
+    std::fs::create_dir(requested.join("target")).unwrap();
+    let files = [
+        ("target.gpr", "descriptor"),
+        ("target.rep/program", "saved program"),
+        ("target/input.bin", "source data"),
+        ("target.lock", "external owner"),
+        ("target.lock~", "external owner lock"),
+    ];
+    for (path, content) in files {
+        std::fs::write(requested.join(path), content).unwrap();
+    }
+    let output = isolated_command(&temp)
+        .env_remove("GHIDRA_PROJECT_DIR")
+        .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
+        .arg("--projects-dir")
+        .arg(&requested)
+        .args(["project", "delete", "target"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["status"], "error");
+    let message = error["message"].as_str().unwrap();
+    assert!(
+        message.contains("analyzeHeadless") && message.contains("unused-install"),
+        "{error}"
     );
-    command()
-        .args(["project", "delete", "with-source"])
-        .assert()
-        .success();
-    assert!(requested.join("with-source/input.bin").exists());
+    for (path, content) in files {
+        assert_eq!(
+            std::fs::read_to_string(requested.join(path)).unwrap(),
+            content,
+            "{path}"
+        );
+    }
 }
 
 #[test]
