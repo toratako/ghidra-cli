@@ -259,6 +259,11 @@ impl BridgeClient {
         self.send_command("symbol_get", Some(json!({"name": name})))
     }
 
+    /// Resolve exact symbol names without the address fallback used by symbol_get.
+    pub fn symbol_get_by_name(&self, name: &str) -> Result<serde_json::Value> {
+        self.send_command("symbol_get_by_name", Some(json!({"name": name})))
+    }
+
     pub fn symbol_create(&self, address: &str, name: &str) -> Result<serde_json::Value> {
         self.send_command(
             "symbol_create",
@@ -266,7 +271,7 @@ impl BridgeClient {
         )
     }
 
-    /// Mutate only the stable symbol snapshots returned by symbol_get.
+    /// Mutate only the stable symbol snapshots returned by symbol_get_by_name.
     pub fn symbol_delete_targets(
         &self,
         name: &str,

@@ -90,6 +90,7 @@ final class CommandDispatcher {
             // Symbol commands
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);
+            case "symbol_get_by_name": return symbolCommands.handleSymbolGetByName(args);
             case "symbol_create":   return symbolCommands.handleSymbolCreate(args);
             case "symbol_delete":   return symbolCommands.handleSymbolDelete(args);
             case "symbol_rename":   return symbolCommands.handleSymbolRename(args);

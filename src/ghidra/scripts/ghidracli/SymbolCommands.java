@@ -53,6 +53,14 @@ final class SymbolCommands {
     }
 
     JsonObject handleSymbolGet(JsonObject args) {
+        return lookupSymbols(args, false);
+    }
+
+    JsonObject handleSymbolGetByName(JsonObject args) {
+        return lookupSymbols(args, true);
+    }
+
+    private JsonObject lookupSymbols(JsonObject args, boolean nameOnly) {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressOrName = getArgString(args, "name");
@@ -61,38 +69,35 @@ final class SymbolCommands {
         }
 
         SymbolTable symbolTable = session.program().getSymbolTable();
+        JsonArray syms = new JsonArray();
+        boolean explicitAddress = addressOrName.startsWith("0x") || addressOrName.startsWith("0X");
 
-        // Try as address first
-        boolean looksLikeAddress = addressOrName.startsWith("0x") ||
-            addressOrName.chars().allMatch(c -> "0123456789abcdefABCDEF".indexOf(c) >= 0);
-
-        if (looksLikeAddress) {
-            try {
-                Address addr = session.program().getAddressFactory().getAddress(addressOrName);
-                if (addr != null) {
-                    Symbol[] symbolsAtAddr = symbolTable.getSymbols(addr);
-                    if (symbolsAtAddr.length == 0) {
-                        return errorResult("No symbol at address: " + addressOrName);
-                    }
-                    JsonArray syms = new JsonArray();
-                    for (Symbol s : symbolsAtAddr) {
-                        syms.add(symbolToJson(s));
-                    }
-                    JsonObject result = new JsonObject();
-                    result.add("symbols", syms);
-                    return result;
-                }
-            } catch (Exception e) {
-                // fall through to name lookup
+        // Mutation candidates always use an exact name, including names such as
+        // dead, 1234, or 0xdead. Public get reserves the explicit 0x/0X prefix.
+        if (nameOnly || !explicitAddress) {
+            SymbolIterator symsByName = symbolTable.getSymbols(addressOrName);
+            while (symsByName.hasNext()) {
+                syms.add(symbolToJson(symsByName.next()));
             }
         }
 
-        // Try as name
-        SymbolIterator symsByName = symbolTable.getSymbols(addressOrName);
-        JsonArray syms = new JsonArray();
-        while (symsByName.hasNext()) {
-            Symbol s = symsByName.next();
-            syms.add(symbolToJson(s));
+        // Keep legacy bare-hex address lookup only when no exact name exists.
+        boolean bareHexAddress = addressOrName.chars()
+            .allMatch(c -> "0123456789abcdefABCDEF".indexOf(c) >= 0);
+        if (!nameOnly && syms.size() == 0 && (explicitAddress || bareHexAddress)) {
+            try {
+                Address addr = new AddressResolver(session).parseAddress(addressOrName);
+                if (addr == null) return errorResult("Invalid address: " + addressOrName);
+                Symbol[] symbolsAtAddr = symbolTable.getSymbols(addr);
+                if (symbolsAtAddr.length == 0) {
+                    return errorResult("No symbol at address: " + addressOrName);
+                }
+                for (Symbol s : symbolsAtAddr) {
+                    syms.add(symbolToJson(s));
+                }
+            } catch (Exception e) {
+                return errorResult("Invalid address: " + addressOrName);
+            }
         }
 
         if (syms.size() == 0) {

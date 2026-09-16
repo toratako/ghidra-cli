@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 #[macro_use]
 mod common;
+use common::helpers::ghidra;
 use common::{
     ensure_test_project, get_function_address, get_function_addresses, DaemonTestHarness,
 };
@@ -150,6 +151,133 @@ fn test_symbol_get_nonexistent() {
         .arg(TEST_PROGRAM)
         .assert()
         .failure();
+}
+
+#[test]
+#[serial]
+fn test_hex_symbol_names_can_be_read_renamed_and_deleted() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+
+    for (name, renamed) in [
+        ("dead", "beef"),
+        ("12345", "67890"),
+        ("0xdead", "0xbeef"),
+        ("0Xdead", "0Xbeef"),
+    ] {
+        ghidra(harness)
+            .args(["symbol", "create", &address, name])
+            .run()
+            .assert_success();
+        let snapshot = client.symbol_get_by_name(name).unwrap();
+        assert_eq!(snapshot["symbols"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot["symbols"][0]["name"], name);
+        assert_eq!(snapshot["symbols"][0]["address"], address);
+        if !name.starts_with("0x") && !name.starts_with("0X") {
+            assert_eq!(client.symbol_get(name).unwrap(), snapshot);
+        }
+
+        ghidra(harness)
+            .args(["symbol", "rename", name, renamed, "--address", &address])
+            .run()
+            .assert_success();
+        let renamed_snapshot = client.symbol_get_by_name(renamed).unwrap();
+        assert_eq!(
+            renamed_snapshot["symbols"][0]["id"],
+            snapshot["symbols"][0]["id"]
+        );
+        assert!(client.symbol_get_by_name(name).is_err());
+
+        ghidra(harness)
+            .args(["symbol", "delete", renamed, "--address", &address])
+            .run()
+            .assert_success();
+        assert!(client.symbol_get_by_name(renamed).is_err());
+    }
+}
+
+#[test]
+#[serial]
+fn test_symbol_name_and_address_collisions_preserve_mutation_targets() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addresses = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
+    let hex_name = addresses[1].trim_start_matches("0x");
+    let explicit_address = format!("0x{hex_name}");
+    let uppercase_address = format!("0X{hex_name}");
+    let address_symbols = client.symbol_get(&explicit_address).unwrap();
+
+    // The name points to a different address than its hexadecimal spelling.
+    client.symbol_create(&addresses[0], hex_name).unwrap();
+    client
+        .symbol_create(&addresses[0], &explicit_address)
+        .unwrap();
+    let named = client.symbol_get_by_name(hex_name).unwrap();
+    assert_eq!(named["symbols"][0]["address"], addresses[0]);
+    assert_eq!(client.symbol_get(hex_name).unwrap(), named);
+    assert_eq!(
+        client.symbol_get(&explicit_address).unwrap(),
+        address_symbols
+    );
+    assert_eq!(
+        client.symbol_get(&uppercase_address).unwrap(),
+        address_symbols
+    );
+
+    ghidra(harness)
+        .args([
+            "symbol",
+            "rename",
+            hex_name,
+            "wrong_target",
+            "--address",
+            &addresses[1],
+        ])
+        .run()
+        .assert_failure()
+        .assert_stderr_contains("No symbol named");
+    assert_eq!(client.symbol_get_by_name(hex_name).unwrap(), named);
+
+    ghidra(harness)
+        .args(["symbol", "delete", hex_name, "--address", &addresses[0]])
+        .run()
+        .assert_success();
+    // A bare address remains available for get after the same-named label is gone.
+    assert_eq!(client.symbol_get(hex_name).unwrap(), address_symbols);
+    for args in [
+        vec!["symbol", "delete", hex_name, "--all"],
+        vec![
+            "symbol",
+            "rename",
+            hex_name,
+            "wrong_target",
+            "--address",
+            &addresses[1],
+        ],
+    ] {
+        ghidra(harness)
+            .args(args)
+            .run()
+            .assert_failure()
+            .assert_stderr_contains("Symbol not found");
+    }
+    assert_eq!(
+        client.symbol_get(&explicit_address).unwrap(),
+        address_symbols
+    );
+    ghidra(harness)
+        .args([
+            "symbol",
+            "delete",
+            &explicit_address,
+            "--address",
+            &addresses[0],
+        ])
+        .run()
+        .assert_success();
 }
 
 #[test]

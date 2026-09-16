@@ -113,14 +113,16 @@ impl RecordedBridge {
                         };
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
                     }
-                    "symbol_get" => json!({"symbols": if args["name"] == "missing" {
-                        vec![]
-                    } else {
-                        vec![
-                            symbol_fixture("9007199254740993", "00AB", "label"),
-                            symbol_fixture("9007199254740994", "00CD", "function"),
-                        ]
-                    }}),
+                    "symbol_get" | "symbol_get_by_name" => {
+                        json!({"symbols": if args["name"] == "missing" {
+                            vec![]
+                        } else {
+                            vec![
+                                symbol_fixture("9007199254740993", "00AB", "label"),
+                                symbol_fixture("9007199254740994", "00CD", "function"),
+                            ]
+                        }})
+                    }
                     "list_functions" => {
                         let mut rows = vec![
                             json!({"name": "excluded", "size": 0}),
@@ -1038,7 +1040,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
             .filter(|r| r["command"] != "bridge_info")
             .collect();
         assert_eq!(domain.len(), 2, "{domain:?}");
-        assert_eq!(domain[0]["command"], "symbol_get");
+        assert_eq!(domain[0]["command"], "symbol_get_by_name");
         assert_eq!(domain[0]["args"], json!({"name": "shared"}));
         assert_eq!(domain[1]["command"], command);
         let expected = if command == "symbol_delete" {
@@ -1087,7 +1089,7 @@ fn symbol_resolution_errors_never_send_a_mutation() {
             "{error}"
         );
         let requests = bridge.requests.lock().unwrap();
-        assert_eq!(requests.last().unwrap()["command"], "symbol_get");
+        assert_eq!(requests.last().unwrap()["command"], "symbol_get_by_name");
         assert!(!requests.iter().any(|r| matches!(
             r["command"].as_str(),
             Some("symbol_rename" | "symbol_delete")

@@ -56,6 +56,11 @@ returns `error` with `detail.save_failed: true`, `saved: false`, and the origina
 `command_response`; do not replay the edit. Errors with retained, saved changes
 include `detail.partial_changes_saved: true`.
 
+Symbol mutations resolve snapshots through `symbol_get_by_name`, which never
+falls back to an address. `symbol_get` reserves an explicit `0x`/`0X` prefix for
+addresses; other targets use exact names before legacy bare-hex address lookup.
+The distinct operation lets older bridges fail explicitly before any edit.
+
 | Response status | Client result |
 |---|---|
 | `success` | `data`, or `{}` if absent |

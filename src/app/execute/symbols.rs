@@ -62,7 +62,7 @@ fn resolve_symbol_targets(
     filter_expr: Option<&str>,
     all: bool,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    let response = client.symbol_get(name)?;
+    let response = client.symbol_get_by_name(name)?;
     let mut candidates: Vec<serde_json::Value> = response
         .get("symbols")
         .and_then(|s| s.as_array())
