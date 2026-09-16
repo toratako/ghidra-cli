@@ -380,6 +380,21 @@ mod tests {
     }
 
     #[test]
+    fn expired_shutdown_deadline_does_not_connect() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let error = client
+            .shutdown_with_deadline(Some(std::time::Instant::now()))
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::TimedOut
+        );
+        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    }
+
+    #[test]
     fn connect_attempts_and_backoff_share_one_deadline() {
         let elapsed = Cell::new(Duration::ZERO);
         let mut attempts = Vec::new();

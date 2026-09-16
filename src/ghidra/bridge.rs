@@ -367,7 +367,27 @@ pub fn stop_bridge(project_path: &Path) -> Result<()> {
 }
 
 fn stop_bridge_with_timeout(project_path: &Path, timeout: Option<Duration>) -> Result<()> {
-    let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
+    stop_bridge_with(
+        project_path,
+        timeout,
+        is_pid_alive,
+        |port, deadline| BridgeClient::new(port).shutdown_with_deadline(deadline),
+        std::time::Instant::now,
+        std::thread::sleep,
+    )
+}
+
+// Keep shutdown dependencies injectable so lifecycle tests can control PID
+// checks, acknowledgements, and elapsed time without a blocking mock server.
+fn stop_bridge_with(
+    project_path: &Path,
+    timeout: Option<Duration>,
+    mut check_alive: impl FnMut(u32) -> bool,
+    mut request_shutdown: impl FnMut(u16, Option<std::time::Instant>) -> Result<()>,
+    mut now: impl FnMut() -> std::time::Instant,
+    mut sleep: impl FnMut(Duration),
+) -> Result<()> {
+    let deadline = timeout.map(|timeout| now() + timeout);
     let timeout_error = || {
         anyhow::Error::new(crate::ipc::protocol::BridgeTimeoutError {
             command: "shutdown".to_string(),
@@ -375,29 +395,29 @@ fn stop_bridge_with_timeout(project_path: &Path, timeout: Option<Duration>) -> R
         })
     };
     let _lock = acquire_lifecycle_lock(project_path, deadline).map_err(|error| {
-        if deadline.is_some_and(|end| std::time::Instant::now() >= end) {
+        if deadline.is_some_and(|end| now() >= end) {
             timeout_error().context("Shutdown deadline expired waiting for the lifecycle lock; preserving project state")
         } else { error }
     })?;
     let pid = read_pid_file(project_path)?;
-    if let Some(pid) = pid.filter(|pid| is_pid_alive(*pid)) {
+    if let Some(pid) = pid.filter(|pid| check_alive(*pid)) {
         let port = read_port_file(project_path)?.ok_or_else(||
             anyhow::anyhow!("Bridge process {pid} is alive but its port is unavailable; preserving project state"))?;
-        let shutdown_result = BridgeClient::new(port).shutdown_with_deadline(deadline);
+        let shutdown_result = request_shutdown(port, deadline);
         // A response can be lost during successful shutdown. If the process
         // has already exited, cleanup is still safe; otherwise retain state.
-        while is_pid_alive(pid) {
-            if deadline.is_some_and(|end| std::time::Instant::now() >= end) {
+        while check_alive(pid) {
+            if deadline.is_some_and(|end| now() >= end) {
                 return Err(timeout_error().context(format!("Bridge process {pid} did not exit before GHIDRA_CLI_SHUTDOWN_TIMEOUT; preserving discovery and project locks")));
             }
             if let Err(error) = shutdown_result {
                 return Err(error.context(format!("Could not request shutdown of live bridge process {pid}; preserving project state")));
             }
             let remaining = deadline.map_or(Duration::from_millis(100), |end| {
-                end.saturating_duration_since(std::time::Instant::now())
+                end.saturating_duration_since(now())
                     .min(Duration::from_millis(100))
             });
-            std::thread::sleep(remaining);
+            sleep(remaining);
         }
     }
     cleanup_stale_files_locked(project_path)?;
@@ -433,6 +453,7 @@ pub enum BridgeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     #[test]
     fn shutdown_deadline_includes_lifecycle_lock_wait_and_retains_timeout_type() {
@@ -450,35 +471,105 @@ mod tests {
 
     #[test]
     fn shutdown_drain_deadline_preserves_live_discovery_and_timeout_type() {
-        use std::io::{BufRead, BufReader, Write};
         let root = tempfile::tempdir().unwrap();
         let project = root.path().join("draining-project");
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let pid = std::process::id();
+        let port = 12345;
         let pid_path = pid_file_path(&project).unwrap();
         let port_path = port_file_path(&project).unwrap();
-        std::fs::write(&pid_path, std::process::id().to_string()).unwrap();
-        std::fs::write(
-            &port_path,
-            listener.local_addr().unwrap().port().to_string(),
+        std::fs::write(&pid_path, pid.to_string()).unwrap();
+        std::fs::write(&port_path, port.to_string()).unwrap();
+
+        let started = std::time::Instant::now();
+        let elapsed = Cell::new(Duration::ZERO);
+        let timeout = Duration::from_millis(250);
+        let acknowledged = Cell::new(false);
+        let mut waits = Vec::new();
+        let error = stop_bridge_with(
+            &project,
+            Some(timeout),
+            |observed_pid| {
+                assert_eq!(observed_pid, pid);
+                true // The bridge remains alive after acknowledging shutdown.
+            },
+            |observed_port, deadline| {
+                assert_eq!(observed_port, port);
+                assert_eq!(deadline, Some(started + timeout));
+                assert!(!acknowledged.replace(true), "shutdown must not be replayed");
+                elapsed.set(Duration::from_millis(25));
+                Ok(())
+            },
+            || started + elapsed.get(),
+            |wait| {
+                assert!(acknowledged.get());
+                assert!(!wait.is_zero(), "shutdown must stop at the deadline");
+                assert!(elapsed.get() + wait <= timeout);
+                waits.push(wait);
+                elapsed.set(elapsed.get() + wait);
+            },
         )
-        .unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let mut request = String::new();
-            BufReader::new(&stream).read_line(&mut request).unwrap();
-            assert!(request.contains("shutdown"));
-            writeln!(stream, "{{\"status\":\"shutdown\"}}").unwrap();
-        });
-        let error =
-            stop_bridge_with_timeout(&project, Some(Duration::from_millis(100))).unwrap_err();
-        server.join().unwrap();
+        .unwrap_err();
+        assert!(acknowledged.get());
         assert!(error
             .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
             .is_some());
-        assert!(pid_path.exists() && port_path.exists());
+        assert_eq!(elapsed.get(), timeout);
+        assert_eq!(
+            waits,
+            [
+                Duration::from_millis(100),
+                Duration::from_millis(100),
+                Duration::from_millis(25),
+            ]
+        );
+        assert_eq!(read_pid_file(&project).unwrap(), Some(pid));
+        assert_eq!(read_port_file(&project).unwrap(), Some(port));
+        std::fs::remove_file(pid_path).unwrap();
+        std::fs::remove_file(port_path).unwrap();
+    }
+
+    #[test]
+    fn shutdown_deadline_expiring_during_pid_check_preserves_discovery_and_timeout_type() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("slow-pid-check-project");
+        let pid = std::process::id();
+        let port = 12345;
+        let pid_path = pid_file_path(&project).unwrap();
+        let port_path = port_file_path(&project).unwrap();
+        std::fs::write(&pid_path, pid.to_string()).unwrap();
+        std::fs::write(&port_path, port.to_string()).unwrap();
+
+        let started = std::time::Instant::now();
+        let elapsed = Cell::new(Duration::ZERO);
+        let timeout = Duration::from_millis(100);
+        let mut attempted = false;
+        let error = stop_bridge_with(
+            &project,
+            Some(timeout),
+            |observed_pid| {
+                assert_eq!(observed_pid, pid);
+                // Model a Windows tasklist invocation outlasting the budget.
+                elapsed.set(elapsed.get() + Duration::from_millis(150));
+                true
+            },
+            |observed_port, deadline| {
+                assert_eq!(observed_port, port);
+                assert_eq!(deadline, Some(started + timeout));
+                assert!(started + elapsed.get() >= deadline.unwrap());
+                attempted = true;
+                // The transport rejects an expired deadline before connecting.
+                Err(std::io::Error::from(std::io::ErrorKind::TimedOut).into())
+            },
+            || started + elapsed.get(),
+            |_| panic!("an expired shutdown must return without sleeping"),
+        )
+        .unwrap_err();
+        assert!(attempted);
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+            .is_some());
+        assert_eq!(read_pid_file(&project).unwrap(), Some(pid));
+        assert_eq!(read_port_file(&project).unwrap(), Some(port));
         std::fs::remove_file(pid_path).unwrap();
         std::fs::remove_file(port_path).unwrap();
     }
