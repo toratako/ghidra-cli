@@ -156,6 +156,14 @@ array); do not re-import. `unknown` means completion was not confirmed. A timeou
 can leave a job running: inspect `jobs` before retrying. Settings failures before
 the Java script runs retain the launcher output instead of inventing a path.
 
+Rust filesystem diagnostics include `detail.io_kind`, a stable snake_case
+classification such as `read_only_filesystem`, `permission_denied`, or
+`not_found` (`other` for unclassified kinds). `detail.os_error` is the native
+numeric code when the I/O error exposes one, otherwise `null`. Wrappers such as
+`tempfile` can retain the classification and message while hiding the numeric
+code; use `io_kind` for automation instead of parsing the message. Temporary
+file and directory management continues to use `tempfile`.
+
 Linux/WSL may need X11 libraries even headless because initialization loads AWT.
 For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu), or
 `libXtst` (Fedora/RHEL). On Arch/Debian, JDK 21 packages are `jdk21-openjdk` and

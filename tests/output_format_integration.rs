@@ -591,6 +591,7 @@ fn doctor_reports_unwritable_state_path_without_claiming_runtime_success() {
         .find(|check| check["name"] == "bridge_state")
         .unwrap();
     assert_eq!(state["ok"], false);
+    assert_eq!(state["detail"]["io_kind"], "not_a_directory");
     assert_eq!(state["path"], blocked.join("ghidra-cli").to_str().unwrap());
     assert_eq!(result["runtime"]["status"], "not_checked");
     assert_eq!(std::fs::read_to_string(blocked).unwrap(), "retain");
@@ -621,4 +622,6 @@ fn config_io_failure_retains_operation_path_and_os_cause() {
         .unwrap()
         .contains("blocked"));
     assert!(error["detail"]["cause"].is_string());
+    assert!(error["detail"]["io_kind"].is_string());
+    assert!(error["detail"]["os_error"].is_number());
 }
