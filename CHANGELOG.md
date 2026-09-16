@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
 ### Added
 
 - `find instruction PATTERN` searches existing Ghidra instruction text with
@@ -65,7 +67,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `symbol_list`, `type_list`, and `comment_list`) now require an `offset` argument.
   `OneShotImportOptions` gains `program` for the saved file name, and
   `BridgeClient::find_calls` now requests incoming calls; use `function_calls`
-  for outgoing calls.
+  for outgoing calls. Added `function_disasm` and `symbol_get_by_name` adapters,
+  plus `find_string_with_limit`, `find_bytes_with_limit`, and
+  `find_interesting_with_limit`; the existing search adapters remain available.
 - Moved the RE agent skill from `docs/skills/SKILL.md` to
   [docs/skills/ghidra-cli/SKILL.md](docs/skills/ghidra-cli/SKILL.md), with
   task-specific references for exploration, refinement, low-level analysis,
@@ -77,10 +81,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Explicit-offset `type add-field --size` rejects sizes Ghidra cannot honor
   before changing the structure, matching append behavior.
-- Symbol deletion rejects generated dynamic labels before mutation, checks each
-  deletion result, and reports deleted, failed, and unattempted targets on partial
-  failure. Save failures retain those details. Target-selection filters no longer
-  erase deletion receipts in standalone or batch output.
+- Symbol deletion rejects generated dynamic labels and the global namespace
+  before mutation, checks each deletion result, and reports `deleted`, `failed`,
+  and `not_attempted` targets on partial failure. Successful receipts include the
+  deleted symbol snapshots. Save failures retain those details. Target-selection
+  filters no longer erase deletion receipts in standalone or batch output.
 - `find crypto` uses correct SHA-256 and MD5 round constants in both little- and
   big-endian word order. SHA-512 constants are no longer mislabeled as SHA-256.
 - `graph callers` and `find calls` share call-site validation and thunk/pointer
@@ -89,9 +94,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unknown formats fail during argument parsing.
 - `setup --version` resolves release numbers to official `Ghidra_VERSION_build`
   tags. `config set java_home PATH` now saves the configured JDK.
-- Java source on stdin is parsed for its top-level public class, accepting
-  modifiers and ignoring apparent declarations in comments, strings, and nested
-  classes. Invalid syntax reports its line and column before execution.
+- `script run -` uses the JDK parser to require exactly one top-level public
+  class, accepting modifiers and ignoring apparent declarations in comments,
+  strings, and nested classes. Invalid syntax reports its line and column before
+  execution; compilation and loading still use Ghidra's script bundle.
 - `status` counts project files in subfolders consistently with `program list`.
 - Function lookup errors recommend an executable help command instead of an
   invalid bare-word filter.
@@ -104,7 +110,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `function disasm` lists only the selected function's instructions, including
   disjoint body ranges and when selected by an interior address. It honors query
   limits, filtering, sorting, pagination, and counts without a hidden ten-instruction
-  cap or spillover into neighboring functions.
+  cap or spillover into neighboring functions. A distinct `function_disasm`
+  bridge request prevents older bridges from silently returning a partial body.
 - `disasm-at` and incomplete `clear --disasm-at` now fail with retained
   diagnostics, so `batch --on-error stop` stops before dependent edits. Successful
   clearing is still saved and reported as a partial change when redisassembly fails.
@@ -112,7 +119,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to reference rows instead of its response envelope.
 - Symbol lookup prefers exact names over bare hexadecimal addresses; rename/delete
   use name-only lookup so names such as `dead` remain editable. Explicit `0x`/`0X`
-  addresses remain available to `symbol get`.
+  addresses remain available to `symbol get`. Mutations use the distinct
+  `symbol_get_by_name` bridge request so older bridges fail before editing.
 - `program list` includes nested project folders and correctly identifies the
   current program among files sharing the same name.
 - `project info` honors the global project and configured default when its name
@@ -192,14 +200,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shutdown remains responsive with a full queue. Pcode work uses the active
   cancellation monitor. Artifact hash failures return errors.
 - CI unit coverage includes both library and binary targets. Ghidra integration
-  jobs initialize and verify the runtime with `doctor --runtime` before parallel
-  JVM startup, and infrastructure coverage includes import/bootstrap recovery.
+  and release test jobs initialize and verify the runtime with `doctor --runtime`
+  before parallel JVM startup, and infrastructure coverage includes import/bootstrap recovery.
   Shutdown deadline tests no longer hang waiting for mock TCP servers.
 
 ### Removed
 
-- Removed `diff programs` and its Rust/bridge APIs. The command returned the
-  current program's statistics without comparing the requested programs.
+- Removed `diff programs`, `BridgeClient::diff_programs`, and the `diff_programs`
+  bridge request. The command returned the current program's statistics without
+  comparing the requested programs.
   `diff functions` remains available.
 - Removed the unused `--detach` flags from import and analysis; commands wait
   for completion.
@@ -638,7 +647,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/toratako/ghidra-cli/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/toratako/ghidra-cli/compare/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79...v0.3.0
 [0.2.2]: https://github.com/toratako/ghidra-cli/compare/v0.2.1...v0.2.2

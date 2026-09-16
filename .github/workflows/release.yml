@@ -63,6 +63,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Initialize the runner-local Ghidra cache before parallel JVM startup.
+      - name: Initialize and verify Ghidra runtime
+        run: cargo run -- doctor --runtime
+        timeout-minutes: 5
+
       - name: Run all tests
         run: cargo test-run --no-fail-fast --verbose -- --nocapture
         timeout-minutes: 80
