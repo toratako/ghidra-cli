@@ -30,6 +30,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Ghidra's project lock, refusing deletion while an external Ghidra owner is active.
 - Stop, restart, and project deletion report final save failures and retain the
   JVM/program for recovery. Successful shutdown waits for accepted jobs and saving.
+- Import rejects unsupported loader option names before loading or saving a program.
 - Program metadata, status, operation responses, and artifact manifests use the
   saved project file name. `program info` and `summary` also expose its `path`;
   internal Ghidra names and original executable paths remain unchanged.

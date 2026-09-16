@@ -265,6 +265,57 @@ fn saved_import_survives_bridge_state_directory_failure() {
 }
 
 #[test]
+fn unsupported_loader_options_never_save_a_program() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    for name in ["fresh-invalid", "existing-invalid"] {
+        let output = project.run(&[
+            "import",
+            raw.to_str().unwrap(),
+            "--program",
+            name,
+            "--loader",
+            "BinaryLoader",
+            "--language",
+            "x86:LE:32:default",
+            "--loader-option",
+            "baseAdrr=0x9000",
+            "--no-analyze",
+        ]);
+        assert!(!output.status.success(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["detail"]["stage"], "import.options", "{error}");
+        assert_eq!(error["detail"]["import_status"], "not_started");
+        assert_eq!(error["detail"]["option"], "-loader-baseAdrr");
+        if name == "fresh-invalid" {
+            project.ok(&[
+                "import",
+                raw.to_str().unwrap(),
+                "--program",
+                "valid",
+                "--loader",
+                "BinaryLoader",
+                "--language",
+                "x86:LE:32:default",
+                "--loader-option",
+                "baseAddr=0x9000",
+                "--no-analyze",
+            ]);
+        } else {
+            project.ok(&["start", "--program", "valid"]);
+        }
+        let programs = project.ok(&["program", "list"]);
+        assert_eq!(programs.as_array().unwrap().len(), 1, "{programs}");
+        assert_eq!(programs[0]["name"], "valid");
+        assert_eq!(
+            project.ok(&["program", "info"])[0]["min_address"],
+            "00009000"
+        );
+    }
+}
+
+#[test]
 fn doctor_runtime_checks_real_jvm_and_removes_disposable_project() {
     require_ghidra!();
     let root = tempfile::Builder::new()

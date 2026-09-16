@@ -52,6 +52,9 @@ the same `ImportSupport` save/name boundary followed by TCP analysis. Explicit
 name collisions fail before loading; omitted names can use Ghidra's collision
 suffix. Always return the saved DomainFile name. An older running bridge must
 advertise `named_import` before receiving an import.
+Loader option names are checked against the selected loader's default option
+arguments before import; unknown names fail with `import_status: not_started`.
+Ghidra's importer alone only logs and ignores those names.
 
 Rust writes the child PID immediately after spawn (best effort), enabling orphan
 cleanup even if Java fails before binding. Java binds `ServerSocket(0)` on
