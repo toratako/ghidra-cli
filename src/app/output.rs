@@ -1,8 +1,8 @@
 use super::options::extract_query_options;
+use super::CommandResult;
 use crate::cli::{self, Cli, Commands};
 use crate::error::GhidraError;
 use crate::format::{auto_detect_format, DefaultFormatter, Formatter, OutputFormat};
-use crate::query::Query;
 use crate::terminal::write_stdout;
 use serde::Serialize;
 use std::io::{IsTerminal, Write};
@@ -182,59 +182,32 @@ fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> Ou
     }
 }
 
-fn effective_query_options(
-    command: &Commands,
-    default_limit: Option<usize>,
-) -> Option<cli::QueryOptions> {
-    let mut opts = extract_query_options(command)?;
-    if opts.limit.is_none()
-        && !opts.count
-        && (opts.filter.is_some() || opts.sort.is_some() || opts.offset.is_some())
-    {
-        opts.limit = default_limit;
+/// Batch and standalone output consume the residual query from the same plan.
+/// Unmodified batch results retain their bridge envelope.
+pub(super) fn process_batch_result(result: CommandResult) -> anyhow::Result<serde_json::Value> {
+    if let Some(query) = result.query {
+        let json = query.process_results(unwrap_bridge_response(result.value))?;
+        return Ok(serde_json::from_str(&json)?);
     }
-    Some(opts)
+    Ok(result.value)
 }
 
-/// Keep batch results structured while applying the same row selection as a
-/// standalone command. Unmodified results retain their bridge envelope.
-pub(super) fn process_batch_result(
-    command: &Commands,
-    result: serde_json::Value,
-    default_limit: Option<usize>,
-) -> anyhow::Result<serde_json::Value> {
-    if let Some(opts) = effective_query_options(command, default_limit) {
-        if let Some(query) =
-            Query::from_options(&opts, OutputFormat::JsonCompact).map_err(describe_query_error)?
-        {
-            let json = query.process_results(unwrap_bridge_response(result))?;
-            return Ok(serde_json::from_str(&json)?);
-        }
-    }
-    Ok(result)
-}
-
-pub(super) fn print_result(cli: &Cli, result: serde_json::Value) -> anyhow::Result<()> {
+pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<()> {
     if !cli.quiet {
-        check_dotnet_decompile_warning(&cli.command, &result);
+        check_dotnet_decompile_warning(&cli.command, &result.value);
     }
-    let opts = effective_query_options(&cli.command, crate::config::Config::load()?.default_limit);
     let format = output_format(cli);
 
     // Unwrap bridge response envelopes before formatting
-    let values = unwrap_bridge_response(result);
+    let values = unwrap_bridge_response(result.value);
 
-    // Apply Rust-side query processing (filter, fields, sort) if QueryOptions are present.
-    // A parse error (e.g. malformed --filter) must abort: falling through to the
-    // default formatter would dump the entire unfiltered dataset (TODO.md Bug 2).
-    if let Some(opts) = &opts {
-        if let Some(query) = Query::from_options(opts, format).map_err(describe_query_error)? {
-            let output = query.process_results(values)?;
-            if !output.is_empty() {
-                crate::terminal::write_stdout(&output)?;
-            }
-            return Ok(());
+    if let Some(mut query) = result.query {
+        query.format = format;
+        let output = query.process_results(values)?;
+        if !output.is_empty() {
+            crate::terminal::write_stdout(&output)?;
         }
+        return Ok(());
     }
 
     let formatter = DefaultFormatter;

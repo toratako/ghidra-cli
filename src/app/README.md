@@ -8,7 +8,7 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 |------|----------------|
 | `mod.rs` | Command routing, early filter validation, bridge/program selection, and one-restart compatibility recovery |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
-| `execute.rs` | Dispatch bridge requests, with shared list-fetch limits, range parsing, and comment input resolution |
+| `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets; share rename handling with the top-level alias |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on save failures or timeouts |
@@ -43,9 +43,11 @@ that project's selection, and query modifiers apply within each result. Suppress
 standalone query environment defaults when a batch line omits its targets.
 
 Output precedence: explicit format, pretty JSON, compact JSON, configured
-`default_output_format`, then TTY detection. Apply `default_limit` after client
-filter/sort/offset processing when the limit is omitted; count and explicit zero
-must remain uncapped. Batch results use the same row-selection rules.
+`default_output_format`, then TTY detection. The shared
+[query plan](../query/README.md) applies `default_limit` after row selection,
+whether it happens in Java or Rust. Count ignores the configured cap; explicit
+zero is unlimited. The residual query travels with each command result so
+standalone and batch output cannot apply a server offset twice.
 Extract response envelopes before query processing. `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge

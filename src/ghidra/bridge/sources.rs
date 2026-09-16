@@ -85,6 +85,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/JsonProtocol.java"),
     ),
     (
+        "ghidracli/ListQuery.java",
+        include_str!("../scripts/ghidracli/ListQuery.java"),
+    ),
+    (
         "ghidracli/ListingCommands.java",
         include_str!("../scripts/ghidracli/ListingCommands.java"),
     ),

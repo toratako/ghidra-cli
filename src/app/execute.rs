@@ -54,55 +54,16 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
     Ok(code)
 }
 
-/// The bridge's list handlers only support a literal substring match on the
-/// primary name field, not the full filter DSL implemented client-side in
-/// `query::Filter`. When a full filter expression, sort, or count is requested,
-/// fetch the complete dataset (no server-side limit/filter) so Rust-side query
-/// processing can filter, sort, and paginate correctly.
-fn bridge_list_params(
-    limit: Option<usize>,
-    filter: Option<String>,
-    sort: Option<&str>,
-    count: bool,
-    offset: Option<usize>,
-    default_limit: Option<usize>,
-) -> (Option<usize>, Option<String>) {
-    if filter.is_some() || sort.is_some() || count || offset.is_some() {
-        (None, None)
-    } else {
-        // `--limit 0` means "all rows": suppress both the explicit limit and
-        // the config default. Omitting --limit still applies default_limit.
-        let limit = match limit {
-            Some(0) => None,
-            Some(n) => Some(n),
-            None => default_limit,
-        };
-        (limit, filter)
-    }
-}
-
 /// Execute a command via the bridge client.
 pub(super) fn execute_via_bridge(
     client: &BridgeClient,
     command: &Commands,
     quiet: bool,
-    default_limit: Option<usize>,
+    fetch: &crate::query::FetchParams,
 ) -> anyhow::Result<serde_json::Value> {
     use serde_json::json;
 
-    let list_limit = super::options::extract_query_options(command)
-        .map(|opts| {
-            bridge_list_params(
-                opts.limit,
-                opts.filter,
-                opts.sort.as_deref(),
-                opts.count,
-                opts.offset,
-                default_limit,
-            )
-            .0
-        })
-        .unwrap_or(default_limit);
+    let list_limit = fetch.limit;
 
     match command {
         // Analyze shares the generic dispatch path with all query commands
@@ -121,8 +82,12 @@ pub(super) fn execute_via_bridge(
             }))
         }
         Commands::Query(args) => match args.data_type {
-            cli::QueryDataType::Functions => client.list_functions(list_limit, None, &[], false),
-            cli::QueryDataType::Strings => client.list_strings(list_limit, None),
+            cli::QueryDataType::Functions => {
+                client.list_functions(list_limit, fetch.filter.clone(), &[], false, fetch.offset)
+            }
+            cli::QueryDataType::Strings => {
+                client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
+            }
             cli::QueryDataType::Imports => client.list_imports(list_limit),
             cli::QueryDataType::Exports => client.list_exports(list_limit),
             cli::QueryDataType::Memory => client.memory_map(),
@@ -135,9 +100,13 @@ pub(super) fn execute_via_bridge(
         Commands::Function(cmd) => {
             use cli::FunctionCommands;
             match cmd {
-                FunctionCommands::List(args) => {
-                    client.list_functions(list_limit, None, &args.tags, args.untagged)
-                }
+                FunctionCommands::List(args) => client.list_functions(
+                    list_limit,
+                    fetch.filter.clone(),
+                    &args.tags,
+                    args.untagged,
+                    fetch.offset,
+                ),
                 FunctionCommands::Decompile(args) => client.decompile(
                     args.resolved_target().to_string(),
                     args.with_vars,
@@ -225,7 +194,9 @@ pub(super) fn execute_via_bridge(
         Commands::Strings(cmd) => {
             use cli::StringsCommands;
             match cmd {
-                StringsCommands::List(_) => client.list_strings(list_limit, None),
+                StringsCommands::List(_) => {
+                    client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
+                }
                 StringsCommands::Refs(args) => client.string_refs(args.string.clone()),
             }
         }
@@ -251,8 +222,16 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 DumpCommands::Imports(_) => client.list_imports(list_limit),
                 DumpCommands::Exports(_) => client.list_exports(list_limit),
-                DumpCommands::Functions(_) => client.list_functions(list_limit, None, &[], false),
-                DumpCommands::Strings(_) => client.list_strings(list_limit, None),
+                DumpCommands::Functions(_) => client.list_functions(
+                    list_limit,
+                    fetch.filter.clone(),
+                    &[],
+                    false,
+                    fetch.offset,
+                ),
+                DumpCommands::Strings(_) => {
+                    client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
+                }
             }
         }
         Commands::Summary(_) => client.program_info(),
@@ -305,11 +284,11 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::Save(_) => client.program_save(),
             }
         }
-        Commands::Symbol(cmd) => symbols::execute(client, cmd, list_limit),
+        Commands::Symbol(cmd) => symbols::execute(client, cmd, fetch),
         Commands::Type(cmd) => {
             use cli::TypeCommands;
             match cmd {
-                TypeCommands::List(_) => client.type_list(list_limit, None),
+                TypeCommands::List(_) => client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset),
                 TypeCommands::Get(args) => client.type_get(&args.name),
                 TypeCommands::Create(args) => client.type_create(&args.definition),
                 TypeCommands::Apply(args) => {
@@ -409,7 +388,9 @@ pub(super) fn execute_via_bridge(
         Commands::Comment(cmd) => {
             use cli::CommentCommands;
             match cmd {
-                CommentCommands::List(_) => client.comment_list(list_limit, None),
+                CommentCommands::List(_) => {
+                    client.comment_list(list_limit, fetch.filter.as_deref(), fetch.offset)
+                }
                 CommentCommands::Get(args) => client.comment_get(&args.address),
                 CommentCommands::Set(args) => {
                     let text = resolve_comment_text(args)?;
@@ -581,40 +562,5 @@ mod tests {
     fn split_range_missing_colon_is_none() {
         assert_eq!(split_range("rom1::5512"), None);
         assert_eq!(split_range("0bf3"), None);
-    }
-
-    #[test]
-    fn bridge_list_params_limit_zero_means_unlimited() {
-        // Regression (TODO.md Bug 1): --limit 0 must fetch all rows, not zero,
-        // and must not fall back to the config default limit.
-        let (limit, filter) = bridge_list_params(Some(0), None, None, false, None, Some(1000));
-        assert_eq!(limit, None);
-        assert_eq!(filter, None);
-    }
-
-    #[test]
-    fn bridge_list_params_no_limit_uses_default() {
-        let (limit, _) = bridge_list_params(None, None, None, false, None, Some(1000));
-        assert_eq!(limit, Some(1000));
-    }
-
-    #[test]
-    fn bridge_list_params_explicit_limit_wins() {
-        let (limit, _) = bridge_list_params(Some(25), None, None, false, None, Some(1000));
-        assert_eq!(limit, Some(25));
-    }
-
-    #[test]
-    fn bridge_list_params_filter_fetches_full_dataset() {
-        let (limit, filter) = bridge_list_params(
-            Some(20),
-            Some("name~PK".to_string()),
-            None,
-            false,
-            None,
-            Some(1000),
-        );
-        assert_eq!(limit, None);
-        assert_eq!(filter, None);
     }
 }

@@ -23,28 +23,26 @@ final class ListingCommands {
         this.session = session;
     }
 
-    JsonObject handleListStrings(JsonObject args) {
+    JsonObject handleListStrings(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
 
-        int limit = getArgInt(args, "limit", 0);
-        String nameFilter = getArgString(args, "filter");
+        ListQuery query = new ListQuery(session, args);
 
         JsonArray strings = new JsonArray();
         Listing listing = session.program().getListing();
         DataIterator dataIter = listing.getDefinedData(true);
-        int count = 0;
 
         while (dataIter.hasNext()) {
-            if (limit > 0 && count >= limit) break;
+            if (query.isFull()) break;
 
             Data data = dataIter.next();
             if (data.hasStringValue()) {
                 try {
                     String val = data.getValue().toString();
 
-                    if (nameFilter != null && !val.toLowerCase().contains(nameFilter.toLowerCase())) {
+                    if (!query.include(val)) {
                         continue;
                     }
 
@@ -53,7 +51,7 @@ final class ListingCommands {
                     strData.addProperty("value", val);
                     strData.addProperty("length", val.length());
                     strings.add(strData);
-                    count++;
+                    query.record();
                 } catch (Exception e) {
                     // skip
                 }

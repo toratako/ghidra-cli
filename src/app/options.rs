@@ -416,3 +416,22 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         _ => None,
     }
 }
+
+/// Handlers supporting literal contains on this field and server-side paging.
+pub(super) fn list_query_field(command: &Commands) -> Option<&'static str> {
+    match command {
+        Commands::Function(cli::FunctionCommands::List(_))
+        | Commands::Symbol(cli::SymbolCommands::List(_))
+        | Commands::Type(cli::TypeCommands::List(_))
+        | Commands::Dump(cli::DumpCommands::Functions(_)) => Some("name"),
+        Commands::Strings(cli::StringsCommands::List(_))
+        | Commands::Dump(cli::DumpCommands::Strings(_)) => Some("value"),
+        Commands::Comment(cli::CommentCommands::List(_)) => Some("text"),
+        Commands::Query(args) => match args.data_type {
+            cli::QueryDataType::Functions => Some("name"),
+            cli::QueryDataType::Strings => Some("value"),
+            _ => None,
+        },
+        _ => None,
+    }
+}

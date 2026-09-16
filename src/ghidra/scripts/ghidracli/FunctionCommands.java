@@ -1,7 +1,6 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.CodeUnit;
@@ -19,7 +18,6 @@ import java.util.List;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
-import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getArgStringArray;
 
@@ -34,13 +32,12 @@ final class FunctionCommands {
         this.functionQueries = functionQueries;
     }
 
-    JsonObject handleListFunctions(JsonObject args) {
+    JsonObject handleListFunctions(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
 
-        int limit = getArgInt(args, "limit", 0);
-        String nameFilter = getArgString(args, "filter");
+        ListQuery query = new ListQuery(session, args);
         String[] tagFilterNames = getArgStringArray(args, "tags");
         boolean untagged = getArgBool(args, "untagged", false);
 
@@ -59,18 +56,14 @@ final class FunctionCommands {
         }
 
         JsonArray functions = new JsonArray();
-        int count = 0;
 
         FunctionIterator iter = fm.getFunctions(true);
         while (iter.hasNext()) {
-            if (limit > 0 && count >= limit) break;
+            if (query.isFull()) break;
 
             Function func = iter.next();
             String name = func.getName();
 
-            if (nameFilter != null && !name.toLowerCase().contains(nameFilter.toLowerCase())) {
-                continue;
-            }
             if (!requiredTags.isEmpty() && !func.getTags().containsAll(requiredTags)) {
                 continue;
             }
@@ -78,27 +71,10 @@ final class FunctionCommands {
                 continue;
             }
 
-            JsonObject funcData = new JsonObject();
-            funcData.addProperty("name", name);
-            funcData.addProperty("address", func.getEntryPoint().toString());
-            funcData.addProperty("size", func.getBody().getNumAddresses());
-            funcData.addProperty("entry_point", func.getEntryPoint().toString());
-            funcData.add("tags", TagSupport.functionTagNames(func));
-
-            String sig = null;
-            try {
-                sig = func.getPrototypeString(false, false);
-            } catch (Exception e) {
-                // ignore
-            }
-            if (sig != null) {
-                funcData.addProperty("signature", sig);
-            } else {
-                funcData.add("signature", JsonNull.INSTANCE);
-            }
+            if (!query.include(name)) continue;
 
             functions.add(functionQueries.functionToJson(func));
-            count++;
+            query.record();
         }
 
         JsonObject result = new JsonObject();

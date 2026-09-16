@@ -13,7 +13,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getArgStringArray;
 
@@ -24,29 +23,27 @@ final class SymbolCommands {
         this.session = session;
     }
 
-    JsonObject handleSymbolList(JsonObject args) {
+    JsonObject handleSymbolList(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
-        int limit = getArgInt(args, "limit", 0);
-        String nameFilter = getArgString(args, "filter");
+        ListQuery query = new ListQuery(session, args);
 
         SymbolTable symbolTable = session.program().getSymbolTable();
         JsonArray symbols = new JsonArray();
-        int count = 0;
 
         SymbolIterator symIter = symbolTable.getAllSymbols(true);
         while (symIter.hasNext()) {
-            if (limit > 0 && count >= limit) break;
+            if (query.isFull()) break;
 
             Symbol symbol = symIter.next();
             String name = symbol.getName();
 
-            if (nameFilter != null && !name.toLowerCase().contains(nameFilter.toLowerCase())) {
+            if (!query.include(name)) {
                 continue;
             }
 
             symbols.add(symbolToJson(symbol));
-            count++;
+            query.record();
         }
 
         JsonObject result = new JsonObject();

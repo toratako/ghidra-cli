@@ -40,21 +40,19 @@ final class TypeCommands {
         this.typeResolver = typeResolver;
     }
 
-    JsonObject handleTypeList(JsonObject args) {
+    JsonObject handleTypeList(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
-        int limit = getArgInt(args, "limit", 0);
-        String nameFilter = getArgString(args, "filter");
+        ListQuery query = new ListQuery(session, args);
         DataTypeManager dtm = session.program().getDataTypeManager();
         JsonArray types = new JsonArray();
 
         Iterator<DataType> dtIter = dtm.getAllDataTypes();
-        int count = 0;
         while (dtIter.hasNext()) {
+            if (query.isFull()) break;
             DataType dt = dtIter.next();
-            if (limit > 0 && count >= limit) break;
 
-            if (nameFilter != null && !dt.getName().toLowerCase().contains(nameFilter.toLowerCase())) {
+            if (!query.include(dt.getName())) {
                 continue;
             }
 
@@ -74,7 +72,7 @@ final class TypeCommands {
             else kind = "other";
             typeData.addProperty("kind", kind);
             types.add(typeData);
-            count++;
+            query.record();
         }
 
         JsonObject result = new JsonObject();

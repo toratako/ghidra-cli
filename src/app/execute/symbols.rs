@@ -8,10 +8,12 @@ use crate::ipc::client::BridgeClient;
 pub(super) fn execute(
     client: &BridgeClient,
     cmd: &SymbolCommands,
-    list_limit: Option<usize>,
+    fetch: &crate::query::FetchParams,
 ) -> anyhow::Result<serde_json::Value> {
     match cmd {
-        SymbolCommands::List(_) => client.symbol_list(list_limit, None),
+        SymbolCommands::List(_) => {
+            client.symbol_list(fetch.limit, fetch.filter.as_deref(), fetch.offset)
+        }
         SymbolCommands::Get(args) => client.symbol_get(&args.name),
         SymbolCommands::Create(args) => client.symbol_create(&args.address, &args.name),
         SymbolCommands::Delete(args) => {

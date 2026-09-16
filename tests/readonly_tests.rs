@@ -13,6 +13,8 @@ mod batch;
 mod functions;
 #[path = "readonly/program.rs"]
 mod program;
+#[path = "readonly/query.rs"]
+mod query;
 #[path = "readonly/relationships.rs"]
 mod relationships;
 #[path = "readonly/search.rs"]

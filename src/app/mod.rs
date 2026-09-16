@@ -9,9 +9,10 @@ mod output;
 mod project;
 
 use crate::cli::{self, Cli, Commands};
-use crate::filter;
+use crate::format::OutputFormat;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
+use crate::query::{Query, QueryPlan};
 use clap::{CommandFactory, FromArgMatches};
 use execute::execute_via_bridge;
 use installation::handle_doctor;
@@ -62,7 +63,13 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                     if batch.detail.get("results").is_some() {
                         // A batch report is a result even when some rows failed. Only
                         // the outer invocation writes it; nested reports stay in rows.
-                        output::print_result(&cli, batch.detail.clone())?;
+                        output::print_result(
+                            &cli,
+                            CommandResult {
+                                value: batch.detail.clone(),
+                                query: None,
+                            },
+                        )?;
                         let mut summary = batch.detail.clone();
                         summary.as_object_mut().unwrap().remove("results");
                         let message = batch.message.clone();
@@ -78,25 +85,35 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
+struct CommandResult {
+    value: serde_json::Value,
+    query: Option<Query>,
+}
+
+fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
     execute::validate_supported_command(&cli.command)?;
     if matches!(
         cli.command,
         Commands::Program(cli::ProgramCommands::Save(_))
     ) {
-        return management::program_save_result(cli).map(|(result, _)| result);
+        return management::program_save_result(cli)
+            .map(|(value, _)| CommandResult { value, query: None });
     }
     let output = Output::new(cli);
-    // Reject a malformed --filter up front, before any bridge work: the bridge
-    // fetch for a filtered query pulls the *full* dataset, so failing late
-    // wastes that transfer.
-    if let Some(opts) = extract_query_options(&cli.command) {
-        if let Some(expr) = &opts.filter {
-            filter::Filter::parse(expr).map_err(describe_query_error)?;
-        }
-    }
-
+    // Parse once, before any bridge work. The same plan travels with the result
+    // through standalone and batch output, so paging is never applied twice.
+    let query = extract_query_options(&cli.command)
+        .as_ref()
+        .map(|opts| Query::from_options(opts, OutputFormat::JsonCompact))
+        .transpose()
+        .map_err(describe_query_error)?
+        .flatten();
     let config = load_config(&cli.projects_dir)?;
+    let plan = QueryPlan::new(
+        query,
+        config.default_limit,
+        options::list_query_field(&cli.command),
+    );
 
     // Extract project from command args, fall back to global --project, then config default
     let project_from_cmd =
@@ -185,14 +202,14 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
                         }
                         sub_cli.quiet = true;
                         let result = execute_bridge_command(&sub_cli)?;
-                        output::process_batch_result(&sub_cli.command, result, config.default_limit)
+                        output::process_batch_result(result)
                     })
                 } else {
                     execute_via_bridge(
                         client,
                         &cli.command,
                         output.quiet || output.json,
-                        config.default_limit,
+                        &plan.fetch,
                     )
                 }
             };
@@ -240,7 +257,10 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<serde_json::Value> {
         }
     };
 
-    Ok(result)
+    Ok(CommandResult {
+        value: result,
+        query: plan.post,
+    })
 }
 
 fn parse_batch_command(args: impl IntoIterator<Item = String>) -> anyhow::Result<Cli> {

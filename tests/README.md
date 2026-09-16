@@ -83,6 +83,11 @@ save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
 Real bridge tests cover OSGi loading of the whole source bundle.
+`readonly/query.rs` compares server-filtered pages with full rows for the five
+supported list handlers and query/dump aliases, including Unicode under a Turkish
+locale, function tags, multiple comment types, unlimited/empty pages and bounds
+beyond Java `int`. Planner and routing tests separately verify residual processing
+and standalone/batch equivalence.
 Batch coverage checks nonzero failure exits, preservation of per-command results
 and save errors, and stopping subsequent commands after a save failure or timeout.
 Program deletion coverage includes the initial program, closed files with matching

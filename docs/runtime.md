@@ -147,6 +147,9 @@ bridges again after updating; old discovery keys are not preserved or migrated.
 The current CLI requires the `shutdown_wait` protocol to confirm a final save.
 It cannot safely stop an older bridge that only acknowledges shutdown acceptance;
 save and stop that bridge with the old CLI before replacing it.
+List-query filtering/paging also requires the CLI and Java bridge to match;
+there is no query feature negotiation or old-server fallback. A bridge left
+running during an update must be restarted before using the new CLI's queries.
 
 ## Installation failures
 

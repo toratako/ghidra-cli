@@ -104,6 +104,7 @@ impl BridgeClient {
         filter: Option<String>,
         tags: &[String],
         untagged: bool,
+        offset: Option<usize>,
     ) -> Result<serde_json::Value> {
         self.send_command(
             "list_functions",
@@ -112,6 +113,7 @@ impl BridgeClient {
                 "filter": filter,
                 "tags": tags,
                 "untagged": untagged,
+                "offset": offset,
             })),
         )
     }
@@ -140,10 +142,11 @@ impl BridgeClient {
         &self,
         limit: Option<usize>,
         filter: Option<String>,
+        offset: Option<usize>,
     ) -> Result<serde_json::Value> {
         self.send_command(
             "list_strings",
-            Some(json!({"limit": limit, "filter": filter})),
+            Some(json!({"limit": limit, "filter": filter, "offset": offset})),
         )
     }
 
@@ -244,10 +247,11 @@ impl BridgeClient {
         &self,
         limit: Option<usize>,
         filter: Option<&str>,
+        offset: Option<usize>,
     ) -> Result<serde_json::Value> {
         self.send_command(
             "symbol_list",
-            Some(json!({"limit": limit, "filter": filter})),
+            Some(json!({"limit": limit, "filter": filter, "offset": offset})),
         )
     }
 
@@ -315,8 +319,12 @@ impl BridgeClient {
         &self,
         limit: Option<usize>,
         filter: Option<&str>,
+        offset: Option<usize>,
     ) -> Result<serde_json::Value> {
-        self.send_command("type_list", Some(json!({"limit": limit, "filter": filter})))
+        self.send_command(
+            "type_list",
+            Some(json!({"limit": limit, "filter": filter, "offset": offset})),
+        )
     }
 
     /// List function tags (all tags, or one function's tags).
@@ -369,10 +377,11 @@ impl BridgeClient {
         &self,
         limit: Option<usize>,
         filter: Option<&str>,
+        offset: Option<usize>,
     ) -> Result<serde_json::Value> {
         self.send_command(
             "comment_list",
-            Some(json!({"limit": limit, "filter": filter})),
+            Some(json!({"limit": limit, "filter": filter, "offset": offset})),
         )
     }
 

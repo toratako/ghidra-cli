@@ -21,6 +21,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Function, symbol, type, string and comment lists push a single contains filter
+  and safe offset/limit into Ghidra, including query/dump aliases. Sort, count,
+  projection and other filters stay in Rust. Default limits, unlimited requests,
+  page counts and batch output retain their semantics. Restart running bridges
+  after upgrading; this adds no old-bridge query compatibility handling.
 - `batch` writes attempted results to stdout even on partial failure, preserving
   nonzero exit codes and stop policies. Stderr no longer carries `detail.results`.
 - `find calls TARGET` searches the selected program for incoming call sites;

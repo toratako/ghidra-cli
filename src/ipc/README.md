@@ -39,6 +39,17 @@ Request `command` is required; optional `args` is omitted when `None`.
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON.
 
+`list_functions`, `list_strings`, `symbol_list`, `type_list`, and `comment_list`
+accept literal `filter`, `offset`, and `limit` arguments. Filters are
+case-insensitive contains on their documented string field; the DSL stays in
+Rust. Offset counts matching rows before limit; missing/null/zero limit is
+unlimited and missing/null offset is zero. Numeric page arguments must be
+integers in `0..=9223372036854775807`; invalid values fail instead of narrowing
+to Java `int`. Responses retain their array and returned-row `count` envelope.
+See [query planning](../query/README.md) for when these arguments may be pushed.
+This change requires a matching CLI and Java bridge; it adds no old-bridge
+compatibility path.
+
 `bridge_info.auto_save: true` advertises saving before successful program
 responses. `program_save` retries pending saves without restarting. A save failure
 returns `error` with `detail.save_failed: true`, `saved: false`, and the original

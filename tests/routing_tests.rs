@@ -117,6 +117,17 @@ impl RecordedBridge {
                             json!({"name": "large", "size": 30}),
                             json!({"name": "medium", "size": 20}),
                         ];
+                        if let Some(filter) = args["filter"].as_str() {
+                            rows.retain(|row| {
+                                row["name"]
+                                    .as_str()
+                                    .unwrap()
+                                    .to_lowercase()
+                                    .contains(&filter.to_lowercase())
+                            });
+                        }
+                        let offset = args["offset"].as_u64().unwrap_or(0) as usize;
+                        rows.drain(..offset.min(rows.len()));
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
                             rows.truncate(limit as usize);
                         }
@@ -1171,7 +1182,12 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
                     .filter(|r| r["command"] == "list_functions")
                     .collect();
                 assert_eq!(lists.len(), 1);
-                assert!(lists[0]["args"]["limit"].is_null(), "{lists:?}");
+                if flags == ["--offset", "1"] {
+                    assert_eq!(lists[0]["args"]["offset"], 1);
+                    assert_eq!(lists[0]["args"]["limit"], 1);
+                } else {
+                    assert!(lists[0]["args"]["limit"].is_null(), "{lists:?}");
+                }
             }
         }
     }
@@ -1294,5 +1310,91 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
             .unwrap()
             .iter()
             .any(|r| r["args"]["text"] == "must-not-run"));
+    }
+}
+
+#[test]
+fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for command in [
+        vec!["function", "list"],
+        vec!["query", "functions"],
+        vec!["dump", "functions"],
+    ] {
+        for (flags, expected, server_limit, server_offset) in [
+            (
+                vec!["--filter", "name~L", "--offset", "1"],
+                json!([{"name":"small", "size":10}]),
+                json!(1),
+                json!(1),
+            ),
+            (
+                vec!["--filter", "name~L", "--offset", "1", "--limit", "0"],
+                json!([{"name":"small", "size":10}, {"name":"large", "size":30}]),
+                json!(null),
+                json!(1),
+            ),
+            (
+                vec!["--filter", "name~L", "--offset", "1", "--count"],
+                json!(2),
+                json!(null),
+                json!(null),
+            ),
+            (
+                vec![
+                    "--filter",
+                    "name~L",
+                    "--sort=-size",
+                    "--fields",
+                    "name",
+                    "--offset",
+                    "1",
+                ],
+                json!([{"name":"small"}]),
+                json!(null),
+                json!(null),
+            ),
+        ] {
+            let args: Vec<_> = command.iter().chain(flags.iter()).copied().collect();
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let actual = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                assert_eq!(actual, expected, "{args:?}, batch={batch}");
+                let requests = bridge.requests.lock().unwrap();
+                let list = requests
+                    .iter()
+                    .find(|r| r["command"] == "list_functions")
+                    .unwrap();
+                assert_eq!(list["args"]["filter"], "L");
+                assert_eq!(list["args"]["limit"], server_limit);
+                assert_eq!(list["args"]["offset"], server_offset);
+            }
+        }
+    }
+}
+
+#[test]
+fn unsupported_list_offset_fetches_enough_rows() {
+    let bridge = RecordedBridge::new();
+    for command in [vec!["query", "imports"], vec!["dump", "exports"]] {
+        let args: Vec<_> = command
+            .into_iter()
+            .chain(["--offset", "1", "--limit", "1"])
+            .collect();
+        assert_eq!(bridge.run(&args), json!([{"name":"second"}]));
+    }
+    for list in bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["command"] == "list_imports" || r["command"] == "list_exports")
+    {
+        assert!(list["args"]["limit"].is_null());
     }
 }

@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class CommentCommands {
@@ -31,16 +30,14 @@ final class CommentCommands {
         }
     }
 
-    JsonObject handleCommentList(JsonObject args) {
+    JsonObject handleCommentList(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
-        int limit = getArgInt(args, "limit", 0);
-        String nameFilter = getArgString(args, "filter");
+        ListQuery query = new ListQuery(session, args);
 
         Listing listing = session.program().getListing();
         Memory memory = session.program().getMemory();
         JsonArray comments = new JsonArray();
-        int count = 0;
 
         int[][] commentTypes = {
             {CodeUnit.EOL_COMMENT},
@@ -51,7 +48,7 @@ final class CommentCommands {
         String[] commentNames = {"EOL", "PRE", "POST", "PLATE"};
 
         for (MemoryBlock block : memory.getBlocks()) {
-            if (limit > 0 && count >= limit) break;
+            if (query.isFull()) break;
 
             ghidra.program.model.address.AddressSet addrSet =
                 new ghidra.program.model.address.AddressSet(block.getStart(), block.getEnd());
@@ -60,16 +57,16 @@ final class CommentCommands {
                 listing.getCommentAddressIterator(addrSet, true);
 
             while (addrIter.hasNext()) {
-                if (limit > 0 && count >= limit) break;
+                if (query.isFull()) break;
 
                 Address addr = addrIter.next();
 
                 for (int i = 0; i < commentNames.length; i++) {
-                    if (limit > 0 && count >= limit) break;
+                    if (query.isFull()) break;
 
                     String text = listing.getComment(commentTypes[i][0], addr);
                     if (text != null) {
-                        if (nameFilter != null && !text.toLowerCase().contains(nameFilter.toLowerCase())) {
+                        if (!query.include(text)) {
                             continue;
                         }
 
@@ -78,7 +75,7 @@ final class CommentCommands {
                         commentObj.addProperty("type", commentNames[i]);
                         commentObj.addProperty("text", text);
                         comments.add(commentObj);
-                        count++;
+                        query.record();
                     }
                 }
             }

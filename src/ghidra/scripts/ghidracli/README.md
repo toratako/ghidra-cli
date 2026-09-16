@@ -85,6 +85,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
+| `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers; see [query execution](../../../query/README.md) |
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
 | `MemoryCommands`, `AnalysisCommands` | Memory/patch/disassembly operations, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |

@@ -1,3 +1,7 @@
+mod planner;
+
+pub(crate) use planner::{FetchParams, QueryPlan};
+
 use crate::cli::QueryOptions;
 use crate::error::{GhidraError, Result};
 use crate::filter::Filter;
@@ -106,9 +110,7 @@ impl Query {
             filter,
             fields,
             format,
-            // The bridge only skips limit/filter when filter/sort/count/offset is
-            // requested (see `bridge_list_params` in app/execute.rs) — in that case it
-            // returns the full dataset and we must paginate here ourselves.
+            // QueryPlan removes any offset already applied by the bridge.
             limit: opts.limit,
             offset: opts.offset,
             sort,

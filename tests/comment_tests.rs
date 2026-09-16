@@ -318,7 +318,7 @@ public class CreateInteriorCommentFixture extends GhidraScript {
                         .any(|row| row["type"] == kind && row["text"] == text),
                     "{comments}"
                 );
-                let listed = client.comment_list(None, Some(&text)).unwrap();
+                let listed = client.comment_list(None, Some(&text), None).unwrap();
                 assert_eq!(listed["count"], 1, "{listed}");
                 assert_eq!(listed["comments"][0]["text"], text);
             }
