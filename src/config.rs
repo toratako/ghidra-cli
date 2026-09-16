@@ -148,9 +148,18 @@ impl Config {
             .as_file()
             .sync_all()
             .map_err(|e| path_io("config.sync", path, e))?;
-        staged
-            .persist(path)
+        // tempfile::persist uses MoveFileExW on Windows, which cannot replace
+        // a destination held open by a reader or write_path's canonicalize.
+        // std::fs::rename also supports POSIX replacement semantics there.
+        // Clear tempfile's temporary attribute and retain cleanup on failure.
+        let (file, staged_path) = staged
+            .keep()
             .map_err(|error| path_io("config.publish", path, error.error))?;
+        let mut staged_path = tempfile::TempPath::try_from_path(staged_path)
+            .map_err(|error| path_io("config.publish", path, error))?;
+        drop(file);
+        fs::rename(&staged_path, path).map_err(|error| path_io("config.publish", path, error))?;
+        staged_path.disable_cleanup(true);
         Ok(())
     }
 
@@ -334,14 +343,14 @@ mod tests {
             Config::write_path(&target).unwrap(),
             Config::write_path(&link).unwrap()
         );
-        let workers: Vec<_> = (0..8)
-            .map(|index| {
+        std::thread::scope(|scope| {
+            for index in 0..8 {
                 let path = if index % 2 == 0 {
                     target.clone()
                 } else {
                     link.clone()
                 };
-                std::thread::spawn(move || {
+                scope.spawn(move || {
                     for _ in 0..5 {
                         Config::update_at(&path, |config| {
                             config.default_limit = Some(config.default_limit.unwrap() + 1);
@@ -349,12 +358,9 @@ mod tests {
                         })
                         .unwrap();
                     }
-                })
-            })
-            .collect();
-        for worker in workers {
-            worker.join().unwrap();
-        }
+                });
+            }
+        });
         assert!(fs::symlink_metadata(&link)
             .unwrap()
             .file_type()
@@ -405,10 +411,9 @@ mod tests {
     fn concurrent_updates_preserve_every_increment() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("config.yaml");
-        let workers: Vec<_> = (0..8)
-            .map(|_| {
-                let path = path.clone();
-                std::thread::spawn(move || {
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
                     for _ in 0..5 {
                         Config::update_at(&path, |config| {
                             config.default_limit = Some(config.default_limit.unwrap() + 1);
@@ -416,13 +421,95 @@ mod tests {
                         })
                         .unwrap();
                     }
-                })
-            })
-            .collect();
-        for worker in workers {
-            worker.join().unwrap();
-        }
+                });
+            }
+        });
         assert_eq!(Config::load_from(&path).unwrap().default_limit, Some(1040));
+    }
+
+    #[test]
+    fn save_and_update_replace_config_while_previous_version_is_open() {
+        use std::io::Read;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("user's config");
+        let path = dir.join("config.yaml");
+        Config::default().save_at(&path).unwrap();
+        let original = fs::read_to_string(&path).unwrap();
+        let mut reader = fs::File::open(&path).unwrap();
+
+        Config::update_at(&path, |config| {
+            config.default_limit = Some(42);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(Config::load_from(&path).unwrap().default_limit, Some(42));
+        let mut previous = String::new();
+        reader.read_to_string(&mut previous).unwrap();
+        assert_eq!(previous, original);
+
+        let mut reader = fs::File::open(&path).unwrap();
+        Config::default().save_at(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        let mut previous = String::new();
+        reader.read_to_string(&mut previous).unwrap();
+        assert_eq!(
+            serde_yaml::from_str::<Config>(&previous)
+                .unwrap()
+                .default_limit,
+            Some(42)
+        );
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_TEMPORARY;
+
+            assert_eq!(
+                fs::metadata(&path).unwrap().file_attributes() & FILE_ATTRIBUTE_TEMPORARY,
+                0
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn blocked_replacement_preserves_config_and_cleans_staging() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("config.yaml");
+        Config::default().save_at(&path).unwrap();
+        let original = fs::read_to_string(&path).unwrap();
+        // Unlike ordinary readers, this handle explicitly forbids replacement.
+        let reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&path)
+            .unwrap();
+        let result = Config::update_at(&path, |config| {
+            config.default_limit = Some(42);
+            Ok(())
+        });
+        assert!(matches!(
+            result,
+            Err(GhidraError::PathIo {
+                stage: "config.publish",
+                ..
+            })
+        ));
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+        drop(reader);
+
+        Config::update_at(&path, |config| {
+            config.default_limit = Some(42);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(Config::load_from(&path).unwrap().default_limit, Some(42));
     }
 
     #[test]
