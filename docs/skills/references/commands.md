@@ -26,8 +26,10 @@ Import waits for completion. Use `import --no-analyze` to omit analysis and
 `import INPUT --program NAME` saves under that project file name; omitting it
 uses the input file name (Ghidra may add a suffix on collision). An explicit name
 must be a single file name and must not already exist. The import response reports
-the actual saved name. `program list` shows saved paths and the current selection;
-`program info.name` is the internal Program name and can differ from its file name.
+the actual saved name. `program list`, `program info`, and `summary` report that
+saved name and project file `path`. Other program responses and artifact manifests
+also use the saved name. `executable_path` identifies the original input file;
+Ghidra's internal Program name can differ and is not used as the CLI display name.
 `stats` reports program statistics; `summary` reports the loaded program's
 metadata.
 

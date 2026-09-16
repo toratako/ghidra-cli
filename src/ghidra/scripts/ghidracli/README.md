@@ -40,6 +40,12 @@ Controls read snapshots/job records instead of the session. Switching resolves
 the project file before checking whether it is open: different files can have
 Programs with the same internal name.
 
+CLI program names and paths come from `ProgramSession.programName()` and
+`programPath()`, which read the selected DomainFile. Use these for responses,
+artifact manifests, and the snapshots published by the program thread. Ghidra's
+internal Program name is not the project file identity and must not be renamed
+just to change CLI output.
+
 The entry script calls its inherited `end(true)` before serving requests to end
 the transaction created by `GhidraScript.executeNormal()`. Never end an unknown
 transaction ID or leave the script's transaction ID tied to a switched program.

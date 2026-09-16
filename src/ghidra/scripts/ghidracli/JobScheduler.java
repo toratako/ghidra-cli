@@ -7,7 +7,6 @@ import com.google.gson.JsonParser;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
-import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 import java.util.ArrayDeque;
 import java.util.Iterator;
@@ -446,10 +445,8 @@ final class JobScheduler {
     }
 
     private void refreshBridgeSnapshot() {
-        Program program = session.program();
-        currentProgramNameSnapshot = program == null ? null : program.getName();
-        currentProgramPathSnapshot = program == null || program.getDomainFile() == null
-            ? null : program.getDomainFile().getPathname();
+        currentProgramNameSnapshot = session.programName();
+        currentProgramPathSnapshot = session.programPath();
 
         Project project = session.state() == null ? null : session.state().getProject();
         projectNameSnapshot = project == null ? null : project.getName();

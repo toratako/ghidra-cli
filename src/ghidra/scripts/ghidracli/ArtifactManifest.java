@@ -110,7 +110,7 @@ final class ArtifactManifest {
             m.addProperty("manifest_error", e.getMessage());
         }
         if (session.program() != null) {
-            m.addProperty("program", session.program().getName());
+            m.addProperty("program", session.programName());
             String binSha = session.program().getExecutableSHA256();
             if (binSha != null && !binSha.isEmpty()) m.addProperty("binary_sha256", binSha);
             m.addProperty("executable_format", session.program().getExecutableFormat());

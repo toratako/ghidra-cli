@@ -143,7 +143,12 @@ public class CopyBridgeProgram extends GhidraScript {
     client.open_program(&alternate).unwrap();
     // Copying/renaming the project file retains the original internal Program
     // name. Switching back must compare project files, not that internal name.
-    assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
+    let info = client.program_info().unwrap();
+    assert_eq!(info["name"], "alternate");
+    assert_eq!(info["path"], alternate);
+    let state = client.bridge_info().unwrap();
+    assert_eq!(state["current_program"], "alternate");
+    assert_eq!(state["current_program_path"], alternate);
     let programs = client.send_command("list_programs", None).unwrap();
     assert!(programs["programs"]
         .as_array()

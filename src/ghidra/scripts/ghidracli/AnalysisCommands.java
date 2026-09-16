@@ -90,7 +90,7 @@ final class AnalysisCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "analysis_complete");
-            result.addProperty("program", session.program().getName());
+            result.addProperty("program", session.programName());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to run analysis: " + e.getMessage());

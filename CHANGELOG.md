@@ -24,6 +24,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Program metadata, status, operation responses, and artifact manifests use the
+  saved project file name. `program info` and `summary` also expose its `path`;
+  internal Ghidra names and original executable paths remain unchanged.
 - Import applies `--program` to the actual saved file in every route and rejects
   an existing explicit name. Responses select the saved file, including automatic
   suffixes when no name was specified. One-shot imports confirm a structured save

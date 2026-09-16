@@ -43,7 +43,8 @@ final class ProgramCommands {
         }
 
         JsonObject result = new JsonObject();
-        result.addProperty("name", session.program().getName());
+        result.addProperty("name", session.programName());
+        result.addProperty("path", session.programPath());
         result.addProperty("executable_path", session.program().getExecutablePath());
         result.addProperty("executable_format", session.program().getExecutableFormat());
         String compiler = session.program().getCompiler();
@@ -85,7 +86,6 @@ final class ProgramCommands {
             if (session.program() == null) {
                 return errorResult("No program loaded. Use 'open_program' or 'import' first.");
             }
-            programName = session.program().getName();
         }
 
         if (session.program() == null) {
@@ -109,7 +109,7 @@ final class ProgramCommands {
             FunctionManager fm = session.program().getFunctionManager();
             JsonObject result = new JsonObject();
             result.addProperty("status", "success");
-            result.addProperty("program", programName);
+            result.addProperty("program", session.programName());
             result.addProperty("function_count", fm.getFunctionCount());
             return result;
 
@@ -178,7 +178,7 @@ final class ProgramCommands {
             result.addProperty("count", programs.size());
             result.addProperty("has_current_program", session.program() != null);
             if (session.program() != null) {
-                result.addProperty("current_program_name", session.program().getName());
+                result.addProperty("current_program_name", session.programName());
             }
             return result;
 
@@ -232,7 +232,7 @@ final class ProgramCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "success");
-            result.addProperty("program", session.program().getName());
+            result.addProperty("program", session.programName());
             return result;
 
         } catch (Exception e) {
@@ -244,7 +244,7 @@ final class ProgramCommands {
         JsonObject result = new JsonObject();
         // CommandDispatcher finishes the transaction and saves before replying.
         result.addProperty("saved", session.program() != null);
-        if (session.program() != null) result.addProperty("program", session.program().getName());
+        if (session.program() != null) result.addProperty("program", session.programName());
         return result;
     }
 
@@ -253,7 +253,7 @@ final class ProgramCommands {
             return errorResult("No program loaded");
         }
 
-        String programName = session.program().getName();
+        String programName = session.programName();
 
         session.closeProgram();
 
@@ -484,7 +484,7 @@ final class ProgramCommands {
             stats.addProperty("sections", sectionCount);
             stats.addProperty("data_types", dataTypeCount);
             stats.addProperty("instructions", instructionCount);
-            stats.addProperty("program_name", session.program().getName());
+            stats.addProperty("program_name", session.programName());
             stats.addProperty("executable_format", session.program().getExecutableFormat());
             String compiler = session.program().getCompiler();
             stats.addProperty("compiler", (compiler != null && !compiler.isEmpty()) ? compiler : "Unknown");

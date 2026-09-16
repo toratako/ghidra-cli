@@ -22,6 +22,19 @@ final class ProgramSession {
     }
 
     Program program() { return script.program(); }
+    private DomainFile programFile() {
+        Program current = program();
+        return current == null ? null : current.getDomainFile();
+    }
+    /** CLI identity follows the project file, including renamed/copied programs. */
+    String programName() {
+        DomainFile file = programFile();
+        return file == null ? null : file.getName();
+    }
+    String programPath() {
+        DomainFile file = programFile();
+        return file == null ? null : file.getPathname();
+    }
     private void setProgram(Program program) { script.setProgram(program); }
     GhidraState state() { return script.state(); }
     TaskMonitor monitor() { return script.monitor(); }

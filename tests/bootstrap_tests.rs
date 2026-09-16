@@ -47,6 +47,28 @@ impl Project {
         std::fs::write(&path, [0x31, 0xc0, 0xc3]).unwrap();
         path
     }
+    fn client(&self) -> ghidra_cli::ipc::client::BridgeClient {
+        ghidra_cli::ipc::client::BridgeClient::new(
+            bridge::is_bridge_running(&self.path).expect("test bridge is running"),
+        )
+    }
+    fn assert_program_identity(&self, name: &str) {
+        let path = format!("/{name}");
+        for command in [vec!["program", "info"], vec!["summary"]] {
+            let result = self.ok(&command);
+            assert_eq!(result[0]["name"], name, "{command:?}: {result}");
+            assert_eq!(result[0]["path"], path, "{command:?}: {result}");
+        }
+        let client = self.client();
+        assert_eq!(
+            client.list_programs().unwrap()["current_program_name"],
+            name
+        );
+        let state = client.bridge_info().unwrap();
+        assert_eq!(state["current_program"], name);
+        assert_eq!(state["current_program_path"], path);
+        assert_eq!(client.stats().unwrap()["stats"]["program_name"], name);
+    }
 }
 impl Drop for Project {
     fn drop(&mut self) {
@@ -71,6 +93,7 @@ fn import_names_are_saved_and_selected_across_all_routes() {
             "--no-analyze",
         ]);
         assert_eq!(result[0]["program"], name);
+        project.assert_program_identity(name);
         let programs = project.ok(&["program", "list"]);
         assert!(
             programs
@@ -95,7 +118,56 @@ fn import_names_are_saved_and_selected_across_all_routes() {
     let result = project.ok(&args);
     assert_eq!(result[0]["program"], "raw-name");
     let info = project.ok(&["program", "info"]);
-    assert_eq!(info[0]["name"], raw.file_name().unwrap().to_str().unwrap());
+    assert_eq!(info[0]["name"], "raw-name");
+    assert_eq!(
+        dunce::canonicalize(info[0]["executable_path"].as_str().unwrap()).unwrap(),
+        dunce::canonicalize(&raw).unwrap()
+    );
+    project.assert_program_identity("raw-name");
+    let client = project.client();
+    assert_eq!(client.program_save().unwrap()["program"], "raw-name");
+    assert_eq!(client.program_close().unwrap()["program"], "raw-name");
+    let closed = client.bridge_info().unwrap();
+    assert_eq!(closed["has_current_program"], false);
+    assert!(closed["current_program_path"].is_null());
+    assert!(closed.get("current_program").is_none());
+    assert_eq!(
+        client.open_program("/raw-name").unwrap()["program"],
+        "raw-name"
+    );
+    assert_eq!(
+        client
+            .send_command("analyze", Some(serde_json::json!({"program": "/raw-name"})))
+            .unwrap()["program"],
+        "raw-name"
+    );
+    assert_eq!(client.analyze_run().unwrap()["program"], "raw-name");
+    let artifact = project.root.path().join("internal-name.txt");
+    let result = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class CheckProgramIdentity extends GhidraScript {
+    public void run() throws Exception {
+        Files.writeString(Path.of(getScriptArgs()[0]), currentProgram.getName());
+    }
+}
+"#,
+            &[artifact.to_str().unwrap().to_owned()],
+            &[serde_json::json!({"path": artifact})],
+            false,
+        )
+        .unwrap();
+    assert_eq!(result["artifacts"][0]["program"], "raw-name");
+    assert_eq!(
+        std::fs::read_to_string(&artifact).unwrap(),
+        raw.file_name().unwrap().to_str().unwrap()
+    );
+    project.ok(&["stop"]);
+    project.ok(&["start", "--program", "raw-name"]);
+    project.assert_program_identity("raw-name");
     let disassembly = project.ok(&["disasm-at", "0x8000", "--count", "2"]);
     assert_eq!(disassembly[0]["instructions"][0]["mnemonic"], "XOR");
     let duplicate = project.run(&args);
@@ -115,6 +187,7 @@ fn import_names_are_saved_and_selected_across_all_routes() {
     for _ in 0..2 {
         let result = project.ok(&["import", binary.to_str().unwrap(), "--no-analyze"]);
         let name = result[0]["program"].as_str().unwrap();
+        project.assert_program_identity(name);
         let selected = project.ok(&["program", "list"]);
         assert!(
             selected
