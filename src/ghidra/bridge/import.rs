@@ -1,89 +1,79 @@
-//! Durable one-shot headless import, completed before a persistent bridge opens the project.
+//! Short-lived headless workflows, completed before the persistent bridge opens a project.
 
 use super::headless::{apply_java_home, find_headless_script};
+use super::{sources, startup};
 use anyhow::{Context, Result};
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 use tracing::info;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct OneShotImportOptions {
     pub analyze: bool,
+    pub program: Option<String>,
     pub loader: Option<String>,
     pub language: Option<String>,
     pub compiler_spec: Option<String>,
     pub loader_options: Vec<(String, String)>,
 }
 
-fn append_import_options(cmd: &mut Command, options: &OneShotImportOptions) {
-    if !options.analyze {
-        cmd.arg("-noanalysis");
-    }
-    if let Some(language) = &options.language {
-        cmd.arg("-processor").arg(language);
-    }
-    if let Some(cspec) = &options.compiler_spec {
-        cmd.arg("-cspec").arg(cspec);
-    }
-    if let Some(loader) = &options.loader {
-        cmd.arg("-loader").arg(loader);
-    }
-    for (name, value) in &options.loader_options {
-        cmd.arg(format!("-loader-{}", name)).arg(value);
-    }
-}
-
-/// Import a binary into the project using a clean, short-lived `analyzeHeadless
-/// -import` run (no long-lived preScript), then return the imported program's
-/// name.
-///
-/// This is the durable way to create a brand-new project. Unlike bootstrapping
-/// the persistent bridge with `-import` (which holds the imported program inside
-/// HeadlessAnalyzer's transaction for the bridge's whole life and only commits
-/// it during teardown — a commit we then race by killing the JVM), this run
-/// imports, optionally analyzes, saves, commits the project, and exits on its
-/// own. The persistent bridge then opens the committed program through its
-/// ProgramSession, which owns saving and release.
+/// Load with the requested name/options, analyze, save, release, and exit before
+/// returning the actual saved name. A private JSON receipt confirms script success;
+/// a zero headless exit status alone does not establish that the script succeeded.
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
     ghidra_install_dir: &Path,
     options: &OneShotImportOptions,
 ) -> Result<String> {
-    info!("Importing binary into new project (one-shot)...");
+    let mut args = serde_json::to_value(options)?;
+    args["binary_path"] = json!(binary_path);
+    let result = run_bootstrap(project_path, ghidra_install_dir, &args, None)?;
+    result["program"]
+        .as_str()
+        .map(str::to_owned)
+        .context("Import receipt did not contain the saved program name")
+}
 
-    let headless_script = find_headless_script(ghidra_install_dir)?;
-
-    let ghidra_project_dir = project_path.parent().unwrap_or(project_path);
-    let ghidra_project_name = project_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "project".to_string());
-
-    // HeadlessAnalyzer names the imported program after the binary's filename;
-    // `-import` has no rename option, so that is the program's domain name.
-    let program_name = binary_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .ok_or_else(|| anyhow::anyhow!("Binary path has no filename: {}", binary_path.display()))?;
-
-    let mut cmd = Command::new(&headless_script);
-    cmd.arg(ghidra_project_dir)
-        .arg(&ghidra_project_name)
-        .arg("-import")
-        .arg(binary_path);
-    append_import_options(&mut cmd, options);
-    cmd.arg("-overwrite");
-
+pub(super) fn run_bootstrap(
+    project_path: &Path,
+    ghidra_install_dir: &Path,
+    args: &Value,
+    timeout: Option<Duration>,
+) -> Result<Value> {
+    let project_path = std::path::absolute(project_path)?;
+    let headless = find_headless_script(ghidra_install_dir)?;
+    let scripts = sources::install()?;
+    let work = tempfile::tempdir().map_err(|e| {
+        crate::error::path_io("import.temporary_directory", &std::env::temp_dir(), e)
+    })?;
+    let request = work.path().join("request.json");
+    let receipt = work.path().join("receipt.json");
+    std::fs::write(&request, serde_json::to_vec(args)?)
+        .map_err(|e| crate::error::path_io("import.request_write", &request, e))?;
+    let directory = project_path
+        .parent()
+        .context("Project has no parent directory")?;
+    std::fs::create_dir_all(directory)
+        .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
+    let mut cmd = Command::new(&headless);
+    cmd.arg(directory)
+        .arg(project_path.file_name().context("Project has no name")?)
+        .arg("-noanalysis")
+        .arg("-scriptPath")
+        .arg(scripts)
+        .arg("-preScript")
+        .arg("GhidraCliBootstrap.java")
+        .arg(&request)
+        .arg(&receipt);
     apply_java_home(&mut cmd, ghidra_install_dir);
-
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-
-    // Own process group so the whole JVM tree is killable as a unit (parity with
-    // start_bridge), avoiding orphaned JVMs holding pipes open.
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -92,126 +82,73 @@ pub fn import_oneshot(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        cmd.creation_flags(0x0000_0200);
     }
-
-    info!("Ghidra one-shot import command: {:?}", cmd);
+    info!("Ghidra bootstrap command: {:?}", cmd);
     let mut child = cmd
         .spawn()
-        .context("Failed to spawn Ghidra headless import")?;
-
-    // Drain stdout/stderr on threads so the pipes never fill (which would stall
-    // the JVM), logging each line and watching for the success/failure markers.
-    let stdout = child.stdout.take().expect("stdout should be piped");
-    let stdout_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        let mut saw_success = false;
-        let mut diagnostics = std::collections::VecDeque::new();
-        for line in reader.lines().map_while(Result::ok) {
-            info!("[Ghidra import stdout] {}", line);
-            if line.contains("Import succeeded") || line.contains("REPORT: Save succeeded") {
-                saw_success = true;
+        .map_err(|e| crate::error::path_io("import.launch", &headless, e))?;
+    fn drain(stream: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
+        std::thread::spawn(move || {
+            let mut tail = std::collections::VecDeque::new();
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                info!("[Ghidra bootstrap] {line}");
+                if tail.len() == 30 {
+                    tail.pop_front();
+                }
+                tail.push_back(line);
             }
-            if diagnostics.len() == 20 {
-                diagnostics.pop_front();
-            }
-            diagnostics.push_back(line);
+            tail.into_iter().collect::<Vec<_>>().join("\n")
+        })
+    }
+    let stdout = drain(child.stdout.take().unwrap());
+    let stderr = drain(child.stderr.take().unwrap());
+    let began = Instant::now();
+    let waited = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Err(error) => break Err(anyhow::Error::new(error).context("import.wait failed")),
+            Ok(None) => {}
         }
-        (
-            saw_success,
-            diagnostics.into_iter().collect::<Vec<_>>().join("\n"),
-        )
-    });
-    let stderr = child.stderr.take().expect("stderr should be piped");
-    let stderr_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        let mut diagnostics = std::collections::VecDeque::new();
-        for line in reader.lines().map_while(Result::ok) {
-            info!("[Ghidra import stderr] {}", line);
-            if diagnostics.len() == 20 {
-                diagnostics.pop_front();
-            }
-            diagnostics.push_back(line);
+        if timeout.is_some_and(|limit| began.elapsed() >= limit) {
+            break Err(anyhow::anyhow!(
+                "Ghidra bootstrap did not finish within {}s",
+                began.elapsed().as_secs()
+            ));
         }
-        diagnostics.into_iter().collect::<Vec<_>>().join("\n")
-    });
-
-    let status = child
-        .wait()
-        .context("Failed to wait for Ghidra headless import")?;
-
-    let (saw_success, stdout_tail) = stdout_handle.join().unwrap_or_default();
-    let stderr_tail = stderr_handle.join().unwrap_or_default();
-    let last_error = [stdout_tail, stderr_tail]
-        .into_iter()
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    if !status.success() {
-        anyhow::bail!(
-            "Ghidra import failed (exit {:?}){}",
-            status.code(),
-            if last_error.is_empty() {
-                String::new()
-            } else {
-                format!(": {}", last_error)
-            }
-        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    if waited.is_err() {
+        startup::kill_process_tree(&mut child);
     }
-    if !saw_success {
-        anyhow::bail!(
-            "Ghidra import did not report success{}",
-            if last_error.is_empty() {
-                String::new()
-            } else {
-                format!(": {}", last_error)
-            }
-        );
+    let diagnostics = format!(
+        "{}\n{}",
+        stdout.join().unwrap_or_default(),
+        stderr.join().unwrap_or_default()
+    );
+    let status = waited.with_context(|| format!("Ghidra bootstrap output: {diagnostics}"))?;
+    anyhow::ensure!(
+        status.success(),
+        "Ghidra bootstrap failed (exit {:?}): {}",
+        status.code(),
+        diagnostics
+    );
+    let receipt_bytes = std::fs::read(&receipt)
+        .map_err(|e| crate::error::path_io("import.receipt_read", &receipt, e))
+        .with_context(|| {
+            format!("Ghidra bootstrap did not produce its completion receipt: {diagnostics}")
+        })?;
+    let result: Value = serde_json::from_slice(&receipt_bytes)
+        .with_context(|| format!("Invalid bootstrap receipt at {}", receipt.display()))?;
+    if result["status"] != "success" {
+        return Err(crate::ipc::protocol::BridgeCommandError {
+            message: result["message"]
+                .as_str()
+                .unwrap_or("Ghidra bootstrap failed")
+                .to_owned(),
+            detail: result.get("detail").cloned().unwrap_or_else(|| json!({})),
+        }
+        .into());
     }
-
-    info!("One-shot import complete: {}", program_name);
-    Ok(program_name)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn raw_import_options_map_to_headless_arguments() {
-        let mut cmd = Command::new("analyzeHeadless");
-        let options = OneShotImportOptions {
-            analyze: false,
-            loader: Some("BinaryLoader".to_string()),
-            language: Some("x86:LE:32:default".to_string()),
-            compiler_spec: Some("default".to_string()),
-            loader_options: vec![
-                ("baseAddr".to_string(), "0x8000".to_string()),
-                ("blockName".to_string(), "ROM".to_string()),
-            ],
-        };
-        append_import_options(&mut cmd, &options);
-        let args: Vec<String> = cmd
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-        assert_eq!(
-            args,
-            vec![
-                "-noanalysis",
-                "-processor",
-                "x86:LE:32:default",
-                "-cspec",
-                "default",
-                "-loader",
-                "BinaryLoader",
-                "-loader-baseAddr",
-                "0x8000",
-                "-loader-blockName",
-                "ROM",
-            ]
-        );
-    }
+    Ok(result)
 }

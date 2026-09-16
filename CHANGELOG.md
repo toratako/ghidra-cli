@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `doctor` checks storage writes and loopback TCP. `doctor --runtime` also creates
+  a disposable project, starts and pings Ghidra, and verifies clean shutdown.
 - Removed `--detach` from import and analysis; commands wait for completion.
 - Bridge lifecycle operations use persistent OS-backed `.starting` locks. Stop
   every running bridge with the old CLI before upgrading: old and new lock
@@ -17,6 +19,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Import applies `--program` to the actual saved file in every route and rejects
+  an existing explicit name. Responses select the saved file, including automatic
+  suffixes when no name was specified. One-shot imports confirm a structured save
+  receipt and successful process exit before starting the persistent bridge.
+- Startup and configuration I/O errors identify their operation and path. Import
+  errors retain saved/analysis checkpoints and recovery arguments so a later
+  bridge failure does not invite repeating an already saved import.
 - Unsupported `memory write`/`memory search` fail with `patch bytes`/`find bytes`
   alternatives. Function rename rejects `--filter`/`--all`; ambiguous function
   names return candidates and require an address.

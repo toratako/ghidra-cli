@@ -24,6 +24,14 @@ pub enum GhidraError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
+    #[error("{stage} failed at {path}: {source}")]
+    PathIo {
+        stage: &'static str,
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
 
@@ -32,3 +40,38 @@ pub enum GhidraError {
 }
 
 pub type Result<T> = std::result::Result<T, GhidraError>;
+
+pub(crate) fn path_io(
+    stage: &'static str,
+    path: &std::path::Path,
+    source: std::io::Error,
+) -> GhidraError {
+    GhidraError::PathIo {
+        stage,
+        path: path.to_owned(),
+        source,
+    }
+}
+
+/// Share structured diagnostics between standalone errors and workflow checkpoints.
+pub(crate) fn diagnostic_detail(error: &anyhow::Error) -> serde_json::Value {
+    let mut detail = error
+        .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+        .map(|error| error.detail.clone())
+        .unwrap_or_else(|| serde_json::json!({}));
+    for cause in error.chain() {
+        if let Some(GhidraError::PathIo {
+            stage,
+            path,
+            source,
+        }) = cause.downcast_ref::<GhidraError>()
+        {
+            detail["stage"] = serde_json::json!(stage);
+            detail["path"] = serde_json::json!(path);
+            detail["cause"] = serde_json::json!(source.to_string());
+            detail["os_error"] = serde_json::json!(source.raw_os_error());
+            break;
+        }
+    }
+    detail
+}

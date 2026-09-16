@@ -6,7 +6,16 @@ Follow [the install steps](../README.md#install) using `ghidra-cli setup` or an
 existing Ghidra 11+ installation. A full JDK is required (`javac` and
 `jdk.compiler`, not a JRE); Ghidra 12.x requires JDK 21 (older releases accept
 JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
-`ghidra-cli doctor` checks the installation and compiles the embedded bridge bundle.
+`ghidra-cli doctor` checks the installation, compiles the embedded Java bundle,
+probes storage with temporary create/write/rename/delete operations, and tests
+loopback TCP bind/connect. It reports resolved paths and their configuration
+sources. These checks do not establish that the JVM can start; the runtime check
+is explicitly `not_checked` unless `--runtime` is supplied.
+`ghidra-cli doctor --runtime` also creates a disposable project in the configured
+project directory, starts and pings the real bridge, then stops it and removes
+the project. It uses the actual environment and settings/cache locations; it may
+populate Ghidra's normal caches. If shutdown fails, it retains the diagnostic
+project and reports its location. Prerequisite failures prevent the runtime probe.
 Setup downloads and extracts into private staging, validates the installation,
 and publishes it only when complete. It reuses a valid existing installation and
 refuses an incomplete existing destination; inspect that directory before moving
@@ -41,6 +50,30 @@ offset when no explicit limit is given; `--count` and `--limit 0` bypass that ca
 | `GHIDRA_CLI_CONFIG` | Config file path override |
 | `GHIDRA_DEFAULT_PROJECT` | Default project for `ghidra-cli query` |
 | `GHIDRA_DEFAULT_PROGRAM` | Default program for `ghidra-cli query` and auto-selection |
+
+On Linux, `XDG_CONFIG_HOME` controls the CLI configuration and Java source bundle,
+and `XDG_DATA_HOME` controls bridge discovery/lock files and CLI logs.
+`GHIDRA_CLI_CONFIG` changes only the YAML file, not these other locations.
+Ghidra also uses settings and caches; its version-specific paths are reported by
+`doctor --runtime`. Set `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` before launching it
+when the default locations are inaccessible. Other platforms use their native
+directory conventions; inspect the paths in the doctor report.
+
+For a restricted Linux workspace, choose absolute writable paths, for example:
+
+```bash
+export XDG_CONFIG_HOME="$PWD/tmp/analysis/config"
+export XDG_CACHE_HOME="$PWD/tmp/analysis/cache"
+export XDG_DATA_HOME="$PWD/tmp/analysis/data"
+export GHIDRA_PROJECT_DIR="$PWD/tmp/analysis/projects"
+export GHIDRA_INSTALL_DIR=/opt/ghidra
+ghidra-cli doctor --runtime
+```
+
+Use the same environment for subsequent commands so they find the same bridge.
+Directory overrides do not grant loopback networking permission. If a sandbox
+denies `127.0.0.1` bind/connect, obtain permission for the affected command from
+the environment running the CLI. The CLI does not change sandbox policy.
 
 Timeout values are seconds.
 
@@ -111,8 +144,17 @@ Use `-v`/`-vv`/`-vvv` for warn/info/debug logs; `--quiet` suppresses
 non-essential output.
 
 Run `ghidra-cli doctor` to check Ghidra, analyzeHeadless, project/config paths, the
-selected full JDK, and compilation of the embedded Java bundle. A successful
-`javac` check alone does not establish runtime OSGi compatibility.
+selected full JDK, storage writes, loopback networking, and compilation of the
+embedded Java bundle. Use `doctor --runtime` for runtime OSGi compatibility and
+Ghidra's own startup writes.
+
+Startup errors identify the operation and path where available. Import failures
+also carry `detail.workflow_stage`, `project`, `import_status`, `analysis_status`,
+and the saved `program` when known. A saved import is retained if later bridge
+startup fails. Fix the reported cause and follow `detail.recovery` (an argument
+array); do not re-import. `unknown` means completion was not confirmed. A timeout
+can leave a job running: inspect `jobs` before retrying. Settings failures before
+the Java script runs retain the launcher output instead of inventing a path.
 
 Linux/WSL may need X11 libraries even headless because initialization loads AWT.
 For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu), or

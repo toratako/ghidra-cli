@@ -185,8 +185,12 @@ pub enum Commands {
     /// Show version information
     Version,
 
-    /// Check Ghidra installation
-    Doctor,
+    /// Check installation, storage writes, and local communication
+    Doctor {
+        /// Also start, ping, and stop Ghidra using a disposable project and the current environment
+        #[arg(long)]
+        runtime: bool,
+    },
 
     /// Initialize configuration
     Init,

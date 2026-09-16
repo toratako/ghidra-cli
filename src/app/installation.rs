@@ -2,7 +2,7 @@ use super::output::Output;
 use super::project::load_config;
 use crate::cli::{Cli, Commands};
 use crate::config::Config;
-use crate::ghidra::{self, GhidraClient};
+use crate::ghidra;
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -78,7 +78,11 @@ fn verify_setup(path: &std::path::Path) -> anyhow::Result<()> {
         anyhow::anyhow!("Installation verification failed: {err}. The installation may be incomplete; rerun 'ghidra-cli setup'."))
 }
 
-pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> anyhow::Result<()> {
+pub(super) fn handle_doctor(
+    projects_dir: &Option<PathBuf>,
+    runtime: bool,
+    output: Output,
+) -> anyhow::Result<()> {
     use std::fmt::Write;
     let mut report = String::new();
     let mut failures = Vec::new();
@@ -94,19 +98,11 @@ pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> a
             writeln!(report, "OK")?;
             writeln!(report, "  Location: {}", dir.display())?;
 
-            let client = GhidraClient::new(config.clone());
-            match client {
-                Ok(c) => {
-                    if c.verify_installation().is_ok() {
-                        writeln!(report, "  analyzeHeadless: OK")?;
-                    } else {
-                        failures.push("analyzeHeadless not found".to_string());
-                        writeln!(report, "  analyzeHeadless: NOT FOUND")?;
-                    }
-                }
-                Err(e) => {
-                    failures.push(e.to_string());
-                    writeln!(report, "  Error: {}", e)?;
+            match ghidra::bridge::find_headless_script(&dir) {
+                Ok(_) => writeln!(report, "  analyzeHeadless: OK")?,
+                Err(error) => {
+                    failures.push(format!("{error:#}"));
+                    writeln!(report, "  analyzeHeadless: NOT FOUND ({error})")?;
                 }
             }
         }
@@ -193,47 +189,68 @@ pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> a
         }
     }
 
-    // Check project directory
-    write!(report, "\nChecking project directory... ")?;
-    match config.get_project_dir() {
-        Ok(dir) => {
-            writeln!(report, "OK")?;
-            writeln!(report, "  Location: {}", dir.display())?;
-            writeln!(
-                report,
-                "  Exists: {}",
-                if dir.exists() {
-                    "yes"
-                } else {
-                    "no (will be created)"
-                }
-            )?;
-        }
-        Err(e) => {
-            failures.push(e.to_string());
-            writeln!(report, "FAILED")?;
-            writeln!(report, "  Error: {}", e)?;
-        }
-    }
-
-    // Check config file
-    write!(report, "\nConfig file... ")?;
-    match Config::config_path() {
-        Ok(path) => {
-            writeln!(report, "OK")?;
-            writeln!(report, "  Location: {}", path.display())?;
-            writeln!(
-                report,
-                "  Exists: {}",
-                if path.exists() { "yes" } else { "no" }
-            )?;
-        }
-        Err(e) => {
-            failures.push(e.to_string());
-            writeln!(report, "FAILED")?;
-            writeln!(report, "  Error: {}", e)?;
+    let storage = ghidra::bridge::diagnostics::storage_checks(&config);
+    writeln!(
+        report,
+        "\nChecking storage (create, write, rename, delete)..."
+    )?;
+    for check in &storage {
+        let ok = check["ok"] == true;
+        writeln!(
+            report,
+            "  {}: {} — {}",
+            check["name"].as_str().unwrap(),
+            if ok { "OK" } else { "FAILED" },
+            check["path"].as_str().unwrap_or("unresolved")
+        )?;
+        writeln!(report, "    Source: {}", check["source"].as_str().unwrap())?;
+        if !ok {
+            let message = check["message"].as_str().unwrap_or("Storage check failed");
+            failures.push(message.to_owned());
+            writeln!(report, "    {message}")?;
         }
     }
+    let loopback = match ghidra::bridge::diagnostics::loopback_check() {
+        Ok(()) => {
+            writeln!(report, "\nLoopback TCP bind/connect: OK")?;
+            json!({"ok": true})
+        }
+        Err(error) => {
+            let message = format!("{error:#}");
+            failures.push(message.clone());
+            writeln!(report, "\nLoopback TCP bind/connect: FAILED — {message}")?;
+            json!({"ok": false, "message": message})
+        }
+    };
+    let runtime_check = if !runtime {
+        writeln!(report, "\nGhidra runtime: NOT CHECKED (use doctor --runtime for settings/cache writes, OSGi, and JVM bridge startup)")?;
+        json!({"status": "not_checked"})
+    } else if !failures.is_empty() {
+        writeln!(
+            report,
+            "\nGhidra runtime: NOT CHECKED (resolve prerequisite failures first)"
+        )?;
+        json!({"status": "not_checked", "reason": "prerequisite_failure"})
+    } else {
+        match ghidra::bridge::diagnostics::runtime_check(&config) {
+            Ok(paths) => {
+                writeln!(report, "\nGhidra runtime: OK (start, ping, shutdown)")?;
+                writeln!(
+                    report,
+                    "  Ghidra settings: {}\n  Ghidra cache: {}",
+                    paths["ghidra_settings"].as_str().unwrap_or("unknown"),
+                    paths["ghidra_cache"].as_str().unwrap_or("unknown")
+                )?;
+                json!({"status": "success", "paths": paths})
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                failures.push(message.clone());
+                writeln!(report, "\nGhidra runtime: FAILED — {message}")?;
+                json!({"status": "error", "message": message, "detail": crate::error::diagnostic_detail(&error)})
+            }
+        }
+    };
 
     writeln!(report, "\nScript execution modes:")?;
     writeln!(
@@ -266,7 +283,7 @@ pub(super) fn handle_doctor(projects_dir: &Option<PathBuf>, output: Output) -> a
     )?;
 
     writeln!(report, "\nDone!")?;
-    output.result(&json!({"name": "Ghidra CLI Doctor", "ok": failures.is_empty(), "failures": failures, "report": report}), report.trim_end())?;
+    output.result(&json!({"name": "Ghidra CLI Doctor", "ok": failures.is_empty(), "failures": failures, "storage": storage, "loopback": loopback, "runtime": runtime_check, "report": report}), report.trim_end())?;
     anyhow::ensure!(
         failures.is_empty(),
         "Doctor found problems: {}",

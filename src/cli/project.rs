@@ -64,6 +64,8 @@ pub struct ExportArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ImportArgs {
     pub binary: String,
+    /// Save the imported program under this name (default: input file name).
+    /// An explicitly named existing program is never overwritten.
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

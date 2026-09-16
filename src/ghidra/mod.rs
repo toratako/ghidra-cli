@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct GhidraClient {
+    #[allow(dead_code)] // Retained for the public library verification API.
     install_dir: PathBuf,
     project_dir: PathBuf,
 }
@@ -29,6 +30,7 @@ impl GhidraClient {
         })
     }
 
+    #[allow(dead_code)] // Doctor resolves the launcher without creating project directories.
     pub fn verify_installation(&self) -> Result<()> {
         bridge::find_headless_script(&self.install_dir).map_err(|_| GhidraError::GhidraNotFound)?;
         Ok(())

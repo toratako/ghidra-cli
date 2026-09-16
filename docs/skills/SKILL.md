@@ -19,7 +19,8 @@ immediately after a normal import.
 
 ## Basic commands
 
-Use `ghidra-cli doctor` to check readiness or diagnose startup failures.
+Use `ghidra-cli doctor` for prerequisite checks; `doctor --runtime` also verifies
+Ghidra startup, bridge communication, and shutdown.
 
 For a new executable or library:
 
@@ -33,6 +34,10 @@ ghidra-cli decompile main --with-vars --with-params --project target --program t
 count. If `main` is absent, use `function list` to choose a name or address.
 Raw/headerless input needs explicit language and load parameters; see
 [raw import](references/commands.md#raw-import).
+On import, `--program NAME` sets the saved project file name; an existing
+explicit name is rejected. Use the returned `program` for later commands.
+If an import error reports `detail.import_status: "saved"`, do not re-import:
+the error retains the program, analysis status, and recovery command arguments.
 
 ## Results, edits, and jobs
 

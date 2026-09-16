@@ -9,7 +9,7 @@ import ghidra.util.task.TaskMonitor;
 import ghidracli.BridgeRuntime;
 import ghidracli.ScriptAccess;
 
-/** The only GhidraScript in the bridge source bundle. */
+/** Persistent bridge entry point; bootstrap uses a separate short-lived script. */
 public class GhidraCliBridge extends GhidraScript {
     @Override
     public void run() throws Exception {

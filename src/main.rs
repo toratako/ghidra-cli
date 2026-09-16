@@ -162,10 +162,16 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
         .downcast_ref::<ipc::protocol::BridgeTimeoutError>()
         .is_some();
     let code = if timeout { 75 } else { 1 };
-    let detail = error
+    let detail = error::diagnostic_detail(error);
+    let detail = detail.as_object().filter(|map| !map.is_empty());
+    let message = if error
         .downcast_ref::<ipc::protocol::BridgeCommandError>()
-        .map(|e| &e.detail);
-    let message = error.to_string();
+        .is_some()
+    {
+        error.to_string()
+    } else {
+        format!("{error:#}")
+    };
     if output.json {
         let mut value = serde_json::json!({
             "status": if timeout { "timeout" } else { "error" },
@@ -173,7 +179,7 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
             "exit_code": code,
         });
         if let Some(detail) = detail {
-            value["detail"] = detail.clone();
+            value["detail"] = serde_json::Value::Object(detail.clone());
         }
         (
             code,
@@ -186,7 +192,10 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
         let mut text = format!("{prefix}: {message}");
         if verbose >= 2 {
             if let Some(detail) = detail {
-                text.push_str(&format!("\nDetail: {detail:#}"));
+                text.push_str(&format!(
+                    "\nDetail: {}",
+                    serde_json::Value::Object(detail.clone())
+                ));
             }
         }
         (code, text)

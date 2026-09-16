@@ -273,6 +273,7 @@ final class JobScheduler {
         result.addProperty("current_program_path", currentProgramPathSnapshot);
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
+        result.addProperty("named_import", true);
         if (programName != null) {
             result.addProperty("current_program", programName);
         }

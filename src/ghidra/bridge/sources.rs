@@ -5,6 +5,14 @@ use std::path::{Path, PathBuf};
 
 const SOURCES: &[(&str, &str)] = &[
     (
+        "GhidraCliBootstrap.java",
+        include_str!("../scripts/GhidraCliBootstrap.java"),
+    ),
+    (
+        "ghidracli/ImportSupport.java",
+        include_str!("../scripts/ghidracli/ImportSupport.java"),
+    ),
+    (
         "GhidraCliBridge.java",
         include_str!("../scripts/GhidraCliBridge.java"),
     ),
@@ -156,8 +164,11 @@ fn write_sources(directory: &Path, sources: &[(&str, &str)]) -> Result<Vec<PathB
         .iter()
         .map(|(name, source)| {
             let path = directory.join(name);
-            std::fs::create_dir_all(path.parent().unwrap())?;
-            std::fs::write(&path, source)?;
+            std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| {
+                crate::error::path_io("bridge.sources_directory", path.parent().unwrap(), e)
+            })?;
+            std::fs::write(&path, source)
+                .map_err(|e| crate::error::path_io("bridge.sources_write", &path, e))?;
             Ok(path)
         })
         .collect()
@@ -166,11 +177,14 @@ fn write_sources(directory: &Path, sources: &[(&str, &str)]) -> Result<Vec<PathB
 /// Publish a complete bundle once, then reuse it without touching timestamps.
 /// Different CLI builds never overwrite sources that a running JVM may use.
 pub(super) fn install() -> Result<PathBuf> {
-    let root = dirs::config_dir()
+    install_sources(&root_path()?, SOURCES)
+}
+
+pub(super) fn root_path() -> Result<PathBuf> {
+    Ok(dirs::config_dir()
         .context("Could not determine config directory")?
         .join("ghidra-cli")
-        .join("bridge-sources");
-    install_sources(&root, SOURCES)
+        .join("bridge-sources"))
 }
 
 fn install_sources(root: &Path, sources: &[(&str, &str)]) -> Result<PathBuf> {
@@ -186,15 +200,19 @@ fn install_sources(root: &Path, sources: &[(&str, &str)]) -> Result<PathBuf> {
         return Ok(destination);
     }
 
-    std::fs::create_dir_all(root)?;
+    std::fs::create_dir_all(root)
+        .map_err(|e| crate::error::path_io("bridge.sources_directory", root, e))?;
     let staging = tempfile::Builder::new()
         .prefix(".staging-")
-        .tempdir_in(root)?;
+        .tempdir_in(root)
+        .map_err(|e| crate::error::path_io("bridge.sources_staging", root, e))?;
     write_sources(staging.path(), sources)?;
     if let Err(error) = std::fs::rename(staging.path(), &destination) {
         // Another project may have published the identical complete bundle.
         if !destination.is_dir() {
-            return Err(error).context("Could not publish Java bridge sources");
+            return Err(
+                crate::error::path_io("bridge.sources_publish", &destination, error).into(),
+            );
         }
     }
     Ok(destination)

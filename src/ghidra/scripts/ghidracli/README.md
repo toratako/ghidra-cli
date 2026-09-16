@@ -1,9 +1,10 @@
 # Java bridge
 
 `../GhidraCliBridge.java` adapts inherited state/operations to `ScriptAccess` and
-calls `BridgeRuntime` on the original script thread. It is the only GhidraScript
-entry point; all classes share one source bundle, with no separate Java build,
-JAR installation, or per-handler script instance.
+calls `BridgeRuntime` on the original script thread. The short-lived
+`../GhidraCliBootstrap.java` handles durable import and diagnostic project creation.
+Both share the source bundle, with no separate Java build, JAR installation, or
+per-handler script instance.
 
 ## Execution and ownership
 
@@ -68,6 +69,7 @@ the selection. Never release another consumer or terminate its checkout.
 |---|---|
 | `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
 | `ProgramCommands`, `ProgramSession` | Program metadata, import/export/analysis, selection and release |
+| `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
@@ -111,6 +113,12 @@ first match. Artifact hashing failures propagate as validation errors.
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A
 successful plain `javac` invocation does not validate this class-loader boundary.
+
+`ImportSupport` owns the loader's detached programs until save/release. Bootstrap
+analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge
+imports do not analyze detached programs: the caller opens the saved file and
+uses the usual session analysis/save boundary. Do not rename an already saved
+input-name file to implement `--program`; supply the name to the importer.
 
 ## Validation
 

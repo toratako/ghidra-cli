@@ -35,7 +35,7 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
     match &cli.command {
         // Non-bridge commands
         Commands::Init => handle_init(output),
-        Commands::Doctor => handle_doctor(&cli.projects_dir, output),
+        Commands::Doctor { runtime } => handle_doctor(&cli.projects_dir, *runtime, output),
         Commands::Version => handle_version(output),
         Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
         Commands::SetDefault(args) => handle_set_default(args.clone(), output),

@@ -1,4 +1,4 @@
-use crate::error::{GhidraError, Result};
+use crate::error::{path_io, GhidraError, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -50,7 +50,7 @@ impl Config {
         match fs::read_to_string(path) {
             Ok(content) => Ok(serde_yaml::from_str(&content)?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(error) => Err(error.into()),
+            Err(error) => Err(path_io("config.read", path, error)),
         }
     }
 
@@ -86,19 +86,21 @@ impl Config {
         // the file. Direct and symlink callers must update the same target and
         // synchronize on the same lock, while retaining the original link.
         match fs::symlink_metadata(path) {
-            Ok(_) => Ok(dunce::canonicalize(path)?),
+            Ok(_) => Ok(dunce::canonicalize(path).map_err(|e| path_io("config.resolve", path, e))?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let parent = path
                     .parent()
                     .filter(|p| !p.as_os_str().is_empty())
                     .unwrap_or(Path::new("."));
-                fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent).map_err(|e| path_io("config.directory", parent, e))?;
                 let name = path.file_name().ok_or_else(|| {
                     GhidraError::ConfigError("Configuration path must name a file".into())
                 })?;
-                Ok(dunce::canonicalize(parent)?.join(name))
+                Ok(dunce::canonicalize(parent)
+                    .map_err(|e| path_io("config.resolve", parent, e))?
+                    .join(name))
             }
-            Err(error) => Err(error.into()),
+            Err(error) => Err(path_io("config.resolve", path, error)),
         }
     }
 
@@ -107,18 +109,21 @@ impl Config {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|e| path_io("config.directory", parent, e))?;
         let mut lock_name = path.as_os_str().to_os_string();
         lock_name.push(".lock");
         // Keep the lock file: unlinking it could let another process lock a
         // different inode. Closing the handle releases the OS-backed lock.
+        let lock_path = PathBuf::from(lock_name);
         let lock = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(PathBuf::from(lock_name))?;
-        lock.lock()?;
+            .open(&lock_path)
+            .map_err(|e| path_io("config.lock", &lock_path, e))?;
+        lock.lock()
+            .map_err(|e| path_io("config.lock", &lock_path, e))?;
         Ok(lock)
     }
 
@@ -128,13 +133,24 @@ impl Config {
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         let content = serde_yaml::to_string(self)?;
-        let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+        let mut staged = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|e| path_io("config.stage", parent, e))?;
         if let Ok(metadata) = fs::metadata(path) {
-            staged.as_file().set_permissions(metadata.permissions())?;
+            staged
+                .as_file()
+                .set_permissions(metadata.permissions())
+                .map_err(|e| path_io("config.permissions", path, e))?;
         }
-        staged.write_all(content.as_bytes())?;
-        staged.as_file().sync_all()?;
-        staged.persist(path).map_err(|error| error.error)?;
+        staged
+            .write_all(content.as_bytes())
+            .map_err(|e| path_io("config.write", path, e))?;
+        staged
+            .as_file()
+            .sync_all()
+            .map_err(|e| path_io("config.sync", path, e))?;
+        staged
+            .persist(path)
+            .map_err(|error| path_io("config.publish", path, error.error))?;
         Ok(())
     }
 

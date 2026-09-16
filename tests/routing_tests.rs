@@ -69,7 +69,7 @@ impl RecordedBridge {
                 captured.lock().unwrap().push(request.clone());
                 let args = &request["args"];
                 let data = match request["command"].as_str().unwrap() {
-                    "bridge_info" => json!({"auto_save": true}),
+                    "bridge_info" => json!({"auto_save": true, "named_import": true}),
                     "open_program" => {
                         program = args["program"].as_str().unwrap().to_owned();
                         json!({"program": program})

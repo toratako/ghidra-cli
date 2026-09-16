@@ -65,6 +65,7 @@ identity. Filter a domain with, for example,
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version, doctor, config, init |
+| `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
 | `routing_tests` | Recorded bridge requests: batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |

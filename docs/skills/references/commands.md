@@ -23,6 +23,11 @@ ghidra-cli stop --project target
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
 Import waits for completion. Use `import --no-analyze` to omit analysis and
 `analyze --project target --program target.bin` to reanalyze.
+`import INPUT --program NAME` saves under that project file name; omitting it
+uses the input file name (Ghidra may add a suffix on collision). An explicit name
+must be a single file name and must not already exist. The import response reports
+the actual saved name. `program list` shows saved paths and the current selection;
+`program info.name` is the internal Program name and can differ from its file name.
 `stats` reports program statistics; `summary` reports the loaded program's
 metadata.
 

@@ -274,7 +274,7 @@ fn test_import_existing_program() {
     .expect("Failed to run import");
     assert!(status.success(), "Import failed with status: {}", status);
 
-    // Import again - should still succeed (idempotent or with new name)
+    // An explicit saved name must not silently select or overwrite the existing file.
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
@@ -290,8 +290,8 @@ fn test_import_existing_program() {
     )
     .expect("Failed to run second import");
     assert!(
-        status.success(),
-        "Second import failed with status: {}",
+        !status.success(),
+        "Duplicate explicit program name unexpectedly succeeded: {}",
         status
     );
 

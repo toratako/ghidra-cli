@@ -4,7 +4,8 @@
 |------|---------|
 | `bridge.rs` | Persistent bridge reuse, discovery files, startup locking, liveness, and shutdown |
 | `bridge/startup.rs` | Persistent child launch, output-reader lifetime, readiness, and failed-start cleanup |
-| `bridge/import.rs` | Private one-shot headless import lifecycle and loader arguments |
+| `bridge/import.rs` | Private one-shot import lifecycle, loader manifest, and completion receipt |
+| `bridge/diagnostics.rs` | Storage/loopback probes and disposable-project runtime check |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
 | `setup.rs` | Ghidra download, installation, Java version check |
@@ -38,12 +39,19 @@ publishing readiness, owns its release, and also supports empty existing project
 Missing projects are rejected before launching.
 
 Launch readiness is bounded and excludes analysis. Fresh imports use a separate
-short-lived `analyzeHeadless -import` run that analyzes and commits before the
-persistent bridge opens the program; `--no-analyze` disables that analysis.
+short-lived `analyzeHeadless -noanalysis -preScript GhidraCliBootstrap.java` run.
+The script reads a private JSON manifest and uses `ImportSupport` to load with the
+requested saved name, optionally analyze in an owned transaction, save, and release
+before exiting. Rust requires both successful exit and a structured completion
+receipt; it never infers success from an unrelated log line. The persistent bridge
+then opens the saved program; `--no-analyze` disables import analysis.
 Explicit loader/language/compiler options always take this one-shot path,
 stopping a live bridge first, so `BinaryLoader`, `x86:LE:32:default`, and
-`baseAddr` reach the headless loader. Best-guess imports into an already-open
-project may use bridge `AutoImporter` followed by TCP analysis.
+`baseAddr` reach the loader. Best-guess imports into an already-open project use
+the same `ImportSupport` save/name boundary followed by TCP analysis. Explicit
+name collisions fail before loading; omitted names can use Ghidra's collision
+suffix. Always return the saved DomainFile name. An older running bridge must
+advertise `named_import` before receiving an import.
 
 Rust writes the child PID immediately after spawn (best effort), enabling orphan
 cleanup even if Java fails before binding. Java binds `ServerSocket(0)` on
@@ -51,6 +59,10 @@ localhost, writes the port/PID files authoritatively, and signals
 `{"status":"ready"}`. On failure/timeout, kill and reap the whole process group
 before joining output-reader threads: a surviving JVM grandchild can keep pipes
 open indefinitely. Preserve stdout/stderr diagnostics and remove stale files.
+Java startup failures publish a `GHIDRA_CLI_STARTUP_ERROR` JSON diagnostic with
+stage, path, and cause before cleanup. Rust filesystem failures carry the same
+fields; the import workflow adds its saved/analysis checkpoint without losing
+the underlying operation or timeout classification.
 
 ## Java source publication
 

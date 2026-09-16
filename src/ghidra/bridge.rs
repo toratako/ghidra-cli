@@ -13,6 +13,7 @@ use tracing::info;
 
 use crate::ipc::client::BridgeClient;
 
+pub mod diagnostics;
 mod headless;
 mod import;
 mod sources;
@@ -45,11 +46,17 @@ fn shutdown_timeout() -> Option<Duration> {
 
 /// Get the data directory for bridge port/PID files.
 pub fn get_data_dir() -> Result<PathBuf> {
-    let dir = dirs::data_local_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine data directory"))?
-        .join("ghidra-cli");
-    std::fs::create_dir_all(&dir)?;
+    let dir = data_dir_path()?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| crate::error::path_io("bridge.state_directory", &dir, e))?;
     Ok(dir)
+}
+
+/// Resolve without creating anything, so doctor can report inaccessible paths.
+pub fn data_dir_path() -> Result<PathBuf> {
+    Ok(dirs::data_local_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine data directory"))?
+        .join("ghidra-cli"))
 }
 
 /// Use the same project identity for discovery and startup locking.
@@ -269,7 +276,8 @@ fn acquire_file_lock(path: &Path, timeout: Duration) -> Result<StartupLockGuard>
         .write(true)
         .create(true)
         .truncate(false)
-        .open(path)?;
+        .open(path)
+        .map_err(|e| crate::error::path_io("bridge.lifecycle_lock", path, e))?;
     let deadline = std::time::Instant::now() + timeout;
     loop {
         match file.try_lock() {
@@ -282,7 +290,9 @@ fn acquire_file_lock(path: &Path, timeout: Duration) -> Result<StartupLockGuard>
                 );
                 std::thread::sleep(remaining.min(Duration::from_millis(100)));
             }
-            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(crate::error::path_io("bridge.lifecycle_lock", path, error).into());
+            }
         }
     }
 }

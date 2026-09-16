@@ -568,3 +568,57 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn doctor_reports_unwritable_state_path_without_claiming_runtime_success() {
+    let temp = tempfile::tempdir().unwrap();
+    let blocked = temp.path().join("blocked");
+    std::fs::write(&blocked, "retain").unwrap();
+    let output = isolated_command(&temp)
+        .env("XDG_DATA_HOME", &blocked)
+        .env("XDG_CONFIG_HOME", temp.path().join("config"))
+        .env("GHIDRA_INSTALL_DIR", temp.path().join("missing"))
+        .args(["doctor", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let state = result["storage"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "bridge_state")
+        .unwrap();
+    assert_eq!(state["ok"], false);
+    assert_eq!(state["path"], blocked.join("ghidra-cli").to_str().unwrap());
+    assert_eq!(result["runtime"]["status"], "not_checked");
+    assert_eq!(std::fs::read_to_string(blocked).unwrap(), "retain");
+}
+
+#[test]
+fn config_io_failure_retains_operation_path_and_os_cause() {
+    let temp = tempfile::tempdir().unwrap();
+    let blocked = temp.path().join("blocked");
+    std::fs::write(&blocked, "retain").unwrap();
+    let path = blocked.join("config.yaml");
+    let output = isolated_command(&temp)
+        .env("GHIDRA_CLI_CONFIG", &path)
+        .args(["config", "set", "default_limit", "7", "--json"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(
+        error["detail"]["stage"]
+            .as_str()
+            .unwrap()
+            .starts_with("config."),
+        "{error}"
+    );
+    assert!(error["detail"]["path"]
+        .as_str()
+        .unwrap()
+        .contains("blocked"));
+    assert!(error["detail"]["cause"].is_string());
+}

@@ -5,8 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import ghidra.app.util.importer.AutoImporter;
-import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
@@ -71,54 +69,12 @@ final class ProgramCommands {
             return errorResult("No binary_path provided");
         }
 
-        String programName = getArgString(args, "program");
-        File binaryFile = new File(binaryPath);
-        if (programName == null || programName.isEmpty()) {
-            programName = binaryFile.getName();
-        }
-
         Project project = session.state().getProject();
-        if (project == null) {
-            return errorResult("No project open");
-        }
-
-        if (!binaryFile.exists()) {
-            return errorResult("Binary file not found: " + binaryPath);
-        }
-
+        if (project == null) return errorResult("No project open");
         try {
-            TaskMonitor mon = session.monitor();
-            MessageLog log = new MessageLog();
-            Object consumer = project;
-
-            // Ghidra 12+ API: importByUsingBestGuess(File, Project, String, Object, MessageLog, TaskMonitor)
-            Object loadResults = AutoImporter.importByUsingBestGuess(
-                binaryFile, project, "/", consumer, log, mon
-            );
-
-            if (loadResults == null) {
-                return errorResult("Failed to import binary");
-            }
-
-            // Save and release - loadResults is a LoadResults<Program>
-            // Use reflection to handle API differences across Ghidra versions
-            try {
-                java.lang.reflect.Method saveMethod = loadResults.getClass().getMethod("save", TaskMonitor.class);
-                saveMethod.invoke(loadResults, mon);
-            } finally {
-                java.lang.reflect.Method releaseMethod = loadResults.getClass().getMethod("release", Object.class);
-                releaseMethod.invoke(loadResults, consumer);
-            }
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "success");
-            result.addProperty("program", programName);
-            return result;
-
-        } catch (Exception e) {
-            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
-                && e.getCause() != null ? e.getCause() : e;
-            return errorResult("Import failed: " + cause.getMessage());
+            return ImportSupport.run(project, args, project, session.monitor(), null);
+        } catch (Exception error) {
+            return JsonProtocol.errorResult("Import failed: " + error.getMessage(), error);
         }
     }
 

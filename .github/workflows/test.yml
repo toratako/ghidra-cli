@@ -276,7 +276,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run infrastructure tests
-        run: cargo test-run --test daemon_tests --test reliability_tests --test project_tests --test fixture_tests --verbose -- --nocapture
+        run: cargo test-run --test daemon_tests --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

@@ -6,7 +6,7 @@ use super::is_pid_alive;
 use super::{cleanup_stale_files_locked, pid_file_path, port_file_path, read_port_file};
 use super::{sources, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -94,7 +94,9 @@ pub fn start_bridge(
     info!("Ghidra command: {:?}", cmd);
 
     // Spawn the process
-    let mut child = cmd.spawn().context("Failed to spawn Ghidra headless")?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| crate::error::path_io("bridge.launch", &headless_script, e))?;
     info!("Ghidra process started with PID: {:?}", child.id());
 
     // Write PID file immediately so orphan cleanup is possible if Java crashes
@@ -226,24 +228,51 @@ pub fn start_bridge(
             // Surface an actionable hint when the failure is the (otherwise
             // opaque) OSGi script compile/load failure.
             let combined = format!("{}\n{}", stdout_lines.join("\n"), stderr_output.join("\n"));
+            for line in combined.lines() {
+                if let Some(error) = startup_diagnostic(line) {
+                    return Err(error.into());
+                }
+            }
             let hint = bridge_failure_hint(&combined);
 
-            match outcome {
-                ReadyOutcome::Exited => anyhow::bail!(
+            let message = match outcome {
+                ReadyOutcome::Exited => format!(
                     "Ghidra process exited before the bridge became ready{}{}",
-                    detail,
-                    hint
+                    detail, hint
                 ),
-                ReadyOutcome::TimedOut => anyhow::bail!(
+                ReadyOutcome::TimedOut => format!(
                     "Ghidra bridge did not become ready within {}s{}{}",
                     launch_timeout.as_secs(),
                     detail,
                     hint
                 ),
                 ReadyOutcome::Ready => unreachable!(),
+            };
+            Err(crate::ipc::protocol::BridgeCommandError {
+                message,
+                detail: serde_json::json!({
+                    "stage": "bridge.startup", "project": project_path,
+                    "stdout": stdout_lines.iter().rev().take(10).rev().cloned().collect::<Vec<_>>(),
+                    "stderr": stderr_output.iter().rev().take(10).rev().cloned().collect::<Vec<_>>()
+                }),
             }
+            .into())
         }
     }
+}
+
+fn startup_diagnostic(line: &str) -> Option<crate::ipc::protocol::BridgeCommandError> {
+    let (_, payload) = line.split_once("GHIDRA_CLI_STARTUP_ERROR ")?;
+    // GhidraScript.println goes through the logger, which can append a class
+    // name after the JSON. Decode one value without consuming that decoration.
+    let value = serde_json::Deserializer::from_str(payload)
+        .into_iter::<serde_json::Value>()
+        .next()?
+        .ok()?;
+    Some(crate::ipc::protocol::BridgeCommandError {
+        message: value.get("message")?.as_str()?.to_owned(),
+        detail: serde_json::Value::Object(value.get("detail")?.as_object()?.clone()),
+    })
 }
 
 /// Outcome of the bridge readiness wait.
@@ -296,7 +325,7 @@ fn poll_until_ready(
 /// group leader, so its pid is the group id). On windows `taskkill /T` walks
 /// the tree. After this returns, the child's stdio pipes are closed, so any
 /// reader threads can be joined without blocking.
-fn kill_process_tree(child: &mut std::process::Child) {
+pub(super) fn kill_process_tree(child: &mut std::process::Child) {
     #[cfg(unix)]
     {
         let pgid = child.id() as i32;
@@ -340,6 +369,24 @@ mod tests {
     use super::*;
     use std::cell::Cell;
 
+    #[test]
+    fn startup_diagnostics_accept_ghidra_log_decoration() {
+        let payload = serde_json::json!({
+            "status": "error", "message": "Program not found",
+            "detail": {"stage": "bridge.program_open", "path": "missing-program"}
+        });
+        for line in [
+            format!("GHIDRA_CLI_STARTUP_ERROR {payload}"),
+            format!("INFO GhidraCliBridge.java> GHIDRA_CLI_STARTUP_ERROR {payload} (GhidraScript)"),
+        ] {
+            let error = startup_diagnostic(&line).unwrap();
+            assert_eq!(error.message, "Program not found");
+            assert_eq!(error.detail["stage"], "bridge.program_open");
+            assert_eq!(error.detail["path"], "missing-program");
+        }
+        assert!(startup_diagnostic("GHIDRA_CLI_STARTUP_ERROR {invalid").is_none());
+        assert!(startup_diagnostic("unrelated error").is_none());
+    }
     #[test]
     fn ready_when_socket_binds_while_alive() {
         // Becomes ready on the 3rd poll; process stays alive throughout.
