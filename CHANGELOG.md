@@ -79,6 +79,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Symbol lookup prefers exact names over bare hexadecimal addresses; rename/delete
   use name-only lookup so names such as `dead` remain editable. Explicit `0x`/`0X`
   addresses remain available to `symbol get`.
+- `program list` includes nested project folders and correctly identifies the
+  current program among files sharing the same name.
 - Table, CSV, and TSV columns include keys from every output row, so fields
   present only in later rows are no longer silently dropped. Missing cells stay
   empty; existing column order and CSV/TSV escaping are preserved.

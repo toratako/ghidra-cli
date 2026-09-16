@@ -136,10 +136,12 @@ public class CopyBridgeProgram extends GhidraScript {
     public void run() throws Exception {
         var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
         currentProgram.getDomainFile().copyTo(folder, monitor).setName("alternate");
+        currentProgram.getDomainFile().copyTo(folder.createFolder("deeper"), monitor).setName("alternate");
     }
 }
 "#, std::slice::from_ref(&folder), &[], false).unwrap();
     let alternate = format!("/{folder}/alternate");
+    let deeper_alternate = format!("/{folder}/deeper/alternate");
     client.open_program(&alternate).unwrap();
     // Copying/renaming the project file retains the original internal Program
     // name. Switching back must compare project files, not that internal name.
@@ -150,11 +152,27 @@ public class CopyBridgeProgram extends GhidraScript {
     assert_eq!(state["current_program"], "alternate");
     assert_eq!(state["current_program_path"], alternate);
     let programs = client.send_command("list_programs", None).unwrap();
-    assert!(programs["programs"]
+    let rows = programs["programs"].as_array().unwrap();
+    assert_eq!(programs["count"].as_u64(), Some(rows.len() as u64));
+    for path in [&alternate, &deeper_alternate] {
+        let row = rows.iter().find(|row| row["path"] == *path).unwrap();
+        assert_eq!(row["name"], "alternate");
+        assert_eq!(row["current"], *path == alternate);
+        assert!(row["function_count"].as_u64().unwrap() > 1);
+        assert_eq!(row["analyzed"], true);
+    }
+    assert_eq!(rows.iter().filter(|row| row["current"] == true).count(), 1);
+    client.open_program(&deeper_alternate).unwrap();
+    let programs = client.send_command("list_programs", None).unwrap();
+    let current: Vec<_> = programs["programs"]
         .as_array()
         .unwrap()
         .iter()
-        .all(|program| program["current"] == false));
+        .filter(|row| row["current"] == true)
+        .collect();
+    assert_eq!(current.len(), 1);
+    assert_eq!(current[0]["path"], deeper_alternate);
+    client.open_program(&alternate).unwrap();
     let function = client
         .send_command(
             "get_function",
@@ -206,6 +224,13 @@ public class CopyBridgeProgram extends GhidraScript {
         .iter()
         .any(|comment| comment["text"] == marker));
     client.program_close().unwrap();
+    let programs = client.send_command("list_programs", None).unwrap();
+    assert_eq!(programs["has_current_program"], false);
+    assert!(programs["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|row| row["current"] == false));
     assert!(client
         .comment_get(address)
         .unwrap_err()
