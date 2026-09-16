@@ -428,6 +428,231 @@ public class ScopedSymbolFixture extends GhidraScript {
     client.symbol_delete_targets(&renamed, &remaining).unwrap();
 }
 
+fn create_symbol_fixture_program() -> String {
+    let program = format!("symbol-deletion-{}", uuid::Uuid::new_v4());
+    let client = harness().client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateSymbolDeletionProgram extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("symbol deletion fixture");
+            try {
+                program.getMemory().createInitializedBlock("fixture",
+                    program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000),
+                    0x100, (byte) 0, monitor, false);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&program).unwrap();
+    program
+}
+
+#[test]
+#[serial]
+fn test_symbol_delete_rejects_dynamic_targets_before_deleting_any_member() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.*;
+public class CreateDynamicSymbol extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.getReferenceManager().addMemoryReference(
+            toAddr("1000"), toAddr("1010"), RefType.DATA, SourceType.USER_DEFINED, 0);
+        if (!currentProgram.getSymbolTable().getPrimarySymbol(toAddr("1010")).isDynamic())
+            throw new IllegalStateException("fixture must have a dynamic label");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let dynamic = client.symbol_get("0x1010").unwrap()["symbols"][0].clone();
+    let name = dynamic["name"].as_str().unwrap();
+    let rejected = ghidra(harness)
+        .args(["symbol", "delete", name])
+        .with_project(test_project(), &program)
+        .arg("--json")
+        .run();
+    rejected.assert_failure();
+    let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+    assert!(error["message"]
+        .as_str()
+        .unwrap()
+        .contains("Dynamic symbols"));
+    assert_eq!(error["detail"]["count"], 0);
+    assert_eq!(error["detail"]["failed"][0]["id"], dynamic["id"]);
+    assert!(error["detail"].get("partial_changes_saved").is_none());
+
+    client.symbol_create("1020", name).unwrap();
+    let stored = client.symbol_get_by_name(name).unwrap()["symbols"][0].clone();
+    // The valid stored label appears first, so the dynamic member must be
+    // rejected before either member is mutated.
+    let error = client
+        .symbol_delete_targets(name, &[stored.clone(), dynamic.clone()])
+        .unwrap_err();
+    let error = error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap();
+    assert_eq!(error.detail["count"], 0);
+    assert_eq!(error.detail["deleted"], serde_json::json!([]));
+    assert_eq!(error.detail["failed"][0]["id"], dynamic["id"]);
+    assert_eq!(error.detail["not_attempted"], serde_json::json!([stored]));
+    assert!(error.detail.get("partial_changes_saved").is_none());
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    assert_eq!(client.symbol_get("0x1010").unwrap()["symbols"][0], dynamic);
+    assert_eq!(client.symbol_get("0x1020").unwrap()["symbols"][0], stored);
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn test_symbol_delete_preserves_partial_results_and_save_failures() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for prevent_save in [false, true] {
+        let program = create_symbol_fixture_program();
+        let name = "cascade_target";
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.*;
+public class CreateCascadingSymbolDeletion extends GhidraScript {
+    public void run() throws Exception {
+        var table = currentProgram.getSymbolTable();
+        var parent = table.createNameSpace(currentProgram.getGlobalNamespace(),
+            getScriptArgs()[0], SourceType.USER_DEFINED);
+        table.createLabel(toAddr("1010"), getScriptArgs()[0], parent, SourceType.USER_DEFINED);
+        var other = table.createNameSpace(currentProgram.getGlobalNamespace(),
+            "unaffected", SourceType.USER_DEFINED);
+        table.createLabel(toAddr("1020"), getScriptArgs()[0], other, SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[name.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        let selected = client.symbol_get_by_name(name).unwrap()["symbols"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let parent = selected.iter().find(|s| s["type"] == "Namespace").unwrap();
+        let child = selected.iter().find(|s| s["namespace"] == name).unwrap();
+        let unaffected = selected
+            .iter()
+            .find(|s| s["namespace"] == "unaffected")
+            .unwrap();
+        let transaction = prevent_save.then(|| {
+            let error = client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+public class PreventSymbolDeletionSave extends GhidraScript {
+    public void run() throws Exception {
+        println(Integer.toString(currentProgram.startTransaction("hold deletion save")));
+    }
+}
+"#,
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap_err();
+            error
+                .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                .unwrap()
+                .detail["command_response"]["data"]["stdout"]
+                .as_str()
+                .unwrap()
+                .trim()
+                .to_owned()
+        });
+        // Deleting the namespace also removes its child. Deleting that selected
+        // child next returns false; the unrelated final target must not run.
+        let error = client
+            .symbol_delete_targets(name, &[parent.clone(), child.clone(), unaffected.clone()])
+            .unwrap_err();
+        if let Some(transaction) = transaction {
+            client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+public class ReleaseSymbolDeletionSave extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
+    }
+}
+"#,
+                    &[transaction],
+                    &[],
+                    false,
+                )
+                .unwrap();
+        }
+        let error = error
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        let detail = if prevent_save {
+            assert_eq!(error.detail["save_failed"], true);
+            assert_eq!(error.detail["saved"], false);
+            assert_eq!(error.detail["command_response"]["status"], "error");
+            &error.detail["command_response"]["detail"]
+        } else {
+            assert_eq!(error.detail["partial_changes_saved"], true);
+            &error.detail
+        };
+        assert_eq!(detail["count"], 1);
+        assert_eq!(detail["deleted"], serde_json::json!([parent]));
+        assert_eq!(detail["failed"][0]["id"], child["id"]);
+        assert_eq!(
+            detail["failed"][0]["reason"],
+            "Ghidra refused to delete symbol"
+        );
+        assert_eq!(detail["not_attempted"], serde_json::json!([unaffected]));
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            client.symbol_get_by_name(name).unwrap()["symbols"],
+            serde_json::json!([unaffected])
+        );
+        let deleted = client
+            .symbol_delete_targets(name, std::slice::from_ref(unaffected))
+            .unwrap();
+        assert_eq!(deleted["count"], 1);
+        assert_eq!(deleted["deleted"], serde_json::json!([unaffected]));
+        client.open_program(TEST_PROGRAM).unwrap();
+    }
+}
+
 #[test]
 #[serial]
 fn test_duplicate_function_names_rejected_before_mutation() {

@@ -73,6 +73,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Explicit-offset `type add-field --size` rejects sizes Ghidra cannot honor
   before changing the structure, matching append behavior.
+- Symbol deletion rejects generated dynamic labels before mutation, checks each
+  deletion result, and reports deleted, failed, and unattempted targets on partial
+  failure. Save failures retain those details. Target-selection filters no longer
+  erase deletion receipts in standalone or batch output.
 - Search and list output share one query limit plan. `find bytes`, raw-memory
   `find string`, and `find interesting` no longer truncate at 100/50 matches,
   so counts, filters, sorts and offsets can use the complete result set.

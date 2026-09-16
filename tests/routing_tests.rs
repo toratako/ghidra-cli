@@ -152,6 +152,9 @@ impl RecordedBridge {
                             ]
                         }})
                     }
+                    "symbol_delete" => {
+                        json!({"status": "deleted", "name": args["name"], "count": args["targets"].as_array().unwrap().len()})
+                    }
                     "list_functions" => {
                         let mut rows = vec![
                             json!({"name": "excluded", "size": 0}),
@@ -1195,6 +1198,70 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
         };
         assert_eq!(domain[1]["args"], expected);
     }
+}
+
+#[test]
+fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
+    let bridge = RecordedBridge::new();
+    for filter in ["kind=label", "address=0xab"] {
+        for fields in [None, Some("status,count")] {
+            let mut args = vec!["symbol", "delete", "shared", "--filter", filter];
+            let mut receipt = json!({"status": "deleted", "name": "shared", "count": 1});
+            if let Some(fields) = fields {
+                args.extend(["--fields", fields]);
+                receipt.as_object_mut().unwrap().remove("name");
+            }
+            assert_eq!(bridge.run(&args), json!([receipt]));
+            std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+            let report = bridge.run(&["batch", "batch.txt"]);
+            let expected = if fields.is_some() {
+                json!([receipt])
+            } else {
+                receipt
+            };
+            assert_eq!(report[0]["results"][0]["result"], expected);
+            for request in bridge
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r["command"] == "symbol_delete")
+            {
+                assert_eq!(
+                    request["args"]["targets"],
+                    json!([symbol_fixture("9007199254740993", "00AB", "label")])
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args([
+            "symbol",
+            "delete",
+            "shared",
+            "--filter",
+            "invalid",
+            "--program",
+            "B",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid --filter expression"),
+        "{error}"
+    );
+    assert!(bridge.requests.lock().unwrap().is_empty());
 }
 
 #[test]

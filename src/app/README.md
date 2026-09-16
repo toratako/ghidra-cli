@@ -30,6 +30,8 @@ before program commands. Compatibility restart captures the selected project
 file path (never the internal Program name or a default); if it cannot determine
 the selection, it leaves the bridge running. Stop errors prevent restart.
 Never replay commands after save failures.
+Symbol deletion validates its target filter before bridge work and consumes it
+only for target selection; output processing must retain the deletion receipt.
 Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolIterator;
@@ -216,26 +217,71 @@ final class SymbolCommands {
         try {
             SymbolTable symbolTable = session.program().getSymbolTable();
             List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, args);
+            List<JsonObject> selected = new ArrayList<>();
+            JsonArray deleted = new JsonArray();
+            JsonArray failed = new JsonArray();
+            JsonArray notAttempted = new JsonArray();
+            for (Symbol symbol : toDelete) {
+                JsonObject snapshot = symbolToJson(symbol);
+                selected.add(snapshot);
+                if (symbol.isDynamic()) {
+                    failed.add(deletionFailureTarget(snapshot,
+                        "Dynamic symbols are generated from references and cannot be deleted"));
+                } else if (symbol.getID() == Namespace.GLOBAL_NAMESPACE_ID) {
+                    failed.add(deletionFailureTarget(snapshot, "The global namespace cannot be deleted"));
+                } else {
+                    notAttempted.add(snapshot);
+                }
+            }
+            if (failed.size() != 0)
+                throw deletionFailure(name, deleted, failed, notAttempted);
+            notAttempted = new JsonArray();
 
             ProgramTransaction transaction = session.transaction("Delete symbol");
             try {
-                for (Symbol s : toDelete) {
-                    s.delete();
+                for (int i = 0; i < toDelete.size(); i++) {
+                    try {
+                        if (!toDelete.get(i).delete())
+                            throw new IllegalStateException("Ghidra refused to delete symbol");
+                        deleted.add(selected.get(i));
+                    } catch (Exception e) {
+                        failed.add(deletionFailureTarget(selected.get(i),
+                            e.getMessage() == null ? e.toString() : e.getMessage()));
+                        for (int j = i + 1; j < selected.size(); j++) notAttempted.add(selected.get(j));
+                        throw deletionFailure(name, deleted, failed, notAttempted);
+                    }
                 }
+            } finally {
                 transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
             }
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");
             result.addProperty("name", name);
-            result.addProperty("count", toDelete.size());
+            result.addProperty("count", deleted.size());
+            result.add("deleted", deleted);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to delete symbol: " + e.getMessage());
+            return errorResult("Failed to delete symbol: " + e.getMessage(), e);
         }
+    }
+
+    private JsonObject deletionFailureTarget(JsonObject symbol, String reason) {
+        JsonObject failure = symbol.deepCopy();
+        failure.addProperty("reason", reason);
+        return failure;
+    }
+
+    private JsonProtocol.CommandException deletionFailure(String name, JsonArray deleted,
+            JsonArray failed, JsonArray notAttempted) {
+        JsonObject detail = new JsonObject();
+        detail.addProperty("name", name);
+        detail.addProperty("count", deleted.size());
+        detail.add("deleted", deleted);
+        detail.add("failed", failed);
+        detail.add("not_attempted", notAttempted);
+        String reason = failed.get(0).getAsJsonObject().get("reason").getAsString();
+        return new JsonProtocol.CommandException(reason, detail);
     }
 
     JsonObject handleSymbolRename(JsonObject args) {

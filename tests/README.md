@@ -83,6 +83,9 @@ save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
 Real bridge tests cover OSGi loading of the whole source bundle.
+Symbol tests cover generated-label rejection and deletion failures retaining
+partial results through successful and failed saves; type tests verify that
+explicit field sizes are either honored or rejected before layout changes.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and query/dump aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds

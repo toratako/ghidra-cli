@@ -105,7 +105,17 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
     let output = Output::new(cli);
     // Parse once, before any bridge work. The same plan travels with the result
     // through standalone and batch output, so paging is never applied twice.
-    let query_options = extract_query_options(&cli.command);
+    let mut query_options = extract_query_options(&cli.command);
+    if matches!(
+        cli.command,
+        Commands::Symbol(cli::SymbolCommands::Delete(_))
+    ) {
+        // This filter selects mutation targets, not rows in the deletion receipt.
+        // Still validate it before config loading, program selection, or bridge work.
+        if let Some(filter) = query_options.as_mut().and_then(|opts| opts.filter.take()) {
+            crate::filter::Filter::parse(&filter).map_err(describe_query_error)?;
+        }
+    }
     let query = query_options
         .as_ref()
         .map(|opts| Query::from_options(opts, OutputFormat::JsonCompact))
