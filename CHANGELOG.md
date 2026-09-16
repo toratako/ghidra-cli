@@ -24,6 +24,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Table, CSV, and TSV columns include keys from every output row, so fields
+  present only in later rows are no longer silently dropped. Missing cells stay
+  empty; existing column order and CSV/TSV escaping are preserved.
 - CLI tests without Ghidra cover reservation deletion and preservation of project
   files when Ghidra is unavailable; real project deletion runs in Ghidra integration tests.
 - Windows import tests normalize Ghidra's `/C:/...` executable paths before

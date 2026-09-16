@@ -3,6 +3,7 @@ use clap::ValueEnum;
 use comfy_table::{presets::UTF8_FULL, Table};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -72,6 +73,23 @@ impl Formatter for DefaultFormatter {
     }
 }
 
+/// Preserve the first row's column order, appending new keys as they appear.
+/// Only the rows selected for output participate; no extra fetch is needed.
+fn column_keys(rows: &[JsonValue]) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut seen = HashSet::new();
+    for row in rows {
+        if let Some(object) = row.as_object() {
+            for key in object.keys() {
+                if seen.insert(key) {
+                    keys.push(key.clone());
+                }
+            }
+        }
+    }
+    keys
+}
+
 fn format_table<T: Serialize>(data: &[T]) -> Result<String> {
     if data.is_empty() {
         return Ok("No results".to_string());
@@ -87,12 +105,10 @@ fn format_table<T: Serialize>(data: &[T]) -> Result<String> {
         return Ok("No results".to_string());
     }
 
-    // Get all keys from first object
-    let keys = if let Some(JsonValue::Object(map)) = json_data.first() {
-        map.keys().cloned().collect::<Vec<_>>()
-    } else {
+    let keys = column_keys(&json_data);
+    if keys.is_empty() {
         return Ok(format!("{} results", data.len()));
-    };
+    }
 
     let mut table = Table::new();
     table.load_style(UTF8_FULL);
@@ -132,11 +148,10 @@ fn format_csv<T: Serialize>(data: &[T], delimiter: char) -> Result<String> {
         return Ok(String::new());
     }
 
-    let keys = if let Some(JsonValue::Object(map)) = json_data.first() {
-        map.keys().cloned().collect::<Vec<_>>()
-    } else {
+    let keys = column_keys(&json_data);
+    if keys.is_empty() {
         return Ok(String::new());
-    };
+    }
 
     // Cell rendering owns array/object representation; the CSV writer owns
     // quoting (including headers and a single empty cell) and record framing.
@@ -459,6 +474,55 @@ pub fn auto_detect_format(is_tty: bool) -> OutputFormat {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn tabular_output_keeps_fields_first_seen_in_later_rows() {
+        let data = [
+            json!({"name": "foo"}),
+            json!({"comment": "解析済み,\t\"yes\"\nnext", "name": "bar"}),
+        ];
+        for (format, delimiter) in [(OutputFormat::Csv, b','), (OutputFormat::Tsv, b'\t')] {
+            let output = DefaultFormatter.format(&data, format).unwrap();
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(delimiter)
+                .from_reader(output.as_bytes());
+            assert_eq!(
+                reader.headers().unwrap(),
+                &csv::StringRecord::from(vec!["name", "comment"])
+            );
+            let rows: Vec<_> = reader
+                .records()
+                .collect::<std::result::Result<_, _>>()
+                .unwrap();
+            assert_eq!(rows[0], csv::StringRecord::from(vec!["foo", ""]));
+            assert_eq!(
+                rows[1],
+                csv::StringRecord::from(vec!["bar", "解析済み,\t\"yes\"\nnext"])
+            );
+
+            let output = DefaultFormatter
+                .format(&[json!({}), json!({"later": "value"})], format)
+                .unwrap();
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(delimiter)
+                .from_reader(output.as_bytes());
+            assert_eq!(reader.headers().unwrap().get(0), Some("later"));
+            assert_eq!(reader.records().count(), 2);
+        }
+        let output = DefaultFormatter.format(&data, OutputFormat::Table).unwrap();
+        for expected in ["name", "comment", "foo", "bar", "解析済み"] {
+            assert!(output.contains(expected), "{output}");
+        }
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(
+                &DefaultFormatter
+                    .format(&data, OutputFormat::JsonCompact)
+                    .unwrap()
+            )
+            .unwrap(),
+            json!(data)
+        );
+    }
 
     #[test]
     fn test_format_json() {
