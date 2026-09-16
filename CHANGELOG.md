@@ -15,6 +15,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lie in the inclusive range. It rejects `--instructions` together with `--end`,
   reversed ranges, and bounds in different address spaces. Range queries honor
   `--limit` (including zero), filtering, sorting, offsets, and counts.
+- Explicit `--format c` and `--format asm` render decompiled C and instruction
+  text. Output defaults remain human-readable on TTY and compact JSON on non-TTY;
+  rows without the relevant code fields retain JSON rendering.
 
 ### Changed
 

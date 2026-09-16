@@ -25,9 +25,9 @@ pub enum OutputFormat {
     Tree,
     #[value(help = "Currently rendered as JSON")]
     Hex,
-    #[value(help = "Currently rendered as JSON")]
+    #[value(help = "Assembly text for instruction rows; other rows remain JSON")]
     Asm,
-    #[value(help = "Currently rendered as JSON")]
+    #[value(help = "Decompiled C text; other rows remain JSON")]
     C,
 }
 
@@ -65,12 +65,59 @@ impl Formatter for DefaultFormatter {
             OutputFormat::Compact => format_compact(data),
             OutputFormat::Full => format_full(data),
             OutputFormat::Minimal | OutputFormat::Ids => format_minimal(data),
+            OutputFormat::C | OutputFormat::Asm => format_code(data, format),
             _ => {
                 // For other formats, default to JSON
                 serde_json::to_string_pretty(data).map_err(|e| e.into())
             }
         }
     }
+}
+
+fn format_code<T: Serialize>(data: &[T], format: OutputFormat) -> Result<String> {
+    let rows = data
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut output = String::new();
+    for row in &rows {
+        match format {
+            OutputFormat::C if row.get("code").and_then(JsonValue::as_str).is_some() => {
+                output.push_str(row["code"].as_str().unwrap());
+            }
+            OutputFormat::Asm if row.get("mnemonic").and_then(JsonValue::as_str).is_some() => {
+                let address = row
+                    .get("address")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("?");
+                let bytes = row.get("bytes").and_then(JsonValue::as_str).unwrap_or("");
+                let mnemonic = row["mnemonic"].as_str().unwrap();
+                let operands = row
+                    .get("operands")
+                    .and_then(JsonValue::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .map(format_json_value)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                output.push_str(&format!("{address}  {bytes:<12} {mnemonic}"));
+                if !operands.is_empty() {
+                    output.push(' ');
+                    output.push_str(&operands);
+                }
+            }
+            // Preserve the existing single JSON document for unrelated result
+            // shapes (or projections that removed the code fields).
+            _ => return serde_json::to_string_pretty(&rows).map_err(Into::into),
+        }
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+    Ok(output)
 }
 
 /// Preserve the first row's column order, appending new keys as they appear.
@@ -474,6 +521,42 @@ pub fn auto_detect_format(is_tty: bool) -> OutputFormat {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn c_and_asm_formats_render_code_without_json_escaping() {
+        let code = "int main(void) {\n  return 0; /* 日本語 */\n}\n";
+        assert_eq!(
+            DefaultFormatter
+                .format(&[json!({"code": code, "name": "main"})], OutputFormat::C)
+                .unwrap(),
+            code
+        );
+        let instructions = [
+            json!({"address": "1000", "bytes": "4889e5", "mnemonic": "MOV", "operands": ["RBP", "RSP"]}),
+            json!({"address": "1003", "bytes": "c3", "mnemonic": "RET", "operands": []}),
+        ];
+        assert_eq!(
+            DefaultFormatter
+                .format(&instructions, OutputFormat::Asm)
+                .unwrap(),
+            "1000  4889e5       MOV RBP, RSP\n1003  c3           RET\n"
+        );
+        for format in [OutputFormat::C, OutputFormat::Asm] {
+            assert_eq!(
+                DefaultFormatter.format::<JsonValue>(&[], format).unwrap(),
+                ""
+            );
+            let rows = [
+                json!({"error": "could not read code"}),
+                json!({"name": "other"}),
+            ];
+            let rendered = DefaultFormatter.format(&rows, format).unwrap();
+            assert_eq!(
+                serde_json::from_str::<JsonValue>(&rendered).unwrap(),
+                json!(rows)
+            );
+        }
+    }
 
     #[test]
     fn tabular_output_keeps_fields_first_seen_in_later_rows() {

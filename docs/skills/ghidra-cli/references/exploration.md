@@ -6,6 +6,7 @@
 ghidra-cli function list --fields name,address,size --limit 100 --project target
 ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
+ghidra-cli decompile main --format c --project target
 ghidra-cli function calls main --project target
 ghidra-cli function x-refs main --project target
 ghidra-cli function x-refs malloc --project target
@@ -15,6 +16,11 @@ ghidra-cli function x-refs malloc --project target
 include local-variable and parameter details. Function names must identify one
 function; ambiguous names return candidates. Use an address to select the
 intended function.
+
+Explicit `--format c` prints the decompiled code without JSON escaping. Use JSON
+when you need the accompanying variable/parameter metadata. `--format asm` renders
+instruction rows; rows without the required code fields fall back to JSON. Neither
+option changes the default TTY/non-TTY behavior.
 
 There is no native decompilation time limit by default; inspect long work with
 `jobs` and request a stop with `cancel`. See [job control](../SKILL.md#results-edits-and-jobs).

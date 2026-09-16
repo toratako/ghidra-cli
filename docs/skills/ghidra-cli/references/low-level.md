@@ -4,7 +4,7 @@
 
 ```bash
 ghidra-cli disasm 0x401000 -n 40 --project target
-ghidra-cli disasm 0x401000 --end 0x401080 --project target
+ghidra-cli disasm 0x401000 --end 0x401080 --format asm --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target
 ghidra-cli disasm-at 0x401234 -n 20 --project target
 ghidra-cli function create 0x401234 parse_entry --project target
@@ -17,6 +17,9 @@ bound can be omitted; a one-sided range stays in the supplied endpoint's address
 space. It works across Ghidra-supported ISAs and needs no xrefs, but searches only
 already-disassembled instructions. Function names need not appear in the text;
 use `find calls` for resolved call destinations.
+
+Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
+operands). The default output format is unchanged.
 
 Use `disasm-at` when auto-analysis missed a known target. If analysis ran through
 inline data or chose the wrong boundary:

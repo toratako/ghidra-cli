@@ -83,6 +83,9 @@ impl RecordedBridge {
                         json!({"program": program})
                     }
                     "import" => json!({"program": "imported"}),
+                    "decompile" => {
+                        json!({"name": "main", "address": "1000", "code": "int main(void) {\n  return 0;\n}\n"})
+                    }
                     "disasm" | "disasm_range" | "find_instruction" => {
                         let mut rows = vec![
                             json!({"address": "1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
@@ -240,6 +243,48 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
         for request in &sent[1..] {
             assert!(request["args"]["limit"].is_null());
         }
+    }
+}
+
+#[test]
+fn explicit_code_formats_override_json_without_changing_output_defaults() {
+    let bridge = RecordedBridge::new();
+    for command in [
+        vec!["decompile", "main"],
+        vec!["function", "decompile", "main"],
+    ] {
+        let rows = bridge.run(&command);
+        assert_eq!(rows[0]["name"], "main", "non-TTY default stays JSON");
+        for flag in ["--json", "--pretty"] {
+            let output = bridge
+                .command()
+                .args(&command)
+                .args([flag, "--format", "c"])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap(),
+                "int main(void) {\n  return 0;\n}\n"
+            );
+        }
+    }
+    for command in [
+        vec!["disasm", "1000"],
+        vec!["disasm", "1000", "--end", "1002"],
+        vec!["function", "disasm", "main"],
+    ] {
+        assert!(bridge.run(&command).is_array());
+        let output = bridge
+            .command()
+            .args(&command)
+            .args(["--pretty", "--format", "asm"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(String::from_utf8(output.stdout)
+            .unwrap()
+            .starts_with("1000  90           NOP\n"));
     }
 }
 

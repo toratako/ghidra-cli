@@ -407,6 +407,46 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
 
 #[test]
 #[serial]
+fn test_explicit_c_and_asm_output_match_ghidra_results() {
+    require_ghidra!();
+    let harness = harness();
+    let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let client = harness.client().unwrap();
+    let decompiled = client.decompile(address.clone(), false, false).unwrap();
+    let result = ghidra(harness)
+        .args(["decompile", &address, "--format", "c"])
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+    result.assert_success();
+    assert_eq!(
+        result.stdout.trim_end(),
+        decompiled["code"].as_str().unwrap().trim_end()
+    );
+    let instructions = client.disasm(&address, Some(3)).unwrap();
+    let result = ghidra(harness)
+        .args(["disasm", &address, "-n", "3", "--format", "asm"])
+        .with_project(test_project(), TEST_PROGRAM)
+        .run();
+    result.assert_success();
+    assert_eq!(result.stdout.lines().count(), 3);
+    for (line, instruction) in result
+        .stdout
+        .lines()
+        .zip(instructions["instructions"].as_array().unwrap())
+    {
+        assert!(
+            line.starts_with(instruction["address"].as_str().unwrap()),
+            "{line}"
+        );
+        assert!(
+            line.contains(instruction["mnemonic"].as_str().unwrap()),
+            "{line}"
+        );
+    }
+}
+
+#[test]
+#[serial]
 fn test_disasm_at_main() {
     require_ghidra!();
     let harness = harness();
