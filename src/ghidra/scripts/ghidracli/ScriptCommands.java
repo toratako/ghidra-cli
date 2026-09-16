@@ -14,8 +14,18 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.net.URI;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import javax.lang.model.element.Modifier;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
 import org.osgi.framework.Bundle;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
@@ -46,12 +56,8 @@ final class ScriptCommands {
             // file on disk, rather than eval'ing it directly -- this is what keeps
             // inline snippets going through Ghidra's normal script bundle/compile gate
             // instead of adding a second, less-sandboxed execution path.
-            Matcher classMatch = Pattern.compile("public\\s+class\\s+(\\w+)").matcher(inlineSource);
-            if (!classMatch.find()) {
-                return errorResult("Inline script source must define `public class <Name> extends GhidraScript`");
-            }
-            String className = classMatch.group(1);
             try {
+                String className = inlineClassName(inlineSource);
                 tempDir = java.nio.file.Files.createTempDirectory("ghidra-cli-stdin-script").toFile();
                 scriptFile = new File(tempDir, className + ".java");
                 try (FileWriter fw = new FileWriter(scriptFile)) {
@@ -59,6 +65,10 @@ final class ScriptCommands {
                 }
             } catch (IOException e) {
                 return errorResult("Failed to stage inline script: " + e.getMessage());
+            } catch (IllegalArgumentException e) {
+                return errorResult(e.getMessage());
+            } catch (ReflectiveOperationException e) {
+                return errorResult("Failed to parse inline Java source: " + e);
             }
         } else {
             // Resolve to an absolute path so the script is found regardless of the
@@ -223,6 +233,70 @@ final class ScriptCommands {
                 cleanupTempDir.delete();
             }
         }
+    }
+
+    private static String inlineClassName(String source)
+            throws IOException, ReflectiveOperationException {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalArgumentException("Inline Java source requires a full JDK compiler");
+        }
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        JavaFileObject input = new SimpleJavaFileObject(
+                URI.create("string:///Stdin.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return source;
+            }
+        };
+        // Parse only: Ghidra's bundle compiler still owns type resolution,
+        // inheritance checks, compilation, and loading of the unchanged source.
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(
+                diagnostics, Locale.ROOT, null)) {
+            JavaCompiler.CompilationTask task = compiler.getTask(
+                new StringWriter(), files, diagnostics, List.of("-proc:none"), null, List.of(input));
+            Iterable<?> units = (Iterable<?>) javacApi("util.JavacTask")
+                .getMethod("parse").invoke(task);
+            for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+                if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
+                    throw new IllegalArgumentException("Invalid inline Java source at line "
+                        + diagnostic.getLineNumber() + ", column " + diagnostic.getColumnNumber()
+                        + ": " + diagnostic.getMessage(Locale.ROOT));
+                }
+            }
+            String className = null;
+            Class<?> compilationUnit = javacApi("tree.CompilationUnitTree");
+            Class<?> tree = javacApi("tree.Tree");
+            Class<?> classTree = javacApi("tree.ClassTree");
+            Class<?> modifiersTree = javacApi("tree.ModifiersTree");
+            for (Object unit : units) {
+                for (Object declaration : (List<?>) compilationUnit.getMethod("getTypeDecls").invoke(unit)) {
+                    Enum<?> kind = (Enum<?>) tree.getMethod("getKind").invoke(declaration);
+                    if (!kind.name().equals("CLASS")) continue;
+                    Object modifiers = classTree.getMethod("getModifiers").invoke(declaration);
+                    Set<?> flags = (Set<?>) modifiersTree.getMethod("getFlags").invoke(modifiers);
+                    if (!flags.contains(Modifier.PUBLIC)) continue;
+                    if (className != null) {
+                        throw new IllegalArgumentException(
+                            "Inline Java source must define exactly one top-level public class");
+                    }
+                    className = classTree.getMethod("getSimpleName").invoke(declaration).toString();
+                }
+            }
+            if (className == null) {
+                throw new IllegalArgumentException(
+                    "Inline Java source must define exactly one top-level public class");
+            }
+            return className;
+        }
+    }
+
+    private static Class<?> javacApi(String name) throws ClassNotFoundException {
+        // jdk.compiler's public syntax-tree API is outside Java SE's OSGi
+        // exports. Load its interfaces from the platform loader; direct imports
+        // (including complete class-name literals) create unwireable bnd imports.
+        // Invoke public API methods, never javac's unexported implementation types.
+        return ClassLoader.getPlatformClassLoader().loadClass("com.sun.source." + name);
     }
 
     JsonObject handleScriptJava(JsonObject args) {

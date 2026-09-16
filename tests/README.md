@@ -83,6 +83,7 @@ save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
 Real bridge tests cover OSGi loading of the whole source bundle.
+Script tests exercise JDK parsing of stdin declarations through that OSGi path.
 Symbol tests cover generated-label rejection and deletion failures retaining
 partial results through successful and failed saves; type tests verify that
 explicit field sizes are either honored or rejected before layout changes.

@@ -355,6 +355,124 @@ fn java_source_on_stdin_runs_without_interactive_prompt() {
     assert!(value.to_string().contains("ARG0=from-stdin"), "{value}");
 }
 
+#[test]
+#[serial]
+fn java_source_on_stdin_uses_top_level_java_declarations() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let cases = [
+        (
+            "FinalStdin",
+            r#"
+import ghidra.app.script.GhidraScript;
+@Deprecated
+public final class FinalStdin extends GhidraScript {
+    public void run() { println("selected=" + getClass().getSimpleName()); }
+}
+"#,
+        ),
+        (
+            "ActualStdin",
+            r#"
+import ghidra.app.script.GhidraScript;
+// public class LineCommentDecoy extends GhidraScript {}
+/* public class BlockCommentDecoy extends GhidraScript {} */
+abstract class StdinBase extends GhidraScript {
+    public static class NestedDecoy {}
+    String text = "public class StringDecoy extends GhidraScript {}";
+    String block = """
+        public class TextBlockDecoy extends GhidraScript {}
+        """;
+    public void run() { println("selected=" + getClass().getSimpleName()); }
+}
+final public /* public class HeaderDecoy {} */ class ActualStdin extends StdinBase {}
+"#,
+        ),
+        (
+            "Unicode$Stdin",
+            r#"
+import ghidra.app.script.GhidraScript;
+public class \u0055nicode$Stdin extends GhidraScript {
+    public void run() { println("selected=" + getClass().getSimpleName()); }
+}
+"#,
+        ),
+    ];
+    for (class_name, source) in cases {
+        let from_stdin = client.script_run_source(source, &[], &[], false).unwrap();
+        assert_eq!(from_stdin["script"], format!("{class_name}.java"));
+        assert!(
+            from_stdin["stdout"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("selected={class_name}")),
+            "{from_stdin}"
+        );
+
+        // The same source must be accepted by Ghidra's ordinary file path.
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(format!("{class_name}.java"));
+        fs::write(&path, source).unwrap();
+        let from_file = client
+            .script_run(path.to_str().unwrap(), &[], &[], false)
+            .unwrap();
+        assert_eq!(from_stdin["stdout"], from_file["stdout"]);
+    }
+}
+
+#[test]
+#[serial]
+fn java_source_on_stdin_reports_invalid_declarations() {
+    require_ghidra!();
+    let _harness = harness();
+    let cases = [
+        (
+            r#"
+// public class CommentOnly {}
+class Holder {
+    String text = "public class StringOnly {}";
+    public static class NestedOnly {}
+}
+"#,
+            "must define exactly one top-level public class",
+        ),
+        (
+            "public class First {} public class Second {}",
+            "must define exactly one top-level public class",
+        ),
+        (
+            "public class Broken { public void run( {} }",
+            "Invalid inline Java source at line 1, column ",
+        ),
+    ];
+    for (source, expected) in cases {
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .args([
+                "--json",
+                "--quiet",
+                "script",
+                "run",
+                "-",
+                "--project",
+                test_project(),
+                "--program",
+                TEST_PROGRAM,
+            ])
+            .write_stdin(source)
+            .timeout(std::time::Duration::from_secs(120))
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["status"], "error");
+        assert!(
+            error["message"].as_str().unwrap().contains(expected),
+            "{error}"
+        );
+    }
+}
+
 /// Failures retain script output, artifact diagnostics, and the request's save outcome.
 #[test]
 #[serial]

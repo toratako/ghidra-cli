@@ -85,6 +85,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unknown formats fail during argument parsing.
 - `setup --version` resolves release numbers to official `Ghidra_VERSION_build`
   tags. `config set java_home PATH` now saves the configured JDK.
+- Java source on stdin is parsed for its top-level public class, accepting
+  modifiers and ignoring apparent declarations in comments, strings, and nested
+  classes. Invalid syntax reports its line and column before execution.
 - Function lookup errors recommend an executable help command instead of an
   invalid bare-word filter.
 - Search and list output share one query limit plan. `find bytes`, raw-memory
