@@ -67,6 +67,7 @@ pub struct ScriptRunArgs {
     pub project: Option<String>,
     /// Expected output artifact: PATH or PATH:MIN_ROWS (repeatable). The job
     /// fails if the artifact is missing, empty, or below MIN_ROWS.
+    /// MIN_ROWS is supported for .jsonl/.ndjson only; CSV row counting is WIP.
     #[arg(long = "expect", value_name = "PATH[:MIN_ROWS]")]
     pub expect: Vec<String>,
     /// Allow an expected artifact to exist but be empty.

@@ -5,7 +5,7 @@ Use Java scripts for processing that the built-in commands do not cover.
 ```bash
 ghidra-cli script list --project target
 ghidra-cli script run ./scripts/Inspect.java --project target -- --arg value
-ghidra-cli script run ./scripts/Inspect.java --expect ./out.csv:10 --project target
+ghidra-cli script run ./scripts/Inspect.java --expect ./out.jsonl:10 --project target
 ghidra-cli script run - --project target < ./scripts/Inspect.java
 ```
 

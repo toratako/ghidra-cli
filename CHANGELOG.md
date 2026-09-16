@@ -85,6 +85,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is omitted, and recognizes empty reservations created by `project create`.
 - `--projects-dir` takes precedence over `GHIDRA_PROJECT_DIR` without changing
   environment variables or saved configuration, including per-line batch overrides.
+- Script artifact examples use JSONL for minimum-row checks. Help documents
+  `.jsonl`/`.ndjson` support and marks CSV row counting as WIP.
 - Table, CSV, and TSV columns include keys from every output row, so fields
   present only in later rows are no longer silently dropped. Missing cells stay
   empty; existing column order and CSV/TSV escaping are preserved.
