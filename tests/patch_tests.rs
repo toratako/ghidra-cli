@@ -149,6 +149,140 @@ public class CreateNopGuardProgram extends GhidraScript {
     }
 }
 
+/// Disassembly failures retain diagnostics, stop dependent edits, and save any clearing.
+#[test]
+#[serial]
+fn test_disasm_failure_exit_batch_stop_and_clear_persistence() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let name = format!("disasm-failure-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateDisasmFailureFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("disassembly fixture");
+            try {
+                var address = program.getAddressFactory().getDefaultAddressSpace()
+                    .getAddress(0x1000);
+                var block = program.getMemory().createInitializedBlock("code", address,
+                    1, (byte) 0xc3, monitor, false);
+                block.setExecute(true);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let instruction = client
+            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .unwrap();
+        assert_eq!(instruction["landed"], true);
+        assert_eq!(instruction["already_disassembled"], false);
+        assert_eq!(instruction["status"], "disassembled");
+        let repeated = client
+            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .unwrap();
+        assert_eq!(repeated["already_disassembled"], true);
+        assert_eq!(repeated["instructions"], instruction["instructions"]);
+
+        // An unmapped address is syntactically valid but cannot produce an instruction.
+        let failed = ghidra(harness).args(["--json", "disasm-at", "8000"]).run();
+        assert_eq!(failed.exit_code, 1, "{failed:?}");
+        assert!(failed.stdout.is_empty(), "{failed:?}");
+        let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+        let detail = &error["detail"];
+        let failed_address = detail["address"].as_str().unwrap();
+        assert_eq!(u64::from_str_radix(failed_address, 16).unwrap(), 0x8000);
+        assert_eq!(detail["already_disassembled"], false);
+        // Ghidra can report true even when no instruction lands at the target.
+        assert!(detail["ok"].is_boolean());
+        assert_eq!(detail["landed"], false);
+        assert_eq!(detail["status"], "failed");
+
+        let batch = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(
+            batch.path(),
+            "disasm-at 8000\ncomment set 1000 must-not-run\n",
+        )
+        .unwrap();
+        let failed_batch = ghidra(harness)
+            .args(["--json", "batch"])
+            .arg(batch.path().to_str().unwrap())
+            .args(["--on-error", "stop"])
+            .run();
+        assert_eq!(failed_batch.exit_code, 1, "{failed_batch:?}");
+        let report: serde_json::Value = failed_batch.json();
+        assert_eq!(report[0]["commands_executed"], 1);
+        assert_eq!(report[0]["failed"], 1);
+        assert_eq!(report[0]["not_executed"], 1);
+        assert_eq!(report[0]["results"][0]["detail"]["landed"], false);
+        assert!(client.comment_get("1000").unwrap()["comments"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let cleared = ghidra(harness)
+            .args(["--json", "clear", "1000:1000", "--disasm-at", "8000"])
+            .run();
+        assert_eq!(cleared.exit_code, 1, "{cleared:?}");
+        assert!(cleared.stdout.is_empty(), "{cleared:?}");
+        let clear_error: serde_json::Value = serde_json::from_str(&cleared.stderr).unwrap();
+        let clear_detail = &clear_error["detail"];
+        assert_eq!(clear_detail["start"], instruction["address"]);
+        assert_eq!(clear_detail["end"], instruction["address"]);
+        assert_eq!(clear_detail["disasm_at"], failed_address);
+        assert!(clear_detail["ok"].is_boolean());
+        assert_eq!(clear_detail["landed"], false);
+        assert_eq!(clear_detail["status"], "cleared_disasm_incomplete");
+        assert_eq!(clear_detail["partial_changes_saved"], true);
+        assert!(clear_detail["hint"].is_string());
+
+        // A failed redisassembly still durably saves the successful clear operation.
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.open_program(&name).unwrap();
+        let listing = client
+            .send_command(
+                "disasm_range",
+                Some(serde_json::json!({"start":"1000","end":"1000"})),
+            )
+            .unwrap();
+        assert_eq!(listing["count"], 0);
+        let recovered = client
+            .send_command(
+                "clear_range",
+                Some(serde_json::json!({"start":"1000","end":"1000","disasm_at":"1000"})),
+            )
+            .unwrap();
+        assert_eq!(recovered["status"], "cleared_and_disassembled");
+        assert_eq!(recovered["ok"], true);
+        assert_eq!(recovered["landed"], true);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 /// Test exporting patched binary.
 #[test]
 #[serial]

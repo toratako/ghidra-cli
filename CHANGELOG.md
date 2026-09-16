@@ -71,6 +71,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `disasm-at` and incomplete `clear --disasm-at` now fail with retained
+  diagnostics, so `batch --on-error stop` stops before dependent edits. Successful
+  clearing is still saved and reported as a partial change when redisassembly fails.
 - Table, CSV, and TSV columns include keys from every output row, so fields
   present only in later rows are no longer silently dropped. Missing cells stay
   empty; existing column order and CSV/TSV escaping are preserved.

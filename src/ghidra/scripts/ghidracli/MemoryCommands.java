@@ -366,6 +366,8 @@ final class MemoryCommands {
                 }
                 result.add("instructions", instrs);
             } else {
+                result.addProperty("error", "Failed to disassemble at " + addr
+                    + ": no instruction was created");
                 Function owner = session.program().getFunctionManager().getFunctionContaining(addr);
                 if (owner != null) {
                     result.addProperty("hint", "Address falls inside existing function "
@@ -421,6 +423,10 @@ final class MemoryCommands {
                     result.addProperty("ok", ok);
                     result.addProperty("landed", landed);
                     result.addProperty("status", (ok && landed) ? "cleared_and_disassembled" : "cleared_disasm_incomplete");
+                    if (!ok || !landed) {
+                        result.addProperty("error", "Cleared range, but disassembly at "
+                            + disasmAt + " did not complete");
+                    }
                     if (!landed) {
                         result.addProperty("hint", "clearEnd may need to extend further past disasm_at: "
                             + "disassemble() can silently land no instruction if the new instruction's "
