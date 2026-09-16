@@ -291,20 +291,112 @@ fn test_find_calls() {
 
 #[test]
 #[serial]
-fn test_find_crypto() {
+fn test_find_crypto_recognizes_round_constants_in_both_byte_orders() {
     require_ghidra!();
-    let harness = harness();
-
-    let result = ghidra(harness)
-        .arg("find")
-        .arg("crypto")
-        .with_project(test_project(), TEST_PROGRAM)
-        .json_format()
-        .run();
-
-    result.assert_success();
-
-    let _: serde_json::Value = result.json();
+    let client = harness().client().unwrap();
+    let source = r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+public class CreateCryptoConstantFixture extends GhidraScript {
+    private byte[] words(ByteOrder order, int... values) {
+        var bytes = ByteBuffer.allocate(values.length * 4).order(order);
+        for (int value : values) bytes.putInt(value);
+        return bytes.array();
+    }
+    private void block(ProgramDB program, String name, long address, byte[] bytes) throws Exception {
+        program.getMemory().createInitializedBlock(name,
+            program.getAddressFactory().getDefaultAddressSpace().getAddress(address),
+            new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
+    }
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language, language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("crypto constant fixture");
+            try {
+                ByteOrder[] orders = {ByteOrder.BIG_ENDIAN, ByteOrder.LITTLE_ENDIAN};
+                for (int i = 0; i < orders.length; i++) {
+                    // SHA-512's 64-bit constants must never be labeled SHA-256.
+                    var sha512 = ByteBuffer.allocate(16).order(orders[i])
+                        .putLong(0x428a2f98d728ae22L).putLong(0x7137449123ef65cdL).array();
+                    block(program, "sha512_" + i, 0x1000 + i * 0x20, sha512);
+                    block(program, "incorrect_md5_" + i, 0x1100 + i * 0x20,
+                        words(orders[i], 0xd76aa478, 0xe8c7b756, 0x242070db, 0x01234567));
+                    if (Boolean.parseBoolean(getScriptArgs()[1])) {
+                        block(program, "sha256_" + i, 0x2000 + i * 0x10,
+                            words(orders[i], 0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5));
+                        block(program, "md5_" + i, 0x2020 + i * 0x10,
+                            words(orders[i], 0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee));
+                    }
+                }
+                if (Boolean.parseBoolean(getScriptArgs()[1])) {
+                    block(program, "aes_sbox", 0x2040,
+                        words(ByteOrder.BIG_ENDIAN, 0x637c777b, 0xf26b6fc5, 0x3001672b, 0xfed7ab76));
+                }
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#;
+    for include_matches in [false, true] {
+        let name = format!("crypto-constants-{}", uuid::Uuid::new_v4());
+        client
+            .script_run_source(
+                source,
+                &[name.clone(), include_matches.to_string()],
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(&name).unwrap();
+        let checked = std::panic::catch_unwind(|| {
+            let found = client.find_crypto().unwrap();
+            let rows = found["results"].as_array().unwrap();
+            if !include_matches {
+                assert!(
+                    rows.is_empty(),
+                    "unrelated constants were mislabeled: {found}"
+                );
+                assert_eq!(found["count"], 0);
+                return;
+            }
+            assert_eq!(found["count"], 5, "{found}");
+            assert_eq!(rows.len(), 5, "{found}");
+            for (kind, address) in [
+                ("SHA-256", 0x2000),
+                ("SHA-256", 0x2010),
+                ("MD5", 0x2020),
+                ("MD5", 0x2030),
+                ("AES S-box", 0x2040),
+            ] {
+                let row = rows
+                    .iter()
+                    .find(|row| {
+                        u64::from_str_radix(row["address"].as_str().unwrap(), 16).unwrap()
+                            == address
+                    })
+                    .unwrap_or_else(|| panic!("missing {kind} at {address:x}: {found}"));
+                assert_eq!(row["type"], kind);
+                let bytes = client.find_bytes(row["pattern"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    bytes["count"], 1,
+                    "reported pattern must match fixture bytes"
+                );
+                assert_eq!(bytes["results"][0]["address"], row["address"]);
+            }
+        });
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&name).unwrap();
+        if let Err(panic) = checked {
+            std::panic::resume_unwind(panic);
+        }
+    }
 }
 
 #[test]

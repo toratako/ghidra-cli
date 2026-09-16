@@ -510,8 +510,11 @@ final class SearchCommands {
 
             String[][] cryptoPatterns = {
                 {"AES S-box", "637c777bf26b6fc53001672bfed7ab76"},
-                {"SHA-256", "428a2f98d728ae227137449123ef65cd"},
-                {"MD5", "d76aa478e8c7b756242070db01234567"}
+                // First four 32-bit round constants, in big- and little-endian order.
+                {"SHA-256", "428a2f9871374491b5c0fbcfe9b5dba5"},
+                {"SHA-256", "982f8a4291443771cffbc0b5a5dbb5e9"},
+                {"MD5", "d76aa478e8c7b756242070dbc1bdceee"},
+                {"MD5", "78a46ad756b7c7e8db702024eecebdc1"}
             };
 
             for (String[] cp : cryptoPatterns) {
