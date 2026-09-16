@@ -13,6 +13,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/ImportSupport.java"),
     ),
     (
+        "ghidracli/ProjectDeletion.java",
+        include_str!("../scripts/ghidracli/ProjectDeletion.java"),
+    ),
+    (
         "GhidraCliBridge.java",
         include_str!("../scripts/GhidraCliBridge.java"),
     ),

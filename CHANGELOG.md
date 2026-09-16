@@ -26,6 +26,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Windows import tests normalize Ghidra's `/C:/...` executable paths before
   comparing them with native filesystem paths.
+- Project deletion holds the CLI lifecycle lock through removal and acquires
+  Ghidra's project lock, refusing deletion while an external Ghidra owner is active.
 - Stop, restart, and project deletion report final save failures and retain the
   JVM/program for recovery. Successful shutdown waits for accepted jobs and saving.
 - Program metadata, status, operation responses, and artifact manifests use the

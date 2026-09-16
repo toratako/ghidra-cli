@@ -75,7 +75,8 @@ follow program switch/close, automatic saves are visible in a separate database
 object before shutdown, and failed mutations cannot erase earlier edits. Save
 failures retain the editing result and program for recovery; explicit save keeps
 the same JVM. Stop/restart/project deletion also preserve unsaved state on final
-save failure; recovered edits survive shutdown and reopening.
+save failure; recovered edits survive shutdown and reopening. Project tests hold
+an external Ghidra owner to verify refusal and deletion after lock release.
 Real bridge tests cover OSGi loading of the whole source bundle.
 Batch coverage checks nonzero failure exits, preservation of per-command results
 and save errors, and stopping subsequent commands after a save failure or timeout.

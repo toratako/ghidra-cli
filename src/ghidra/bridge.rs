@@ -367,6 +367,14 @@ pub fn stop_bridge(project_path: &Path) -> Result<()> {
 }
 
 fn stop_bridge_with_timeout(project_path: &Path, timeout: Option<Duration>) -> Result<()> {
+    stop_bridge_then(project_path, timeout, || Ok(()))
+}
+
+fn stop_bridge_then<T>(
+    project_path: &Path,
+    timeout: Option<Duration>,
+    after_stop: impl FnOnce() -> Result<T>,
+) -> Result<T> {
     stop_bridge_with(
         project_path,
         timeout,
@@ -374,19 +382,51 @@ fn stop_bridge_with_timeout(project_path: &Path, timeout: Option<Duration>) -> R
         |port, deadline| BridgeClient::new(port).shutdown_with_deadline(deadline),
         std::time::Instant::now,
         std::thread::sleep,
+        after_stop,
     )
+}
+
+/// Stop and delete under the CLI lifecycle lock and Ghidra's own project lock.
+pub fn delete_project(project_path: &Path, ghidra_install_dir: &Path) -> Result<bool> {
+    stop_bridge_then(project_path, shutdown_timeout(), || {
+        let Some(paths) = super::project::ProjectPaths::new(project_path) else {
+            return Ok(false);
+        };
+        if !paths.exists() {
+            if paths.is_empty_reservation() {
+                std::fs::remove_dir(&paths.legacy)?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        // The bootstrap opens its own disposable project so it can acquire the
+        // target's Ghidra lock without opening any target database files.
+        let work = tempfile::Builder::new()
+            .prefix("ghidra-cli-delete-")
+            .tempdir()?;
+        let result = import::run_bootstrap(
+            &work.path().join("deletion"),
+            ghidra_install_dir,
+            &serde_json::json!({"delete_project": std::path::absolute(project_path)?}),
+            None,
+        )?;
+        result["deleted"]
+            .as_bool()
+            .context("Deletion receipt did not confirm the result")
+    })
 }
 
 // Keep shutdown dependencies injectable so lifecycle tests can control PID
 // checks, acknowledgements, and elapsed time without a blocking mock server.
-fn stop_bridge_with(
+fn stop_bridge_with<T>(
     project_path: &Path,
     timeout: Option<Duration>,
     mut check_alive: impl FnMut(u32) -> bool,
     mut request_shutdown: impl FnMut(u16, Option<std::time::Instant>) -> Result<()>,
     mut now: impl FnMut() -> std::time::Instant,
     mut sleep: impl FnMut(Duration),
-) -> Result<()> {
+    after_stop: impl FnOnce() -> Result<T>,
+) -> Result<T> {
     let deadline = timeout.map(|timeout| now() + timeout);
     let timeout_error = || {
         anyhow::Error::new(crate::ipc::protocol::BridgeTimeoutError {
@@ -429,7 +469,7 @@ fn stop_bridge_with(
     }
     cleanup_stale_files_locked(project_path)?;
     info!("Bridge stopped");
-    Ok(())
+    after_stop()
 }
 
 /// Get bridge status for a project.
@@ -461,6 +501,30 @@ pub enum BridgeStatus {
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn stopped_project_remains_locked_through_the_deletion_callback() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("delete-project");
+        std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+        stop_bridge_then(&project, Some(Duration::from_secs(1)), || {
+            assert!(
+                acquire_lifecycle_lock(
+                    &project,
+                    Some(std::time::Instant::now() + Duration::from_millis(30))
+                )
+                .is_err(),
+                "startup must not race deletion after the bridge exits"
+            );
+            Ok(())
+        })
+        .unwrap();
+        let _released = acquire_lifecycle_lock(
+            &project,
+            Some(std::time::Instant::now() + Duration::from_secs(1)),
+        )
+        .unwrap();
+    }
 
     #[test]
     fn shutdown_deadline_includes_lifecycle_lock_wait_and_retains_timeout_type() {
@@ -514,6 +578,7 @@ mod tests {
                 waits.push(wait);
                 elapsed.set(elapsed.get() + wait);
             },
+            || Ok(()),
         )
         .unwrap_err();
         assert!(acknowledged.get());
@@ -569,6 +634,7 @@ mod tests {
             },
             || started + elapsed.get(),
             |_| panic!("an expired shutdown must return without sleeping"),
+            || Ok(()),
         )
         .unwrap_err();
         assert!(attempted);

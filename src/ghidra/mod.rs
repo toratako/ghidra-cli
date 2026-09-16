@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct GhidraClient {
-    #[allow(dead_code)] // Retained for the public library verification API.
     install_dir: PathBuf,
     project_dir: PathBuf,
 }
@@ -61,6 +60,10 @@ impl GhidraClient {
 
     pub fn get_project_dir(&self) -> &Path {
         &self.project_dir
+    }
+
+    pub fn delete_project(&self, name: &str) -> anyhow::Result<bool> {
+        bridge::delete_project(&self.get_project_path(name), &self.install_dir)
     }
 }
 

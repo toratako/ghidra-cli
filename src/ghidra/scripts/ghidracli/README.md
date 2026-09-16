@@ -80,6 +80,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
 | `ProgramCommands`, `ProgramSession` | Program metadata, import/export/analysis, selection and release |
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
+| `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |

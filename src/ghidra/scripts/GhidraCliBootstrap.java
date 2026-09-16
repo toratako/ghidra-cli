@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import ghidra.app.script.GhidraScript;
 import ghidracli.ImportSupport;
+import ghidracli.ProjectDeletion;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +16,9 @@ public class GhidraCliBootstrap extends GhidraScript {
         JsonObject args = JsonParser.parseString(Files.readString(Path.of(paths[0]))).getAsJsonObject();
         JsonObject result;
         try {
-            if (args.has("create_project") && args.get("create_project").getAsBoolean()) {
+            if (args.has("delete_project")) {
+                result = ProjectDeletion.run(args.get("delete_project").getAsString());
+            } else if (args.has("create_project") && args.get("create_project").getAsBoolean()) {
                 result = new JsonObject();
                 result.addProperty("status", "success");
                 result.addProperty("ghidra_settings", ghidra.framework.Application.getUserSettingsDirectory().toString());

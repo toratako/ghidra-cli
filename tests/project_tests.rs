@@ -250,6 +250,110 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
 
 #[test]
 #[serial]
+fn test_project_delete_preserves_an_external_ghidra_owner() -> anyhow::Result<()> {
+    use std::time::{Duration, Instant};
+
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra external owner ")
+        .tempdir()?;
+    let target = root.path().join("target Project.v1/project");
+    let holder = root.path().join("holder/project");
+    common::fixture::copy_analyzed_project(&target)?;
+    common::fixture::copy_analyzed_project(&holder)?;
+    let harness =
+        common::DaemonTestHarness::new(holder.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    let worker = harness.client()?;
+    let ready = root.path().join("ready");
+    let release = root.path().join("release");
+    let args = vec![
+        target.parent().unwrap().to_str().unwrap().to_owned(),
+        target.file_name().unwrap().to_str().unwrap().to_owned(),
+        ready.to_str().unwrap().to_owned(),
+        release.to_str().unwrap().to_owned(),
+        common::FIXTURE_PROGRAM.to_owned(),
+    ];
+    // Open the target through Ghidra itself, without any CLI discovery for it.
+    let owner = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.base.project.GhidraProject;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class HoldExternalProject extends GhidraScript {
+    public void run() throws Exception {
+        String[] args = getScriptArgs();
+        GhidraProject project = GhidraProject.openProject(args[0], args[1], false);
+        try {
+            project.openProgram("/", args[4], false);
+            Files.writeString(Path.of(args[2]), "locked");
+            long deadline = System.currentTimeMillis() + 120000;
+            while (!Files.exists(Path.of(args[3]))) {
+                if (System.currentTimeMillis() > deadline) {
+                    throw new IllegalStateException("External owner was not released");
+                }
+                Thread.sleep(20);
+            }
+        } finally {
+            project.close();
+        }
+    }
+}
+"#,
+            &args,
+            &[],
+            false,
+        )
+    });
+    let attempt = (|| -> anyhow::Result<_> {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while !ready.exists() {
+            anyhow::ensure!(!owner.is_finished(), "External owner exited before locking");
+            anyhow::ensure!(
+                Instant::now() < deadline,
+                "External owner did not acquire its lock"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        common::run_command_with_output(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .args(["--json", "project", "delete"])
+                .arg(&target),
+            Duration::from_secs(60),
+        )
+    })();
+    std::fs::write(&release, [])?;
+    owner.join().expect("external owner thread")?;
+    let output = attempt?;
+    assert!(!output.status.success(), "{output:?}");
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr)?;
+    assert_eq!(error["detail"]["stage"], "project.delete_lock", "{error}");
+    assert!(target.with_added_extension("gpr").is_file());
+    assert!(target.with_added_extension("rep").is_dir());
+    std::fs::create_dir(&target)?;
+    let unrelated = target.join("keep.txt");
+    std::fs::write(&unrelated, "retain")?;
+    // The preserved database must still open, and deletion must succeed after release.
+    drop(common::DaemonTestHarness::new(
+        target.to_str().unwrap(),
+        common::FIXTURE_PROGRAM,
+    )?);
+    let output = common::run_command_with_output(
+        std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+            .args(["--json", "project", "delete"])
+            .arg(&target),
+        Duration::from_secs(60),
+    )?;
+    assert!(output.status.success(), "{output:?}");
+    assert!(!target.with_added_extension("gpr").exists());
+    assert!(!target.with_added_extension("rep").exists());
+    assert_eq!(std::fs::read_to_string(unrelated)?, "retain");
+    Ok(())
+}
+
+#[test]
+#[serial]
 fn test_import_existing_program() {
     require_ghidra!();
 

@@ -98,6 +98,10 @@ while bridges are running.
   includes lifecycle-lock acquisition,
   connection, reply, and exit. Expiry returns the typed timeout (exit 75),
   preserving discovery and the live process; discovery PIDs are never force-killed.
+- `delete_project()` holds that lifecycle lock across stop and removal. A bootstrap
+  in a disposable project acquires the target's Ghidra `LockFactory` lock before
+  removing `.rep`/`.gpr`; an external Ghidra owner prevents deletion. It releases
+  only its own lock and leaves nonempty bare project directories intact.
 - Startup and shutdown clean stale port/PID files only under the lifecycle lock.
   A live recorded PID prevents cleanup even if its port is unreachable. Status
   is observational and does not clean files.

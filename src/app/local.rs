@@ -3,7 +3,6 @@ use super::project::project_exists;
 use crate::cli;
 use crate::config::Config;
 use crate::error::GhidraError;
-use crate::ghidra::bridge;
 use crate::ghidra::GhidraClient;
 use serde_json::json;
 use std::path::PathBuf;
@@ -186,53 +185,14 @@ pub(super) fn handle_project_command(
         }
 
         ProjectCommands::Delete { name } => {
-            // analyzeHeadless materializes a project as sibling files
-            // `<parent>/<basename>.gpr` (descriptor) + `<basename>.rep` (data dir),
-            // NOT a `<parent>/<basename>` directory. Derive the real paths from the
-            // basename so absolute project names work too. `create_project` may
-            // also have left an empty `<parent>/<basename>` directory.
-            let project_path = client.get_project_path(&name);
-            let Some(paths) = crate::ghidra::project::ProjectPaths::new(&project_path) else {
-                output.result(
-                    &json!({"project": name, "deleted": false}),
-                    &format!("Project '{}' not found", name),
-                )?;
-                return Ok(());
-            };
-            if !paths.exists() && !paths.is_empty_reservation() {
-                output.result(
-                    &json!({"project": name, "deleted": false}),
-                    &format!("Project '{}' not found", name),
-                )?;
-                return Ok(());
-            }
-            let gpr = paths.descriptor;
-            let rep = paths.data;
-            let legacy_dir = paths.legacy;
-
-            // Stop any running bridge first so the JVM releases the project lock
-            // before we delete its files. stop_bridge also clears the stale
-            // port/pid/`.lock`/`.lock~` files via cleanup_stale_files.
-            bridge::stop_bridge(&project_path)?;
-
-            if gpr.exists() {
-                std::fs::remove_file(&gpr)?;
-            }
-            if rep.exists() {
-                std::fs::remove_dir_all(&rep)?;
-            }
-            if legacy_dir.is_dir() {
-                // create_project only reserves an empty directory. Contents
-                // added later are not Ghidra's sibling .gpr/.rep artifacts.
-                if let Err(error) = std::fs::remove_dir(&legacy_dir) {
-                    if error.kind() != std::io::ErrorKind::DirectoryNotEmpty {
-                        return Err(error.into());
-                    }
-                }
-            }
+            let deleted = client.delete_project(&name)?;
             output.result(
-                &json!({"project": name, "deleted": true}),
-                &format!("Project '{}' deleted", name),
+                &json!({"project": name, "deleted": deleted}),
+                &format!(
+                    "Project '{}' {}",
+                    name,
+                    if deleted { "deleted" } else { "not found" }
+                ),
             )?;
         }
         ProjectCommands::Info { name } => {
