@@ -14,10 +14,6 @@ pub enum GhidraError {
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
 
-    #[allow(dead_code)]
-    #[error("Invalid data type: {0}")]
-    InvalidDataType(String),
-
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
