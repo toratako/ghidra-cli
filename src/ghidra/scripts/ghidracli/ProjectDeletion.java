@@ -6,7 +6,6 @@ import generic.util.LockFactory;
 import ghidra.framework.model.ProjectLocator;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
@@ -51,14 +50,6 @@ public final class ProjectDeletion {
                 });
             }
             Files.deleteIfExists(descriptor);
-            // Older create_project only reserved an empty bare directory.
-            if (project.isDirectory()) {
-                try {
-                    deleted |= Files.deleteIfExists(project.toPath());
-                } catch (DirectoryNotEmptyException ignored) {
-                    // Preserve files users placed outside the .gpr/.rep artifacts.
-                }
-            }
             JsonObject result = new JsonObject();
             result.addProperty("status", "success");
             result.addProperty("deleted", deleted);

@@ -1156,7 +1156,14 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
             json!([symbol_fixture("9007199254740993", "00AB", "label")]),
         ),
         (
-            vec!["rename", "shared", "renamed", "--filter", "kind=function"],
+            vec![
+                "symbol",
+                "rename",
+                "shared",
+                "renamed",
+                "--filter",
+                "kind=function",
+            ],
             "symbol_rename",
             json!([symbol_fixture("9007199254740994", "00CD", "function")]),
         ),
@@ -1262,7 +1269,7 @@ fn symbol_resolution_errors_never_send_a_mutation() {
             "Symbol not found: missing",
         ),
         (
-            vec!["rename", "shared", "renamed"],
+            vec!["symbol", "rename", "shared", "renamed"],
             "matches 2 symbols at addresses [00AB, 00CD]",
         ),
         (

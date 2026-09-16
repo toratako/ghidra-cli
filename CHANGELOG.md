@@ -15,6 +15,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove the top-level `version` command; use `--version` or `-V`.
+- Remove top-level `rename`/`mv` in favor of `symbol rename`, and remove
+  `project create` and `init`. Import creates projects as needed; configuration
+  works without initialization and can be updated with `config set`.
+- Stop treating bare directories as project reservations. Project management
+  recognizes `.gpr`/`.rep` artifacts and leaves bare directories intact.
 - Remove the `patch`, `dump` (including top-level `export`), and `diff` namespaces,
   and the top-level `info` alias. Use `program export binary` for binary export
   and `query` for imports/exports, or the corresponding list commands.

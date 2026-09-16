@@ -70,7 +70,7 @@ fn unavailable_file_logging_does_not_prevent_commands() {
     std::fs::write(&not_a_directory, "keep").unwrap();
     let output = isolated_command(&temp)
         .env("XDG_DATA_HOME", &not_a_directory)
-        .arg("version")
+        .args(["config", "list"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -94,7 +94,7 @@ fn configured_json_default_and_explicit_flags_choose_presentation() {
     ] {
         let output = isolated_command(&temp)
             .args(flags)
-            .arg("version")
+            .args(["config", "list"])
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
@@ -132,10 +132,8 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
             .arg(&requested);
         cmd
     };
-    command()
-        .args(["project", "create", "target"])
-        .assert()
-        .success();
+    // A bare directory is not a Ghidra project, even when empty.
+    std::fs::create_dir(requested.join("target")).unwrap();
     assert!(requested.join("target").is_dir());
     assert!(!configured.join("target").exists());
     let info = command()
@@ -145,21 +143,26 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
     assert!(info.status.success(), "{info:?}");
     let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
     assert_eq!(info["path"], serde_json::json!(requested.join("target")));
-    assert_eq!(info["exists"], true);
+    assert_eq!(info["exists"], false);
     std::fs::create_dir(configured.join("target")).unwrap();
     let output = command().args(["project", "list"]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
-        serde_json::json!(["target"])
+        serde_json::json!([])
     );
-    command()
+    let output = command()
         .args(["project", "delete", "target"])
-        .assert()
-        .success();
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()["deleted"],
+        false
+    );
     assert!(configured.join("target").is_dir());
     assert!(environment.join("target").is_dir());
-    assert!(!requested.join("target").exists());
+    assert!(requested.join("target").is_dir());
     let info = command()
         .args(["project", "info", "target"])
         .output()
@@ -211,7 +214,7 @@ fn project_info_resolves_positional_global_and_configured_targets() {
     let temp = tempfile::tempdir().unwrap();
     let directory = temp.path().join("projects");
     for name in ["configured", "global", "positional"] {
-        std::fs::create_dir_all(directory.join(name)).unwrap();
+        std::fs::create_dir_all(directory.join(format!("{name}.rep"))).unwrap();
     }
     std::fs::write(
         temp.path().join("config.yaml"),
@@ -400,7 +403,6 @@ fn local_results_obey_json_modes() {
     let temp = tempfile::tempdir().unwrap();
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         for args in [
-            vec!["version"],
             vec!["config", "list"],
             vec!["config", "get", "default_limit"],
             vec!["status", "--project", "missing"],
@@ -604,18 +606,15 @@ fn invalid_choices_list_valid_values_before_loading_config() {
 fn quiet_mutations_keep_results_and_apply_changes() {
     let temp = tempfile::tempdir().unwrap();
     let output = isolated_command(&temp)
-        .args(["--quiet", "init"])
+        .args(["--quiet", "config", "set", "default_limit", "7"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(std::path::Path::new(result["config_path"].as_str().unwrap()).exists());
+    assert_eq!(result["key"], "default_limit");
+    assert!(temp.path().join("config.yaml").exists());
 
-    isolated_command(&temp)
-        .args(["--quiet", "config", "set", "default_limit", "7"])
-        .assert()
-        .success();
     let output = isolated_command(&temp)
         .args(["config", "get", "default_limit"])
         .output()
@@ -690,7 +689,7 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
             .env("GHIDRA_CLI_CONFIG", temp.path().join("config.yaml"))
             .env("XDG_DATA_HOME", temp.path().join("data"))
             .args(&flags)
-            .arg("init")
+            .args(["config", "set", "default_limit", "7"])
             .stdout(Stdio::from(slave))
             .stderr(Stdio::piped());
         let child = command.spawn().unwrap();
@@ -706,15 +705,11 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
             serde_json::from_str::<serde_json::Value>(&stdout).unwrap();
             assert!(output.stderr.is_empty());
             if flags == ["--pretty"] {
-                assert!(stdout.contains("\n  \"config_path\""), "{stdout}");
+                assert!(stdout.contains("\n  \"key\""), "{stdout}");
             }
         } else {
-            assert!(stdout.starts_with("Configuration saved to:"), "{stdout}");
-            if flags.is_empty() {
-                assert!(String::from_utf8_lossy(&output.stderr).contains("Run 'ghidra-cli doctor'"));
-            } else {
-                assert!(output.stderr.is_empty());
-            }
+            assert!(stdout.starts_with("Configuration updated"), "{stdout}");
+            assert!(output.stderr.is_empty());
         }
     }
 }
@@ -787,6 +782,11 @@ fn removed_commands_are_rejected_before_loading_config() {
         vec!["memory", "search", "90"],
         vec!["dump", "imports"],
         vec!["export", "imports"],
+        vec!["rename", "old", "new"],
+        vec!["mv", "old", "new"],
+        vec!["project", "create", "target"],
+        vec!["init"],
+        vec!["version"],
         vec!["summary"],
         vec!["info"],
         vec!["set-default", "program", "sample"],

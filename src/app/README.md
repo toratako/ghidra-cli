@@ -9,14 +9,14 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 | `mod.rs` | Command routing, early filter validation, bridge/program selection, and one-restart compatibility recovery |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
-| `execute/symbols.rs` | Resolve and guard symbol mutation targets; share rename handling with the top-level alias |
+| `execute/symbols.rs` | Resolve and guard symbol mutation targets |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
 | `management.rs` | Start/stop/restart/status/ping/jobs/cancel handlers and explicit save without auto-start |
 | `installation.rs` | Setup and doctor commands |
-| `local.rs` | Initialization, version, configuration, defaults, and project commands |
+| `local.rs` | Configuration and project commands |
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
 Command-level project/program options override global options and configured

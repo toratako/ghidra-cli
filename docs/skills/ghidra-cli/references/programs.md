@@ -3,7 +3,6 @@
 ## Project, program, and bridge state
 
 ```bash
-ghidra-cli project create target
 ghidra-cli project list
 ghidra-cli project info target
 ghidra-cli program list --project target

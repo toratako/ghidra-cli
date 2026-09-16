@@ -163,18 +163,12 @@ pub enum Commands {
     /// Program statistics
     Stats(StatsArgs),
 
-    /// Show version information
-    Version,
-
     /// Check installation, storage writes, and local communication
     Doctor {
         /// Also start, ping, and stop Ghidra using a disposable project and the current environment
         #[arg(long)]
         runtime: bool,
     },
-
-    /// Initialize configuration
-    Init,
 
     /// Import a binary into a project
     Import(ImportArgs),
@@ -244,10 +238,6 @@ pub enum Commands {
 
     /// Download and setup Ghidra automatically
     Setup(SetupArgs),
-
-    /// Rename a symbol (shortcut for `symbol rename`)
-    #[command(alias = "mv")]
-    Rename(RenameArgs),
 }
 
 #[cfg(test)]

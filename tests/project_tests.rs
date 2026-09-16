@@ -13,92 +13,12 @@ fn unique_project_name(prefix: &str) -> String {
 }
 
 #[test]
-fn test_project_create() {
-    require_ghidra!();
-
-    let project = unique_project_name("create");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("create")
-        .arg(&project)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("created").or(predicate::str::contains("Created")));
-
-    // Cleanup
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("delete")
-        .arg(&project)
-        .assert()
-        .success();
-}
-
-#[test]
 fn test_project_list() {
     require_ghidra!();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("list")
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_project_info() {
-    require_ghidra!();
-
-    let project = unique_project_name("info");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("create")
-        .arg(&project)
-        .assert()
-        .success();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("info")
-        .arg(&project)
-        .assert()
-        .success();
-
-    // Cleanup
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("delete")
-        .arg(&project)
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_project_lifecycle() {
-    require_ghidra!();
-
-    let project = unique_project_name("lifecycle");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("create")
-        .arg(&project)
-        .assert()
-        .success();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("list")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(&project));
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("project")
-        .arg("delete")
-        .arg(&project)
         .assert()
         .success();
 }
@@ -130,11 +50,31 @@ fn test_import_binary() {
     assert!(status.success(), "Import failed with status: {}", status);
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["project", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&project));
+    let info = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["project", "info", &project])
+        .output()
+        .unwrap();
+    assert!(info.status.success(), "{info:?}");
+    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(info["exists"], true);
+    let bare = std::path::PathBuf::from(info["path"].as_str().unwrap());
+    std::fs::create_dir(&bare).unwrap();
+
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("project")
         .arg("delete")
         .arg(&project)
         .assert()
         .success();
+    assert!(
+        bare.is_dir(),
+        "Deleting a project must preserve its same-named bare directory"
+    );
+    std::fs::remove_dir(bare).unwrap();
 }
 
 #[test]

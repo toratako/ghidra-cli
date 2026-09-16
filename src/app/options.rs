@@ -27,7 +27,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Batch(_)
             | Commands::Stats(_)
             | Commands::Program(_)
-            | Commands::Rename(_)
     )
 }
 
@@ -142,7 +141,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Save(args) => args.project.clone(),
         },
         Commands::Batch(args) => args.project.clone(),
-        Commands::Rename(args) => args.project.clone(),
         _ => None,
     }
 }
@@ -259,7 +257,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Save(args) => args.program.clone(),
         },
         Commands::Batch(args) => args.program.clone(),
-        Commands::Rename(args) => args.program.clone(),
         _ => None,
     }
 }

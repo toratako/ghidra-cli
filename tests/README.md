@@ -36,7 +36,7 @@ cargo test --test e2e --test output_format_integration --test routing_tests --te
 `command_tests::test_doctor` checks a working installation in CI's
 `readonly-integration` job; `output_format_integration` checks doctor's failure
 output/exit status with a missing installation path.
-It also checks project listing, empty reservation deletion, and preservation of
+It also checks project listing, exclusion of bare directories, and preservation of
 project files when Ghidra is unavailable. Successful `.gpr`/`.rep` deletion uses
 Ghidra's lock API and belongs in `project_tests`, including directory overrides
 and preservation of unrelated source files.
@@ -68,7 +68,7 @@ identity. Filter a domain with, for example,
 | `memory_tests` | Pointer decoding across target widths, byte orders, and address spaces |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
-| `command_tests` | Version, doctor, config, init |
+| `command_tests` | Version flags, doctor, config |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
 | `routing_tests` | Recorded bridge requests: batch targets, list pagination, and client file paths without Ghidra |

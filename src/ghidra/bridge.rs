@@ -393,10 +393,6 @@ pub fn delete_project(project_path: &Path, ghidra_install_dir: &Path) -> Result<
             return Ok(false);
         };
         if !paths.exists() {
-            if paths.is_empty_reservation() {
-                std::fs::remove_dir(&paths.legacy)?;
-                return Ok(true);
-            }
             return Ok(false);
         }
         // The bootstrap opens its own disposable project so it can acquire the

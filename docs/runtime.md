@@ -34,12 +34,12 @@ Set a persistent JDK with `ghidra-cli config set java_home /opt/jdk-21`.
 JDK selection precedence is `--java-home`, `GHIDRA_CLI_JAVA_HOME`, config
 `java_home`, then automatic detection. Flag and environment overrides do not
 change the saved value.
-Project deletion removes the `.gpr`/`.rep` artifacts and an empty directory
-reserved by `project create`; a nonempty same-named directory is retained.
+Project listing and existence checks recognize `.gpr`/`.rep` artifacts.
+Deletion removes those artifacts and leaves same-named bare directories intact.
 Deletion first stops the CLI bridge and obtains Ghidra's project lock; another
 Ghidra process using the project prevents deletion. Deleting `.gpr`/`.rep`
 requires a working Ghidra/JDK installation; if it is unavailable, the project
-files are retained. Removing an empty reservation does not launch Ghidra.
+files are retained.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
 the default falls back from the cache directory to `~/ghidra-cli-projects`.
 

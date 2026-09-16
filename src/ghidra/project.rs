@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 pub(crate) struct ProjectPaths {
     pub descriptor: PathBuf,
     pub data: PathBuf,
-    pub legacy: PathBuf,
 }
 
 impl ProjectPaths {
@@ -15,7 +14,6 @@ impl ProjectPaths {
         Some(Self {
             descriptor: parent.join(format!("{name}.gpr")),
             data: parent.join(format!("{name}.rep")),
-            legacy: project.to_path_buf(),
         })
     }
 
@@ -29,11 +27,6 @@ impl ProjectPaths {
                 .map(|entries| entries.flatten().any(|entry| entry.path().is_dir()))
                 .unwrap_or(false)
     }
-
-    pub fn is_empty_reservation(&self) -> bool {
-        self.legacy.is_dir()
-            && std::fs::read_dir(&self.legacy).is_ok_and(|mut entries| entries.next().is_none())
-    }
 }
 
 pub(crate) fn list_projects(directory: &Path) -> std::io::Result<Vec<String>> {
@@ -45,10 +38,6 @@ pub(crate) fn list_projects(directory: &Path) -> std::io::Result<Vec<String>> {
             let Some(name) = name.to_str() else { continue };
             if entry.path().is_dir() {
                 if let Some(name) = name.strip_suffix(".rep") {
-                    projects.insert(name.to_owned());
-                } else if ProjectPaths::new(&entry.path())
-                    .is_some_and(|paths| paths.is_empty_reservation())
-                {
                     projects.insert(name.to_owned());
                 }
             } else if entry.path().is_file() {

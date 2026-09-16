@@ -17,7 +17,7 @@ use clap::{CommandFactory, FromArgMatches};
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
-use local::{handle_config_command, handle_init, handle_project_command, handle_version};
+use local::{handle_config_command, handle_project_command};
 pub(super) use management::handle_bridge_command;
 use management::handle_program_save;
 use options::{
@@ -33,9 +33,7 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
     let output = Output::new(&cli);
     match &cli.command {
         // Non-bridge commands
-        Commands::Init => handle_init(output),
         Commands::Doctor { runtime } => handle_doctor(&cli.projects_dir, *runtime, output),
-        Commands::Version => handle_version(output),
         Commands::Config(cmd) => handle_config_command(cmd.clone(), output),
         Commands::Project(args) => handle_project_command(
             args.command.clone(),

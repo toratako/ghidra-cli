@@ -9,8 +9,6 @@ pub struct ProjectArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum ProjectCommands {
-    /// Create a new project
-    Create { name: String },
     /// List all projects
     List,
     /// Delete a project

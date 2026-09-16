@@ -7,47 +7,6 @@ use crate::ghidra::GhidraClient;
 use serde_json::json;
 use std::path::PathBuf;
 
-pub(super) fn handle_init(output: Output) -> anyhow::Result<()> {
-    let config = Config::update(|config| {
-        if config.ghidra_project_dir.is_none() {
-            config.ghidra_project_dir = Some(Config::default_project_dir()?);
-        }
-        Ok(())
-    })?;
-
-    if config.ghidra_install_dir.is_none() {
-        output.progress("Ghidra installation not found automatically.");
-        output.progress(
-            "Please set GHIDRA_INSTALL_DIR environment variable or run 'ghidra-cli setup'.",
-        );
-    }
-
-    // Set default project directory. Must avoid dot-prefixed path components,
-    // which Ghidra 12.1+ rejects (see Config::default_project_dir).
-    let project_dir = config.get_project_dir()?;
-
-    let path = Config::config_path()?;
-    output.progress("Run 'ghidra-cli doctor' to verify your installation.");
-    output.result(
-        &json!({"config_path": path, "project_dir": project_dir}),
-        &format!(
-            "Configuration saved to: {}\nProject directory: {}",
-            path.display(),
-            project_dir.display()
-        ),
-    )
-}
-
-pub(super) fn handle_version(output: Output) -> anyhow::Result<()> {
-    output.result(
-        &json!({"name": "ghidra-cli", "version": env!("CARGO_PKG_VERSION")}),
-        &format!(
-            "ghidra-cli {}\nRust CLI for Ghidra reverse engineering",
-            env!("CARGO_PKG_VERSION")
-        ),
-    )
-}
-
 pub(super) fn handle_config_command(
     cmd: cli::ConfigCommands,
     output: Output,
@@ -142,13 +101,6 @@ pub(super) fn handle_project_command(
     let client = GhidraClient::new(config.clone())?;
 
     match cmd {
-        ProjectCommands::Create { name } => {
-            client.create_project(&name)?;
-            output.result(
-                &json!({"project": name, "created": true}),
-                &format!("Project '{}' created", name),
-            )?;
-        }
         ProjectCommands::List => {
             let projects = crate::ghidra::project::list_projects(client.get_project_dir())?;
             let human = if projects.is_empty() {
@@ -173,10 +125,8 @@ pub(super) fn handle_project_command(
         ProjectCommands::Info { name } => {
             let project_name = resolve_project_name(&name.or_else(|| project.clone()), &config)?;
             let project_path = client.get_project_path(&project_name);
-            // Listing and deletion also recognize an empty directory reserved
-            // by `project create`; import still requires actual Ghidra artifacts.
             let exists = crate::ghidra::project::ProjectPaths::new(&project_path)
-                .is_some_and(|paths| paths.exists() || paths.is_empty_reservation());
+                .is_some_and(|paths| paths.exists());
             output.result(
                 &json!({"project": project_name, "path": project_path, "exists": exists}),
                 &format!(

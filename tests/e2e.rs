@@ -2,23 +2,22 @@
 //!
 //! This is a lightweight smoke test that verifies basic CLI functionality without Ghidra.
 //! Comprehensive test coverage is in:
-//! - command_tests.rs (version, doctor, config)
+//! - command_tests.rs (version flags, doctor, config)
 //! - project_tests.rs (project management, import, analyze)
 //! - daemon_tests.rs (daemon lifecycle)
 //! - query_tests.rs (function, strings, memory, decompile, query)
 //! - unimplemented_tests.rs (graceful error messages)
 
-use predicates::prelude::*;
-
 /// Smoke test - verifies basic CLI commands work
 #[test]
 fn test_smoke() {
-    // Version command should always work
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ghidra-cli"));
+    for flag in ["--version", "-V"] {
+        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .arg(flag)
+            .assert()
+            .success()
+            .stdout(concat!("ghidra-cli ", env!("CARGO_PKG_VERSION"), "\n"));
+    }
 
     // Config list should work
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")

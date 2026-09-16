@@ -6,11 +6,11 @@ use predicates::prelude::*;
 mod common;
 
 #[test]
-fn test_version() {
+fn test_version_flag() {
     require_ghidra!();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("version")
+        .arg("--version")
         .assert()
         .success()
         .stdout(predicate::str::contains("ghidra-cli"));
@@ -160,22 +160,6 @@ fn test_config_reset() {
 }
 
 #[test]
-fn test_init() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("init")
-        .assert()
-        .success();
-
-    assert!(config_path.exists());
-}
-
-#[test]
 fn test_config_set_default_program() {
     require_ghidra!();
 
@@ -263,7 +247,7 @@ fn config_invalid_format_preserves_previous_file() {
 }
 
 #[test]
-fn config_relative_filename_and_init_preserve_existing_settings() {
+fn config_relative_filename_updates_preserve_existing_settings() {
     let temp = tempfile::tempdir().unwrap();
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .current_dir(temp.path())
@@ -276,12 +260,12 @@ fn config_relative_filename_and_init_preserve_existing_settings() {
         .current_dir(temp.path())
         .env("GHIDRA_CLI_CONFIG", "config.yaml")
         .env("XDG_DATA_HOME", temp.path())
-        .arg("init")
+        .args(["config", "set", "default_limit", "7"])
         .assert()
         .success();
     let config: ghidra_cli::config::Config =
         serde_yaml::from_str(&std::fs::read_to_string(temp.path().join("config.yaml")).unwrap())
             .unwrap();
     assert_eq!(config.default_program.as_deref(), Some("keep-me"));
-    assert!(config.ghidra_project_dir.is_some());
+    assert_eq!(config.default_limit, Some(7));
 }

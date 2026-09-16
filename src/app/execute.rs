@@ -404,7 +404,6 @@ pub(super) fn execute_via_bridge(
                 AnalyzerCommands::Run(_) => client.analyze_run(),
             }
         }
-        Commands::Rename(args) => symbols::rename(client, args),
         _ => anyhow::bail!("Command not supported"),
     }
 }

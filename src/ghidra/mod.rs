@@ -39,25 +39,6 @@ impl GhidraClient {
         self.project_dir.join(project_name)
     }
 
-    pub fn project_exists(&self, project_name: &str) -> bool {
-        let project_path = self.get_project_path(project_name);
-        project::ProjectPaths::new(&project_path).is_some_and(|paths| paths.exists())
-    }
-
-    pub fn create_project(&self, project_name: &str) -> Result<()> {
-        let project_path = self.get_project_path(project_name);
-
-        if self.project_exists(project_name) {
-            return Ok(());
-        }
-
-        // Ghidra creates the project automatically when you import or process a file
-        // Just create the directory structure
-        std::fs::create_dir_all(&project_path)?;
-
-        Ok(())
-    }
-
     pub fn get_project_dir(&self) -> &Path {
         &self.project_dir
     }
