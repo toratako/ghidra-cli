@@ -5,6 +5,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Move `patch bytes ADDRESS HEX` to `memory write ADDRESS HEX` and the bridge
+  command `memory_write`. Byte validation, code-unit clearing, and automatic saving
+  retain their existing behavior.
+- Consolidate `summary` into `program info`, including query/output options, and
+  `set-default` into `config set default_program|default_project VALUE`.
+
+### Removed
+
+- Remove the `patch`, `dump` (including top-level `export`), and `diff` namespaces,
+  and the top-level `info` alias. Use `program export binary` for binary export
+  and `query` for imports/exports, or the corresponding list commands.
+- Remove `memory search`, `find interesting`, `find crypto`, `find function`,
+  `script java`, `script python`, and `graph export`.
+- Remove `function x-refs`, `function decompile`, and `function tag`; use `x-ref`,
+  `decompile`, and `tag`. Use `function list --filter` for function name searches.
+
 ## [0.5.0] - 2026-09-17
 
 ### Added

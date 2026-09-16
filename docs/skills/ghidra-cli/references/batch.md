@@ -42,7 +42,7 @@ query environment defaults exist. Program switches persist for subsequent lines
 in that project. Filters, fields, sorting, limits, and counts apply within each
 result; see [query controls](exploration.md#query-controls).
 
-For import inputs and program/patch export destinations, see
+For import inputs and program export destinations, see
 [artifact paths](programs.md#export).
 
 ## Result structure

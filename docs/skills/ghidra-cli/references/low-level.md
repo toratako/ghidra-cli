@@ -48,16 +48,15 @@ and execute with `analyzer run`.
 ## Patching
 
 ```bash
-ghidra-cli patch bytes 0x401234 "90 90" --project target
-ghidra-cli patch nop 0x401234 --count 5 --project target
+ghidra-cli memory write 0x401234 "90 90" --project target
 ```
 
-`patch nop --count N` walks up to N consecutive instructions (default 1), including
-variable-length instructions. A missing first instruction is an error; a later
-gap ends successfully with a smaller returned `count`. Check that count. Failed
-nested mutations can retain partial changes; see
+`memory write ADDRESS HEX` accepts non-empty, complete hex byte pairs,
+contiguous or quoted with spaces. Supply the intended instruction encoding for
+the target ISA. The entire range must be mapped and initialized. Writing clears
+existing code units in that range and restores any temporarily changed block
+write permissions. Use `disasm-at` to re-disassemble when needed.
+Failed nested mutations can retain partial changes; see
 [persistence semantics](../SKILL.md#results-edits-and-jobs).
-`patch nop` supports x86 (`0x90`) and rejects other processors before editing.
-For other ISAs, use `patch bytes` with the intended instruction encoding.
 
-Use [patch export](programs.md#export) to write the patched binary.
+Use [program export binary](programs.md#export) to write the edited binary.

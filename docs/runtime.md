@@ -43,6 +43,10 @@ files are retained. Removing an empty reservation does not launch Ghidra.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
 the default falls back from the cache directory to `~/ghidra-cli-projects`.
 
+Set default targets with `ghidra-cli config set default_project target` and
+`ghidra-cli config set default_program target.bin`. Explicit command targets
+override these saved defaults.
+
 Configuration updates lock the resolved config target and atomically replace its
 contents. Existing config symlinks remain links; a dangling link fails rather
 than being replaced. Concurrent updates preserve unrelated settings.

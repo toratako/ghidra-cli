@@ -17,13 +17,13 @@ ghidra-cli stop --project target
 ```
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
-`program list`, `program info`, and `summary` report the saved name and project
+`program list` and `program info` report the saved name and project
 file `path`. `program list` includes subfolders; `status` uses the same recursive
 listing for `program_count`. Use `path` to distinguish same-named programs.
 Other program responses and artifact manifests use the saved
 name. `executable_path` identifies the original input file; Ghidra's internal
 Program name can differ and is not used as the CLI display name.
-`stats` reports program statistics; `summary` reports the loaded program's
+`stats` reports program statistics; `program info` reports the loaded program's
 metadata. See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 
@@ -59,9 +59,7 @@ see [disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-
 ```bash
 ghidra-cli program export c --project target -o ./target.c
 ghidra-cli program export gzf --project target -o ./target.gzf
-ghidra-cli graph export dot --project target | jq -r '.[0].output' \
-  > ./calls.dot
-ghidra-cli patch export -o ./target.patched.bin --project target
+ghidra-cli program export binary -o ./target.patched.bin --project target
 ```
 
 `program export gzf -o PATH` saves the program before packing, stages the archive
@@ -70,6 +68,6 @@ successful export. Failure or cancellation before publication preserves an
 existing destination; a filesystem without atomic replacement support returns
 an error.
 
-Import inputs and program/patch export destinations resolve relative to the CLI's
+Import inputs and program export destinations resolve relative to the CLI's
 working directory, including when reusing a bridge started elsewhere or executing
 inside a batch.

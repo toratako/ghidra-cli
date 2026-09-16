@@ -12,8 +12,7 @@ ghidra-cli script run - --project target < ./scripts/Inspect.java
 Script paths resolve absolutely; results include arguments after `--` and captured
 stdout. Artifact hash/read failures return errors. Repeat `--expect PATH[:MIN_ROWS]`
 to reject missing/empty/short artifacts; `--allow-empty` permits expected empty files.
-Inline `script python`/`script java` are disabled: there is no embedded Python,
-and Java needs Ghidra's bundle/compile path. Use `script run PATH` or
+Java source uses Ghidra's bundle/compile path. Use `script run PATH` or
 `script run -` with Java source on stdin.
 
 Stdin source must declare exactly one top-level public class that Ghidra can load

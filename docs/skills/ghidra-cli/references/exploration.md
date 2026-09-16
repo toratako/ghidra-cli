@@ -8,8 +8,8 @@ ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
 ghidra-cli decompile main --format c --project target
 ghidra-cli function calls main --project target
-ghidra-cli function x-refs main --project target
-ghidra-cli function x-refs malloc --project target
+ghidra-cli x-ref to main --project target
+ghidra-cli x-ref to malloc --project target
 ```
 
 `decompile` accepts a function name or address; `--with-vars` and `--with-params`
@@ -40,15 +40,13 @@ uses the same thunk/import-pointer resolution and call-site checks as `find call
 passing a function pointer as a parameter does not make the enclosing function a caller.
 
 ```bash
-ghidra-cli find function "*crypt*" --project target
+ghidra-cli function list --filter "name~crypt" --project target
 ghidra-cli strings list --filter "length > 12" --limit 80 --project target
 ghidra-cli find string "password" --project target
 ghidra-cli strings refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
 ghidra-cli find calls CreateProcessW --project target
-ghidra-cli find crypto --project target
-ghidra-cli find interesting --project target
 ghidra-cli x-ref to malloc --project target
 ghidra-cli x-ref to 0x401000 --project target
 ghidra-cli x-ref from 0x401000 --project target
@@ -59,8 +57,7 @@ ghidra-cli graph callees main --depth 2 --limit 100 --project target
 
 String names and external/import names resolve directly. For plain `graph
 callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
-count, or offset may require a broader traversal. See [exports](programs.md#export)
-to write a graph as DOT.
+count, or offset may require a broader traversal.
 For instruction-text matching and disassembly ranges, see
 [low-level analysis](low-level.md#disassembly-and-analysis-boundaries).
 
@@ -72,18 +69,24 @@ ghidra-cli memory map --project target
 ghidra-cli memory read 0x401000 64 --project target
 ```
 
-`memory write` and `memory search` are unsupported and return errors. Use
-`patch bytes ADDRESS "HEX BYTES"` and `find bytes "HEX BYTES"` instead.
+Use `memory write ADDRESS "HEX BYTES"` to edit bytes and
+`find bytes "HEX BYTES"` to search them.
 See [patching](low-level.md#patching) for edit behavior.
 
 ## Query controls
+
+`query functions|strings|imports|exports|memory` selects a data family. Standalone
+`query` also reads `GHIDRA_DEFAULT_PROJECT` and `GHIDRA_DEFAULT_PROGRAM` when
+its corresponding target flag is omitted; pass `--project` and `--program`
+explicitly to select a different target. In batch lines, omitted targets inherit
+the batch project and that project's current program instead of these variables.
+
 
 `--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
 run in Rust after a full fetch; small limits may not bound underlying work.
 The default cap also applies with no query options or with only `--fields`.
 An explicit limit overrides it; `--count` ignores the default but honors an
-explicit offset/limit, returning the selected page's count. Byte, string, and
-interesting-function searches have no additional fixed result cap.
+explicit offset/limit, returning the selected page's count. Byte and string searches have no additional fixed result cap.
 Output precedence: explicit format, `--pretty`, `--json`, configured default,
 TTY detection.
 
