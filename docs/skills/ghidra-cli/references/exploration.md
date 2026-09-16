@@ -35,7 +35,9 @@ It uses Ghidra's references, not decompiler text; unresolved register/function
 pointer calls may still be absent. Names that resolve to distinct functions are
 ambiguous; use an address to select one.
 `function calls TARGET` lists outgoing calls inside TARGET. Use `graph callers`
-or `graph callees` to traverse relationships at a chosen depth.
+or `graph callees` to traverse relationships at a chosen depth. `graph callers`
+uses the same thunk/import-pointer resolution and call-site checks as `find calls`;
+passing a function pointer as a parameter does not make the enclosing function a caller.
 
 ```bash
 ghidra-cli find function "*crypt*" --project target

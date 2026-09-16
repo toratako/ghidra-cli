@@ -18,8 +18,9 @@ ghidra-cli stop --project target
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
 `program list`, `program info`, and `summary` report the saved name and project
-file `path`. `program list` includes subfolders; use `path` to distinguish same-named
-programs. Other program responses and artifact manifests also use the saved
+file `path`. `program list` includes subfolders; `status` uses the same recursive
+listing for `program_count`. Use `path` to distinguish same-named programs.
+Other program responses and artifact manifests use the saved
 name. `executable_path` identifies the original input file; Ghidra's internal
 Program name can differ and is not used as the CLI display name.
 `stats` reports program statistics; `summary` reports the loaded program's

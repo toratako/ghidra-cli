@@ -117,7 +117,9 @@ Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field. Interior
 offsets and name collisions fail with the existing field in `detail.field`;
 overlaps list `detail.conflicts`. `add-field --offset` uses the same placement
-checks; omitting its offset appends as before.
+checks; omitting its offset appends as before. With either form, `--size` must
+match the length Ghidra assigns to the field; an unsupported size fails before
+the structure changes. Use an array type such as `byte[8]` for fixed byte spans.
 
 `clear-field` replaces the field with undefined bytes and preserves structure
 size and later offsets. Clearing existing padding succeeds with `changed: false`;

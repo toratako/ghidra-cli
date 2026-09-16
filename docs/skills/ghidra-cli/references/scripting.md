@@ -16,4 +16,7 @@ Inline `script python`/`script java` are disabled: there is no embedded Python,
 and Java needs Ghidra's bundle/compile path. Use `script run PATH` or
 `script run -` with Java source on stdin.
 
+Stdin source must declare exactly one top-level public class that Ghidra can load
+as a script.
+
 Scripts follow the shared [save and failure behavior](../SKILL.md#results-edits-and-jobs).
