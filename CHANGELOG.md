@@ -24,6 +24,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Windows import tests normalize Ghidra's `/C:/...` executable paths before
+  comparing them with native filesystem paths.
 - Program metadata, status, operation responses, and artifact manifests use the
   saved project file name. `program info` and `summary` also expose its `path`;
   internal Ghidra names and original executable paths remain unchanged.

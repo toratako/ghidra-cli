@@ -119,8 +119,22 @@ fn import_names_are_saved_and_selected_across_all_routes() {
     assert_eq!(result[0]["program"], "raw-name");
     let info = project.ok(&["program", "info"]);
     assert_eq!(info[0]["name"], "raw-name");
+    let executable_path = info[0]["executable_path"].as_str().unwrap();
+    // Ghidra's local FSRL paths use /C:/... for Windows drive paths.
+    #[cfg(windows)]
+    let executable_path = executable_path
+        .strip_prefix('/')
+        .filter(|path| {
+            matches!(
+                path.as_bytes(),
+                [drive, b':', b'/', ..] if drive.is_ascii_alphabetic()
+            )
+        })
+        .unwrap_or(executable_path);
     assert_eq!(
-        dunce::canonicalize(info[0]["executable_path"].as_str().unwrap()).unwrap(),
+        dunce::canonicalize(executable_path).unwrap_or_else(|error| {
+            panic!("Cannot resolve executable_path {executable_path:?}: {error}; info={info}")
+        }),
         dunce::canonicalize(&raw).unwrap()
     );
     project.assert_program_identity("raw-name");
