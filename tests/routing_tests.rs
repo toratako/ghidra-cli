@@ -102,6 +102,17 @@ impl RecordedBridge {
                         };
                         json!({key: rows, "count": rows.len()})
                     }
+                    "string_refs" => {
+                        let rows = if args["string"] == "absent" {
+                            vec![]
+                        } else {
+                            vec![
+                                json!({"from": "1000", "from_function": "main", "string_value": "needle"}),
+                                json!({"from": "2000", "from_function": "helper", "string_value": "needle"}),
+                            ]
+                        };
+                        json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
+                    }
                     "symbol_get" => json!({"symbols": if args["name"] == "missing" {
                         vec![]
                     } else {
@@ -896,6 +907,48 @@ fn imports_and_exports_paginate_after_fetching_for_queries_and_batches() {
             );
             assert_eq!(bridge.run(&[command, kind, "--count"]), json!(2));
         }
+    }
+}
+
+#[test]
+fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
+    let bridge = RecordedBridge::new();
+    let all = json!([
+        {"from": "1000", "from_function": "main", "string_value": "needle"},
+        {"from": "2000", "from_function": "helper", "string_value": "needle"},
+    ]);
+    for (pattern, flags, expected) in [
+        ("needle", vec!["--limit", "0"], all.clone()),
+        ("needle", vec!["--count"], json!(2)),
+        ("absent", vec!["--count"], json!(0)),
+        ("absent", vec!["--limit", "0"], json!([])),
+        (
+            "needle",
+            vec!["--fields", "from", "--limit", "0"],
+            json!([{"from": "1000"}, {"from": "2000"}]),
+        ),
+        (
+            "needle",
+            vec!["--filter", "from_function=main"],
+            json!([all[0].clone()]),
+        ),
+        (
+            "needle",
+            vec!["--sort", "-from", "--offset", "1", "--limit", "1"],
+            json!([all[0].clone()]),
+        ),
+    ] {
+        let args: Vec<_> = ["strings", "refs", pattern]
+            .into_iter()
+            .chain(flags)
+            .collect();
+        assert_eq!(bridge.run(&args), expected, "{args:?}");
+        std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+        let report = bridge.run(&["batch", "batch.txt"]);
+        assert_eq!(
+            report[0]["results"][0]["result"], expected,
+            "batch {args:?}"
+        );
     }
 }
 

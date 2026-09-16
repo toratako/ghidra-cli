@@ -126,6 +126,7 @@ fn unwrap_bridge_response(value: serde_json::Value) -> Vec<serde_json::Value> {
     const META_KEYS: &[&str] = &[
         "count",
         "target",
+        "pattern",
         "function",
         "command",
         "status",
