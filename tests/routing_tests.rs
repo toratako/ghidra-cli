@@ -85,6 +85,18 @@ impl RecordedBridge {
                 }
                 let data = match request["command"].as_str().unwrap() {
                     "bridge_info" => json!({"auto_save": true, "named_import": true}),
+                    "status" => json!({
+                        "bridge_state": "running", "queue_depth": 0,
+                        "active_job": null, "queued_jobs": [], "recent_jobs": [],
+                    }),
+                    "job_status" => json!({
+                        "found": true,
+                        "job": {"id": args["job_id"], "command": "analyze", "state": "complete"},
+                    }),
+                    "job_cancel" => json!({
+                        "job_id": args["job_id"].as_u64().unwrap_or(7),
+                        "state": "cancel_requested",
+                    }),
                     "open_program" => {
                         program = args["program"].as_str().unwrap().to_owned();
                         json!({"program": program})
@@ -229,6 +241,135 @@ impl Drop for RecordedBridge {
         let _ = self.worker.take().unwrap().join();
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn management_commands_preserve_control_requests_and_json_output() {
+    let bridge = RecordedBridge::new();
+    for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
+        for (args, expected_request, expected_args) in [
+            (vec!["bridge", "status"], "bridge_info", Value::Null),
+            (vec!["bridge", "ping"], "ping", Value::Null),
+            (vec!["job", "list"], "status", Value::Null),
+            (
+                vec!["job", "get", "42"],
+                "job_status",
+                json!({"job_id": 42}),
+            ),
+            (vec!["job", "cancel"], "job_cancel", json!({"job_id": null})),
+            (
+                vec!["job", "cancel", "42"],
+                "job_cancel",
+                json!({"job_id": 42}),
+            ),
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge.command().args(&flags).args(&args).output().unwrap();
+            assert!(output.status.success(), "{flags:?} {args:?}: {output:?}");
+            assert!(output.stderr.is_empty(), "{args:?}: {output:?}");
+            let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(result.is_object(), "{args:?}: {result}");
+            assert_eq!(
+                output.stdout.iter().filter(|&&c| c == b'\n').count() > 1,
+                flags == ["--pretty"],
+                "{flags:?} {args:?}: {output:?}"
+            );
+            match args.as_slice() {
+                ["bridge", "status"] => {
+                    assert_eq!(result["state"], "running");
+                    assert_eq!(result["port"], bridge.port);
+                    assert_eq!(result["project"], json!(bridge.project));
+                    assert_eq!(result["info"]["auto_save"], true);
+                }
+                ["bridge", "ping"] => {
+                    assert_eq!(result["responsive"], true);
+                    assert_eq!(result["project"], json!(bridge.project));
+                }
+                ["job", "list"] => {
+                    assert_eq!(result["bridge_state"], "running");
+                    assert!(result["active_job"].is_null());
+                    assert_eq!(result["queued_jobs"], json!([]));
+                }
+                ["job", "get", _] => assert_eq!(result["job"]["id"], 42),
+                ["job", "cancel"] => assert_eq!(result["job_id"], 7),
+                ["job", "cancel", _] => assert_eq!(result["job_id"], 42),
+                _ => unreachable!(),
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let request = requests.last().unwrap();
+            assert_eq!(request["command"], expected_request, "{requests:?}");
+            assert_eq!(request["args"], expected_args, "{request}");
+            let expected_commands = if args == ["bridge", "status"] {
+                vec!["ping", "bridge_info"]
+            } else {
+                vec![expected_request]
+            };
+            assert_eq!(
+                requests
+                    .iter()
+                    .map(|r| r["command"].as_str().unwrap())
+                    .collect::<Vec<_>>(),
+                expected_commands,
+                "management requests must not select a program or enter the program job queue"
+            );
+        }
+    }
+}
+
+#[test]
+fn management_targets_use_config_or_explicit_project_at_each_command_level() {
+    let configured = RecordedBridge::new();
+    let explicit = RecordedBridge::new();
+    let config = configured.root.path().join("config.yaml");
+    std::fs::write(
+        &config,
+        serde_yaml::to_string(&json!({
+            "aliases": {}, "default_project": configured.project,
+            "default_program": "configured-startup-program",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    for args in [
+        vec!["bridge", "status"],
+        vec!["bridge", "ping"],
+        vec!["job", "list"],
+        vec!["job", "get", "42"],
+        vec!["job", "cancel"],
+        vec!["job", "cancel", "42"],
+    ] {
+        for position in [None, Some(0), Some(1), Some(args.len())] {
+            configured.requests.lock().unwrap().clear();
+            explicit.requests.lock().unwrap().clear();
+            let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
+            command
+                .env("GHIDRA_CLI_CONFIG", &config)
+                .env("GHIDRA_DEFAULT_PROJECT", "unused-environment-project")
+                .env("GHIDRA_DEFAULT_PROGRAM", "unused-environment-program")
+                .args(["--program", "unused-explicit-program"])
+                .timeout(std::time::Duration::from_secs(15));
+            if let Some(position) = position {
+                command
+                    .args(&args[..position])
+                    .arg("--project")
+                    .arg(&explicit.project)
+                    .args(&args[position..]);
+            } else {
+                command.args(&args);
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success(), "{args:?} {position:?}: {output:?}");
+            let (selected, unused) = if position.is_some() {
+                (&explicit, &configured)
+            } else {
+                (&configured, &explicit)
+            };
+            assert!(unused.requests.lock().unwrap().is_empty());
+            let requests = selected.requests.lock().unwrap();
+            assert!(!requests.is_empty(), "{args:?} {position:?}");
+            assert!(!requests.iter().any(|r| r["command"] == "open_program"));
+        }
     }
 }
 

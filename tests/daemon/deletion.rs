@@ -121,7 +121,7 @@ fn test_program_delete_from_stopped_bridge_and_empty_project() {
     assert!(output.status.success(), "{output:?}");
     ghidra_cli::ghidra::bridge::stop_bridge(&project).unwrap();
 
-    let output = project_cli(&project, &["start", "--program", "missing"]);
+    let output = project_cli(&project, &["bridge", "start", "--program", "missing"]);
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     assert!(ghidra_cli::ghidra::bridge::is_bridge_running(&project).is_none());
 
@@ -136,7 +136,7 @@ fn test_program_delete_from_stopped_bridge_and_empty_project() {
     assert_eq!(client.bridge_info().unwrap()["has_current_program"], false);
     assert!(client.open_program(TEST_PROGRAM).is_err());
     let missing_project = project.parent().unwrap().join("missing-project");
-    let output = project_cli(&missing_project, &["start"]);
+    let output = project_cli(&missing_project, &["bridge", "start"]);
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     assert!(!missing_project.with_extension("gpr").exists());
     assert!(!missing_project.with_extension("rep").exists());

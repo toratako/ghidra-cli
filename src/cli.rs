@@ -6,6 +6,7 @@ mod automation;
 mod configuration;
 mod function;
 mod inspection;
+mod management;
 mod memory;
 mod options;
 mod project;
@@ -18,6 +19,7 @@ pub use automation::*;
 pub use configuration::*;
 pub use function::*;
 pub use inspection::*;
+pub use management::*;
 pub use memory::*;
 pub use options::QueryOptions;
 pub use project::*;
@@ -171,64 +173,13 @@ pub enum Commands {
     #[command(alias = "analysis")]
     Analyze(AnalyzeArgs),
 
-    /// Start the bridge
-    Start {
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-        /// Program name to load
-        #[arg(long)]
-        program: Option<String>,
-    },
+    /// Bridge lifecycle and health
+    #[command(subcommand)]
+    Bridge(BridgeCommands),
 
-    /// Stop the bridge
-    Stop {
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-    },
-
-    /// Restart the bridge
-    Restart {
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-        /// Program name to load
-        #[arg(long)]
-        program: Option<String>,
-    },
-
-    /// Show bridge status
-    Status {
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-    },
-
-    /// Ping the bridge
-    Ping {
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-    },
-
-    /// List active, queued, and recently completed bridge jobs
-    Jobs {
-        /// Show one job by ID; omit for the bridge queue and recent jobs
-        job_id: Option<u64>,
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-    },
-
-    /// Request cooperative cancellation of a bridge job (defaults to active job)
-    Cancel {
-        /// Job ID; omit to cancel the currently active job
-        job_id: Option<u64>,
-        /// Project path
-        #[arg(long)]
-        project: Option<String>,
-    },
+    /// Inspect and cancel bridge jobs
+    #[command(subcommand)]
+    Job(JobCommands),
 
     /// Download and setup Ghidra automatically
     Setup(SetupArgs),

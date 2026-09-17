@@ -9,7 +9,7 @@ mod ipc;
 mod query;
 mod terminal;
 
-use app::{handle_bridge_command, run_command, run_setup};
+use app::{handle_management_command, run_command, run_setup};
 use clap::Parser;
 use cli::{Cli, Commands};
 use tracing_subscriber::layer::SubscriberExt;
@@ -78,13 +78,7 @@ fn main() {
                 .unwrap();
             rt.block_on(run_setup(cli))
         }
-        Commands::Start { .. }
-        | Commands::Stop { .. }
-        | Commands::Restart { .. }
-        | Commands::Status { .. }
-        | Commands::Ping { .. }
-        | Commands::Jobs { .. }
-        | Commands::Cancel { .. } => handle_bridge_command(cli),
+        Commands::Bridge(_) | Commands::Job(_) => handle_management_command(cli),
         _ => run_command(cli),
     };
 

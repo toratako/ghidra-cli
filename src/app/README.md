@@ -14,7 +14,7 @@ the command tree and re-exports family arguments/query options from `src/cli/`.
 | `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
-| `management.rs` | Start/stop/restart/status/ping/jobs/cancel handlers and explicit save without auto-start |
+| `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
 | `installation.rs` | Setup and doctor commands |
 | `local.rs` | Configuration and project commands |
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |

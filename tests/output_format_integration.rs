@@ -280,7 +280,7 @@ fn project_directory_precedence_reaches_management_and_doctor() {
             command.arg("--projects-dir").arg(&requested);
         }
         let output = command
-            .args(["status", "--project", "missing"])
+            .args(["bridge", "status", "--project", "missing"])
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
@@ -367,7 +367,7 @@ fn launch_resolves_installation_from_environment_before_config() {
     )
     .unwrap();
     for args in [
-        vec!["start", "--project", "missing"],
+        vec!["bridge", "start", "--project", "missing"],
         vec!["program", "info", "--project", "missing"],
     ] {
         let output = isolated_command(&temp)
@@ -405,8 +405,8 @@ fn local_results_obey_json_modes() {
         for args in [
             vec!["config", "list"],
             vec!["config", "get", "default_limit"],
-            vec!["status", "--project", "missing"],
-            vec!["stop", "--project", "missing"],
+            vec!["bridge", "status", "--project", "missing"],
+            vec!["bridge", "stop", "--project", "missing"],
             vec!["program", "save", "--project", "missing"],
         ] {
             let output = isolated_command(&temp)
@@ -415,7 +415,10 @@ fn local_results_obey_json_modes() {
                 .output()
                 .unwrap();
             assert!(output.status.success(), "{flags:?} {args:?}: {output:?}");
-            serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+            let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            if args[0] == "bridge" {
+                assert_eq!(result["state"], "stopped", "{args:?}: {result}");
+            }
             assert!(output.stderr.is_empty(), "{output:?}");
             let lines = output.stdout.iter().filter(|&&c| c == b'\n').count();
             if flags != ["--pretty"] {
@@ -431,7 +434,11 @@ fn failures_have_nonzero_status_and_json_diagnostics() {
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         for (args, code) in [
             (vec!["config", "get", "unknown_key"], 1),
-            (vec!["ping", "--project", "missing"], 1),
+            (vec!["bridge", "ping", "--project", "missing"], 1),
+            (vec!["job", "list", "--project", "missing"], 1),
+            (vec!["job", "get", "42", "--project", "missing"], 1),
+            (vec!["job", "cancel", "--project", "missing"], 1),
+            (vec!["job", "cancel", "42", "--project", "missing"], 1),
             (vec!["--unknown-option"], 2),
             (vec!["config", "get"], 2),
             (vec!["function", "list", "--filter", "bad"], 1),
@@ -451,6 +458,15 @@ fn failures_have_nonzero_status_and_json_diagnostics() {
             assert_eq!(error["status"], "error");
             assert_eq!(error["exit_code"], code);
             assert!(!error["message"].as_str().unwrap().is_empty());
+            if matches!(args[0], "bridge" | "job") {
+                assert!(
+                    error["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("No bridge running"),
+                    "{args:?}: {error}"
+                );
+            }
         }
     }
 }

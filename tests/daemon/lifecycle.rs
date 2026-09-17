@@ -13,7 +13,7 @@ fn test_daemon_start() {
     let harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("status")
+        .args(["bridge", "status"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -32,7 +32,7 @@ fn test_daemon_status() {
     let harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("status")
+        .args(["bridge", "status"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -52,7 +52,7 @@ fn test_daemon_ping() {
     let harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("ping")
+        .args(["bridge", "ping"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -71,7 +71,7 @@ fn test_daemon_lifecycle() {
     let _harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("status")
+        .args(["bridge", "status"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -79,14 +79,14 @@ fn test_daemon_lifecycle() {
         .stdout(predicate::str::contains("running"));
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("ping")
+        .args(["bridge", "ping"])
         .arg("--project")
         .arg(test_project())
         .assert()
         .success();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("stop")
+        .args(["bridge", "stop"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -103,14 +103,14 @@ fn test_daemon_stop() {
     let harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("stop")
+        .args(["bridge", "stop"])
         .arg("--project")
         .arg(test_project())
         .assert()
         .success();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("status")
+        .args(["bridge", "status"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -130,12 +130,13 @@ fn test_daemon_restart() {
     let harness = start_daemon();
 
     // Use run_cli_with_timeout to avoid Windows pipe handle inheritance.
-    // `ghidra-cli restart` stops the old bridge and starts a new JVM. With piped
+    // `ghidra-cli bridge restart` stops the old bridge and starts a new JVM. With piped
     // stdout/stderr, the new JVM inherits pipe handles, blocking forever.
     let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "bridge",
             "restart",
             "--project",
             test_project(),
@@ -149,7 +150,7 @@ fn test_daemon_restart() {
     assert!(status.success(), "Restart failed with status: {status}");
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("stop")
+        .args(["bridge", "stop"])
         .arg("--project")
         .arg(test_project())
         .assert()
@@ -168,7 +169,7 @@ fn test_daemon_start_when_running() {
     let harness = start_daemon();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("start")
+        .args(["bridge", "start"])
         .arg("--project")
         .arg(test_project())
         .arg("--program")

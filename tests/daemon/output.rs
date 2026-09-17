@@ -10,16 +10,23 @@ fn management_results_are_single_json_documents() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     for flag in ["--json", "--pretty"] {
-        for command in ["start", "status", "ping", "jobs"] {
+        for command in [
+            ["bridge", "start"],
+            ["bridge", "status"],
+            ["bridge", "ping"],
+            ["job", "list"],
+        ] {
             let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-                .args([flag, "--quiet", command, "--project", test_project()])
+                .args([flag, "--quiet"])
+                .args(command)
+                .args(["--project", test_project()])
                 .output()
                 .unwrap();
-            assert!(output.status.success(), "{command}: {output:?}");
+            assert!(output.status.success(), "{command:?}: {output:?}");
             let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-            assert!(value.is_object(), "{command}: {value}");
-            assert!(output.stderr.is_empty(), "{command}: {output:?}");
-            if command == "status" {
+            assert!(value.is_object(), "{command:?}: {value}");
+            assert!(output.stderr.is_empty(), "{command:?}: {output:?}");
+            if command == ["bridge", "status"] {
                 assert_eq!(value["state"], "running");
                 assert!(value["port"].is_number());
                 assert!(value["info"].is_object());
@@ -60,7 +67,11 @@ fn management_results_are_single_json_documents() {
     let initial_pid = ghidra_cli::ghidra::bridge::read_pid_file(&project_path)
         .unwrap()
         .unwrap();
-    for args in [vec!["program", "save"], vec!["restart"], vec!["stop"]] {
+    for args in [
+        vec!["program", "save"],
+        vec!["bridge", "restart"],
+        vec!["bridge", "stop"],
+    ] {
         // restart leaves a JVM running; inherited Windows pipe handles would
         // make assert_cmd's output readers wait past its process timeout.
         let output = common::run_command_with_output(

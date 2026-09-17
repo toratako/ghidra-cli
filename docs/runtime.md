@@ -108,20 +108,23 @@ Timeout values are seconds.
 ## Jobs and persistence
 
 ```bash
-ghidra-cli start --project P --program bin
-ghidra-cli status --project P
-ghidra-cli jobs --project P
-ghidra-cli jobs 42 --project P
-ghidra-cli cancel 42 --project P
-ghidra-cli restart --project P --program otherbin
-ghidra-cli stop --project P
+ghidra-cli bridge start --project P --program bin
+ghidra-cli bridge status --project P
+ghidra-cli bridge ping --project P
+ghidra-cli job list --project P
+ghidra-cli job get 42 --project P
+ghidra-cli job cancel 42 --project P
+ghidra-cli bridge restart --project P --program otherbin
+ghidra-cli bridge stop --project P
 ```
 
 Commands needing the bridge start a per-project JVM on demand. Program jobs use
-a FIFO of 256, with 100 recent jobs retained. `cancel` defaults to the active job;
-queued cancellation is immediate, active cancellation cooperative. Socket read timeouts
-return `Timeout:` with exit 75 while work stays running or queued; inspect `jobs`
-before retrying a mutation. Shutdown rejects new work and drains accepted jobs, including a full queue.
+a FIFO of 256, with 100 recent jobs retained. `job list` shows active, queued, and
+recent jobs; `job get JOB_ID` requires an ID and shows that job. `job cancel [JOB_ID]`
+defaults to the active job; queued cancellation is immediate, active cancellation
+cooperative. Socket read timeouts return `Timeout:` with exit 75 while work stays
+running or queued; inspect `job list` before retrying a mutation. Shutdown rejects
+new work and drains accepted jobs, including a full queue.
 The shutdown timeout reports an error (exit 75) and preserves discovery files and
 the live process; it does not force termination. Inspect the process and retry
 stop after accepted work finishes. Cancellation state is isolated per job, and
@@ -154,8 +157,9 @@ committed and saved. Cancellation cannot interrupt saving, so completion may fol
 
 ## Upgrading
 
-Before replacing the CLI, run `ghidra-cli stop --project P` for each running
-project using the old CLI and the same project path used to start it. Old PID-file
+Before replacing the CLI, run `ghidra-cli bridge stop --project P` for each running
+project using the old CLI and the same project path used to start it. Releases
+with top-level bridge commands instead use `ghidra-cli stop --project P`. Old PID-file
 startup locks and new OS-backed lifecycle locks do not coordinate, so do not run
 old and new CLI versions concurrently for a project. Start
 bridges again after updating; old discovery keys are not preserved or migrated.
@@ -181,7 +185,7 @@ also carry `detail.workflow_stage`, `project`, `import_status`, `analysis_status
 and the saved `program` when known. A saved import is retained if later bridge
 startup fails. Fix the reported cause and follow `detail.recovery` (an argument
 array); do not re-import. `unknown` means completion was not confirmed. A timeout
-can leave a job running: inspect `jobs` before retrying. Settings failures before
+can leave a job running: inspect `job list` before retrying. Settings failures before
 the Java script runs retain the launcher output instead of inventing a path.
 
 Rust filesystem diagnostics include `detail.io_kind`, a stable snake_case
@@ -199,11 +203,11 @@ For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu),
 
 On Linux, discovery files are `~/.local/share/ghidra-cli/bridge-{md5}.port` and
 `.pid`, keyed by the canonical `.rep` directory. Liveness requires a valid port,
-live PID, and TCP connectivity; `status` also pings the protocol.
+live PID, and TCP connectivity; `bridge status` also pings the protocol.
 Startup and shutdown clean stale discovery under an OS-backed lifecycle lock;
-status only observes. The `.starting` lock file persists after release and must
+`bridge status` only observes. The `.starting` lock file persists after release and must
 not be deleted. Ghidra project lock files are never removed by CLI recovery;
 do not manually delete them to bypass an owner. A live PID with missing or
 unreachable discovery prevents cleanup/startup, and discovery PIDs are never
 used for force termination. A busy program lane does not prove the bridge is
-dead; inspect `jobs` before restarting.
+dead; inspect `job list` before restarting.

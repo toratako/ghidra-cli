@@ -98,7 +98,7 @@ fn connect_with_retry(addr: &std::net::SocketAddr, deadline: Option<Instant>) ->
     .map_err(|error| {
         let message = format!(
             "Failed to connect to bridge on port {} within {}s: {}. \
-             Is the bridge running? Check `ghidra-cli status`.",
+             Is the bridge running? Check `ghidra-cli bridge status`.",
             addr.port(),
             budget.as_secs(),
             error
@@ -270,8 +270,8 @@ impl BridgeClient {
             Ok(0) => anyhow::bail!(
                 "Bridge closed the connection without responding to '{}' \
                  (it may have crashed or been restarted). The command outcome is unknown; \
-                 changes may already have been applied and saved. Check `ghidra-cli status`, \
-                 `ghidra-cli jobs`, and the program state before deciding whether to repeat it.",
+                 changes may already have been applied and saved. Check `ghidra-cli bridge status`, \
+                 `ghidra-cli job list`, and the program state before deciding whether to repeat it.",
                 command
             ),
             Ok(_) => {}

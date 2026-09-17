@@ -3,6 +3,18 @@ use crate::common::{ensure_test_project, test_project};
 use serial_test::serial;
 use std::time::Duration;
 
+fn job_command(args: &[&str]) -> serde_json::Value {
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args(["--json", "--project", test_project(), "job"])
+        .args(args)
+        .timeout(Duration::from_secs(30))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{args:?}: {output:?}");
+    assert!(output.stderr.is_empty(), "{args:?}: {output:?}");
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
 #[test]
 #[serial]
 fn test_bridge_job_status_is_available_when_idle() {
@@ -10,10 +22,9 @@ fn test_bridge_job_status_is_available_when_idle() {
 
     ensure_test_project(test_project(), TEST_PROGRAM);
 
-    let harness = start_daemon();
-    let client = harness.client().expect("bridge client");
+    let _harness = start_daemon();
 
-    let status = client.status().expect("bridge status");
+    let status = job_command(&["list"]);
     assert_eq!(
         status.get("bridge_state").and_then(|v| v.as_str()),
         Some("running")
@@ -21,9 +32,7 @@ fn test_bridge_job_status_is_available_when_idle() {
     assert_eq!(status.get("queue_depth").and_then(|v| v.as_u64()), Some(0));
     assert!(status.get("active_job").is_some_and(|v| v.is_null()));
 
-    let missing = client
-        .job_status(Some(u64::MAX))
-        .expect("missing job status");
+    let missing = job_command(&["get", &u64::MAX.to_string()]);
     assert_eq!(missing.get("found").and_then(|v| v.as_bool()), Some(false));
 }
 
@@ -194,7 +203,8 @@ public class WaitForBridgeCancel extends GhidraScript {
         );
         std::thread::sleep(Duration::from_millis(20));
     };
-    client.cancel_job(Some(id)).unwrap();
+    let cancelled = job_command(&["cancel"]);
+    assert_eq!(cancelled["job_id"], id);
     assert!(script
         .join()
         .unwrap()
@@ -202,7 +212,7 @@ public class WaitForBridgeCancel extends GhidraScript {
         .to_string()
         .contains("Script cancelled"));
     assert_eq!(
-        client.job_status(Some(id)).unwrap()["job"]["state"],
+        job_command(&["get", &id.to_string()])["job"]["state"],
         "cancelled"
     );
 
@@ -231,7 +241,7 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
     let finished = &status["recent_jobs"][0];
     assert_eq!(finished["state"], "complete");
     let finished_id = finished["id"].as_u64().unwrap();
-    let cancelled = client.cancel_job(Some(finished_id)).unwrap();
+    let cancelled = job_command(&["cancel", &finished_id.to_string()]);
     assert_eq!(cancelled["state"], "complete");
     let unchanged = client.job_status(Some(finished_id)).unwrap();
     assert_eq!(unchanged["job"]["state"], "complete");

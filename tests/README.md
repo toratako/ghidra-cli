@@ -71,9 +71,14 @@ identity. Filter a domain with, for example,
 | `command_tests` | Version flags, doctor, config |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
-| `routing_tests` | Recorded bridge requests: batch targets, list pagination, and client file paths without Ghidra |
+| `routing_tests` | Recorded bridge requests: management/jobs, batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
 
+`daemon_tests` exercises `bridge start/stop/restart/status/ping` and
+`job list/get/cancel`, including cancellation of the active job when no ID is given.
+Recorded routing tests verify job IDs, control requests, JSON modes, and project
+selection across the nested commands; output tests preserve successful stopped
+`bridge status` results and failing `bridge ping`/job requests without auto-start.
 `daemon_tests` also checks cancellation does not poison the next job, handlers
 follow program switch/close, automatic saves are visible in a separate database
 object before shutdown, and failed mutations cannot erase earlier edits. Save

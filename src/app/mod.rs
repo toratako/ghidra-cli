@@ -18,7 +18,7 @@ use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
 use local::{handle_config_command, handle_project_command};
-pub(super) use management::handle_bridge_command;
+pub(super) use management::handle_management_command;
 use management::handle_program_save;
 use options::{
     extract_program_from_command, extract_project_from_command, extract_query_options,

@@ -30,7 +30,7 @@ fn test_graceful_restart_reopens_project() {
 
         // Verify bridge is working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-            .arg("ping")
+            .args(["bridge", "ping"])
             .arg("--project")
             .arg(test_project())
             .timeout(Duration::from_secs(30))
@@ -46,7 +46,7 @@ fn test_graceful_restart_reopens_project() {
 
         // Verify bridge is working
         assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-            .arg("ping")
+            .args(["bridge", "ping"])
             .arg("--project")
             .arg(test_project())
             .timeout(Duration::from_secs(30))
@@ -131,7 +131,7 @@ fn test_recovery_after_crash() {
     leave_crashed_child_state(std::path::Path::new(test_project()));
     let _harness = start_harness("bridge after owned child crash");
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("ping")
+        .args(["bridge", "ping"])
         .arg("--project")
         .arg(test_project())
         .timeout(Duration::from_secs(30))
@@ -151,7 +151,7 @@ fn test_ping_fails_after_bridge_stops() {
 
     // Ping should work
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("ping")
+        .args(["bridge", "ping"])
         .arg("--project")
         .arg(test_project())
         .timeout(Duration::from_secs(30))
@@ -161,7 +161,7 @@ fn test_ping_fails_after_bridge_stops() {
     drop(harness);
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .args(["ping", "--project", test_project()])
+        .args(["bridge", "ping", "--project", test_project()])
         .timeout(Duration::from_secs(30))
         .output()
         .unwrap();

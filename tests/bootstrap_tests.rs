@@ -101,11 +101,11 @@ fn configured_startup_targets_ignore_removed_environment_defaults() {
     let batch = project.root.path().join("batch.txt");
     std::fs::write(&batch, "program imports\nprogram exports\n").unwrap();
     for args in [
-        vec!["start"],
+        vec!["bridge", "start"],
         vec!["program", "imports"],
         vec!["batch", batch.to_str().unwrap()],
     ] {
-        project.ok(&["stop"]);
+        project.ok(&["bridge", "stop"]);
         let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
         command
             .args(&args)
@@ -135,7 +135,7 @@ fn import_names_are_saved_and_selected_across_all_routes() {
     let binary = common::fixture_binary();
     for name in ["fresh-name", "running-name", "stopped-name"] {
         if name == "stopped-name" {
-            project.ok(&["stop"]);
+            project.ok(&["bridge", "stop"]);
         }
         let result = project.ok(&[
             "import",
@@ -231,8 +231,8 @@ public class CheckProgramIdentity extends GhidraScript {
         std::fs::read_to_string(&artifact).unwrap(),
         raw.file_name().unwrap().to_str().unwrap()
     );
-    project.ok(&["stop"]);
-    project.ok(&["start", "--program", "raw-name"]);
+    project.ok(&["bridge", "stop"]);
+    project.ok(&["bridge", "start", "--program", "raw-name"]);
     project.assert_program_identity("raw-name");
     let disassembly = project.ok(&["disasm-at", "0x8000", "--count", "2"]);
     assert_eq!(disassembly[0]["instructions"][0]["mnemonic"], "XOR");
@@ -389,8 +389,8 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
     }
     // Per-job cancellation must not affect the next completed analysis or save.
     client.send_command("analyze", None).unwrap();
-    project.ok(&["stop"]);
-    project.ok(&["start", "--program", "skipped-raw"]);
+    project.ok(&["bridge", "stop"]);
+    project.ok(&["bridge", "start", "--program", "skipped-raw"]);
     let listing = project.client().list_programs().unwrap();
     assert!(
         listing["programs"]
@@ -431,8 +431,9 @@ fn saved_import_survives_bridge_state_directory_failure() {
     assert_eq!(detail["import_status"], "saved");
     assert_eq!(detail["analysis_status"], "skipped");
     assert_eq!(detail["program"], "saved-name");
-    assert_eq!(detail["recovery"][1], "start");
-    project.ok(&["start", "--program", "saved-name"]);
+    assert_eq!(detail["recovery"][1], "bridge");
+    assert_eq!(detail["recovery"][2], "start");
+    project.ok(&["bridge", "start", "--program", "saved-name"]);
     let programs = project.ok(&["program", "list"]);
     assert!(
         programs
@@ -443,8 +444,8 @@ fn saved_import_survives_bridge_state_directory_failure() {
         "{programs}"
     );
     assert_eq!(std::fs::read_to_string(blocked).unwrap(), "retain");
-    project.ok(&["stop"]);
-    let missing = project.run(&["start", "--program", "missing-program"]);
+    project.ok(&["bridge", "stop"]);
+    let missing = project.run(&["bridge", "start", "--program", "missing-program"]);
     assert!(!missing.status.success());
     let error: Value = serde_json::from_slice(&missing.stderr).unwrap();
     assert_eq!(error["detail"]["stage"], "bridge.program_open", "{error}");
@@ -491,7 +492,7 @@ fn unsupported_loader_options_never_save_a_program() {
                 "--no-analyze",
             ]);
         } else {
-            project.ok(&["start", "--program", "valid"]);
+            project.ok(&["bridge", "start", "--program", "valid"]);
         }
         let programs = project.ok(&["program", "list"]);
         assert_eq!(programs.as_array().unwrap().len(), 1, "{programs}");

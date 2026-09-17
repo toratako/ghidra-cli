@@ -1,45 +1,55 @@
 use super::output::Output;
 use super::project::{load_config, resolve_project_path};
-use crate::cli::{self, Cli, Commands};
+use crate::cli::{self, BridgeCommands, Cli, Commands, JobCommands};
 use crate::ghidra::bridge::{self, BridgeStartMode, BridgeStatus};
 use crate::ipc::client::BridgeClient;
 use crate::terminal::write_stdout;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-/// Dispatch bridge management commands.
-pub(crate) fn handle_bridge_command(cli: Cli) -> anyhow::Result<()> {
+/// Dispatch bridge lifecycle and job commands without auto-starting a bridge.
+pub(crate) fn handle_management_command(cli: Cli) -> anyhow::Result<()> {
     // Global --project/--program flags serve as fallbacks for subcommand-level args
     let global_project = cli.project.clone();
     let global_program = cli.program.clone();
     let projects_dir = cli.projects_dir.clone();
     let output = Output::new(&cli);
     let result = match cli.command {
-        Commands::Start { project, program } => handle_bridge_start(
+        Commands::Bridge(BridgeCommands::Start { project, program }) => handle_bridge_start(
             project.or(global_project),
             program.or(global_program),
             &projects_dir,
             output,
         ),
-        Commands::Stop { project } => {
+        Commands::Bridge(BridgeCommands::Stop { project }) => {
             handle_bridge_stop(project.or(global_project), &projects_dir, output)
         }
-        Commands::Restart { project, program } => {
+        Commands::Bridge(BridgeCommands::Restart { project, program }) => {
             let proj = project.or(global_project);
             let prog = program.or(global_program);
             handle_bridge_stop(proj.clone(), &projects_dir, output)?;
             std::thread::sleep(std::time::Duration::from_secs(1));
             handle_bridge_start(proj, prog, &projects_dir, output)
         }
-        Commands::Status { project } => {
+        Commands::Bridge(BridgeCommands::Status { project }) => {
             handle_bridge_status(project.or(global_project), &projects_dir)
         }
-        Commands::Ping { project } => handle_bridge_ping(project.or(global_project), &projects_dir),
-        Commands::Jobs { job_id, project } => {
-            return handle_bridge_jobs(project.or(global_project), &projects_dir, job_id, output)
+        Commands::Bridge(BridgeCommands::Ping { project }) => {
+            handle_bridge_ping(project.or(global_project), &projects_dir)
         }
-        Commands::Cancel { job_id, project } => {
-            return handle_bridge_cancel(project.or(global_project), &projects_dir, job_id, output)
+        Commands::Job(JobCommands::List { project }) => {
+            return handle_job_query(project.or(global_project), &projects_dir, None, output)
+        }
+        Commands::Job(JobCommands::Get { job_id, project }) => {
+            return handle_job_query(
+                project.or(global_project),
+                &projects_dir,
+                Some(job_id),
+                output,
+            )
+        }
+        Commands::Job(JobCommands::Cancel { job_id, project }) => {
+            return handle_job_cancel(project.or(global_project), &projects_dir, job_id, output)
         }
         _ => unreachable!(),
     }?;
@@ -205,21 +215,21 @@ fn handle_bridge_ping(
     let project_path = resolve_project_path(&project, &config)?;
     let port = bridge::is_bridge_running(&project_path).ok_or_else(|| {
         anyhow::anyhow!(
-            "No bridge running for project: {}. Run 'ghidra-cli start --project {}'.",
+            "No bridge running for project: {}. Run 'ghidra-cli bridge start --project {}'.",
             project_path.display(),
             project_path.display()
         )
     })?;
     anyhow::ensure!(
         BridgeClient::new(port).ping()?,
-        "Bridge is not responding. Check 'ghidra-cli status' and restart the bridge."
+        "Bridge is not responding. Check 'ghidra-cli bridge status' and restart the bridge."
     );
     Ok(
         json!({"responsive": true, "project": project_path, "port": port, "message": "Bridge is responsive"}),
     )
 }
 
-fn handle_bridge_jobs(
+fn handle_job_query(
     project: Option<String>,
     projects_dir: &Option<PathBuf>,
     job_id: Option<u64>,
@@ -304,7 +314,7 @@ fn format_bridge_job(label: &str, job: &serde_json::Value) -> String {
     details
 }
 
-fn handle_bridge_cancel(
+fn handle_job_cancel(
     project: Option<String>,
     projects_dir: &Option<PathBuf>,
     job_id: Option<u64>,

@@ -9,8 +9,8 @@ The executable is `ghidra-cli`. Use `ghidra-cli <command> --help` for exact
 arguments. Read the references below only when their details are needed.
 
 Global `--project PROJECT --program PROGRAM` select the target. Each project
-reuses a JVM bridge; program operations are serialized while `status`, `jobs`,
-and `cancel` remain responsive.
+reuses a JVM bridge; program operations are serialized while `bridge status`,
+`job list`, `job get`, and `job cancel` remain responsive.
 Global `--project`, `--program`, `--projects-dir`, `--json`, and `--pretty` may
 appear with subcommands. Command-level project/program options override globals
 and configured defaults.
@@ -87,8 +87,10 @@ commands succeeding.
 Save failures and timeouts always stop the batch, with
 `not_executed` counting remaining commands. Do not replay successful edits.
 
-A socket timeout does not cancel the job. Inspect `jobs [ID]` before retrying a
-mutation; `cancel [ID]` requests cancellation. Queued jobs are removed immediately;
+A socket timeout does not cancel the job. Inspect `job list` for active, queued,
+and recent jobs, or `job get ID` for one job, before retrying a mutation.
+`job get` requires an ID. `job cancel [ID]` requests cancellation, defaulting to
+the active job when the ID is omitted. Queued jobs are removed immediately;
 running jobs cancel cooperatively. A timeout is reported with exit 75, distinct
 from a command failure.
 

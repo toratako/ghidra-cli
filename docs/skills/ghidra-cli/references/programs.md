@@ -7,17 +7,18 @@ ghidra-cli project list
 ghidra-cli project info target
 ghidra-cli program list --project target
 ghidra-cli program info --project target --program target.bin
-ghidra-cli status --project target
-ghidra-cli jobs --project target
-ghidra-cli cancel --project target
-ghidra-cli restart --project target --program target.bin
+ghidra-cli bridge status --project target
+ghidra-cli job list --project target
+ghidra-cli job get 42 --project target
+ghidra-cli job cancel --project target
+ghidra-cli bridge restart --project target --program target.bin
 ghidra-cli program save --project target --program target.bin
-ghidra-cli stop --project target
+ghidra-cli bridge stop --project target
 ```
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
 `program list` and `program info` report the saved name and project
-file `path`. `program list` includes subfolders; `status` uses the same recursive
+file `path`. `program list` includes subfolders; `bridge status` uses the same recursive
 listing for `program_count`. Use `path` to distinguish same-named programs.
 Other program responses and artifact manifests use the saved
 name. `executable_path` identifies the original input file; Ghidra's internal

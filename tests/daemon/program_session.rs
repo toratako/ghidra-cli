@@ -470,8 +470,8 @@ public class PreventAutoSave extends GhidraScript {
     let project_path = std::path::Path::new(test_project());
     let pid = ghidra_cli::ghidra::bridge::read_pid_file(project_path).unwrap();
     for args in [
-        vec!["stop", "--project", test_project()],
-        vec!["restart", "--project", test_project()],
+        vec!["bridge", "stop", "--project", test_project()],
+        vec!["bridge", "restart", "--project", test_project()],
         vec!["project", "delete", test_project()],
     ] {
         let output = common::run_command_with_output(

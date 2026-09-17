@@ -469,7 +469,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     assert_eq!(instructions[1]["mnemonic"], "RET");
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .args(["stop", "--project", &project])
+        .args(["bridge", "stop", "--project", &project])
         .assert()
         .success();
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")

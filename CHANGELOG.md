@@ -16,13 +16,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Preserve component settings on unrelated structure fields during offset edits,
   and on the edited field when only its name or comment changes.
-- Exclude non-Program project files from `program list` and status program counts.
+- Exclude non-Program project files from `program list` and `bridge status` program counts.
 - Show requested decompiler parameters and variables in compact text output.
 - Reject overflowing `--expect` minimum row counts instead of silently dropping
   the constraint; validate bridge row-count arguments before running scripts.
 
 ### Changed
 
+- Group bridge controls under `bridge start|stop|restart|status|ping`. Replace
+  `jobs [JOB_ID]` with `job list` or `job get JOB_ID`, and `cancel [JOB_ID]` with
+  `job cancel [JOB_ID]`, which still defaults to the active job. The former
+  top-level commands are removed.
 - Move `query imports` and `query exports` to `program imports` and
   `program exports`, retaining their fields and shared query options.
 - Move top-level `stats` to `program stats`, preserving statistics and query options.

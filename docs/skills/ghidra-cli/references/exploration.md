@@ -23,7 +23,7 @@ instruction rows; rows without the required code fields fall back to JSON. Neith
 option changes the default TTY/non-TTY behavior.
 
 There is no native decompilation time limit by default; inspect long work with
-`jobs` and request a stop with `cancel`. See [job control](../SKILL.md#results-edits-and-jobs).
+`job list` and request a stop with `job cancel`. See [job control](../SKILL.md#results-edits-and-jobs).
 
 ## Search, strings, xrefs, and graphs
 

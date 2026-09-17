@@ -67,7 +67,8 @@ fn import_failure(
             {
                 vec![
                     "ghidra-cli".to_owned(),
-                    "jobs".into(),
+                    "job".into(),
+                    "list".into(),
                     "--project".into(),
                     project.to_string_lossy().into_owned(),
                 ]
@@ -82,21 +83,21 @@ fn import_failure(
                     program.into(),
                 ]
             } else {
-                let operation = if detail["analysis_status"] == "completed"
+                let mut command = vec!["ghidra-cli".to_owned()];
+                if detail["analysis_status"] == "completed"
                     || detail["analysis_status"] == "skipped"
                 {
-                    "start"
+                    command.extend(["bridge".into(), "start".into()]);
                 } else {
-                    "analyze"
-                };
-                vec![
-                    "ghidra-cli".into(),
-                    operation.into(),
+                    command.push("analyze".into());
+                }
+                command.extend([
                     "--project".into(),
                     project.to_string_lossy().into_owned(),
                     "--program".into(),
                     program.into(),
-                ]
+                ]);
+                command
             };
             message.push_str(&format!(
                 ". Do not re-import. After resolving the cause, recovery arguments: {}",
@@ -342,6 +343,7 @@ mod tests {
             detail["recovery"],
             json!([
                 "ghidra-cli",
+                "bridge",
                 "start",
                 "--project",
                 project,
@@ -371,8 +373,8 @@ mod tests {
         );
         assert!(timeout.downcast_ref::<BridgeTimeoutError>().is_some());
         assert_eq!(
-            crate::error::diagnostic_detail(&timeout)["recovery"][1],
-            "jobs"
+            crate::error::diagnostic_detail(&timeout)["recovery"],
+            json!(["ghidra-cli", "job", "list", "--project", "project"])
         );
         let save = import_failure(
             BridgeCommandError {
