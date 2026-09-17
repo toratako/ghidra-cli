@@ -110,7 +110,7 @@ fn config_set_java_home_persists_requested_value_and_preserves_other_settings() 
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");
     let java_home = temp.path().join("JDK home's directory");
-    std::fs::write(&config_path, "default_program: keep-me\naliases: {}\n").unwrap();
+    std::fs::write(&config_path, "default_program: keep-me\n").unwrap();
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .env("GHIDRA_CLI_CONFIG", &config_path)
@@ -234,7 +234,7 @@ fn config_updates_from_multiple_processes_preserve_independent_values() {
 fn config_invalid_format_preserves_previous_file() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("config.yaml");
-    let original = "default_program: keep-me\naliases: {}\n";
+    let original = "default_program: keep-me\n";
     std::fs::write(&path, original).unwrap();
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .env("GHIDRA_CLI_CONFIG", &path)

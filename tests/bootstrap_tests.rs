@@ -94,7 +94,6 @@ fn configured_startup_targets_ignore_removed_environment_defaults() {
     // Preserve runtime settings and exercise config-only installation lookup,
     // even when the test runner selects Ghidra through the environment.
     test_config.ghidra_install_dir = Some(test_config.get_ghidra_install_dir().unwrap());
-    test_config.aliases.clear();
     test_config.default_project = Some(project.path.to_str().unwrap().to_owned());
     test_config.default_program = Some("configured-program".to_owned());
     std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();

@@ -25,7 +25,6 @@ pub struct Config {
     /// Defaults to 180s when unset (must accommodate the first-run OSGi compile).
     #[serde(default)]
     pub launch_timeout_secs: Option<u64>,
-    pub aliases: std::collections::HashMap<String, String>,
 }
 
 impl Default for Config {
@@ -40,7 +39,6 @@ impl Default for Config {
             default_output_format: Some("auto".to_string()),
             default_limit: Some(1000),
             launch_timeout_secs: None,
-            aliases: std::collections::HashMap::new(),
         }
     }
 }
@@ -410,7 +408,7 @@ mod tests {
     fn failed_update_preserves_config() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("config.yaml");
-        let original = "default_project: keep-me\naliases: {}\n";
+        let original = "default_project: keep-me\n";
         fs::write(&path, original).unwrap();
         let result = Config::update_at(&path, |config| {
             config.default_project = Some("discard-me".into());
@@ -553,7 +551,7 @@ mod tests {
 
     #[test]
     fn legacy_timeout_is_ignored_and_not_reserialized() {
-        let config: Config = serde_yaml::from_str("timeout: 1800\naliases: {}\n").unwrap();
+        let config: Config = serde_yaml::from_str("timeout: 1800\n").unwrap();
         let serialized = serde_yaml::to_string(&config).unwrap();
         assert!(!serialized.contains("timeout:"), "{serialized}");
     }

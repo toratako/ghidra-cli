@@ -81,6 +81,40 @@ fn config_rejects_removed_output_formats_without_changing_the_file() {
     }
 }
 
+#[test]
+fn config_omits_aliases() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    std::fs::write(&config_path, "default_output_format: minimal\n").unwrap();
+    let output = isolated_command(&temp)
+        .args(["config", "list", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let config: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(config["default_output_format"], "minimal");
+    assert!(config.get("aliases").is_none());
+
+    for args in [
+        vec!["config", "get", "aliases"],
+        vec!["config", "set", "aliases", "{}"],
+    ] {
+        let before = std::fs::read(&config_path).unwrap();
+        let output = isolated_command(&temp).args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?}: {output:?}");
+        assert_eq!(std::fs::read(&config_path).unwrap(), before);
+    }
+    let output = isolated_command(&temp)
+        .args(["config", "set", "default_limit", "42"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let saved: serde_yaml::Value =
+        serde_yaml::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+    assert_eq!(saved["default_limit"].as_u64(), Some(42));
+    assert!(saved.get("aliases").is_none());
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn unavailable_file_logging_does_not_prevent_commands() {
@@ -103,7 +137,7 @@ fn configured_json_default_and_explicit_flags_choose_presentation() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.yaml"),
-        "aliases: {}\ndefault_output_format: json\n",
+        "default_output_format: json\n",
     )
     .unwrap();
     for (flags, pretty) in [
@@ -138,7 +172,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
     std::fs::write(
         temp.path().join("config.yaml"),
         serde_json::to_vec(&serde_json::json!({
-            "aliases": {}, "ghidra_project_dir": configured,
+            "ghidra_project_dir": configured,
         }))
         .unwrap(),
     )
@@ -237,7 +271,7 @@ fn project_info_resolves_positional_global_and_configured_targets() {
     }
     std::fs::write(
         temp.path().join("config.yaml"),
-        "aliases: {}\ndefault_project: configured\n",
+        "default_project: configured\n",
     )
     .unwrap();
     for (args, expected) in [
@@ -259,7 +293,7 @@ fn project_info_resolves_positional_global_and_configured_targets() {
         assert_eq!(info["path"], serde_json::json!(directory.join(expected)));
         assert_eq!(info["exists"], true);
     }
-    std::fs::write(temp.path().join("config.yaml"), "aliases: {}\n").unwrap();
+    std::fs::write(temp.path().join("config.yaml"), "{}\n").unwrap();
     let output = isolated_command(&temp)
         .env("GHIDRA_INSTALL_DIR", temp.path().join("unused-install"))
         .args(["project", "info"])
@@ -281,7 +315,7 @@ fn project_directory_precedence_reaches_management_and_doctor() {
     let requested = temp.path().join("requested space's");
     let config_path = temp.path().join("config.yaml");
     let content = serde_json::to_vec(&serde_json::json!({
-        "aliases": {}, "ghidra_project_dir": configured,
+        "ghidra_project_dir": configured,
     }))
     .unwrap();
     std::fs::write(&config_path, &content).unwrap();
@@ -380,7 +414,7 @@ fn launch_resolves_installation_from_environment_before_config() {
     std::fs::write(
         temp.path().join("config.yaml"),
         serde_json::to_vec(&serde_json::json!({
-            "aliases": {}, "ghidra_install_dir": temp.path().join("config-install"),
+            "ghidra_install_dir": temp.path().join("config-install"),
         }))
         .unwrap(),
     )

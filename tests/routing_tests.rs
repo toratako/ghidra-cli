@@ -76,11 +76,7 @@ impl RecordedBridge {
             std::process::id().to_string(),
         )
         .unwrap();
-        std::fs::write(
-            root.path().join("config.yaml"),
-            "aliases: {}\ndefault_limit: 1\n",
-        )
-        .unwrap();
+        std::fs::write(root.path().join("config.yaml"), "default_limit: 1\n").unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let captured = requests.clone();
         let worker = std::thread::spawn(move || {
@@ -399,7 +395,7 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
     std::fs::write(
         &config,
         serde_yaml::to_string(&json!({
-            "aliases": {}, "default_project": configured.project,
+            "default_project": configured.project,
             "default_program": "configured-startup-program",
         }))
         .unwrap(),
@@ -819,7 +815,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("config.yaml"),
-        "aliases: {}\ndefault_limit: 1\ndefault_output_format: csv\n",
+        "default_limit: 1\ndefault_output_format: csv\n",
     )
     .unwrap();
     let output = bridge
@@ -844,7 +840,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     }
     std::fs::write(
         bridge.root.path().join("config.yaml"),
-        "aliases: {}\ndefault_output_format: auto\n",
+        "default_output_format: auto\n",
     )
     .unwrap();
     let output = bridge
@@ -1996,7 +1992,7 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
 #[test]
 fn removed_commands_fail_before_bridge_or_config_errors() {
     let bridge = RecordedBridge::new();
-    std::fs::write(bridge.root.path().join("invalid.yaml"), "aliases: [").unwrap();
+    std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
     for (args, diagnostic) in [
         (
             vec!["patch", "bytes", "0x1000", "90"],
@@ -2309,7 +2305,7 @@ fn client_only_queries_apply_defaults_with_and_without_query_flags() {
     for (configured, cap) in [("2", 2), ("0", 3), ("null", 3)] {
         std::fs::write(
             bridge.root.path().join("config.yaml"),
-            format!("aliases: {{}}\ndefault_limit: {configured}\n"),
+            format!("default_limit: {configured}\n"),
         )
         .unwrap();
         let (command, wire, key) = (vec!["memory", "map"], "memory_map", "blocks");
@@ -2401,7 +2397,7 @@ fn standalone_targets_use_config_or_explicit_flags_and_ignore_removed_environmen
     std::fs::write(
         &config,
         serde_yaml::to_string(&json!({
-            "aliases": {}, "default_project": configured.project,
+            "default_project": configured.project,
             "default_program": "configured-startup-program",
         }))
         .unwrap(),
