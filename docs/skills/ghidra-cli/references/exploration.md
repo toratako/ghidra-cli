@@ -58,6 +58,12 @@ ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target
 ```
 
+`graph calls` filters, sorts, and pages its function nodes using the shared
+query options; `--fields` projects node fields. `--count` returns the selected
+node count; other results retain `nodes`, `edges`, `node_count`, and `edge_count`.
+Edges include outgoing calls from selected nodes, so a destination ID may refer
+to a node outside the returned page. Use `--limit 0` for an unlimited graph.
+
 `find string` searches only defined string values, using case-insensitive literal
 substring matching. It no longer falls back to raw memory when nothing matches;
 an empty result does not establish that the text is absent from the binary.

@@ -102,6 +102,10 @@ and status counts.
 Script/routing tests check minimum-row boundaries and reject invalid constraints
 before script execution.
 Formatter tests cover requested decompiler details in compact and full text output.
+Graph routing tests cover node filtering, sorting, paging, counts and projection
+in standalone/batch results while preserving outgoing edges beyond the page.
+`readonly/relationships.rs` checks graph queries against the real bridge's nodes
+and edges.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and query aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds

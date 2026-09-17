@@ -59,22 +59,7 @@ impl Query {
     /// The caller owns fetching via IPC; this method filters, sorts, paginates,
     /// selects output fields, and formats the resulting page.
     pub fn process_results(&self, data: Vec<JsonValue>) -> Result<String> {
-        // Apply filter
-        let filtered = if let Some(filter) = &self.filter {
-            self.apply_filter(&data, filter)?
-        } else {
-            data
-        };
-
-        // Sort original rows: projection must not erase sort keys.
-        let sorted = if let Some(sort) = &self.sort {
-            self.apply_sort(&filtered, sort)?
-        } else {
-            filtered
-        };
-
-        // Apply pagination
-        let paginated = self.apply_pagination(&sorted);
+        let paginated = self.select_rows(data)?;
 
         // Return count if requested
         if self.count_only {
@@ -91,6 +76,26 @@ impl Query {
         formatter.format(&selected, self.format)
     }
 
+    /// Select rows before projection so structured responses can retain their relationships.
+    pub(crate) fn select_rows(&self, data: Vec<JsonValue>) -> Result<Vec<JsonValue>> {
+        // Apply filter
+        let filtered = if let Some(filter) = &self.filter {
+            self.apply_filter(&data, filter)?
+        } else {
+            data
+        };
+
+        // Sort original rows: projection must not erase sort keys.
+        let sorted = if let Some(sort) = &self.sort {
+            self.apply_sort(&filtered, sort)?
+        } else {
+            filtered
+        };
+
+        // Apply pagination
+        Ok(self.apply_pagination(&sorted))
+    }
+
     fn apply_filter(&self, data: &[JsonValue], filter: &Filter) -> Result<Vec<JsonValue>> {
         let mut result = Vec::new();
 
@@ -103,7 +108,7 @@ impl Query {
         Ok(result)
     }
 
-    fn select_fields(
+    pub(crate) fn select_fields(
         &self,
         data: &[JsonValue],
         selector: &FieldSelector,

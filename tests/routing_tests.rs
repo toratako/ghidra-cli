@@ -26,6 +26,26 @@ fn symbol_fixture(id: &str, address: &str, kind: &str) -> Value {
     })
 }
 
+fn call_graph_fixture() -> Value {
+    json!({
+        "nodes": [
+            {"id": "1000", "address": "1000", "name": "zeta"},
+            {"id": "2000", "address": "2000", "name": "alpha"},
+            {"id": "3000", "address": "3000", "name": "beta"},
+            {"id": "4000", "address": "4000", "name": "omega"},
+        ],
+        "edges": [
+            {"from": "1000", "to": "2000", "type": "call"},
+            {"from": "2000", "to": "3000", "type": "call"},
+            {"from": "2000", "to": "9000", "type": "call"},
+            {"from": "3000", "to": "1000", "type": "call"},
+            {"from": "4000", "to": "3000", "type": "call"},
+        ],
+        "node_count": 4,
+        "edge_count": 5,
+    })
+}
+
 struct RecordedBridge {
     root: tempfile::TempDir,
     project: PathBuf,
@@ -104,6 +124,21 @@ impl RecordedBridge {
                     "import" => json!({"program": "imported"}),
                     "decompile" => {
                         json!({"name": "main", "address": "1000", "code": "int main(void) {\n  return 0;\n}\n"})
+                    }
+                    "graph_calls" => {
+                        let mut graph = call_graph_fixture();
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            let nodes = graph["nodes"].as_array_mut().unwrap();
+                            nodes.truncate(limit as usize);
+                            let ids: Vec<_> = nodes.iter().map(|n| n["id"].clone()).collect();
+                            graph["edges"]
+                                .as_array_mut()
+                                .unwrap()
+                                .retain(|edge| ids.contains(&edge["from"]));
+                            graph["node_count"] = json!(graph["nodes"].as_array().unwrap().len());
+                            graph["edge_count"] = json!(graph["edges"].as_array().unwrap().len());
+                        }
+                        graph
                     }
                     "disasm" | "disasm_range" | "function_disasm" | "find_instruction" => {
                         let mut rows = vec![
@@ -538,6 +573,103 @@ fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batc
                 disassembly[0]["args"],
                 json!({"target": "main", "limit": fetch_limit})
             );
+        }
+    }
+}
+
+#[test]
+fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let all = call_graph_fixture();
+    let graph = |nodes: &[usize], edges: &[usize]| {
+        json!([{
+            "nodes": nodes.iter().map(|&i| all["nodes"][i].clone()).collect::<Vec<_>>(),
+            "edges": edges.iter().map(|&i| all["edges"][i].clone()).collect::<Vec<_>>(),
+            "node_count": nodes.len(),
+            "edge_count": edges.len(),
+        }])
+    };
+    let mut projected = graph(&[1, 2], &[1, 2, 3]);
+    projected[0]["nodes"] = json!([{"name": "alpha"}, {"name": "beta"}]);
+    for (flags, expected, fetch_limit) in [
+        (vec![], graph(&[0], &[0]), json!(1)),
+        (vec!["--limit", "0"], json!([all]), Value::Null),
+        (vec!["--limit", "2"], graph(&[0, 1], &[0, 1, 2]), json!(2)),
+        (vec!["--sort", "name"], graph(&[1], &[1, 2]), Value::Null),
+        (
+            vec!["--sort", "name", "--limit", "2"],
+            graph(&[1, 2], &[1, 2, 3]),
+            Value::Null,
+        ),
+        (vec!["--offset", "1"], graph(&[1], &[1, 2]), Value::Null),
+        (
+            vec!["--filter", "name=beta"],
+            graph(&[2], &[3]),
+            Value::Null,
+        ),
+        (
+            vec![
+                "--filter", "name~a", "--sort", "name", "--offset", "1", "--limit", "2",
+            ],
+            graph(&[2, 3], &[3, 4]),
+            Value::Null,
+        ),
+        (
+            vec!["--sort=-name", "--offset", "1", "--limit", "0"],
+            graph(&[3, 2, 1], &[1, 2, 3, 4]),
+            Value::Null,
+        ),
+        (
+            vec!["--sort", "name", "--limit", "2", "--fields", "name"],
+            projected.clone(),
+            Value::Null,
+        ),
+        (
+            vec!["--sort", "name", "--limit", "2", "--fields=-id,address"],
+            projected,
+            Value::Null,
+        ),
+        (vec!["--offset", "99"], graph(&[], &[]), Value::Null),
+        (
+            vec!["--filter", "name=absent"],
+            graph(&[], &[]),
+            Value::Null,
+        ),
+        (vec!["--count"], json!(4), Value::Null),
+        (
+            vec!["--offset", "1", "--limit", "2", "--count"],
+            json!(2),
+            Value::Null,
+        ),
+        (
+            vec!["--filter", "name=absent", "--count"],
+            json!(0),
+            Value::Null,
+        ),
+    ] {
+        let args: Vec<_> = ["graph", "calls"].into_iter().chain(flags).collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            let expected = if batch && args.len() == 2 {
+                &expected[0]
+            } else {
+                &expected
+            };
+            assert_eq!(&result, expected, "{args:?}, batch={batch}");
+            let requests = bridge.requests.lock().unwrap();
+            let graphs: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "graph_calls")
+                .collect();
+            assert_eq!(graphs.len(), 1);
+            assert_eq!(graphs[0]["args"], json!({"limit": fetch_limit}), "{args:?}");
         }
     }
 }

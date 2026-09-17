@@ -164,19 +164,72 @@ fn test_xref_to_external_import_resolves_thunk() {
 
 #[test]
 #[serial]
-fn test_graph_calls() {
+fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
     require_ghidra!();
     let harness = harness();
+    let all = harness.client().unwrap().graph_calls(None).unwrap();
+    let mut nodes = all["nodes"].as_array().unwrap().clone();
+    let edges = all["edges"].as_array().unwrap();
+    assert!(nodes.len() > 2);
+    assert!(!edges.is_empty());
+    nodes.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    let query = |flags: &[&str]| -> serde_json::Value {
+        let result = ghidra(harness)
+            .args(["graph", "calls"])
+            .args(flags.iter().copied())
+            .with_project(test_project(), TEST_PROGRAM)
+            .json_format()
+            .run();
+        result.assert_success();
+        result.json()
+    };
+    let page_flags = ["--sort", "name", "--offset", "1", "--limit", "2"];
+    let page = query(&page_flags);
+    let selected = &nodes[1..3];
+    assert_eq!(page[0]["nodes"], serde_json::json!(selected));
+    let outgoing: Vec<_> = edges
+        .iter()
+        .filter(|edge| selected.iter().any(|node| node["id"] == edge["from"]))
+        .collect();
+    assert_eq!(page[0]["edges"], serde_json::json!(outgoing));
+    assert_eq!(page[0]["node_count"], 2);
+    assert_eq!(page[0]["edge_count"], outgoing.len());
+    assert_eq!(query(&["--count"]), serde_json::json!(nodes.len()));
+    assert_eq!(query(&["--limit", "2", "--count"]), 2);
+    assert_eq!(
+        query(&["--offset", &nodes.len().to_string(), "--limit", "2"]),
+        serde_json::json!([{"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}])
+    );
+    let matching = query(&["--filter", "name~add_numbers", "--limit", "0"]);
+    let matching = matching[0]["nodes"].as_array().unwrap();
+    assert!(!matching.is_empty());
+    assert_eq!(
+        matching.len(),
+        nodes
+            .iter()
+            .filter(|node| node["name"].as_str().unwrap().contains("add_numbers"))
+            .count()
+    );
+    assert!(matching
+        .iter()
+        .all(|node| node["name"].as_str().unwrap().contains("add_numbers")));
 
-    let result = ghidra(harness)
-        .arg("graph")
-        .arg("calls")
+    let batch_dir = tempfile::tempdir().unwrap();
+    let batch_file = batch_dir.path().join("graph.txt");
+    std::fs::write(
+        &batch_file,
+        "graph calls --sort name --offset 1 --limit 2\n",
+    )
+    .unwrap();
+    let batch = ghidra(harness)
+        .arg("batch")
+        .arg(batch_file.to_str().unwrap())
         .with_project(test_project(), TEST_PROGRAM)
+        .arg("--json")
         .run();
-
-    result.assert_success();
-    result.assert_stdout_contains("nodes");
-    result.assert_stdout_contains("edges");
+    batch.assert_success();
+    let batch: serde_json::Value = batch.json();
+    assert_eq!(batch[0]["results"][0]["result"], page);
 }
 
 #[test]

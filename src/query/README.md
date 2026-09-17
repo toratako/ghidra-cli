@@ -48,6 +48,15 @@ configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.
 Batch row selection and output formats retain their existing behavior.
 
+`graph calls` applies the residual query to its `nodes`, retaining the graph
+object with `nodes`, `edges`, `node_count`, and `edge_count`. Edges remain in
+bridge order and include all calls from the selected nodes, even when their
+destinations are outside the selected page. Node IDs are matched before field
+projection; counts reflect the returned nodes and edges. `--count` returns the
+selected node count. An empty selection retains an empty graph object.
+Standalone and batch queries share this processing; a batch line without query
+options retains its original bridge envelope.
+
 `find bytes`, `find text`, and `find string` use this same limit contract,
 without a separate fixed result cap. `find string` visits defined strings only;
 `find text` and `find bytes` share exact-byte memory scanning, including

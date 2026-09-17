@@ -3,8 +3,10 @@ use super::CommandResult;
 use crate::cli::{Cli, Commands};
 use crate::error::GhidraError;
 use crate::format::{auto_detect_format, DefaultFormatter, Formatter, OutputFormat};
+use crate::query::Query;
 use crate::terminal::write_stdout;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
 
 #[derive(Clone, Copy)]
@@ -198,10 +200,52 @@ fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> Ou
 /// Unmodified batch results retain their bridge envelope.
 pub(super) fn process_batch_result(result: CommandResult) -> anyhow::Result<serde_json::Value> {
     if let Some(query) = result.query {
-        let json = query.process_results(unwrap_bridge_response(result.value))?;
+        let json = process_query_response(result.value, &query)?;
         return Ok(serde_json::from_str(&json)?);
     }
     Ok(result.value)
+}
+
+/// Graph queries select nodes while preserving the graph envelope and outgoing edges.
+fn process_query_response(
+    mut value: serde_json::Value,
+    query: &Query,
+) -> crate::error::Result<String> {
+    if let (Some(nodes), Some(edges)) = (
+        value.get("nodes").and_then(serde_json::Value::as_array),
+        value.get("edges").and_then(serde_json::Value::as_array),
+    ) {
+        let nodes = query.select_rows(nodes.clone())?;
+        if query.count_only {
+            return Ok(nodes.len().to_string());
+        }
+
+        // Match the bridge's limit behavior: keep calls from selected nodes,
+        // including destinations outside this page. Resolve IDs before --fields.
+        let ids: HashSet<_> = nodes
+            .iter()
+            .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
+            .collect();
+        let edges: Vec<_> = edges
+            .iter()
+            .filter(|edge| {
+                edge.get("from")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|source| ids.contains(source))
+            })
+            .cloned()
+            .collect();
+        value["node_count"] = serde_json::json!(nodes.len());
+        value["edge_count"] = serde_json::json!(edges.len());
+        value["nodes"] = serde_json::Value::Array(if let Some(fields) = &query.fields {
+            query.select_fields(&nodes, fields)?
+        } else {
+            nodes
+        });
+        value["edges"] = serde_json::Value::Array(edges);
+        return DefaultFormatter.format(&[value], query.format);
+    }
+    query.process_results(unwrap_bridge_response(value))
 }
 
 pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<()> {
@@ -210,12 +254,9 @@ pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<(
     }
     let format = output_format(cli);
 
-    // Unwrap bridge response envelopes before formatting
-    let values = unwrap_bridge_response(result.value);
-
     if let Some(mut query) = result.query {
         query.format = format;
-        let output = query.process_results(values)?;
+        let output = process_query_response(result.value, &query)?;
         if !output.is_empty() {
             crate::terminal::write_stdout(&output)?;
         }
@@ -223,7 +264,7 @@ pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<(
     }
 
     let formatter = DefaultFormatter;
-    let output = formatter.format(&values, format)?;
+    let output = formatter.format(&unwrap_bridge_response(result.value), format)?;
     if !output.is_empty() {
         crate::terminal::write_stdout(&output)?;
     }
