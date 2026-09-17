@@ -78,7 +78,8 @@ final class ProgramSession {
         monitor().checkCancelled();
         for (DomainFile file : folder.getFiles()) {
             monitor().checkCancelled();
-            files.add(file);
+            Class<? extends DomainObject> objectClass = file.getDomainObjectClass();
+            if (objectClass != null && Program.class.isAssignableFrom(objectClass)) files.add(file);
         }
         for (DomainFolder child : folder.getFolders()) appendProgramFiles(child, files);
     }

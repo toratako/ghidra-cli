@@ -49,6 +49,8 @@ CLI program names and paths come from `ProgramSession.programName()` and
 artifact manifests, and the snapshots published by the program thread. Ghidra's
 internal Program name is not the project file identity and must not be renamed
 just to change CLI output.
+`programFiles()` filters by the DomainFile's domain-object class so program lists
+and status counts exclude archives while recognizing linked Programs.
 
 The entry script calls its inherited `end(true)` before serving requests to end
 the transaction created by `GhidraScript.executeNormal()`. Never end an unknown

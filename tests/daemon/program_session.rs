@@ -39,6 +39,69 @@ public class CheckAutoSavedComment extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_program_list_excludes_archives_at_every_depth() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let initial_count = client.list_programs().unwrap()["count"].as_u64().unwrap();
+    let name = format!("mixed-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.DataTypeArchiveDB;
+public class CreateMixedProjectFiles extends GhidraScript {
+    public void run() throws Exception {
+        var root = state.getProject().getProjectData().getRootFolder();
+        String name = getScriptArgs()[0];
+        var folder = root.createFolder(name);
+        for (var parent : new ghidra.framework.model.DomainFolder[] { root, folder }) {
+            Object consumer = new Object();
+            var archive = new DataTypeArchiveDB(parent, name + ".gdt", consumer);
+            archive.release(consumer);
+            if (parent.getFile(name + ".gdt") == null)
+                throw new IllegalStateException("Archive fixture was not saved");
+        }
+        currentProgram.getDomainFile().copyTo(folder, monitor).setName("copy");
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    let programs = client.list_programs().unwrap();
+    assert_eq!(programs["count"], initial_count + 1);
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        programs["count"]
+    );
+    let rows = programs["programs"].as_array().unwrap();
+    assert!(rows
+        .iter()
+        .any(|row| row["path"] == format!("/{name}/copy")));
+    assert!(rows
+        .iter()
+        .all(|row| !row["name"].as_str().unwrap().ends_with(".gdt")));
+    for row in rows {
+        client.open_program(row["path"].as_str().unwrap()).unwrap();
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+    drop(harness);
+    let restarted = start_daemon();
+    let client = restarted.client().unwrap();
+    assert_eq!(client.list_programs().unwrap()["count"], initial_count + 1);
+    assert_eq!(
+        client.bridge_info().unwrap()["program_count"],
+        initial_count + 1
+    );
+    client.program_delete(&format!("/{name}/copy")).unwrap();
+}
+
+#[test]
+#[serial]
 fn test_analyzer_enable_disable_in_bridge() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
