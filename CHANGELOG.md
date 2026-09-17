@@ -5,6 +5,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve component settings on unrelated structure fields during offset edits,
+  and on the edited field when only its name or comment changes.
+
 ### Changed
 
 - Move `query imports` and `query exports` to `program imports` and

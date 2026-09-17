@@ -100,7 +100,11 @@ take precedence. Shared helpers own lookup/serialization, not routing. Only
 most classes are package-private.
 
 `StructureFields` stages offset edits on a detached structure copy, validates
-field boundaries and conflicts, then applies the result in a session transaction.
+field boundaries and conflicts, then applies only the target component edit in a
+session transaction. Never replace the whole structure with the staged copy:
+Ghidra discards component settings when rebuilding it. Metadata-only edits update
+the original component, preserving its settings; layout edits leave other
+components' settings intact.
 `set-field`, `clear-field`, and explicit-offset `add-field` share this path;
 append and `del-field` retain their existing behavior. Never use packed
 replacement/clearing for offset edits: Ghidra may repack or delete components.

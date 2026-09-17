@@ -90,6 +90,8 @@ Script tests exercise JDK parsing of stdin declarations through that OSGi path.
 Symbol tests cover generated-label rejection and deletion failures retaining
 partial results through successful and failed saves; type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
+Type tests also inspect saved component format/byte-order settings after metadata
+and layout edits.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and query aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds

@@ -68,6 +68,108 @@ fn rejected_unchanged(name: &str, before: &Value, result: GhidraResult, message:
     error
 }
 
+fn assert_saved_field_settings(name: &str, offsets: &[&str]) {
+    let mut args = vec![name.to_owned()];
+    args.extend(offsets.iter().map(|offset| (*offset).to_owned()));
+    harness().client().unwrap().script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.framework.model.DomainFile;
+import ghidra.program.model.data.EndianSettingsDefinition;
+import ghidra.program.model.data.Structure;
+import ghidra.program.model.listing.Program;
+public class CheckSavedFieldSettings extends GhidraScript {
+    public void run() throws Exception {
+        Object consumer = new Object();
+        Program saved = (Program) currentProgram.getDomainFile()
+            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
+        try {
+            String[] args = getScriptArgs();
+            var structure = (Structure) saved.getDataTypeManager().getDataType("/" + args[0]);
+            for (int i = 1; i < args.length; i++) {
+                var settings = structure.getComponentAt(Integer.parseInt(args[i])).getDefaultSettings();
+                if (FormatSettingsDefinition.DEF.getChoice(settings) != FormatSettingsDefinition.DECIMAL)
+                    throw new IllegalStateException("Lost field format at " + args[i]);
+                if (EndianSettingsDefinition.DEF.getChoice(settings) != EndianSettingsDefinition.BIG)
+                    throw new IllegalStateException("Lost field byte order at " + args[i]);
+            }
+        } finally {
+            saved.release(consumer);
+        }
+    }
+}
+"#, &args, &[], false).unwrap();
+}
+
+#[test]
+#[serial]
+fn field_edits_preserve_saved_component_settings() {
+    require_ghidra!();
+    let prefix = format!("Settings_{}", unique_suffix());
+    harness().client().unwrap().script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.program.model.data.*;
+public class CreateFieldSettings extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        for (boolean packed : new boolean[] { false, true }) {
+            String name = getScriptArgs()[0] + (packed ? "Packed" : "Unpacked");
+            var structure = new StructureDataType(CategoryPath.ROOT, name, packed ? 0 : 24, dtm);
+            if (packed) {
+                structure.setPackingEnabled(true);
+                structure.add(DWordDataType.dataType, "head", null);
+                structure.add(DWordDataType.dataType, "tail", null);
+            } else {
+                structure.replaceAtOffset(0, DWordDataType.dataType, 4, "head", null);
+                structure.replaceAtOffset(16, DWordDataType.dataType, 4, "tail", null);
+            }
+            var saved = (Structure) dtm.addDataType(structure, null);
+            for (var component : saved.getDefinedComponents()) {
+                FormatSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
+                EndianSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), EndianSettingsDefinition.BIG);
+            }
+        }
+    }
+}
+"#, std::slice::from_ref(&prefix), &[], false).unwrap();
+
+    for (suffix, tail) in [("Packed", "4"), ("Unpacked", "16")] {
+        let name = format!("{prefix}{suffix}");
+        assert_saved_field_settings(&name, &["0", tail]);
+        success(set(&name, "0", &["--comment", "new comment"]));
+        assert_saved_field_settings(&name, &["0", tail]);
+        success(set(&name, "0", &["--name", "renamed"]));
+        assert_saved_field_settings(&name, &["0", tail]);
+    }
+    let name = format!("{prefix}Unpacked");
+    command(&[
+        "add-field",
+        &name,
+        "--offset",
+        "8",
+        "--name",
+        "inserted",
+        "--type",
+        "uint32_t",
+    ])
+    .assert_success();
+    assert_saved_field_settings(&name, &["0", "16"]);
+    success(set(&name, "8", &["--type", "byte[6]"]));
+    assert_saved_field_settings(&name, &["0", "16"]);
+    success(clear(&name, "0"));
+    assert_saved_field_settings(&name, &["16"]);
+    success(set(&name, "24", &["--type", "byte[8]"]));
+    assert_saved_field_settings(&name, &["16"]);
+    harness().client().unwrap().program_close().unwrap();
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+    assert_saved_field_settings(&name, &["16"]);
+}
+
 #[test]
 #[serial]
 fn set_field_preserves_attributes_and_offsets_while_shrinking_and_growing() {

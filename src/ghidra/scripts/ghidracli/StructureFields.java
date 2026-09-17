@@ -133,7 +133,8 @@ final class StructureFields {
             throw new IllegalArgumentException("Ghidra did not preserve the requested field name or offset");
         if (length(staged) < length(struct))
             throw new IllegalArgumentException("Field replacement would shrink the structure");
-        return new Plan(struct, staged, offset, old, after, old == null ? "created" : "updated");
+        return new Plan(struct, staged, offset, old, after, type == null,
+            old == null ? "created" : "updated");
     }
 
     static Plan clear(Structure struct, int offset) {
@@ -149,7 +150,7 @@ final class StructureFields {
         verifyOtherFields(struct, staged, old);
         if (length(staged) != length(struct))
             throw new IllegalArgumentException("Clearing a field would change the structure size");
-        return new Plan(struct, staged, offset, old, null, "cleared");
+        return new Plan(struct, staged, offset, old, null, false, "cleared");
     }
 
     private static void verifyOtherFields(Structure original, Structure staged, DataTypeComponent old) {
@@ -171,12 +172,20 @@ final class StructureFields {
 
     static final class Plan {
         private final Structure staged;
+        private final int offset;
+        private final DataTypeComponent before;
+        private final DataTypeComponent after;
+        private final boolean metadataOnly;
         private final JsonObject result;
         private final boolean changed;
 
         Plan(Structure original, Structure staged, int offset,
-                DataTypeComponent before, DataTypeComponent after, String action) {
+                DataTypeComponent before, DataTypeComponent after, boolean metadataOnly, String action) {
             this.staged = staged;
+            this.offset = offset;
+            this.before = before;
+            this.after = after;
+            this.metadataOnly = metadataOnly;
             JsonObject previous = describe(before);
             JsonObject next = describe(after);
             changed = !Objects.equals(previous, next) || length(original) != length(staged);
@@ -192,10 +201,25 @@ final class StructureFields {
             result.add("after", next == null ? JsonNull.INSTANCE : next);
         }
 
-        JsonObject apply(Structure original, ProgramSession session) {
+        JsonObject apply(Structure original, ProgramSession session) throws Exception {
             if (changed) {
                 ProgramTransaction transaction = session.transaction("Edit structure field");
-                try { original.replaceWith(staged); }
+                try {
+                    // Rebuilding the structure deletes every component's settings.
+                    // Apply only the validated edit so unrelated components retain
+                    // their records, settings, and inherited defaults.
+                    if (metadataOnly) {
+                        before.setFieldName(after.getFieldName());
+                        before.setComment(after.getComment());
+                    } else if (after == null) {
+                        original.clearComponent(before.getOrdinal());
+                    } else {
+                        int growth = length(staged) - length(original);
+                        if (growth > 0) original.growStructure(growth);
+                        original.replaceAtOffset(offset, after.getDataType(), after.getLength(),
+                            after.getFieldName(), after.getComment());
+                    }
+                }
                 finally { transaction.end(true); }
             }
             return result;
