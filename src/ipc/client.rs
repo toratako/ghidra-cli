@@ -459,6 +459,23 @@ impl BridgeClient {
     }
 
     #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
+    pub fn find_text(&self, text: &str, encoding: &str) -> Result<serde_json::Value> {
+        self.find_text_with_limit(text, encoding, None)
+    }
+
+    pub fn find_text_with_limit(
+        &self,
+        text: &str,
+        encoding: &str,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "find_text",
+            Some(json!({"text": text, "encoding": encoding, "limit": limit})),
+        )
+    }
+
+    #[allow(dead_code)] // Public library API; CLI uses the planned fetch limit.
     pub fn find_bytes(&self, hex: &str) -> Result<serde_json::Value> {
         self.find_bytes_with_limit(hex, None)
     }

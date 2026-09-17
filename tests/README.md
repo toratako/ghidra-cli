@@ -102,6 +102,10 @@ supported list handlers and query aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds
 beyond Java `int`. Planner and routing tests separately verify residual processing
 and standalone/batch equivalence.
+`readonly/search.rs` checks defined-only string search and exact text searches
+in UTF-8, UTF-16LE/BE, and Shift_JIS, including overlaps and encoding errors.
+`readonly/search_limits.rs` checks paging/counts for string, text, and byte
+searches and cancellation of both raw search commands.
 Batch coverage checks nonzero failure exits, preservation of per-command results
 and save errors, and stopping subsequent commands after a save failure or timeout.
 Program deletion coverage includes the initial program, closed files with matching

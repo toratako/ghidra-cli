@@ -43,6 +43,9 @@ passing a function pointer as a parameter does not make the enclosing function a
 ghidra-cli function list --filter "name~crypt" --project target
 ghidra-cli strings list --filter "length > 12" --limit 80 --project target
 ghidra-cli find string "password" --project target
+ghidra-cli find text "Password" --project target
+ghidra-cli find text "Password" --encoding utf-16le --project target
+ghidra-cli find text "日本" --encoding shift_jis --project target
 ghidra-cli strings refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
@@ -54,6 +57,23 @@ ghidra-cli graph calls --project target
 ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target
 ```
+
+`find string` searches only defined string values, using case-insensitive literal
+substring matching. It no longer falls back to raw memory when nothing matches;
+an empty result does not establish that the text is absent from the binary.
+
+`find text TEXT` searches the program's loaded memory regardless of string
+definitions. It encodes the non-empty literal TEXT using `--encoding` (default
+`utf-8`) and matches those exact bytes, including overlapping occurrences.
+Matching is case-sensitive; no regular expressions or character normalization
+are applied. Encodings use Java charset names and aliases, including `ascii`,
+`utf-8`, `utf-16le`, `utf-16be`, `shift_jis`, and `windows-31j` (CP932).
+Unknown encodings and text that cannot be represented in the encoding are errors.
+No NUL terminator is added. Use `utf-16le` or `utf-16be` for UTF-16 without a BOM;
+Java's `utf-16` encoding includes a BOM in the search bytes.
+Rows contain `address` (the match start), `byte_length`, and the canonical
+`encoding` name. Search does not create string definitions or infer surrounding
+string boundaries. `find bytes HEX` remains available for exact byte patterns.
 
 String names and external/import names resolve directly. For plain `graph
 callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
@@ -83,7 +103,8 @@ These commands share filtering, field selection, sorting, pagination, and counts
 run in Rust after a full fetch; small limits may not bound underlying work.
 The default cap also applies with no query options or with only `--fields`.
 An explicit limit overrides it; `--count` ignores the default but honors an
-explicit offset/limit, returning the selected page's count. Byte and string searches have no additional fixed result cap.
+explicit offset/limit, returning the selected page's count. Byte, text, and string
+searches have no additional fixed result cap.
 Output precedence: explicit format, `--pretty`, `--json`, configured default,
 TTY detection.
 

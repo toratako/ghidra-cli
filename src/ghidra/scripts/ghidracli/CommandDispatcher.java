@@ -78,6 +78,7 @@ final class CommandDispatcher {
             case "program_export":  return programCommands.handleProgramExport(args);
             // Find commands
             case "find_string":     return searchCommands.handleFindString(args);
+            case "find_text":       return searchCommands.handleFindText(args);
             case "string_refs":     return searchCommands.handleStringRefs(args);
             case "find_bytes":      return searchCommands.handleFindBytes(args);
             case "find_instruction": return searchCommands.handleFindInstruction(args);

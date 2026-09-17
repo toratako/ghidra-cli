@@ -56,6 +56,15 @@ returns `error` with `detail.save_failed: true`, `saved: false`, and the origina
 `command_response`; do not replay the edit. Errors with retained, saved changes
 include `detail.partial_changes_saved: true`.
 
+`find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
+default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.
+Encoding errors fail rather than substituting replacement bytes. It returns
+`{"results":[{"address":"...","byte_length":4,"encoding":"UTF-8"}],"count":1}`.
+Matches are exact byte sequences in program memory, including overlaps; rows
+identify the match start without extracting surrounding text. `find_string`
+now searches defined strings only. Update the bridge with the CLI to remove
+the old implicit raw-memory fallback.
+
 Symbol mutations resolve snapshots through `symbol_get_by_name`, which never
 falls back to an address. `symbol_get` reserves an explicit `0x`/`0X` prefix for
 addresses; other targets use exact names before legacy bare-hex address lookup.

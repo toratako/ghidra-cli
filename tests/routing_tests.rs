@@ -109,7 +109,7 @@ impl RecordedBridge {
                         };
                         json!({key: rows, "count": rows.len()})
                     }
-                    "find_string" | "find_bytes" => {
+                    "find_string" | "find_bytes" | "find_text" => {
                         let mut rows: Vec<_> = (0..160)
                             .map(|i| json!({"address": format!("{i:04x}")}))
                             .collect();
@@ -1712,6 +1712,7 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
     let bridge = RecordedBridge::new();
     for (command, wire) in [
         (vec!["find", "string", "needle"], "find_string"),
+        (vec!["find", "text", "needle"], "find_text"),
         (vec!["find", "bytes", "90"], "find_bytes"),
     ] {
         for (flags, expected_len, first, fetch_limit) in [
@@ -1767,6 +1768,48 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
                 assert_eq!(sent.len(), 1);
                 assert_eq!(sent[0]["args"]["limit"], fetch_limit, "{args:?}");
             }
+        }
+    }
+}
+
+#[test]
+fn text_search_routes_encoding_text_and_program_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for encoding in [None, Some("utf-16le"), Some("shift_jis")] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec![
+                "find",
+                "text",
+                "日本 text",
+                "--program",
+                "B",
+                "--limit",
+                "1",
+            ];
+            if let Some(encoding) = encoding {
+                args.extend(["--encoding", encoding]);
+            }
+            if batch {
+                std::fs::write(bridge.root.path().join("text.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "text.txt"]);
+            } else {
+                bridge.run(&args);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            assert!(requests
+                .iter()
+                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            let sent: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "find_text")
+                .collect();
+            assert_eq!(sent.len(), 1);
+            assert_eq!(
+                sent[0]["args"],
+                json!({"text": "日本 text", "encoding": encoding.unwrap_or("utf-8"), "limit": 1})
+            );
         }
     }
 }

@@ -52,9 +52,11 @@ impl XRefArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FindCommands {
-    /// Find strings
+    /// Find a case-insensitive substring in defined strings
     #[command(alias = "str", alias = "strings")]
     String(FindStringArgs),
+    /// Find literal encoded text in program memory, including undefined data
+    Text(FindTextArgs),
     /// Find byte patterns
     Bytes(FindBytesArgs),
     /// Find a substring in already-disassembled instructions (does not require xrefs)
@@ -66,6 +68,18 @@ pub enum FindCommands {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FindStringArgs {
     pub pattern: String,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindTextArgs {
+    /// Non-empty literal text (case-sensitive; no regular expressions)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub text: String,
+    /// Java charset name, e.g. utf-8, utf-16le, utf-16be, ascii, shift_jis
+    #[arg(long, default_value = "utf-8", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub encoding: String,
     #[command(flatten)]
     pub options: QueryOptions,
 }

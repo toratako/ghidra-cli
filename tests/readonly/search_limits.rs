@@ -74,7 +74,7 @@ public class CreateSearchLimitFixture extends GhidraScript {
         let bytes = "4341505f4e4545444c455f"; // CAP_NEEDLE_
         for command in [
             vec!["find", "bytes", bytes],
-            vec!["find", "string", "CAP_NEEDLE_"],
+            vec!["find", "text", "CAP_NEEDLE_"],
             vec!["find", "string", "DEFINED_NEEDLE_"],
         ] {
             let with = |flags: &[&str]| {
@@ -103,7 +103,8 @@ public class CreateSearchLimitFixture extends GhidraScript {
         }
         // Library calls stay unlimited unless their caller supplies a cap.
         for data in [
-            client.find_string("CAP_NEEDLE_").unwrap(),
+            client.find_string("DEFINED_NEEDLE_").unwrap(),
+            client.find_text("CAP_NEEDLE_", "utf-8").unwrap(),
             client.find_bytes(bytes).unwrap(),
         ] {
             assert_eq!(data["count"], 160);
@@ -114,12 +115,16 @@ public class CreateSearchLimitFixture extends GhidraScript {
                 .find_string_with_limit("DEFINED_NEEDLE_", Some(120))
                 .unwrap(),
             client.find_bytes_with_limit(bytes, Some(120)).unwrap(),
+            client
+                .find_text_with_limit("CAP_NEEDLE_", "utf-8", Some(120))
+                .unwrap(),
         ] {
             assert_eq!(data["count"], 120);
             assert_eq!(data["results"].as_array().unwrap().len(), 120);
         }
         for (wire, mut args) in [
-            ("find_string", json!({"pattern":"CAP_NEEDLE_"})),
+            ("find_string", json!({"pattern":"DEFINED_NEEDLE_"})),
+            ("find_text", json!({"text":"CAP_NEEDLE_"})),
             ("find_bytes", json!({"hex": bytes})),
         ] {
             for limit in [json!(0), json!(4294967296u64)] {
@@ -187,34 +192,45 @@ public class AddDenseSearchBlock extends GhidraScript {
                 false,
             )
             .unwrap();
-        let worker = harness.client().unwrap();
-        let search = std::thread::spawn(move || worker.find_bytes("0000"));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        let mut cancelled_id = None;
-        while !search.is_finished() && std::time::Instant::now() < deadline {
-            let status = client.status().unwrap();
-            if status["active_job"]["command"] == "find_bytes" {
-                let id = status["active_job"]["id"].as_u64().unwrap();
-                client.cancel_job(Some(id)).unwrap();
-                cancelled_id = Some(id);
-                break;
+        for (wire, args) in [
+            ("find_bytes", json!({"hex": "0000"})),
+            ("find_text", json!({"text": "\0\0"})),
+        ] {
+            let worker = harness.client().unwrap();
+            let search = std::thread::spawn(move || worker.send_command(wire, Some(args)));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let mut cancelled_id = None;
+            while !search.is_finished() && std::time::Instant::now() < deadline {
+                let status = client.status().unwrap();
+                if status["active_job"]["command"] == wire {
+                    let id = status["active_job"]["id"].as_u64().unwrap();
+                    client.cancel_job(Some(id)).unwrap();
+                    cancelled_id = Some(id);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
-            std::thread::sleep(std::time::Duration::from_millis(1));
+            let result = search.join().unwrap();
+            let id = cancelled_id.expect("uncapped search must remain active until cancellation");
+            assert!(
+                result.is_err(),
+                "cancelled search returned a successful partial result"
+            );
+            assert_eq!(
+                client.job_status(Some(id)).unwrap()["job"]["state"],
+                "cancelled"
+            );
+            assert_eq!(
+                client.find_bytes_with_limit("0000", Some(2)).unwrap()["count"],
+                2
+            );
+            assert_eq!(
+                client
+                    .find_text_with_limit("\0\0", "utf-8", Some(2))
+                    .unwrap()["count"],
+                2
+            );
         }
-        let result = search.join().unwrap();
-        let id = cancelled_id.expect("uncapped search must remain active until cancellation");
-        assert!(
-            result.is_err(),
-            "cancelled search returned a successful partial result"
-        );
-        assert_eq!(
-            client.job_status(Some(id)).unwrap()["job"]["state"],
-            "cancelled"
-        );
-        assert_eq!(
-            client.find_bytes_with_limit("0000", Some(2)).unwrap()["count"],
-            2
-        );
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

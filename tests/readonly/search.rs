@@ -201,25 +201,23 @@ fn test_find_instruction_text_ranges_and_query_controls() {
 
 #[test]
 #[serial]
-fn test_find_string() {
+fn test_find_text_in_analyzed_binary() {
     require_ghidra!();
     let harness = harness();
 
-    // Search for "Ghidra CLI" rather than "Hello": on macOS arm64 Ghidra does
-    // not define the fixture's string literals, and a "Hello" search would
-    // otherwise match the mangled `HELLO_WORLD` symbol name (case-insensitively)
-    // and suppress the raw memory-scan fallback. "Ghidra CLI" only appears in
-    // the actual greeting, so it resolves via defined strings (x86_64) or the
-    // memory-scan fallback (arm64) on both arches.
+    // Text search finds the greeting even when the platform's analyzers leave
+    // the literal undefined.
     let result = ghidra(harness)
         .arg("find")
-        .arg("string")
+        .arg("text")
         .arg("Ghidra CLI")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
 
     result.assert_success();
-    result.assert_stdout_contains("Ghidra CLI");
+    let rows: Vec<serde_json::Value> = result.json();
+    assert!(!rows.is_empty());
+    assert!(rows.iter().all(|row| row["byte_length"] == 10));
 }
 
 #[test]
@@ -294,7 +292,7 @@ fn test_find_bytes_rejects_incomplete_patterns() {
 
 #[test]
 #[serial]
-fn test_search_raw_string_windows() {
+fn test_find_text_encodings_and_defined_string_boundary() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let name = format!("search-window-{}", uuid::Uuid::new_v4());
@@ -315,13 +313,24 @@ public class CreateSearchWindowFixture extends GhidraScript {
             int tx = program.startTransaction("search fixture");
             try {
                 var space = program.getAddressFactory().getDefaultAddressSpace();
-                String[] strings = {"A".repeat(300) + "needle-one" + "B".repeat(300),
-                    "boundary-needle", "C".repeat(256), "D".repeat(300)};
-                for (int i = 0; i < strings.length; i++) {
-                    byte[] bytes = strings[i].getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-                    program.getMemory().createInitializedBlock("raw" + i,
-                        space.getAddress(0x1000 + i * 0x1000),
+                String[] hex = {
+                    "50617373776f726400", // undefined Password
+                    "50617373776f726400", // defined Password
+                    "5261774f6e6c7900",   // undefined RawOnly
+                    "e697a5e69cac",       // 日本, UTF-8
+                    "e5652c67",           // 日本, UTF-16LE
+                    "65e5672c",           // 日本, UTF-16BE
+                    "93fa967b",           // 日本, Shift_JIS
+                    "6161616161",         // overlapping aa matches
+                    "58".repeat(300)      // no implicit extraction window
+                };
+                for (int i = 0; i < hex.length; i++) {
+                    byte[] bytes = java.util.HexFormat.of().parseHex(hex[i]);
+                    var address = space.getAddress(0x1000 + i * 0x1000);
+                    program.getMemory().createInitializedBlock("raw" + i, address,
                         new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
+                    if (i == 1) program.getListing().createData(address,
+                        ghidra.program.model.data.StringDataType.dataType, bytes.length);
                 }
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder()
@@ -337,20 +346,57 @@ public class CreateSearchWindowFixture extends GhidraScript {
         .unwrap();
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
-        for (pattern, length, truncated) in [
-            ("needle-one".to_owned(), 256, true),
-            ("boundary-needle".to_owned(), 15, false),
-            ("C".repeat(256), 256, false),
-            ("D".repeat(300), 300, false),
+        let defined = client.find_string("password").unwrap();
+        assert_eq!(defined["count"], 1, "{defined}");
+        assert_eq!(defined["results"][0]["value"], "Password");
+        assert_eq!(client.find_string("RawOnly").unwrap()["count"], 0);
+        assert_eq!(client.find_string("").unwrap()["count"], 1);
+        assert_eq!(client.find_text("Password", "utf-8").unwrap()["count"], 2);
+        assert_eq!(client.find_text("password", "utf-8").unwrap()["count"], 0);
+        assert_eq!(client.find_text("RawOnly", "ascii").unwrap()["count"], 1);
+        assert_eq!(client.find_text("aa", "utf-8").unwrap()["count"], 4);
+        let long = client.find_text(&"X".repeat(300), "utf-8").unwrap();
+        assert_eq!(long["count"], 1);
+        assert_eq!(long["results"][0]["byte_length"], 300);
+        for (encoding, address, length, canonical) in [
+            ("utf-8", 0x4000, 6, "UTF-8"),
+            ("utf-16le", 0x5000, 4, "UTF-16LE"),
+            ("utf-16be", 0x6000, 4, "UTF-16BE"),
+            ("shift_jis", 0x7000, 4, "Shift_JIS"),
         ] {
-            let found = client.find_string(&pattern).unwrap();
-            assert_eq!(found["count"], 1, "{found}");
+            let found = client.find_text("日本", encoding).unwrap();
+            assert_eq!(found["count"], 1, "{encoding}: {found}");
             let row = &found["results"][0];
-            assert_eq!(row["source"], "memory-scan");
-            assert!(row["value"].as_str().unwrap().contains(&pattern), "{row}");
-            assert_eq!(row["length"], length);
-            assert_eq!(row["truncated"], truncated);
+            assert_eq!(
+                u64::from_str_radix(row["address"].as_str().unwrap(), 16).unwrap(),
+                address
+            );
+            assert_eq!(row["byte_length"], length);
+            assert_eq!(row["encoding"], canonical);
         }
+        let default = client
+            .send_command("find_text", Some(serde_json::json!({"text": "日本"})))
+            .unwrap();
+        assert_eq!(default, client.find_text("日本", "utf-8").unwrap());
+        for (text, encoding, message) in [
+            ("日本", "ascii", "cannot be encoded"),
+            ("needle", "no-such-encoding", "Unsupported encoding"),
+            ("needle", "", "Unsupported encoding"),
+            ("", "utf-8", "Non-empty text"),
+        ] {
+            let error = client.find_text(text, encoding).unwrap_err();
+            assert!(error.to_string().contains(message), "{error}");
+        }
+        let output = ghidra(harness())
+            .args(["find", "text", "日本", "--encoding", "utf-16le", "--json"])
+            .with_project(test_project(), &name)
+            .run();
+        output.assert_success();
+        let rows: serde_json::Value = output.json();
+        assert_eq!(
+            rows,
+            client.find_text("日本", "utf-16le").unwrap()["results"]
+        );
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

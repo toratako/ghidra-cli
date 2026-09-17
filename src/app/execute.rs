@@ -353,6 +353,9 @@ pub(super) fn execute_via_bridge(
                     client.find_string_with_limit(&args.pattern, list_limit)
                 }
                 FindCommands::Bytes(args) => client.find_bytes_with_limit(&args.hex, list_limit),
+                FindCommands::Text(args) => {
+                    client.find_text_with_limit(&args.text, &args.encoding, list_limit)
+                }
                 FindCommands::Instruction(args) => client.find_instruction(
                     &args.pattern,
                     args.start.as_deref(),

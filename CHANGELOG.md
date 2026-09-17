@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `find text TEXT --encoding CHARSET` searches program memory for exact encoded
+  text regardless of string definitions. UTF-8 is the default; results include
+  match addresses, byte lengths, and encoding names. Unrepresentable text is
+  rejected, and searches support shared query options and cancellation.
+
 ### Fixed
 
 - Preserve component settings on unrelated structure fields during offset edits,
@@ -27,6 +34,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove the implicit raw-memory fallback from `find string`; it now searches
+  only defined strings, case-insensitively. Use `find text` for encoded text in
+  memory, or `find bytes` for hexadecimal byte patterns.
 - Remove `query`; use `function list`, `strings list`, `memory map`, and
   `program imports/exports`. Shared filtering and output options remain available.
 - Remove `GHIDRA_DEFAULT_PROJECT` and `GHIDRA_DEFAULT_PROGRAM` target defaults

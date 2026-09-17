@@ -67,6 +67,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Clear(args) => args.project.clone(),
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.project.clone(),
+            cli::FindCommands::Text(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
             cli::FindCommands::Instruction(args) => args.options.project.clone(),
             cli::FindCommands::Calls(args) => args.options.project.clone(),
@@ -184,6 +185,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Clear(args) => args.program.clone(),
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.program.clone(),
+            cli::FindCommands::Text(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
             cli::FindCommands::Instruction(args) => args.options.program.clone(),
             cli::FindCommands::Calls(args) => args.options.program.clone(),
@@ -322,6 +324,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => Some(args.options.clone()),
+            cli::FindCommands::Text(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
             cli::FindCommands::Instruction(args) => Some(args.options.clone()),
             cli::FindCommands::Calls(args) => Some(args.options.clone()),
@@ -351,6 +354,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         )
         | Commands::Find(
             cli::FindCommands::String(_)
+            | cli::FindCommands::Text(_)
             | cli::FindCommands::Bytes(_)
             | cli::FindCommands::Instruction(_),
         ) => Limit,

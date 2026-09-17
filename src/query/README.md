@@ -48,9 +48,10 @@ configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.
 Batch row selection and output formats retain their existing behavior.
 
-`find bytes` and both `find string` search paths use this same limit contract,
-without a separate fixed result cap. Raw string search remains a fallback when
-no defined string matches.
+`find bytes`, `find text`, and `find string` use this same limit contract,
+without a separate fixed result cap. `find string` visits defined strings only;
+`find text` and `find bytes` share exact-byte memory scanning, including
+overlapping matches and cancellation checks.
 
 ## Boundaries and validation
 

@@ -15,6 +15,11 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.exception.CancelledException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.util.Locale;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
@@ -76,8 +81,8 @@ final class SearchCommands {
             long limit = ListQuery.pageArgument(args, "limit");
             JsonArray results = new JsonArray();
 
-            // Phase 1: Search pre-analyzed string data types from the listing.
-            // This is fast and returns strings Ghidra's analyzer has already classified.
+            // Only defined string data participates; raw searches use find_text.
+            String needle = pattern.toLowerCase(Locale.ROOT);
             Listing listing = session.program().getListing();
             DataIterator dataIter = listing.getDefinedData(true);
 
@@ -88,7 +93,7 @@ final class SearchCommands {
                 if (data.hasStringValue()) {
                     try {
                         String val = data.getValue().toString();
-                        if (pattern.isEmpty() || val.toLowerCase().contains(pattern.toLowerCase())) {
+                        if (pattern.isEmpty() || val.toLowerCase(Locale.ROOT).contains(needle)) {
                             JsonObject item = new JsonObject();
                             item.addProperty("address", data.getAddress().toString());
                             item.addProperty("value", val);
@@ -96,55 +101,6 @@ final class SearchCommands {
                             results.add(item);
                         }
                     } catch (Exception e) { /* skip */ }
-                }
-            }
-
-            // Phase 2: If listing search found nothing and we have a pattern,
-            // fall back to raw memory scanning. This catches strings that Ghidra's
-            // analyzer didn't classify as string data types (common on PE binaries,
-            // and on macOS arm64 Rust binaries where literals stay undefined).
-            //
-            // This is a heuristic: it walks back to the start of the surrounding
-            // printable run and reads a window large enough for the match (normally
-            // capped at MEM_SCAN_MAX_LEN). Strings
-            // without a NUL/non-printable separator (e.g. packed Rust &str literals)
-            // can't have their exact boundaries recovered from raw bytes alone, so
-            // these results are marked with "source":"memory-scan".
-            if (results.size() == 0 && !pattern.isEmpty()) {
-                final int MEM_SCAN_MAX_LEN = 256;
-                Memory memory = session.program().getMemory();
-                byte[] searchBytes = pattern.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-
-                Address addr = memory.getMinAddress();
-                while (addr != null && (limit == 0 || results.size() < limit)) {
-                    session.monitor().checkCancelled();
-                    Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
-                    session.monitor().checkCancelled();
-                    if (found == null) break;
-
-                    // Walk back to the start of the printable run so the result
-                    // isn't truncated to the match offset (e.g. losing "Hello, ").
-                    int windowLength = Math.max(MEM_SCAN_MAX_LEN, searchBytes.length);
-                    Address start = backScanToStringStart(memory, found, windowLength - searchBytes.length);
-                    String extracted = extractStringAt(memory, start, windowLength);
-                    if (extracted.contains(pattern)) {
-                        JsonObject item = new JsonObject();
-                        item.addProperty("address", start.toString());
-                        item.addProperty("value", extracted);
-                        item.addProperty("length", extracted.length());
-                        item.addProperty("source", "memory-scan");
-                        item.addProperty("truncated", hasPrintableNeighbor(memory, start, -1)
-                            || hasPrintableNeighbor(memory, start, extracted.length()));
-                        results.add(item);
-                    }
-
-                    // Advance past this match (use the matched pattern length so we
-                    // don't loop forever if extraction came back empty).
-                    try {
-                        addr = found.addNoWrap(searchBytes.length);
-                    } catch (ghidra.program.model.address.AddressOverflowException e) {
-                        break;
-                    }
                 }
             }
 
@@ -157,61 +113,32 @@ final class SearchCommands {
         }
     }
 
-    /**
-     * Walk backward from a match address to the start of the surrounding
-     * printable-ASCII run (stopping at a null/non-printable byte, the memory
-     * block start, or after maxBack bytes). Returns the start address.
-     *
-     * For NUL-terminated strings this recovers the true start. For packed
-     * non-terminated strings (Rust &str literals) there is no separator, so
-     * the run may include preceding literals — bounded by maxBack.
-     */
-    private Address backScanToStringStart(Memory memory, Address matchAddr, int maxBack) throws CancelledException {
-        Address start = matchAddr;
+    JsonObject handleFindText(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String text = getArgString(args, "text");
+        if (text == null || text.isEmpty()) return errorResult("Non-empty text required");
+        String encoding = getArgString(args, "encoding");
+        if (encoding == null) encoding = "utf-8";
         try {
-            for (int i = 0; i < maxBack; i++) {
-                session.monitor().checkCancelled();
-                Address prev = start.subtractNoWrap(1);
-                if (prev == null || !memory.contains(prev)) break;
-                byte b = memory.getByte(prev);
-                if (b == 0 || b < 0x20 || b > 0x7e) break;
-                start = prev;
+            long limit = ListQuery.pageArgument(args, "limit");
+            Charset charset;
+            try {
+                charset = Charset.forName(encoding);
+            } catch (IllegalArgumentException e) {
+                return errorResult("Unsupported encoding: " + encoding);
             }
-        } catch (CancelledException e) {
-            throw e;
+            ByteBuffer encoded = charset.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .encode(CharBuffer.wrap(text));
+            byte[] bytes = new byte[encoded.remaining()];
+            encoded.get(bytes);
+            if (bytes.length == 0) return errorResult("Text encodes to an empty byte sequence");
+            return searchMemory(bytes, limit, charset.name());
+        } catch (CharacterCodingException e) {
+            return errorResult("Text cannot be encoded as " + encoding);
         } catch (Exception e) {
-            // Hit a block boundary or unreadable byte; current start is fine.
-        }
-        return start;
-    }
-
-    /**
-     * Extract a printable string starting at the given address.
-     * Reads until a null byte, non-printable character, or maxLen is reached.
-     */
-    private String extractStringAt(Memory memory, Address addr, int maxLen) throws CancelledException {
-        StringBuilder sb = new StringBuilder();
-        try {
-            for (int i = 0; i < maxLen; i++) {
-                session.monitor().checkCancelled();
-                byte b = memory.getByte(addr.addNoWrap(i));
-                if (b < 0x20 || b > 0x7e) break;
-                sb.append((char) b);
-            }
-        } catch (CancelledException e) {
-            throw e;
-        } catch (Exception e) {
-            // Retain the readable prefix at an unmapped/uninitialized boundary.
-        }
-        return sb.toString();
-    }
-
-    private boolean hasPrintableNeighbor(Memory memory, Address start, int offset) {
-        try {
-            byte b = memory.getByte(start.addNoWrap(offset));
-            return b >= 0x20 && b <= 0x7e;
-        } catch (Exception e) {
-            return false;
+            return errorResult("Failed to find text: " + e.getMessage());
         }
     }
 
@@ -287,32 +214,40 @@ final class SearchCommands {
                 searchBytes[i] = (byte) Integer.parseInt(hexClean.substring(i * 2, i * 2 + 2), 16);
             }
 
-            Memory memory = session.program().getMemory();
-            JsonArray results = new JsonArray();
-
-            Address addr = memory.getMinAddress();
-            while (addr != null && (limit == 0 || results.size() < limit)) {
-                session.monitor().checkCancelled();
-                Address found = memory.findBytes(addr, searchBytes, null, true, session.monitor());
-                session.monitor().checkCancelled();
-                if (found == null) break;
-                JsonObject item = new JsonObject();
-                item.addProperty("address", found.toString());
-                results.add(item);
-                try {
-                    addr = found.addNoWrap(1);
-                } catch (ghidra.program.model.address.AddressOverflowException e) {
-                    break;
-                }
-            }
-
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            return result;
+            return searchMemory(searchBytes, limit, null);
         } catch (Exception e) {
             return errorResult("Failed to find bytes: " + e.getMessage());
         }
+    }
+
+    /** Shared exact-byte scanning, including overlapping matches and cancellation. */
+    private JsonObject searchMemory(byte[] bytes, long limit, String encoding)
+            throws CancelledException {
+        Memory memory = session.program().getMemory();
+        JsonArray results = new JsonArray();
+        Address addr = memory.getMinAddress();
+        while (addr != null && (limit == 0 || results.size() < limit)) {
+            session.monitor().checkCancelled();
+            Address found = memory.findBytes(addr, bytes, null, true, session.monitor());
+            session.monitor().checkCancelled();
+            if (found == null) break;
+            JsonObject item = new JsonObject();
+            item.addProperty("address", found.toString());
+            if (encoding != null) {
+                item.addProperty("byte_length", bytes.length);
+                item.addProperty("encoding", encoding);
+            }
+            results.add(item);
+            try {
+                addr = found.addNoWrap(1);
+            } catch (ghidra.program.model.address.AddressOverflowException e) {
+                break;
+            }
+        }
+        JsonObject result = new JsonObject();
+        result.add("results", results);
+        result.addProperty("count", results.size());
+        return result;
     }
 
     JsonObject handleFunctionCalls(JsonObject args) {

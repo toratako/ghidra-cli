@@ -3,6 +3,28 @@ use crate::format::OutputFormat;
 use clap::ValueEnum;
 
 #[test]
+fn text_search_accepts_encodings_and_rejects_empty_input() {
+    for encoding in [None, Some("utf-16le"), Some("shift_jis")] {
+        let mut args = vec!["ghidra-cli", "find", "text", "日本"];
+        if let Some(encoding) = encoding {
+            args.extend(["--encoding", encoding]);
+        }
+        let cli = Cli::try_parse_from(args).unwrap();
+        let Commands::Find(FindCommands::Text(args)) = cli.command else {
+            panic!("expected text search");
+        };
+        assert_eq!(args.text, "日本");
+        assert_eq!(args.encoding, encoding.unwrap_or("utf-8"));
+    }
+    for args in [
+        vec!["ghidra-cli", "find", "text", ""],
+        vec!["ghidra-cli", "find", "text", "needle", "--encoding", ""],
+    ] {
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+}
+
+#[test]
 fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",
