@@ -24,7 +24,9 @@ defaults. `project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work.
-Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Preflight
+Function rename rejects symbol-only bulk flags (`--filter`, `--all`).
+Function deletion accepts only its target and receipt output options; filtering,
+sorting, pagination, and count flags are rejected before bridge work. Preflight
 requires `bridge_info.explicit_addresses: true` before program dispatch and
 before compatibility recovery. Missing support fails with restart guidance;
 never downgrade to inferred address parsing. Recovery for other compatibility

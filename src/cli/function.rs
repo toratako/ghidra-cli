@@ -21,7 +21,7 @@ pub enum FunctionCommands {
     /// Create function
     Create(CreateFunctionArgs),
     /// Delete function
-    Delete(FunctionGetArgs),
+    Delete(FunctionDeleteArgs),
     /// Set function signature from C-style string
     SetSignature(SetSignatureArgs),
     /// Set function return type
@@ -101,6 +101,37 @@ pub struct FunctionGetArgs {
 }
 
 impl FunctionGetArgs {
+    pub fn resolved_target(&self) -> &str {
+        self.target
+            .as_deref()
+            .or(self.positional_target.as_deref())
+            .expect("clap should ensure target is provided")
+    }
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionDeleteArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET", required_unless_present = "target")]
+    pub positional_target: Option<String>,
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(long = "target", value_name = "TARGET")]
+    pub target: Option<String>,
+    /// Target program
+    #[arg(long)]
+    pub program: Option<String>,
+    /// Project name
+    #[arg(long)]
+    pub project: Option<String>,
+    /// Fields to include in the deletion receipt (comma-separated)
+    #[arg(long)]
+    pub fields: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    pub format: Option<crate::format::OutputFormat>,
+}
+
+impl FunctionDeleteArgs {
     pub fn resolved_target(&self) -> &str {
         self.target
             .as_deref()

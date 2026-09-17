@@ -57,6 +57,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Remove `--format ids` in favor of `--format minimal`, and remove
   `--format count`; `--count` retains its existing query semantics.
 - Remove the unused `aliases` configuration field.
+- Remove `--filter`, `--sort`, `--offset`, `--limit`, and `--count` from
+  `function delete`. Target selection and receipt formatting are unchanged.
 - Remove `--format tree` and `--format hex`. `program export hex` is unchanged.
 - Remove `clear --to-data`. Plain `clear START:END` still clears without
   disassembly; `--disasm-at ADDRESS` remains available.

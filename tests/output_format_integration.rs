@@ -50,6 +50,12 @@ fn removed_flags_are_rejected_before_loading_config() {
         vec!["analyze", "--detach"],
         vec!["function", "rename", "old", "new", "--filter", "name=old"],
         vec!["function", "rename", "old", "new", "--all"],
+        vec!["function", "delete", "main", "--filter", "name=other"],
+        vec!["function", "delete", "main", "-f", "name=other"],
+        vec!["function", "delete", "main", "--sort", "name"],
+        vec!["function", "delete", "main", "--offset", "1"],
+        vec!["function", "delete", "main", "--limit", "0"],
+        vec!["function", "delete", "main", "--count"],
     ] {
         let output = isolated_command(&temp).args(&args).output().unwrap();
         assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");

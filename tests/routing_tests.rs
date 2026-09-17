@@ -200,6 +200,9 @@ impl RecordedBridge {
                     "symbol_delete" => {
                         json!({"status": "deleted", "name": args["name"], "count": args["targets"].as_array().unwrap().len()})
                     }
+                    "delete_function" => {
+                        json!({"status": "deleted", "name": "main", "address": "0x1000"})
+                    }
                     "list_functions" => {
                         let mut rows = vec![
                             json!({"name": "excluded", "size": 0}),
@@ -2050,6 +2053,88 @@ fn batch_continues_after_removed_commands_without_selecting_their_programs() {
     assert_eq!(domain.len(), 1, "{domain:?}");
     assert_eq!(domain[0]["command"], "comment_set");
     assert_eq!(domain[0]["args"]["text"], "after");
+}
+
+#[test]
+fn function_delete_preserves_targets_and_receipt_output_in_standalone_and_batch() {
+    for target in [vec!["main"], vec!["--target", "0x1000"]] {
+        for batch in [false, true] {
+            let bridge = RecordedBridge::new();
+            let mut args = vec!["function", "delete"];
+            args.extend(&target);
+            args.extend([
+                "--program",
+                "B",
+                "--fields",
+                "status,address",
+                "--format",
+                "json-compact",
+                "--json",
+            ]);
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(result, json!([{"status": "deleted", "address": "0x1000"}]));
+            let requests = bridge.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{domain:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"]["program"], "B");
+            assert_eq!(domain[1]["command"], "delete_function");
+            assert_eq!(
+                domain[1]["args"],
+                json!({"address": target.last().unwrap()})
+            );
+        }
+    }
+}
+
+#[test]
+fn batch_rejects_function_delete_query_flags_without_selecting_or_deleting() {
+    let bridge = RecordedBridge::new();
+    let mut lines: Vec<_> = [
+        "--filter name=other",
+        "--sort name",
+        "--offset 1",
+        "--limit 0",
+        "--count",
+    ]
+    .iter()
+    .map(|flag| format!("function delete main --program must-not-open {flag}"))
+    .collect();
+    lines.push("program info".into());
+    std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    for result in report[0]["results"].as_array().unwrap().iter().take(5) {
+        assert!(
+            result["error"]
+                .as_str()
+                .unwrap()
+                .contains("unexpected argument"),
+            "{result}"
+        );
+    }
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["detail"]["failed"], 5);
+    let requests = bridge.requests.lock().unwrap();
+    let domain: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] != "bridge_info")
+        .collect();
+    assert_eq!(domain.len(), 1, "{domain:?}");
+    assert_eq!(domain[0]["command"], "program_info");
 }
 
 #[test]

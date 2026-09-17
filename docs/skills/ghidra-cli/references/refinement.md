@@ -18,6 +18,10 @@ ghidra-cli function set-noreturn abort_path --project target
 `function rename` uses `--address` to disambiguate the old name;
 it does not accept `--filter` or `--all`.
 
+`function delete TARGET` deletes one function by exact name or explicit address.
+Use `--fields` and `--format` to format its deletion receipt. It does not accept
+`--filter`, `--sort`, `--offset`, `--limit`, or `--count`.
+
 `function edit-var FUNCTION --var CURRENT_NAME` edits a local variable or parameter
 by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
 or both. Omitted attributes are not explicitly reassigned. `before` reports the
