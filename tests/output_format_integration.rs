@@ -62,6 +62,25 @@ fn removed_flags_are_rejected_before_loading_config() {
     }
 }
 
+#[test]
+fn config_rejects_removed_output_formats_without_changing_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    isolated_command(&temp)
+        .args(["config", "set", "default_output_format", "minimal"])
+        .assert()
+        .success();
+    let before = std::fs::read(&config_path).unwrap();
+    for format in ["ids", "count"] {
+        let output = isolated_command(&temp)
+            .args(["config", "set", "default_output_format", format])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{format}: {output:?}");
+        assert_eq!(std::fs::read(&config_path).unwrap(), before);
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn unavailable_file_logging_does_not_prevent_commands() {

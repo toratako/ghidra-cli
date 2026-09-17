@@ -85,8 +85,6 @@ fn output_formats_accept_supported_spellings_and_aliases() {
         ("csv", OutputFormat::Csv),
         ("tsv", OutputFormat::Tsv),
         ("table", OutputFormat::Table),
-        ("ids", OutputFormat::Ids),
-        ("count", OutputFormat::Count),
         ("asm", OutputFormat::Asm),
         ("c", OutputFormat::C),
     ] {
@@ -144,7 +142,7 @@ fn shared_format_help_lists_supported_choices() {
 
 #[test]
 fn unsupported_query_formats_do_not_remove_hex_program_export() {
-    for format in ["tree", "hex", "TREE", "HEX"] {
+    for format in ["tree", "hex", "ids", "count", "TREE", "HEX", "IDS", "COUNT"] {
         assert!(OutputFormat::from_str(format).is_err());
         assert!(serde_json::from_str::<OutputFormat>(&format!("\"{format}\"")).is_err());
         for command in [["program", "imports"], ["function", "list"]] {

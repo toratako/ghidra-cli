@@ -54,6 +54,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `--format ids` in favor of `--format minimal`, and remove
+  `--format count`; `--count` retains its existing query semantics.
 - Remove `--format tree` and `--format hex`. `program export hex` is unchanged.
 - Remove `clear --to-data`. Plain `clear START:END` still clears without
   disassembly; `--disasm-at ADDRESS` remains available.

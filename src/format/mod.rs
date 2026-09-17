@@ -19,8 +19,6 @@ pub enum OutputFormat {
     Csv,
     Tsv,
     Table,
-    Ids,
-    Count,
     #[value(help = "Assembly text for instruction rows; other rows remain JSON")]
     Asm,
     #[value(help = "Decompiled C text; other rows remain JSON")]
@@ -54,13 +52,12 @@ impl Formatter for DefaultFormatter {
                 }
                 Ok(result)
             }
-            OutputFormat::Count => Ok(format!("{}", data.len())),
             OutputFormat::Table => format_table(data),
             OutputFormat::Csv => format_csv(data, ','),
             OutputFormat::Tsv => format_csv(data, '\t'),
             OutputFormat::Compact => format_compact(data),
             OutputFormat::Full => format_full(data),
-            OutputFormat::Minimal | OutputFormat::Ids => format_minimal(data),
+            OutputFormat::Minimal => format_minimal(data),
             OutputFormat::C | OutputFormat::Asm => format_code(data, format),
         }
     }
@@ -638,11 +635,16 @@ mod tests {
     }
 
     #[test]
-    fn test_format_count() {
-        let data = vec![json!({"name": "test1"}), json!({"name": "test2"})];
-        let formatter = DefaultFormatter;
-        let result = formatter.format(&data, OutputFormat::Count).unwrap();
-        assert_eq!(result, "2");
+    fn minimal_prefers_address_then_name_then_id() {
+        let data = [
+            json!({"address": "0x1000", "name": "main", "id": 1}),
+            json!({"name": "helper", "id": 2}),
+            json!({"id": 3}),
+        ];
+        let result = DefaultFormatter
+            .format(&data, OutputFormat::Minimal)
+            .unwrap();
+        assert_eq!(result, "0x1000\nhelper\n3\n");
     }
 
     #[test]
