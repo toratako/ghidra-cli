@@ -15,7 +15,8 @@ ghidra-cli function set-calling-convention parse_header --convention __cdecl --p
 ghidra-cli function set-noreturn abort_path --project target
 ```
 
-`function rename` does not accept `--filter` or `--all`.
+`function rename` uses `--address` to disambiguate the old name;
+it does not accept `--filter` or `--all`.
 
 `function edit-var FUNCTION --var CURRENT_NAME` edits a local variable or parameter
 by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
@@ -46,10 +47,8 @@ ghidra-cli symbol rename packet_header message_header --project target
 ```
 
 Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
-`--all` to affect every match.
-Rename/delete resolve exact symbol names, including names that look like hex
-addresses. `symbol get` treats `0x`/`0X`-prefixed input as an address; otherwise it
-looks for an exact name first, then tries a bare hex address if no name matches.
+`--all` to affect every match. Rename/delete take exact names (even `0x...`);
+`symbol get` accepts names or addresses.
 
 ## Types
 

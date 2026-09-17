@@ -15,6 +15,9 @@ Global `--project`, `--program`, `--projects-dir`, `--json`, and `--pretty` may
 appear with subcommands. Command-level project/program options override globals
 and configured defaults.
 
+Use `0x`-prefixed addresses and retain any space/segment qualifiers.
+Name-or-address targets treat unprefixed values, including `FUN_...`, as exact names.
+
 ## Start with a program
 
 Use `ghidra-cli doctor` for prerequisite checks; `doctor --runtime` also verifies

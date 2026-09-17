@@ -29,6 +29,11 @@ ghidra-cli clear 0x401200:0x40121f --disasm-at 0x401210 --project target
 
 Plain `clear START:END` clears overlapping code units and leaves the range
 undefined. Add `--disasm-at ADDRESS` to disassemble at a new boundary after clearing.
+`clear` ranges stay within one space. `overlay:0x1000:0x1010` inherits the start
+space; segmented endpoints must be fully qualified, e.g.
+`ram:0x1234:0x0:ram:0x1234:0x8`. For numeric space names, use
+`0x1234:0x10.0:0x1234:0x20.0` to avoid ambiguous splits.
+Word-addressed values may include a byte remainder (`word:0x1000.1`).
 
 For headerless input, first choose the language and load parameters using
 [raw import](programs.md#raw-import).

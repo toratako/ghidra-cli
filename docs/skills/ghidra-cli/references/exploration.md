@@ -123,3 +123,8 @@ ghidra-cli function list --filter "size > 100" --fields name,address,size \
 Filters also combine with `AND` (e.g. `size >= 100 AND name ~ 'crypt'`);
 `name ^ 'FUN_'` selects a prefix. For tag filters, see
 [function tags](refinement.md#function-tags).
+
+For address comparisons and `IN`, use hex literals (`address >= 0x401000`)
+or quoted addresses (`address = 'overlay:0x1000'`). Numeric comparisons use
+flat offsets; quoted equality keeps space names case-sensitive while ignoring
+hex case and zero padding.
