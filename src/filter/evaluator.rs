@@ -43,9 +43,9 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
             GhidraError::InvalidFilter(format!("Cannot compare number with {:?}", val))
         }),
         (JsonValue::String(s), val) if val.as_f64().is_some() => {
-            // Preserve hex-first interpretation of bridge address strings,
-            // including address-space prefixes, without rounding through f64.
-            match parse_numeric_field(s) {
+            // Explicit address offsets keep all integer bits. Other numeric
+            // string fields retain their existing comparison semantics.
+            match parse_numeric_field(field, s) {
                 Some(field_num) => Ok(compare_numbers(&field_num, val, op).unwrap()),
                 None => Err(GhidraError::InvalidFilter(format!(
                     "Cannot compare non-numeric string field {:?} numerically",
@@ -54,8 +54,8 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
             }
         }
         (JsonValue::String(s), Value::String(val)) => Ok(match op {
-            CompareOp::Equal => strings_equal_lenient(field, s, val),
-            CompareOp::NotEqual => !strings_equal_lenient(field, s, val),
+            CompareOp::Equal => strings_equal(field, s, val),
+            CompareOp::NotEqual => !strings_equal(field, s, val),
             _ => {
                 return Err(GhidraError::InvalidFilter(
                     "Cannot use numeric comparison on strings".to_string(),
@@ -78,7 +78,7 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
             // multi-element array). Ordering comparisons on arrays are false.
             match op {
                 CompareOp::Equal | CompareOp::NotEqual => {
-                    let any_equal = elems.iter().any(|elem| scalar_equals(elem, val));
+                    let any_equal = elems.iter().any(|elem| scalar_equals(field, elem, val));
                     Ok(if matches!(op, CompareOp::Equal) {
                         any_equal
                     } else {
@@ -104,7 +104,7 @@ fn json_number(number: &serde_json::Number) -> Value {
 
 // i128 holds both signed JSON integers and the complete u64 address range.
 // Integral float literals also have an exact integer representation here;
-// this avoids rounding an address when comparing against e.g. 9007199254740992.0.
+// this avoids rounding a JSON integer against e.g. 9007199254740992.0.
 fn exact_integer(value: &Value) -> Option<i128> {
     match value {
         Value::Integer(n) => Some(i128::from(*n)),
@@ -143,11 +143,16 @@ fn compare_numbers(left: &Value, right: &Value, op: CompareOp) -> Option<bool> {
 }
 
 /// Element-vs-value equality for array-field filters. Mirrors the scalar `=`
-/// semantics (exact, case-sensitive for strings); type mismatches are simply
+/// semantics (address-aware, otherwise exact for strings); type mismatches are simply
 /// not-equal rather than errors, since arrays can hold mixed content.
-fn scalar_equals(elem: &JsonValue, val: &Value) -> bool {
+fn scalar_equals(field: &str, elem: &JsonValue, val: &Value) -> bool {
     match (elem, val) {
-        (JsonValue::String(s), Value::String(v)) => s == v,
+        (JsonValue::String(s), Value::String(v)) => strings_equal(field, s, v),
+        (JsonValue::String(s), Value::Hex(_)) if is_address_field(field) => {
+            parse_numeric_field(field, s)
+                .and_then(|n| compare_numbers(&n, val, CompareOp::Equal))
+                .unwrap_or(false)
+        }
         (JsonValue::Number(n), v) => {
             compare_numbers(&json_number(n), v, CompareOp::Equal).unwrap_or(false)
         }
@@ -156,44 +161,62 @@ fn scalar_equals(elem: &JsonValue, val: &Value) -> bool {
     }
 }
 
-/// Equal/NotEqual on two string values for `evaluate_compare`: exact match,
-/// or -- for address-shaped fields -- tolerant of a `0x`/`0X` prefix on the
-/// filter's value. Ghidra addresses are stored and returned as bare hex
-/// (e.g. "ff90"), but every other place in this CLI's own docs/output uses
-/// `0xADDR` freely (`ghidra-cli decompile 0x0331`, `ghidra-cli x-ref to 0xff90`),
-/// so a quoted `--filter "address = '0xff90'"` used to silently match
-/// nothing instead of comparing the same way those other commands do.
-fn strings_equal_lenient(field: &str, field_val: &str, filter_val: &str) -> bool {
-    if field_val == filter_val {
-        return true;
-    }
+/// Address strings compare explicit components, preserving spaces and segments.
+/// Other string fields use exact equality.
+fn strings_equal(field: &str, field_val: &str, filter_val: &str) -> bool {
     if !is_address_field(field) {
-        return false;
+        return field_val == filter_val;
     }
-    let stripped = filter_val
-        .strip_prefix("0x")
-        .or_else(|| filter_val.strip_prefix("0X"));
-    match stripped {
-        Some(stripped) => field_val.eq_ignore_ascii_case(stripped),
-        None => false,
+    match (
+        crate::address::ExplicitAddress::parse_canonical(field_val),
+        crate::address::ExplicitAddress::parse_canonical(filter_val),
+    ) {
+        (Some(actual), Some(requested)) => actual.same_location(&requested),
+        _ => false,
     }
 }
 
-/// Field names (last path segment) that hold a Ghidra address as a bare hex
-/// string, per the JSON the bridge emits (`address`, `entry_point`, xref
-/// `from`/`to`, `min_address`/`max_address`).
-fn is_address_field(field: &str) -> bool {
+/// Structured fields containing addresses rather than arbitrary text.
+pub(super) fn is_address_field(field: &str) -> bool {
+    let leaf = field.rsplit('.').next().unwrap_or(field);
     matches!(
-        field.rsplit('.').next().unwrap_or(field),
-        "address" | "entry_point" | "from" | "to" | "min_address" | "max_address"
+        leaf.split('[').next().unwrap_or(leaf),
+        "address"
+            | "entry_point"
+            | "from"
+            | "to"
+            | "min_address"
+            | "max_address"
+            | "image_base"
+            | "start"
+            | "end"
+            | "call_site"
+            | "caller_address"
+            | "callee_address"
+            | "string_address"
+            | "instruction_address"
+            | "via"
+            | "disasm_at"
+            | "first_use"
+            | "conflicting_start"
+            | "conflicting_end"
+            | "containing_function_entry"
     )
 }
 
-/// Parse a JSON string field as a number for numeric comparison. Ghidra
-/// address strings are unprefixed hex (optionally with an address-space
-/// prefix like "ram:"), so hex is tried first; plain decimal is the
-/// fallback for other numeric-looking string fields.
-fn parse_numeric_field(s: &str) -> Option<Value> {
+/// Flat explicit addresses can be compared numerically. Segmented and word
+/// offsets require their space semantics; never silently drop a component.
+fn parse_numeric_field(field: &str, s: &str) -> Option<Value> {
+    if is_address_field(field) {
+        let address = crate::address::ExplicitAddress::parse_canonical(s)?;
+        if address.components.len() != 1 || address.components[0].contains('.') {
+            return None;
+        }
+        return u64::from_str_radix(&address.components[0][2..], 16)
+            .ok()
+            .map(Value::Hex);
+    }
+    // Preserve existing numeric-string semantics outside address fields.
     let hex_part = s.rsplit(':').next().unwrap_or(s);
     let hex_part = hex_part
         .strip_prefix("0x")
@@ -322,6 +345,16 @@ fn evaluate_exists(field: &str, check: ExistenceCheck, data: &JsonValue) -> Resu
 }
 
 fn evaluate_in(field: &str, values: &[Value], data: &JsonValue) -> Result<bool> {
+    // Address membership shares `=` semantics, including full-width numeric
+    // offsets and exact space/segment identity for explicit address strings.
+    if is_address_field(field) {
+        for value in values {
+            if evaluate_compare(field, CompareOp::Equal, value, data)? {
+                return Ok(true);
+            }
+        }
+        return Ok(false);
+    }
     let field_value = get_field_value(field, data);
 
     if field_value.is_none() {
@@ -392,11 +425,11 @@ mod tests {
     #[test]
     fn test_evaluate_address_range_filter() {
         // Regression: Ghidra addresses come back as hex strings (e.g.
-        // "002dad4c"), never JSON numbers. A numeric filter against that
+        // "0x002dad4c"), never JSON numbers. A numeric filter against that
         // field used to silently fall through to `Ok(false)` for every
         // row instead of comparing addresses.
-        let in_range = json!({ "name": "f1", "address": "002df100" });
-        let below_range = json!({ "name": "f2", "address": "002d0000" });
+        let in_range = json!({ "name": "f1", "address": "0x002df100" });
+        let below_range = json!({ "name": "f2", "address": "0x002d0000" });
 
         let expr = FilterExpr::Logical {
             op: LogicalOp::And,
@@ -420,12 +453,8 @@ mod tests {
 
     #[test]
     fn test_evaluate_quoted_hex_address_equality() {
-        // Regression: a quoted filter value ('0xff90') parses as
-        // Value::String, not Value::Hex, so it used to fall into plain
-        // string equality against the bare-hex stored field and never
-        // match, even though every other command in this CLI accepts
-        // 0x-prefixed addresses freely.
-        let data = json!({ "name": "g_game_state", "address": "ff90" });
+        // Quoted explicit addresses compare independent of padding and case.
+        let data = json!({ "name": "g_game_state", "address": "0x00ff90" });
 
         let expr = FilterExpr::Compare {
             field: "address".to_string(),
@@ -441,13 +470,128 @@ mod tests {
         };
         assert!(!evaluate(&expr_ne, &data).unwrap());
 
-        // Non-address string fields are unaffected by 0x-stripping.
+        // Non-address string fields retain exact equality.
         let name_expr = FilterExpr::Compare {
             field: "name".to_string(),
             op: CompareOp::Equal,
             value: Value::String("0xff90".to_string()),
         };
         assert!(!evaluate(&name_expr, &data).unwrap());
+    }
+
+    #[test]
+    fn address_filters_require_explicit_components_and_preserve_spaces() {
+        let data = json!({"address": "ram:0x0000ff90", "call_site": "0x0000ff90"});
+        for (input, expected) in [
+            ("address='ram:0XFF90'", true),
+            ("address='other:0xff90'", false),
+            ("address='RAM:0xff90'", false),
+            ("address='0xff90'", false),
+            ("call_site='0XFF90'", true),
+            ("call_site='0xff91'", false),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+        for address in ["ff90", "ram:ff90", "ram:0x1234:0xff90", "ram:0xff90.1"] {
+            assert!(
+                crate::filter::Filter::parse("address>0xff00")
+                    .unwrap()
+                    .evaluate(&json!({"address":address}))
+                    .is_err(),
+                "{address}"
+            );
+        }
+        assert!(strings_equal(
+            "address",
+            "ram:0x1234:0x0005",
+            "ram:0X1234:0x5"
+        ));
+        assert!(!strings_equal(
+            "address",
+            "ram:0x1234:0x0005",
+            "ram:0x5678:0x5"
+        ));
+    }
+
+    #[test]
+    fn address_membership_uses_equality_rules_for_spaces_segments_and_padding() {
+        let data = json!({
+            "address": "Bank:0x00abcdef",
+            "entry_point": "ram:0x1234:0x0005",
+            "call_site": "0x0020000000000001",
+            "via": "ram:0x10.1",
+            "items": [{"address": "0xbank:0x000f"}, {"address": "0xAB:0x0005"}],
+        });
+        for (field, literal, expected) in [
+            ("address", "'Bank:0XABCDEF'", true),
+            ("address", "'bank:0xabcdef'", false),
+            ("address", "'Other:0xabcdef'", false),
+            ("address", "'0xabcdef'", false),
+            ("entry_point", "'ram:0X1234:0x5'", true),
+            ("entry_point", "'ram:0x5678:0x5'", false),
+            ("entry_point", "'ram:0x0005'", false),
+            ("call_site", "0X20000000000001", true),
+            ("call_site", "0x20000000000000", false),
+            ("call_site", "'0X20000000000001'", true),
+            ("via", "'ram:0x0010.01'", true),
+            ("via", "'ram:0x10.0'", false),
+            ("items[0].address", "'0xbank:0X000F'", true),
+            ("items[0].address", "'0XBANK:0x000f'", false),
+            ("items[1].address", "'0xAB:0X5'", true),
+            ("items[1].address", "'0xab:0x5'", false),
+            ("items[1].address", "'0x00AB:0x5'", false),
+            ("items[1].address", "'ram:0xab:0x5'", false),
+        ] {
+            for expression in [
+                format!("{field}={literal}"),
+                format!("{field} IN [{literal}]"),
+            ] {
+                assert_eq!(
+                    crate::filter::Filter::parse(&expression)
+                        .unwrap()
+                        .evaluate(&data)
+                        .unwrap(),
+                    expected,
+                    "{expression}"
+                );
+            }
+        }
+        assert!(
+            crate::filter::Filter::parse("address IN ['Other:0xabcdef', 'Bank:0XABCDEF']")
+                .unwrap()
+                .evaluate(&data)
+                .unwrap()
+        );
+
+        let addresses = json!({"address": ["0x0020000000000001", "ram:0x1234:0x0005"]});
+        for (literal, expected) in [
+            ("'0X20000000000001'", true),
+            ("0X20000000000001", true),
+            ("0x20000000000000", false),
+            ("'ram:0x1234:0x5'", true),
+            ("'ram:0x5678:0x5'", false),
+        ] {
+            for expression in [
+                format!("address={literal}"),
+                format!("address IN [{literal}]"),
+            ] {
+                assert_eq!(
+                    crate::filter::Filter::parse(&expression)
+                        .unwrap()
+                        .evaluate(&addresses)
+                        .unwrap(),
+                    expected,
+                    "{expression}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -606,7 +750,7 @@ mod tests {
 
     #[test]
     fn address_comparisons_preserve_all_integer_bits() {
-        let data = json!({"address": "ram:0020000000000001"});
+        let data = json!({"address": "ram:0x0020000000000001"});
         for (input, expected) in [
             ("address=0x20000000000000", false),
             ("address!=0x20000000000000", true),
@@ -614,9 +758,6 @@ mod tests {
             ("address>=0x20000000000001", true),
             ("address<0x20000000000001", false),
             ("address<=0x20000000000000", false),
-            ("address=9007199254740993", true),
-            ("address=9007199254740992.0", false),
-            ("address>-1", true),
         ] {
             assert_eq!(
                 crate::filter::Filter::parse(input)
@@ -632,12 +773,35 @@ mod tests {
             ("address=0xffffffffffffffff", true),
             ("address=0xfffffffffffffffe", false),
             ("address>0xfffffffffffffffe", true),
-            ("address<18446744073709551616.0", true),
+            ("address IN [0XFFFFFFFFFFFFFFFF]", true),
+            ("address IN [0xfffffffffffffffe]", false),
         ] {
             assert_eq!(
                 crate::filter::Filter::parse(input)
                     .unwrap()
                     .evaluate(&high)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn decimal_comparisons_on_numeric_fields_preserve_integer_precision() {
+        let data = json!({"n": 9007199254740993_u64, "high": u64::MAX});
+        for (input, expected) in [
+            ("n=9007199254740993", true),
+            ("n=9007199254740992.0", false),
+            ("n>-1", true),
+            ("n IN [9007199254740993]", true),
+            ("n IN [9007199254740992.0]", false),
+            ("high<18446744073709551616.0", true),
+        ] {
+            assert_eq!(
+                crate::filter::Filter::parse(input)
+                    .unwrap()
+                    .evaluate(&data)
                     .unwrap(),
                 expected,
                 "{input}"

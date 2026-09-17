@@ -31,6 +31,6 @@ identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 value = { hex_number | number | boolean | quoted_string | identifier }
 string_value = { quoted_string | identifier }
 number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
-hex_number = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+hex_number = @{ ("0x" | "0X") ~ ASCII_HEX_DIGIT+ }
 boolean = @{ ("true" | "false" | "TRUE" | "FALSE") ~ !(ASCII_ALPHANUMERIC | "_") }
 quoted_string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" | "'" ~ (!"'" ~ ANY)* ~ "'" }

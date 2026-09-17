@@ -171,6 +171,9 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
     }
 
     if let Some(values) = in_values {
+        for value in &values {
+            validate_address_literal(&field, value)?;
+        }
         return Ok(FilterExpr::In { field, values });
     }
 
@@ -195,6 +198,7 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
     if let Some(cmp_op) = op {
         let val =
             value.ok_or_else(|| GhidraError::FilterParseError("Missing value".to_string()))?;
+        validate_address_literal(&field, &val)?;
         return Ok(FilterExpr::Compare {
             field,
             op: cmp_op,
@@ -205,6 +209,24 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
     Err(GhidraError::FilterParseError(
         "Invalid comparison".to_string(),
     ))
+}
+
+fn validate_address_literal(field: &str, value: &Value) -> Result<()> {
+    if !super::evaluator::is_address_field(field) {
+        return Ok(());
+    }
+    let valid = match value {
+        Value::Hex(_) => true,
+        Value::String(address) => crate::address::ExplicitAddress::parse(address).is_some(),
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(GhidraError::FilterParseError(format!(
+            "Invalid address literal {value:?} for field '{field}': use a 0x-prefixed hexadecimal literal or an explicit address string"
+        )))
+    }
 }
 
 fn parse_value(pair: pest::iterators::Pair<Rule>) -> Result<Value> {
@@ -225,7 +247,7 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> Result<Value> {
                 }
             }
             Rule::hex_number => {
-                let hex_str = inner.as_str().trim_start_matches("0x");
+                let hex_str = &inner.as_str()[2..];
                 let num = u64::from_str_radix(hex_str, 16).map_err(|_| {
                     GhidraError::FilterParseError(format!("Invalid hex number: {}", inner.as_str()))
                 })?;
@@ -268,11 +290,84 @@ mod tests {
 
     #[test]
     fn test_parse_hex() {
-        let filter = parse_filter("address=0x401000").unwrap();
-        if let FilterExpr::Compare { value, .. } = filter.expr {
-            assert!(matches!(value, Value::Hex(0x401000)));
-        } else {
-            panic!("Expected Compare expression");
+        for input in ["address=0x401000", "address=0X401000", "size=0X401000"] {
+            let filter = parse_filter(input).unwrap();
+            if let FilterExpr::Compare { value, .. } = filter.expr {
+                assert!(matches!(value, Value::Hex(0x401000)));
+            } else {
+                panic!("Expected Compare expression");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_address_literals_before_evaluating_any_rows() {
+        for field in ["address", "entry_point", "items[0].call_site", "address[0]"] {
+            for literal in [
+                "16",
+                "16.0",
+                "-1",
+                "true",
+                "dead",
+                "'00401000'",
+                "'FUN_00401000'",
+                "'ram:1234'",
+                "'0x'",
+                "'0xGG'",
+                "'0x10000000000000000'",
+                "'ram:0x1234:5'",
+                "'overlay::0x1000'",
+                "'ram:0x1.9'",
+            ] {
+                for comparison in [
+                    format!("{field}={literal}"),
+                    format!("{field}!={literal}"),
+                    format!("{field}>={literal}"),
+                    format!("{field} IN [0x1, {literal}]"),
+                ] {
+                    let error = parse_filter(&comparison).err().expect(&comparison);
+                    let message = error.to_string();
+                    assert!(message.contains(field), "{comparison}: {message}");
+                    assert!(message.contains("0x-prefixed"), "{comparison}: {message}");
+                }
+            }
+        }
+
+        // Parsing rejects invalid branches even if later evaluation would
+        // short-circuit or receive an empty result set.
+        for input in [
+            "name=ok OR address='ff90'",
+            "name=missing AND address=16",
+            "NOT (address IN [0x1, 'ram:1'])",
+        ] {
+            assert!(parse_filter(input).is_err(), "{input}");
+        }
+    }
+
+    #[test]
+    fn address_literal_checks_preserve_patterns_existence_and_other_field_types() {
+        let data = serde_json::json!({
+            "address": "0x00ff90", "size": 16, "name": "dead", "flag": true,
+        });
+        for input in [
+            "address=0XFF90",
+            "address IN [0XFF90]",
+            "address~'ff90'",
+            "address^'0x'",
+            "address$'90'",
+            "address=~'^0X0*FF90$'",
+            "address EXISTS",
+            "NOT address EMPTY",
+            "NOT address NULL",
+            "size=16",
+            "size IN [16, 32]",
+            "name=dead",
+            "flag=true",
+        ] {
+            assert!(
+                parse_filter(input).unwrap().evaluate(&data).unwrap(),
+                "{input}"
+            );
         }
     }
 

@@ -1630,7 +1630,13 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
 #[test]
 fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
     let bridge = RecordedBridge::new();
-    for filter in ["kind=label", "address=0xab"] {
+    for filter in [
+        "kind=label",
+        "address=0xab",
+        "address=0XAB",
+        "address IN ['0X000AB']",
+        "address IN [0XAB]",
+    ] {
         for fields in [None, Some("status,count")] {
             let mut args = vec!["symbol", "delete", "shared", "--filter", filter];
             let mut receipt = json!({"status": "deleted", "name": "shared", "count": 1});
@@ -1666,29 +1672,37 @@ fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
 #[test]
 fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
     let bridge = RecordedBridge::new();
-    let output = bridge
-        .command()
-        .args([
-            "symbol",
-            "delete",
-            "shared",
-            "--filter",
-            "invalid",
-            "--program",
-            "B",
-        ])
-        .output()
-        .unwrap();
-    assert!(!output.status.success(), "{output:?}");
-    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert!(
-        error["message"]
-            .as_str()
-            .unwrap()
-            .contains("invalid --filter expression"),
-        "{error}"
-    );
-    assert!(bridge.requests.lock().unwrap().is_empty());
+    for filter in [
+        "invalid",
+        "address=171",
+        "address!='ab'",
+        "address IN ['0xab', 'cd']",
+        "address='0xnothex'",
+    ] {
+        let output = bridge
+            .command()
+            .args([
+                "symbol",
+                "delete",
+                "shared",
+                "--filter",
+                filter,
+                "--program",
+                "B",
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{filter}: {output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("invalid --filter expression"),
+            "{filter}: {error}"
+        );
+        assert!(bridge.requests.lock().unwrap().is_empty(), "{filter}");
+    }
 }
 
 #[test]
