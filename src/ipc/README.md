@@ -65,10 +65,30 @@ identify the match start without extracting surrounding text. `find_string`
 now searches defined strings only. Update the bridge with the CLI to remove
 the old implicit raw-memory fallback.
 
-Symbol mutations resolve snapshots through `symbol_get_by_name`, which never
-falls back to an address. `symbol_get` reserves an explicit `0x`/`0X` prefix for
-addresses; other targets use exact names before legacy bare-hex address lookup.
-The distinct operation lets older bridges fail explicitly before any edit.
+`bridge_info.explicit_addresses: true` advertises strict address parsing and
+canonical address output. Before program dispatch, the CLI rejects a bridge
+without this capability and requests an explicit restart; it never downgrades
+address interpretation. This check precedes compatibility recovery.
+
+Address strings require `0x`/`0X` for every numeric colon component:
+`0x401000`, `overlay:0x1000`, or `ram:0x1234:0x0005`. Segmented output always
+includes the space name so numeric-looking registered space names cannot make
+the result ambiguous. Unqualified `0x1234:0x0005` is segmented input only when
+its first component is not a registered space name. Word addresses preserve
+their optional `.byte` remainder. Address output uses the same syntax and
+retains spaces. Name-or-address targets resolve every unprefixed token as an
+exact name, including bare hex and `FUN_...`;
+malformed explicit addresses never fall back to names. Address-only arguments
+also enforce this contract for direct bridge requests. Offsets, counts, and
+byte patterns retain their separate numeric formats.
+
+`clear_range` requires canonical endpoints: colon-containing values start with
+a registered space name, including for the default segmented space. Both
+endpoints must belong to the same space and form an ascending inclusive range.
+
+Symbol mutations resolve name snapshots through `symbol_get_by_name`.
+`symbol_get` accepts exact names or explicit addresses; neither operation
+performs legacy bare-hex or generated-name address inference.
 
 | Response status | Client result |
 |---|---|

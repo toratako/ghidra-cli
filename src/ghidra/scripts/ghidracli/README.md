@@ -91,7 +91,7 @@ the selection. Never release another consumer or terminate its checkout.
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
 | `MemoryCommands`, `AnalysisCommands` | Memory/disassembly operations, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
-| `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Shared lookup and diagnostic logic; no handler-to-handler dependencies |
+| `AddressCodec`, `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Explicit address syntax/formatting, shared lookup and diagnostics; no handler-to-handler dependencies |
 | `CallReferences` | Shared incoming call-site validation and thunk/typed-pointer traversal for search and caller graphs |
 
 Handlers construct domain results; the dispatcher adds the wire envelope.
@@ -100,6 +100,20 @@ Errors use `error` for messages and `detail` for diagnostics. Additional fields
 take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
+
+`AddressCodec` owns strict parsing and address serialization. Numeric colon
+components require `0x`/`0X`, with optional address-space qualification. Segmented
+output always includes the space name and preserves both components, for example
+`ram:0x1234:0x0005`; a registered numeric-looking space name takes precedence
+when parsing an unqualified-looking input. Word addresses preserve `.byte` remainders.
+Use `format(Address)` for address fields and generated diagnostics, and
+`parse(AddressFactory, String)` for address-only inputs. `isExplicit` classifies
+explicit-looking input, including malformed tokens; `isValidSyntax` validates
+syntax when no program factory exists, such as import base-address options.
+`AddressResolver` looks up unprefixed input as exact names, never bare-hex or
+`FUN_...` address inference. Do not pass user address text directly to Ghidra's
+permissive factory parser. Instruction/decompiler text, byte strings, numeric
+offsets, and user-script stdout keep their native representation.
 
 `StructureFields` stages offset edits on a detached structure copy, validates
 field boundaries and conflicts, then applies only the target component edit in a

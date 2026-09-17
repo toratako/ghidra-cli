@@ -66,6 +66,7 @@ identity. Filter a domain with, for example,
 | `reliability_tests`, `project_tests` | Restart/stale-state recovery and project management |
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding across target widths, byte orders, and address spaces |
+| `address_tests` | Strict address syntax, exact-name collisions, rejected mutations, and address output round trips |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version flags, doctor, config |

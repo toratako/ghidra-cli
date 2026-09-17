@@ -170,6 +170,15 @@ List-query filtering/paging also requires the CLI and Java bridge to match;
 there is no query feature negotiation or old-server fallback. A bridge left
 running during an update must be restarted before using the new CLI's queries.
 
+Program requests also require `bridge_info.explicit_addresses: true`. The CLI
+rejects a bridge without this capability before dispatch or compatibility
+recovery, with instructions to restart; it does not downgrade to bare-address
+inference. After updating, use `ghidra-cli bridge restart --project P` for a
+running bridge that supports durable shutdown, or start a bridge you stopped
+before the upgrade. The new bridge uses explicit `0x` address components for
+inputs and outputs. Update stored command arguments that previously relied on
+bare hex or interpreting `FUN_...` as an address; those tokens now mean exact names.
+
 ## Installation failures
 
 Use `-v`/`-vv`/`-vvv` for warn/info/debug logs; `--quiet` suppresses

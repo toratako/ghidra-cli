@@ -22,6 +22,9 @@ For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
 
 ## Usage
 
+Use explicit addresses such as `0x401000` or `overlay:0x1000`; unprefixed
+targets are exact names. Address results can be reused directly as inputs.
+
 - [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
 - [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
 

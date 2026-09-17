@@ -24,17 +24,32 @@ defaults. `project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work.
-Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Recovery retries at most once
-after dispatch; preflight `bridge_info` upgrades bridges lacking automatic saving
-before program commands. Compatibility restart captures the selected project
-file path (never the internal Program name or a default); if it cannot determine
-the selection, it leaves the bridge running. Stop errors prevent restart.
+Function rename rejects symbol-only bulk flags (`--filter`, `--all`). Preflight
+requires `bridge_info.explicit_addresses: true` before program dispatch and
+before compatibility recovery. Missing support fails with restart guidance;
+never downgrade to inferred address parsing. Recovery for other compatibility
+failures retries at most once after dispatch. Compatibility restart captures the
+selected project file path (never the internal Program name or a default); if it
+cannot determine the selection, it leaves the bridge running. Stop errors prevent restart.
 Never replay commands after save failures.
 Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
+
+`src/address.rs` validates explicit address syntax for client-side selectors,
+import base addresses, and `clear START:END`; Ghidra validates the selected
+address space and numeric bounds. Every numeric colon component requires
+`0x`/`0X`. `clear` can inherit the start space for an unqualified end, requires
+complete segmented endpoints, and rejects ambiguous splits and legacy `::`.
+Fully qualify both endpoints to disambiguate a range, for example
+`ram:0x1234:0x0:ram:0x1234:0x8`; the delimiter remains a single colon.
+Name-or-address operations keep exact names such as `dead` and `FUN_...`; they
+never derive a numeric address from them. Offsets and byte patterns are separate.
+Client-side comparisons read canonical segmented addresses with a space name;
+symbol `--address` requires that name for segmented targets because the client
+cannot distinguish an unnamed segment from a numeric-looking registered space.
 
 Batch errors retain attempted results internally, including nested reports. The
 outer invocation prints the report to stdout using the same format as a successful

@@ -27,6 +27,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking: address inputs now require explicit `0x`/`0X` components, including
+  qualified (`overlay:0x1000`) and segmented (`ram:0x1234:0x0005`) addresses.
+  Unprefixed targets such as `add`, `dead`, `401000`, and `FUN_00401000` are
+  exact names only; missing or malformed targets never fall back to inferred
+  addresses. Address output uses the same reusable syntax and preserves spaces;
+  segmented output always includes the space name to avoid ambiguous parsing.
+  `clear START:END` requires explicit endpoints and rejects the legacy `::`
+  spelling; offsets, counts, and raw byte patterns retain their numeric rules.
+- Require `bridge_info.explicit_addresses: true` before program dispatch.
+  Running bridges from older releases must be restarted; the CLI refuses the
+  request without an address compatibility downgrade. Save and stop bridges
+  with the old CLI before upgrading; see [upgrade steps](docs/runtime.md#upgrading).
 - Group bridge controls under `bridge start|stop|restart|status|ping`. Replace
   `jobs [JOB_ID]` with `job list` or `job get JOB_ID`, and `cancel [JOB_ID]` with
   `job cancel [JOB_ID]`, which still defaults to the active job. The former
