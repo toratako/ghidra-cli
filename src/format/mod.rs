@@ -233,6 +233,30 @@ fn format_csv_value(value: &JsonValue) -> String {
     }
 }
 
+/// Append only the decompiler details requested by the caller.
+fn format_decompile_details(map: &serde_json::Map<String, JsonValue>, result: &mut String) {
+    for (key, title) in [("params", "Parameters"), ("variables", "Variables")] {
+        if let Some(rows) = map
+            .get(key)
+            .and_then(JsonValue::as_array)
+            .filter(|rows| !rows.is_empty())
+        {
+            result.push_str(&format!("\n{title}:\n"));
+            for row in rows {
+                if let Some(obj) = row.as_object() {
+                    let name = obj.get("name").and_then(JsonValue::as_str).unwrap_or("?");
+                    let typ = obj.get("type").and_then(JsonValue::as_str).unwrap_or("?");
+                    let storage = obj
+                        .get("storage")
+                        .and_then(JsonValue::as_str)
+                        .unwrap_or("?");
+                    result.push_str(&format!("  {typ} {name} ({storage})\n"));
+                }
+            }
+        }
+    }
+}
+
 /// Compact human-readable format: one line per item with key fields.
 fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
     let json_data: Vec<JsonValue> = data
@@ -259,6 +283,7 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     if !code.ends_with('\n') {
                         result.push('\n');
                     }
+                    format_decompile_details(map, &mut result);
                     continue;
                 }
 
@@ -402,38 +427,7 @@ fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
                     if !code.ends_with('\n') {
                         result.push('\n');
                     }
-                    if let Some(JsonValue::Array(params)) = map.get("params") {
-                        if !params.is_empty() {
-                            result.push_str("\nParameters:\n");
-                            for p in params {
-                                if let JsonValue::Object(obj) = p {
-                                    let name =
-                                        obj.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let typ =
-                                        obj.get("type").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let storage =
-                                        obj.get("storage").and_then(|v| v.as_str()).unwrap_or("?");
-                                    result.push_str(&format!("  {} {} ({})\n", typ, name, storage));
-                                }
-                            }
-                        }
-                    }
-                    if let Some(JsonValue::Array(vars)) = map.get("variables") {
-                        if !vars.is_empty() {
-                            result.push_str("\nVariables:\n");
-                            for v in vars {
-                                if let JsonValue::Object(obj) = v {
-                                    let name =
-                                        obj.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let typ =
-                                        obj.get("type").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let storage =
-                                        obj.get("storage").and_then(|v| v.as_str()).unwrap_or("?");
-                                    result.push_str(&format!("  {} {} ({})\n", typ, name, storage));
-                                }
-                            }
-                        }
-                    }
+                    format_decompile_details(map, &mut result);
                     continue;
                 }
 
@@ -521,6 +515,42 @@ pub fn auto_detect_format(is_tty: bool) -> OutputFormat {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn human_decompile_formats_include_requested_parameters_and_variables() {
+        let code = "int example(int count) { return count; }\n";
+        for format in [auto_detect_format(true), OutputFormat::Full] {
+            for (params, variables) in [(false, false), (true, false), (false, true), (true, true)]
+            {
+                let mut response = json!({"code": code});
+                if params {
+                    response["params"] =
+                        json!([{ "name": "count", "type": "int", "storage": "register:0" }]);
+                }
+                if variables {
+                    response["variables"] =
+                        json!([{ "name": "local", "type": "char *", "storage": "stack:8" }]);
+                }
+                let output = DefaultFormatter.format(&[response], format).unwrap();
+                assert!(output.contains(code));
+                assert_eq!(
+                    output.contains("Parameters:\n  int count (register:0)\n"),
+                    params
+                );
+                assert_eq!(
+                    output.contains("Variables:\n  char * local (stack:8)\n"),
+                    variables
+                );
+            }
+            let empty = json!({"code": code, "params": [], "variables": []});
+            let absent = json!({"code": code});
+            assert_eq!(
+                DefaultFormatter.format(&[empty], format).unwrap(),
+                DefaultFormatter.format(&[absent], format).unwrap()
+            );
+        }
+        assert_eq!(auto_detect_format(false), OutputFormat::JsonCompact);
+    }
 
     #[test]
     fn c_and_asm_formats_render_code_without_json_escaping() {

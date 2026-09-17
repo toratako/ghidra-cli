@@ -94,6 +94,7 @@ Type tests also inspect saved component format/byte-order settings after metadat
 and layout edits.
 Program-session tests exclude root and nested data type archives from program lists
 and status counts.
+Formatter tests cover requested decompiler details in compact and full text output.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and query aliases, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds

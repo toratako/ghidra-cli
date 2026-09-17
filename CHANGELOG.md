@@ -10,6 +10,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Preserve component settings on unrelated structure fields during offset edits,
   and on the edited field when only its name or comment changes.
 - Exclude non-Program project files from `program list` and status program counts.
+- Show requested decompiler parameters and variables in compact text output.
 
 ### Changed
 
