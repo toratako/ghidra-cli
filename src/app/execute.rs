@@ -375,9 +375,9 @@ pub(super) fn execute_via_bridge(
         Commands::Clear(args) => {
             let (start, end) = split_range(&args.range).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Invalid range '{}': expected START:END, e.g. 0bf3:0bfa \
-                     (overlay addresses are supported, e.g. rom1::5512:551d or \
-                     rom1::5512:rom1::551d)",
+                    "Invalid or ambiguous range '{}': use 0x-prefixed START:END, \
+                     e.g. 0x1000:0x1010 or overlay:0x1000:overlay:0x1010; \
+                     specify both segment components for segmented endpoints",
                     args.range
                 )
             })?;
@@ -402,36 +402,28 @@ pub(super) fn execute_via_bridge(
     }
 }
 
-/// Split a `clear` RANGE argument into (start, end) addresses, treating `::`
-/// (the overlay-space separator, e.g. `rom20::69f0`) as a single unit rather
-/// than a split point -- a bare `split_once(':')` breaks on it, taking
-/// everything before the first `:` (just the overlay space name) as the
-/// whole start address.
-///
-/// If only the start address carries an overlay-space prefix and the end
-/// address is bare (e.g. `rom1::5512:551d`), the end address inherits the
-/// start's space (`rom1::551d`) rather than resolving in the default space.
+/// Require one unambiguous split into two explicit addresses. An unqualified
+/// end inherits the start's space; segmented endpoints require a space name.
 fn split_range(range: &str) -> Option<(String, String)> {
-    let bytes = range.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b':' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b':' {
-                i += 2;
-                continue;
-            }
-            let start = &range[..i];
-            let end = &range[i + 1..];
-            return Some(match start.split_once("::") {
-                Some((space, _)) if !end.contains("::") && !end.is_empty() => {
-                    (start.to_string(), format!("{}::{}", space, end))
-                }
-                _ => (start.to_string(), end.to_string()),
-            });
+    let mut result = None;
+    for (i, _) in range.match_indices(':') {
+        let (start, end) = (&range[..i], &range[i + 1..]);
+        let (Some(start_address), Some(end_address)) = (
+            crate::address::ExplicitAddress::parse_canonical(start),
+            crate::address::ExplicitAddress::parse_canonical(end),
+        ) else {
+            continue;
+        };
+        if result.is_some() {
+            return None;
         }
-        i += 1;
+        let end = match (start_address.space, end_address.space) {
+            (Some(space), None) => format!("{space}:{}", end.trim()),
+            _ => end.trim().to_owned(),
+        };
+        result = Some((start.trim().to_owned(), end));
     }
-    None
+    result
 }
 
 #[cfg(test)]
@@ -441,41 +433,68 @@ mod tests {
     #[test]
     fn split_range_plain_addresses() {
         assert_eq!(
-            split_range("0bf3:0bfa"),
-            Some(("0bf3".to_string(), "0bfa".to_string()))
+            split_range("0x0bf3:0x0bfa"),
+            Some(("0x0bf3".to_string(), "0x0bfa".to_string()))
         );
     }
 
     #[test]
     fn split_range_overlay_start_bare_end_inherits_space() {
-        // ghidra-bug.md: naive split_once(':') took "rom1" as the whole start
-        // address; the correct split is on the ':' after the overlay prefix,
-        // and the bare end address inherits the start's overlay space.
         assert_eq!(
-            split_range("rom1::5512:551d"),
-            Some(("rom1::5512".to_string(), "rom1::551d".to_string()))
+            split_range("rom1:0x5512:0x551d"),
+            Some(("rom1:0x5512".to_string(), "rom1:0x551d".to_string()))
         );
     }
 
     #[test]
     fn split_range_overlay_both_sides_qualified() {
         assert_eq!(
-            split_range("rom1::5512:rom1::551d"),
-            Some(("rom1::5512".to_string(), "rom1::551d".to_string()))
+            split_range("rom1:0x5512:rom1:0x551d"),
+            Some(("rom1:0x5512".to_string(), "rom1:0x551d".to_string()))
         );
     }
 
     #[test]
     fn split_range_overlay_end_in_different_space() {
         assert_eq!(
-            split_range("rom1::5512:rom2::551d"),
-            Some(("rom1::5512".to_string(), "rom2::551d".to_string()))
+            split_range("rom1:0x5512:rom2:0x551d"),
+            Some(("rom1:0x5512".to_string(), "rom2:0x551d".to_string()))
         );
     }
 
     #[test]
     fn split_range_missing_colon_is_none() {
-        assert_eq!(split_range("rom1::5512"), None);
-        assert_eq!(split_range("0bf3"), None);
+        for invalid in [
+            "rom1:0x5512",
+            "0x0bf3",
+            "0bf3:0bfa",
+            "rom1::5512:551d",
+            "0x1234:0x0:0x8",
+            "0x1234:0x1000:0x100010",
+            "0x1000:",
+            ":0x1000",
+        ] {
+            assert_eq!(split_range(invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn split_range_preserves_segmented_endpoints() {
+        assert_eq!(
+            split_range("ram:0x1234:0x0:ram:0x1234:0x8"),
+            Some(("ram:0x1234:0x0".into(), "ram:0x1234:0x8".into()))
+        );
+    }
+
+    #[test]
+    fn split_range_numeric_space_names_do_not_become_segments() {
+        assert_eq!(
+            split_range("0x1234:0x1000.0:0x1234:0x100010.0"),
+            Some(("0x1234:0x1000.0".into(), "0x1234:0x100010.0".into()))
+        );
+        assert_eq!(
+            split_range("rom:0x10000:0x1234:0x0005"),
+            Some(("rom:0x10000".into(), "0x1234:0x0005".into()))
+        );
     }
 }

@@ -150,11 +150,32 @@ public class CreatePointerTargets extends GhidraScript {
 
     // Reading past the initialized block must use bytes actually read, including
     // the raw trailing bytes, without manufacturing another pointer entry.
-    assert_eq!(read_memory(&client, "1000", bytes.len() + 16), *result);
-    let short = read_memory(&client, "1000", pointer_size - 1);
+    let address = result["address"].as_str().unwrap();
+    assert_eq!(read_memory(&client, address, bytes.len() + 16), *result);
+    let short = read_memory(&client, address, pointer_size - 1);
     assert_eq!(short["size"], pointer_size - 1);
     assert_eq!(short["hex"], &hex[..(pointer_size - 1) * 2]);
     assert_eq!(short["pointers"], json!([]));
+
+    // Function output must remain a valid input even above signed Long.MAX_VALUE.
+    let target = client
+        .send_command(
+            "get_function",
+            Some(json!({"address": "high_address_target"})),
+        )
+        .expect("resolve high-address function");
+    assert_eq!(parse_address(&target["address"]), high);
+    let target_address = target["address"].as_str().unwrap();
+    assert_eq!(
+        read_memory(&client, target_address, 4)["address"],
+        target["address"]
+    );
+    assert_eq!(
+        client
+            .send_command("get_function", Some(json!({"address": target_address})))
+            .expect("roundtrip high function address"),
+        target
+    );
 
     if pointer_size == 4 {
         check_overlay_pointers(&client);
@@ -191,7 +212,19 @@ public class CreateOverlayPointerTargets extends GhidraScript {
             false,
         )
         .expect("create overlapping address spaces");
-    let result = read_memory(client, "overlay:1000", 8);
+    let result = read_memory(client, "overlay:0x1000", 8);
+    let address = result["address"].as_str().unwrap();
+    assert!(address.starts_with("overlay:0x"), "{result}");
+    assert_eq!(read_memory(client, address, 8), result);
+    assert_ne!(read_memory(client, "0x1000", 8)["hex"], result["hex"]);
+    for pointer in result["pointers"].as_array().unwrap() {
+        let pointer_address = pointer["address"].as_str().unwrap();
+        assert!(pointer_address.starts_with("overlay:0x"), "{pointer}");
+        assert_eq!(
+            read_memory(client, pointer_address, 4)["address"],
+            pointer["address"]
+        );
+    }
     assert_eq!(result["pointers"][0]["function"], "overlay_target");
     assert_eq!(result["pointers"][1]["function"], "outside_range_target");
 }
@@ -203,5 +236,10 @@ fn read_memory(client: &BridgeClient, address: &str, size: usize) -> Value {
 }
 
 fn parse_address(value: &Value) -> u64 {
-    u64::from_str_radix(value.as_str().expect("hex address"), 16).expect("valid address")
+    let digits = value
+        .as_str()
+        .expect("hex address")
+        .strip_prefix("0x")
+        .expect("explicit address prefix");
+    u64::from_str_radix(digits, 16).expect("valid address")
 }

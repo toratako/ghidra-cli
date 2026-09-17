@@ -14,7 +14,7 @@ pub enum MemoryCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct MemReadArgs {
-    /// Start address in hex (e.g. 0x401000), or a symbol name (e.g. main)
+    /// Explicit 0x-prefixed start address or exact symbol name (e.g. main)
     pub address: String,
     /// Number of bytes to read in decimal (e.g. 64)
     pub size: usize,
@@ -24,7 +24,7 @@ pub struct MemReadArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct MemWriteArgs {
-    /// Start address in hex or a symbol name
+    /// Explicit 0x-prefixed start address or exact symbol name
     pub address: String,
     /// Hex bytes, contiguous or quoted with spaces
     pub hex: String,
@@ -44,7 +44,7 @@ pub enum PcodeCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct PcodeAtArgs {
-    /// Address (hex, e.g. "0x401000")
+    /// Explicit 0x-prefixed address or exact symbol name
     pub address: String,
     #[arg(long)]
     pub program: Option<String>,
@@ -54,7 +54,7 @@ pub struct PcodeAtArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct PcodeFunctionArgs {
-    /// Function name or address
+    /// Exact function name or explicit 0x-prefixed address
     pub function: String,
     /// Use high PCode from decompiler (vs raw from listing)
     #[arg(long)]
@@ -67,16 +67,16 @@ pub struct PcodeFunctionArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DisasmArgs {
-    /// Disassembly target (name | 0xaddr | FUN_<hex>)
+    /// Exact symbol name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Disassembly target (name | 0xaddr | FUN_<hex>)
+    /// Exact symbol name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Number of instructions to disassemble
     #[arg(long = "instructions", short = 'n')]
     pub num_instructions: Option<usize>,
-    /// Include instructions whose start address is between TARGET and END (inclusive)
+    /// Inclusive end bound: explicit 0x-prefixed address or exact symbol name
     #[arg(long, conflicts_with = "num_instructions")]
     pub end: Option<String>,
     #[command(flatten)]
@@ -94,7 +94,7 @@ impl DisasmArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DisasmAtArgs {
-    /// Address to disassemble at
+    /// Explicit 0x-prefixed address or exact symbol name to disassemble at
     pub address: String,
     /// Number of instructions to report back once disassembled
     #[arg(long = "count", short = 'n')]
@@ -107,9 +107,14 @@ pub struct DisasmAtArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ClearArgs {
-    /// Address range to clear, as START:END (e.g. 0bf3:0bfa)
+    /// Explicit address range START:END, e.g. 0x401000:0x40101f.
+    ///
+    /// Use overlay:0x1000:0x1010 to inherit the start space, or qualify both endpoints.
+    /// Fully qualify segmented endpoints, e.g. ram:0x1234:0x0:ram:0x1234:0x8.
+    /// Ambiguous splits are rejected; qualify both endpoints to disambiguate.
+    /// The legacy :: spelling is rejected.
     pub range: String,
-    /// Re-disassemble at this address immediately after clearing
+    /// Re-disassemble at an explicit 0x-prefixed address or exact symbol name after clearing
     #[arg(long)]
     pub disasm_at: Option<String>,
     #[arg(long)]

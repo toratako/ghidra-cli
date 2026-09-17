@@ -157,7 +157,7 @@ mod tests {
                 if command == "conflict" {
                     Err(BridgeCommandError {
                         message: "Already exists".to_owned(),
-                        detail: serde_json::json!({"address": "1000", "partial_changes_saved": true}),
+                        detail: serde_json::json!({"address": "0x1000", "partial_changes_saved": true}),
                     }
                     .into())
                 } else {
@@ -173,7 +173,7 @@ mod tests {
             assert_eq!(detail["not_executed"], 3 - executed);
             assert_eq!(detail["results"][0]["result"]["executed"], "first");
             assert_eq!(detail["results"][1]["line"], 4);
-            assert_eq!(detail["results"][1]["detail"]["address"], "1000");
+            assert_eq!(detail["results"][1]["detail"]["address"], "0x1000");
             assert_eq!(
                 detail["results"][1]["detail"]["partial_changes_saved"],
                 true

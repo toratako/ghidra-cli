@@ -103,25 +103,30 @@ public class CreateDisasmFailureFixture extends GhidraScript {
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
         let instruction = client
-            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .send_command("disasm_at", Some(serde_json::json!({"address":"0x1000"})))
             .unwrap();
         assert_eq!(instruction["landed"], true);
         assert_eq!(instruction["already_disassembled"], false);
         assert_eq!(instruction["status"], "disassembled");
         let repeated = client
-            .send_command("disasm_at", Some(serde_json::json!({"address":"1000"})))
+            .send_command("disasm_at", Some(serde_json::json!({"address":"0x1000"})))
             .unwrap();
         assert_eq!(repeated["already_disassembled"], true);
         assert_eq!(repeated["instructions"], instruction["instructions"]);
 
         // An unmapped address is syntactically valid but cannot produce an instruction.
-        let failed = ghidra(harness).args(["--json", "disasm-at", "8000"]).run();
+        let failed = ghidra(harness)
+            .args(["--json", "disasm-at", "0x8000"])
+            .run();
         assert_eq!(failed.exit_code, 1, "{failed:?}");
         assert!(failed.stdout.is_empty(), "{failed:?}");
         let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
         let detail = &error["detail"];
         let failed_address = detail["address"].as_str().unwrap();
-        assert_eq!(u64::from_str_radix(failed_address, 16).unwrap(), 0x8000);
+        assert_eq!(
+            u64::from_str_radix(failed_address.strip_prefix("0x").unwrap(), 16).unwrap(),
+            0x8000
+        );
         assert_eq!(detail["already_disassembled"], false);
         // Ghidra can report true even when no instruction lands at the target.
         assert!(detail["ok"].is_boolean());
@@ -131,7 +136,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let batch = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
             batch.path(),
-            "disasm-at 8000\ncomment set 1000 must-not-run\n",
+            "disasm-at 0x8000\ncomment set 0x1000 must-not-run\n",
         )
         .unwrap();
         let failed_batch = ghidra(harness)
@@ -145,13 +150,13 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         assert_eq!(report[0]["failed"], 1);
         assert_eq!(report[0]["not_executed"], 1);
         assert_eq!(report[0]["results"][0]["detail"]["landed"], false);
-        assert!(client.comment_get("1000").unwrap()["comments"]
+        assert!(client.comment_get("0x1000").unwrap()["comments"]
             .as_array()
             .unwrap()
             .is_empty());
 
         let cleared = ghidra(harness)
-            .args(["--json", "clear", "1000:1000", "--disasm-at", "8000"])
+            .args(["--json", "clear", "0x1000:0x1000", "--disasm-at", "0x8000"])
             .run();
         assert_eq!(cleared.exit_code, 1, "{cleared:?}");
         assert!(cleared.stdout.is_empty(), "{cleared:?}");
@@ -172,14 +177,14 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let listing = client
             .send_command(
                 "disasm_range",
-                Some(serde_json::json!({"start":"1000","end":"1000"})),
+                Some(serde_json::json!({"start":"0x1000","end":"0x1000"})),
             )
             .unwrap();
         assert_eq!(listing["count"], 0);
         let recovered = client
             .send_command(
                 "clear_range",
-                Some(serde_json::json!({"start":"1000","end":"1000","disasm_at":"1000"})),
+                Some(serde_json::json!({"start":"0x1000","end":"0x1000","disasm_at":"0x1000"})),
             )
             .unwrap();
         assert_eq!(recovered["status"], "cleared_and_disassembled");
@@ -449,7 +454,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
         .unwrap();
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
-        for address in ["1000", "2000"] {
+        for address in ["0x1000", "0x2000"] {
             let instructions = client
                 .send_command(
                     "disasm_at",
@@ -473,11 +478,11 @@ public class CreatePatchRangeFixture extends GhidraScript {
             assert_eq!(client.send_command("memory_map", None).unwrap(), map);
         }
         let map = client.send_command("memory_map", None).unwrap();
-        client.memory_write("3000", "11223344").unwrap();
+        client.memory_write("0x3000", "11223344").unwrap();
         let bytes = client
             .send_command(
                 "read_memory",
-                Some(serde_json::json!({"address":"3000","size":4})),
+                Some(serde_json::json!({"address":"0x3000","size":4})),
             )
             .unwrap();
         assert_eq!(bytes["hex"], "11223344");

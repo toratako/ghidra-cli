@@ -12,8 +12,8 @@ fn fixture_function_lookup_prefers_exact_names_and_preserves_fallbacks() {
         .map(|(index, name)| {
             serde_json::from_value(serde_json::json!({
                 "name": name,
-                "address": format!("{index:08x}"),
-                "entry_point": format!("{index:08x}"),
+                "address": format!("0x{index:08x}"),
+                "entry_point": format!("0x{index:08x}"),
                 "size": 1,
             }))
             .unwrap()
@@ -22,7 +22,7 @@ fn fixture_function_lookup_prefers_exact_names_and_preserves_fallbacks() {
 
     assert_eq!(
         find_fixture_function(&functions, "main").unwrap().address,
-        "00000002"
+        "0x00000002"
     );
     assert_eq!(
         find_fixture_function(&functions[..2], "main").unwrap().name,
@@ -459,23 +459,61 @@ fn project_copies_do_not_share_files_or_overwrite_existing_projects() {
 }
 
 #[test]
+fn address_schema_requires_explicit_hexadecimal_components() {
+    use common::schemas::{is_memory_address, Instruction, Validate};
+
+    for address in [
+        "0x00401000",
+        "overlay:0x1000",
+        ".comment:0x00000000",
+        "0x1234:0x0005",
+        "ram:0x1234:0x0005",
+        "0xbank:0x0001",
+        "0x10.1",
+        "ram:0x10.1",
+    ] {
+        assert!(is_memory_address(address), "{address}");
+        let instruction: Instruction = serde_json::from_value(serde_json::json!({
+            "address": address, "mnemonic": "NOP", "operands": [], "bytes": "90",
+        }))
+        .unwrap();
+        instruction.assert_valid();
+    }
+
+    for address in [
+        "00401000",
+        "FUN_00401000",
+        "overlay:1000",
+        ".comment::00000000",
+        "0x1234:0005",
+        "ram:1234:0x0005",
+        "0x10.",
+        "0x10.1.2",
+        "ram:0x1234:0x0005.1",
+        "0x",
+    ] {
+        assert!(!is_memory_address(address), "{address}");
+    }
+}
+
+#[test]
 fn disassembly_schema_matches_cli_arrays_and_rejects_wrong_shapes() {
     use common::schemas::{DisasmResult, Validate};
     let output =
-        r#"[{"address":"00100000","mnemonic":"MOV","operands":["RAX","RBX"],"bytes":"4889d8"}]"#;
+        r#"[{"address":"0x00100000","mnemonic":"MOV","operands":["RAX","RBX"],"bytes":"4889d8"}]"#;
     let disasm: DisasmResult = serde_json::from_str(output).unwrap();
     assert_eq!(disasm.results.len(), 1);
     assert_eq!(disasm.results[0].operands, ["RAX", "RBX"]);
     disasm.results[0].assert_valid();
     let no_operands: DisasmResult = serde_json::from_str(
-        r#"[{"address":"00100000","mnemonic":"RET","operands":[],"bytes":"c3"}]"#,
+        r#"[{"address":"0x00100000","mnemonic":"RET","operands":[],"bytes":"c3"}]"#,
     )
     .unwrap();
     assert!(no_operands.results[0].operands.is_empty());
     for invalid in [
         r#"{"results":[]}"#,
-        r#"[{"address":"00100000","mnemonic":"MOV","operands":"RAX, RBX"}]"#,
-        r#"[{"address":"00100000","mnemonic":"RET"}]"#,
+        r#"[{"address":"0x00100000","mnemonic":"MOV","operands":"RAX, RBX"}]"#,
+        r#"[{"address":"0x00100000","mnemonic":"RET"}]"#,
     ] {
         assert!(
             serde_json::from_str::<DisasmResult>(invalid).is_err(),

@@ -47,7 +47,7 @@ final class ListingCommands {
                     }
 
                     JsonObject strData = new JsonObject();
-                    strData.addProperty("address", data.getAddress().toString());
+                    strData.addProperty("address", AddressCodec.format(data.getAddress()));
                     strData.addProperty("value", val);
                     strData.addProperty("length", val.length());
                     strings.add(strData);
@@ -83,7 +83,7 @@ final class ListingCommands {
             if (extLoc != null) {
                 JsonObject importData = new JsonObject();
                 importData.addProperty("name", symbol.getName());
-                importData.addProperty("address", symbol.getAddress().toString());
+                importData.addProperty("address", AddressCodec.format(symbol.getAddress()));
                 importData.addProperty("library", extLoc.getLibraryName());
                 imports.add(importData);
                 count++;
@@ -113,7 +113,7 @@ final class ListingCommands {
             if (symbol.isExternalEntryPoint()) {
                 JsonObject exportData = new JsonObject();
                 exportData.addProperty("name", symbol.getName());
-                exportData.addProperty("address", symbol.getAddress().toString());
+                exportData.addProperty("address", AddressCodec.format(symbol.getAddress()));
                 exports.add(exportData);
                 count++;
             }
@@ -141,8 +141,8 @@ final class ListingCommands {
 
             JsonObject blockData = new JsonObject();
             blockData.addProperty("name", block.getName());
-            blockData.addProperty("start", block.getStart().toString());
-            blockData.addProperty("end", block.getEnd().toString());
+            blockData.addProperty("start", AddressCodec.format(block.getStart()));
+            blockData.addProperty("end", AddressCodec.format(block.getEnd()));
             blockData.addProperty("size", block.getSize());
             blockData.addProperty("permissions", perms.toString());
             blockData.addProperty("is_initialized", block.isInitialized());

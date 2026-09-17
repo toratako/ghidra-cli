@@ -83,7 +83,7 @@ pub struct ImportArgs {
     /// Ghidra compiler spec ID for the selected language
     #[arg(long, visible_alias = "cspec")]
     pub compiler_spec: Option<String>,
-    /// BinaryLoader base address (implies --loader BinaryLoader if omitted)
+    /// Explicit 0x-prefixed BinaryLoader base address (implies --loader BinaryLoader if omitted)
     #[arg(long)]
     pub base_address: Option<String>,
     /// BinaryLoader memory block name (implies --loader BinaryLoader if omitted)
@@ -95,7 +95,8 @@ pub struct ImportArgs {
     /// BinaryLoader length in bytes (implies --loader BinaryLoader if omitted)
     #[arg(long)]
     pub length: Option<String>,
-    /// Additional loader argument as NAME=VALUE; repeat for multiple arguments
+    /// Additional loader argument as NAME=VALUE; repeat for multiple arguments.
+    /// baseAddr requires an explicit 0x-prefixed address.
     #[arg(long = "loader-option", value_name = "NAME=VALUE")]
     pub loader_options: Vec<String>,
     /// Import only — skip auto-analysis (the program is still persisted)

@@ -91,14 +91,9 @@ final class FunctionCommands {
             return errorResult("Function target required");
         }
 
-        Address addr = addressResolver.resolveAddress(target);
-        if (addr == null) {
-            return errorResult(functionQueries.buildFunctionTargetHint(target));
-        }
-
-        Function func = session.program().getFunctionManager().getFunctionContaining(addr);
+        Function func = functionQueries.findFunctionByNameOrAddress(target);
         if (func == null) {
-            return errorResult("No function at target " + target + ". Try: ghidra-cli function list --filter " + target);
+            return errorResult(functionQueries.buildFunctionTargetHint(target));
         }
         return functionQueries.functionToJson(func);
     }
@@ -149,7 +144,7 @@ final class FunctionCommands {
                 result.addProperty("status", "renamed");
                 result.addProperty("old_name", oldName);
                 result.addProperty("new_name", newName);
-                result.addProperty("address", func.getEntryPoint().toString());
+                result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
                 return result;
             } catch (Exception e) {
                 transaction.end(true);
@@ -172,7 +167,8 @@ final class FunctionCommands {
         try {
             Address addr = addressResolver.resolveAddress(target);
             if (addr == null) {
-                return errorResult("Invalid function target: " + target + ". Expected address/symbol/FUN_<hex>.");
+                return errorResult("Invalid function target: " + target
+                    + ". Expected an exact symbol name or a 0x-prefixed address.");
             }
 
             FunctionManager fm = session.program().getFunctionManager();
@@ -240,7 +236,7 @@ final class FunctionCommands {
                 JsonObject result = new JsonObject();
                 result.addProperty("status", "created");
                 result.addProperty("name", created.getName());
-                result.addProperty("address", created.getEntryPoint().toString());
+                result.addProperty("address", AddressCodec.format(created.getEntryPoint()));
                 if (autoDisassembled) result.addProperty("auto_disassembled", true);
                 return result;
             } catch (Exception e) {
@@ -255,10 +251,10 @@ final class FunctionCommands {
     private JsonObject functionAlreadyExistsError(Address addr, Function owner) {
         JsonObject detail = new JsonObject();
         detail.addProperty("name", owner.getName());
-        detail.addProperty("entry_point", owner.getEntryPoint().toString());
+        detail.addProperty("entry_point", AddressCodec.format(owner.getEntryPoint()));
         detail.addProperty("size", owner.getBody().getNumAddresses());
-        JsonObject err = errorResult("Function already exists at " + addr.toString()
-            + ": address is inside " + owner.getName() + "@" + owner.getEntryPoint()
+        JsonObject err = errorResult("Function already exists at " + AddressCodec.format(addr)
+            + ": address is inside " + owner.getName() + "@" + AddressCodec.format(owner.getEntryPoint())
             + " (size " + owner.getBody().getNumAddresses() + " bytes)");
         err.add("detail", detail);
         return err;
@@ -268,7 +264,7 @@ final class FunctionCommands {
         Listing listing = session.program().getListing();
         List<String> reasons = new ArrayList<>();
         JsonObject detail = new JsonObject();
-        detail.addProperty("address", addr.toString());
+        detail.addProperty("address", AddressCodec.format(addr));
         detail.addProperty("auto_disassembled_attempted", autoDisassembled);
         if (thrownMessage != null) {
             detail.addProperty("ghidra_exception", thrownMessage);
@@ -284,20 +280,21 @@ final class FunctionCommands {
         Function owner = session.program().getFunctionManager().getFunctionContaining(addr);
         if (owner != null) {
             detail.addProperty("containing_function", owner.getName());
-            detail.addProperty("containing_function_entry", owner.getEntryPoint().toString());
+            detail.addProperty("containing_function_entry", AddressCodec.format(owner.getEntryPoint()));
             detail.addProperty("containing_function_size", owner.getBody().getNumAddresses());
             reasons.add("address is already inside existing function " + owner.getName()
-                + "@" + owner.getEntryPoint() + " (likely shared code reached by a tail jump, "
+                + "@" + AddressCodec.format(owner.getEntryPoint()) + " (likely shared code reached by a tail jump, "
                 + "not a call) -- consider `symbol create` for a label instead of a new function");
         }
 
         CodeUnit cu = listing.getCodeUnitContaining(addr);
         if (cu != null) {
-            detail.addProperty("code_unit_range", cu.getMinAddress() + "-" + cu.getMaxAddress());
+            detail.addProperty("code_unit_range", AddressCodec.format(cu.getMinAddress())
+                + "-" + AddressCodec.format(cu.getMaxAddress()));
             detail.addProperty("code_unit_is_instruction", cu instanceof Instruction);
             if (!cu.getMinAddress().equals(addr)) {
-                reasons.add("address " + addr + " is mid-code-unit, not the start of "
-                    + cu.getMinAddress() + "-" + cu.getMaxAddress());
+                reasons.add("address " + AddressCodec.format(addr) + " is mid-code-unit, not the start of "
+                    + AddressCodec.format(cu.getMinAddress()) + "-" + AddressCodec.format(cu.getMaxAddress()));
             }
         }
 
@@ -308,7 +305,7 @@ final class FunctionCommands {
                     + "from the API; entry point may not sit on a valid code unit boundary");
         }
 
-        JsonObject err = errorResult("Failed to create function at " + addr.toString() + ": "
+        JsonObject err = errorResult("Failed to create function at " + AddressCodec.format(addr) + ": "
             + String.join("; ", reasons));
         err.add("detail", detail);
         return err;
@@ -343,7 +340,7 @@ final class FunctionCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");
             result.addProperty("name", name);
-            result.addProperty("address", entry.toString());
+            result.addProperty("address", AddressCodec.format(entry));
             return result;
         } catch (Exception e) {
             return errorResult("Failed to delete function: " + e.getMessage());

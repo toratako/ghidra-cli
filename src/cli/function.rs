@@ -38,9 +38,10 @@ pub enum FunctionCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FunctionRenameArgs {
+    /// Exact function name or explicit 0x-prefixed address
     pub old_name: String,
     pub new_name: String,
-    /// Exact function entry address to disambiguate the old name
+    /// Explicit 0x-prefixed function entry address to disambiguate the old name
     #[arg(long)]
     pub address: Option<String>,
     #[arg(long)]
@@ -51,10 +52,10 @@ pub struct FunctionRenameArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetNoReturnArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Set to false to clear a previously-set no-return flag
@@ -89,10 +90,10 @@ pub struct FunctionListArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FunctionGetArgs {
-    /// Function target (name/address/FUN_...)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     #[command(flatten)]
@@ -110,6 +111,7 @@ impl FunctionGetArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct CreateFunctionArgs {
+    /// Explicit 0x-prefixed address or exact symbol name for the new entry point
     pub address: String,
     pub name: Option<String>,
     #[arg(long)]
@@ -120,10 +122,10 @@ pub struct CreateFunctionArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetSignatureArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// C-style signature string, e.g. "int main(int argc, char** argv)"
@@ -146,10 +148,10 @@ impl SetSignatureArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetReturnTypeArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Return type name
@@ -172,10 +174,10 @@ impl SetReturnTypeArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetCallingConventionArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Calling convention name (e.g., "__cdecl", "__stdcall", "__fastcall")
@@ -199,10 +201,10 @@ impl SetCallingConventionArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["new_name", "type_name"])))]
 pub struct EditVarArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Current variable name (exact match, from decompile --with-vars/--with-params)
@@ -231,10 +233,10 @@ impl EditVarArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DecompileArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     /// Include local variable details (name, type, storage)

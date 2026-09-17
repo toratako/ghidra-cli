@@ -4,12 +4,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct RenameArgs {
+    /// Exact symbol name; bare hex and generated names are not inferred addresses
     pub old_name: String,
     pub new_name: String,
-    /// Address of the specific symbol to rename. Required when `old_name`
+    /// Explicit 0x-prefixed address of the symbol to rename. Required when `old_name`
     /// is shared by more than one symbol -- Ghidra reuses auto-generated
     /// names (`caseD_XX`, `LAB_XXXX`, ...) across unrelated addresses
     /// program-wide, so a bare name alone is not a safe rename target.
+    /// Segmented selectors require the space name, e.g. ram:0x1234:0x0005.
     #[arg(long)]
     pub address: Option<String>,
     /// Filter expression (same syntax as `--filter` on query commands) used
@@ -45,6 +47,7 @@ pub enum SymbolCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SymbolGetArgs {
+    /// Exact symbol name or explicit 0x-prefixed address
     pub name: String,
     #[command(flatten)]
     pub options: QueryOptions,
@@ -52,11 +55,13 @@ pub struct SymbolGetArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SymbolDeleteArgs {
+    /// Exact symbol name; bare hex and generated names are not inferred addresses
     pub name: String,
-    /// Address of the specific symbol to delete. Required when `name` is
+    /// Explicit 0x-prefixed address of the symbol to delete. Required when `name` is
     /// shared by more than one symbol -- Ghidra reuses auto-generated names
     /// (`caseD_XX`, `LAB_XXXX`, ...) across unrelated addresses
     /// program-wide, so a bare name alone is not a safe delete target.
+    /// Segmented selectors require the space name, e.g. ram:0x1234:0x0005.
     #[arg(long)]
     pub address: Option<String>,
     /// Delete every symbol named `name`, program-wide. Without this (or
@@ -70,6 +75,7 @@ pub struct SymbolDeleteArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct CreateSymbolArgs {
+    /// Explicit address, e.g. 0x404000 or overlay:0x1000
     pub address: String,
     pub name: String,
     #[arg(long)]
@@ -104,7 +110,7 @@ pub enum TagCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TagListArgs {
-    /// Only tags attached to this function (name | 0xaddr | FUN_<hex>)
+    /// Only tags attached to this exact function name or explicit 0x-prefixed address
     #[arg(long = "function", value_name = "TARGET")]
     pub function: Option<String>,
     #[command(flatten)]
@@ -168,7 +174,7 @@ pub struct TagSetCommentArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TagAttachArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// One or more tag names to attach
@@ -188,7 +194,7 @@ pub struct TagAttachArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TagDetachArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Tag names to detach
@@ -218,6 +224,7 @@ pub enum CommentCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct CommentGetArgs {
+    /// Explicit address, e.g. 0x401000 or overlay:0x1000
     pub address: String,
     #[command(flatten)]
     pub options: QueryOptions,
@@ -225,6 +232,7 @@ pub struct CommentGetArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct CommentSetArgs {
+    /// Explicit address, e.g. 0x401000 or overlay:0x1000
     pub address: String,
     /// Comment text. Omit when using --stdin or --text-file: a shell argument
     /// is subject to shell metacharacter expansion (e.g. backticks) before

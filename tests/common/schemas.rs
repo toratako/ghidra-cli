@@ -238,31 +238,33 @@ pub trait Validate {
     }
 }
 
-/// Check if a string is a valid memory address.
-/// Accepts both plain hex ("001174b0") and overlay format (".comment::00000000").
-fn is_memory_address(s: &str) -> bool {
-    if is_hex_address(s) {
-        return true;
+/// Check canonical flat, named-space, and segmented output addresses.
+pub fn is_memory_address(s: &str) -> bool {
+    let parts: Vec<_> = s.split(':').collect();
+    match parts.as_slice() {
+        [offset] => is_flat_address(offset),
+        [space, offset] => !space.is_empty() && is_flat_address(offset),
+        [space, segment, offset] => {
+            !space.is_empty() && is_hex_address(segment) && is_hex_address(offset)
+        }
+        _ => false,
     }
-    // Ghidra overlay sections use "section_name::hex_addr" format
-    if let Some((_section, addr)) = s.rsplit_once("::") {
-        return is_hex_address(addr);
+}
+
+fn is_flat_address(s: &str) -> bool {
+    match s.split_once('.') {
+        Some((offset, remainder)) => {
+            is_hex_address(offset)
+                && !remainder.is_empty()
+                && remainder.bytes().all(|b| b.is_ascii_hexdigit())
+        }
+        None => is_hex_address(s),
     }
-    false
 }
 
 fn is_hex_address(s: &str) -> bool {
-    let s = s.trim();
-    if s.is_empty() {
-        return false;
-    }
-    // Accept both "0x001174b0" and "001174b0" formats
-    // Ghidra returns addresses without 0x prefix
-    let hex_part = s
-        .strip_prefix("0x")
-        .or_else(|| s.strip_prefix("0X"))
-        .unwrap_or(s);
-    !hex_part.is_empty() && hex_part.bytes().all(|b| b.is_ascii_hexdigit())
+    s.strip_prefix("0x")
+        .is_some_and(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 impl Validate for Function {
@@ -273,14 +275,14 @@ impl Validate for Function {
             errors.push("Function name is empty".to_string());
         }
 
-        if !is_hex_address(&self.address) {
+        if !is_memory_address(&self.address) {
             errors.push(format!(
                 "Function address '{}' should be hex format (0x...)",
                 self.address
             ));
         }
 
-        if !is_hex_address(&self.entry_point) {
+        if !is_memory_address(&self.entry_point) {
             errors.push(format!(
                 "Function entry_point '{}' should be hex format",
                 self.entry_point
@@ -295,7 +297,7 @@ impl Validate for Instruction {
     fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if !is_hex_address(&self.address) {
+        if !is_memory_address(&self.address) {
             errors.push(format!(
                 "Instruction address '{}' should be hex format",
                 self.address
@@ -324,7 +326,7 @@ impl Validate for StringData {
     fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if !is_hex_address(&self.address) {
+        if !is_memory_address(&self.address) {
             errors.push(format!(
                 "String address '{}' should be hex format",
                 self.address
@@ -347,7 +349,7 @@ impl Validate for Symbol {
             errors.push("Symbol name is empty".to_string());
         }
 
-        if !is_hex_address(&self.address) {
+        if !is_memory_address(&self.address) {
             errors.push(format!(
                 "Symbol address '{}' should be hex format",
                 self.address
@@ -370,7 +372,7 @@ impl Validate for MemoryBlock {
             errors.push("MemoryBlock name is empty".to_string());
         }
 
-        // Ghidra may return addresses as "section::hex" for overlay blocks
+        // Named spaces and segmented addresses retain their qualifiers.
         if !is_memory_address(&self.start) {
             errors.push(format!(
                 "MemoryBlock start '{}' should be hex or overlay format",
@@ -398,7 +400,7 @@ impl Validate for Comment {
     fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if !is_hex_address(&self.address) {
+        if !is_memory_address(&self.address) {
             errors.push(format!(
                 "Comment address '{}' should be hex format",
                 self.address

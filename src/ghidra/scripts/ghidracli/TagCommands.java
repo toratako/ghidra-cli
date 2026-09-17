@@ -77,7 +77,7 @@ final class TagCommands {
                 if (func.getTags().contains(tag)) {
                     JsonObject o = new JsonObject();
                     o.addProperty("name", func.getName());
-                    o.addProperty("address", func.getEntryPoint().toString());
+                    o.addProperty("address", AddressCodec.format(func.getEntryPoint()));
                     functions.add(o);
                 }
             }
@@ -290,7 +290,7 @@ final class TagCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "tagged");
             result.addProperty("function", func.getName());
-            result.addProperty("address", func.getEntryPoint().toString());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.add("added", added);
             result.add("created", created);
             result.add("already_present", already);
@@ -342,7 +342,7 @@ final class TagCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "untagged");
             result.addProperty("function", func.getName());
-            result.addProperty("address", func.getEntryPoint().toString());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.add("removed", removed);
             result.add("not_present", notPresent);
             return result;

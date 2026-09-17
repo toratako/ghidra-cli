@@ -458,8 +458,15 @@ public class CreateGraphDepthFixture extends GhidraScript {
                 assert_eq!(row["depth"], depth, "row depth: {row}");
                 for (field, offset) in [("address", index * 0x10), ("call_site", site)] {
                     assert_eq!(
-                        u64::from_str_radix(row[field].as_str().expect("address string"), 16)
-                            .expect("hex address"),
+                        u64::from_str_radix(
+                            row[field]
+                                .as_str()
+                                .expect("address string")
+                                .strip_prefix("0x")
+                                .expect("prefixed address"),
+                            16
+                        )
+                        .expect("hex address"),
                         base + offset,
                         "{field}: {row}"
                     );

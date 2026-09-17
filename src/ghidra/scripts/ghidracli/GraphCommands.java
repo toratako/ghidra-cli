@@ -41,7 +41,7 @@ final class GraphCommands {
         while (iter.hasNext()) {
             if (limit > 0 && count >= limit) break;
             Function func = iter.next();
-            String funcAddr = func.getEntryPoint().toString();
+            String funcAddr = AddressCodec.format(func.getEntryPoint());
 
             JsonObject node = new JsonObject();
             node.addProperty("id", funcAddr);
@@ -60,7 +60,7 @@ final class GraphCommands {
                     if (targetFunc != null) {
                         JsonObject edge = new JsonObject();
                         edge.addProperty("from", funcAddr);
-                        edge.addProperty("to", targetAddr.toString());
+                        edge.addProperty("to", AddressCodec.format(targetAddr));
                         edge.addProperty("type", "call");
                         edges.add(edge);
                     }
@@ -95,7 +95,8 @@ final class GraphCommands {
         findCallers(targetFunc, depth, limit, callers, calls, fm);
 
         JsonObject result = new JsonObject();
-        result.addProperty("function", funcName);
+        result.addProperty("function", AddressCodec.isExplicit(funcName)
+            ? AddressCodec.format(targetFunc.getEntryPoint()) : funcName);
         result.add("callers", callers);
         result.addProperty("count", callers.size());
         return result;
@@ -127,8 +128,8 @@ final class GraphCommands {
 
                     JsonObject callerInfo = new JsonObject();
                     callerInfo.addProperty("name", callerFunc.getName());
-                    callerInfo.addProperty("address", callerFunc.getEntryPoint().toString());
-                    callerInfo.addProperty("call_site", fromAddr.toString());
+                    callerInfo.addProperty("address", AddressCodec.format(callerFunc.getEntryPoint()));
+                    callerInfo.addProperty("call_site", AddressCodec.format(fromAddr));
                     callerInfo.addProperty("depth", rowDepth);
                     callers.add(callerInfo);
 
@@ -161,7 +162,8 @@ final class GraphCommands {
         findCallees(targetFunc, depth, limit, callees, refMgr, fm);
 
         JsonObject result = new JsonObject();
-        result.addProperty("function", funcName);
+        result.addProperty("function", AddressCodec.isExplicit(funcName)
+            ? AddressCodec.format(targetFunc.getEntryPoint()) : funcName);
         result.add("callees", callees);
         result.addProperty("count", callees.size());
         return result;
@@ -193,8 +195,8 @@ final class GraphCommands {
 
                             JsonObject calleeInfo = new JsonObject();
                             calleeInfo.addProperty("name", calleeFunc.getName());
-                            calleeInfo.addProperty("address", calleeFunc.getEntryPoint().toString());
-                            calleeInfo.addProperty("call_site", ref.getFromAddress().toString());
+                            calleeInfo.addProperty("address", AddressCodec.format(calleeFunc.getEntryPoint()));
+                            calleeInfo.addProperty("call_site", AddressCodec.format(ref.getFromAddress()));
                             calleeInfo.addProperty("depth", currentDepth);
                             callees.add(calleeInfo);
 

@@ -331,6 +331,8 @@ pub(super) fn ensure_autosave_bridge(
 ) -> anyhow::Result<BridgeClient> {
     let client = BridgeClient::new(port);
     let info = client.bridge_info()?;
+    anyhow::ensure!(info.get("explicit_addresses").and_then(|v| v.as_bool()) == Some(true),
+        "Running bridge does not support explicit 0x addresses; run `ghidra-cli bridge restart` for this project before retrying. No program command was sent.");
     if info.get("auto_save").and_then(|v| v.as_bool()) == Some(true) {
         return Ok(client);
     }

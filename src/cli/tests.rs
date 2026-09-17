@@ -32,9 +32,9 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
         "instruction",
         "mov",
         "--start",
-        "1000",
+        "0x1000",
         "--end",
-        "2000",
+        "0x2000",
         "--case-sensitive",
         "--limit",
         "0",
@@ -43,8 +43,8 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
     let Commands::Find(FindCommands::Instruction(args)) = cli.command else {
         panic!("expected instruction search");
     };
-    assert_eq!(args.start.as_deref(), Some("1000"));
-    assert_eq!(args.end.as_deref(), Some("2000"));
+    assert_eq!(args.start.as_deref(), Some("0x1000"));
+    assert_eq!(args.end.as_deref(), Some("0x2000"));
     assert!(args.case_sensitive);
     assert_eq!(args.options.limit, Some(0));
     assert!(Cli::try_parse_from(["ghidra-cli", "find", "instruction", ""]).is_err());
@@ -165,8 +165,8 @@ fn unsupported_query_formats_do_not_remove_hex_program_export() {
 
 #[test]
 fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
-    for disasm_at in [None, Some("1000")] {
-        let mut command = vec!["ghidra-cli", "clear", "1000:1010"];
+    for disasm_at in [None, Some("0x1000")] {
+        let mut command = vec!["ghidra-cli", "clear", "0x1000:0x1010"];
         if let Some(address) = disasm_at {
             command.extend(["--disasm-at", address]);
         }
@@ -174,7 +174,7 @@ fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
         let Commands::Clear(args) = cli.command else {
             panic!("expected clear");
         };
-        assert_eq!(args.range, "1000:1010");
+        assert_eq!(args.range, "0x1000:0x1010");
         assert_eq!(args.disasm_at.as_deref(), disasm_at);
 
         command.push("--to-data");

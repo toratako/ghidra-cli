@@ -75,7 +75,7 @@ final class FunctionSignatureCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "signature_set");
             result.addProperty("function", func.getName());
-            result.addProperty("address", func.getEntryPoint().toString());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             if (newSig != null) {
                 result.addProperty("signature", newSig);
             }
@@ -179,7 +179,7 @@ final class FunctionSignatureCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "noreturn_set");
             result.addProperty("function", func.getName());
-            result.addProperty("address", func.getEntryPoint().toString());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.addProperty("no_return", func.hasNoReturn());
             return result;
         } catch (Exception e) {
@@ -236,7 +236,7 @@ final class FunctionSignatureCommands {
                         targetSym = sym;
                         JsonObject candidate = describeVariable(sym.getName(), sym.getDataType(), sym.getStorage().toString());
                         candidate.addProperty("kind", sym.isParameter() ? "parameter" : "local");
-                        if (sym.getPCAddress() != null) candidate.addProperty("first_use", sym.getPCAddress().toString());
+                        if (sym.getPCAddress() != null) candidate.addProperty("first_use", AddressCodec.format(sym.getPCAddress()));
                         candidates.add(candidate);
                     }
                 }
@@ -297,7 +297,7 @@ final class FunctionSignatureCommands {
                 result.addProperty("kind", targetSym.isParameter() ? "parameter" : "local");
                 result.add("before", before);
                 result.add("after", describeVariable(updated.getName(), updated.getDataType(), updated.getVariableStorage().toString()));
-                result.addProperty("address", func.getEntryPoint().toString());
+                result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
                 return result;
             } finally {
                 decompiler.dispose();

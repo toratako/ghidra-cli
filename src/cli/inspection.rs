@@ -31,10 +31,10 @@ pub enum XRefCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct XRefArgs {
-    /// XRef target (name | 0xaddr | FUN_<hex>)
+    /// Exact symbol name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// XRef target (name | 0xaddr | FUN_<hex>)
+    /// Exact symbol name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     #[command(flatten)]
@@ -97,10 +97,10 @@ pub struct FindInstructionArgs {
     /// Literal substring of Ghidra's instruction text (case-insensitive by default)
     #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub pattern: String,
-    /// Include instructions starting at or after this address
+    /// Inclusive start bound: explicit 0x-prefixed address or exact symbol name
     #[arg(long)]
     pub start: Option<String>,
-    /// Include instructions starting at or before this address (same address space)
+    /// Inclusive end bound: explicit 0x-prefixed address or exact symbol name (same space)
     #[arg(long)]
     pub end: Option<String>,
     /// Match instruction text case-sensitively
@@ -112,10 +112,10 @@ pub struct FindInstructionArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FindCallsArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     #[command(flatten)]
@@ -145,10 +145,10 @@ pub enum GraphCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct GraphFunctionArgs {
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET", required_unless_present = "target")]
     pub positional_target: Option<String>,
-    /// Function target (name | 0xaddr | FUN_<hex>)
+    /// Exact function name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
     #[arg(long)]

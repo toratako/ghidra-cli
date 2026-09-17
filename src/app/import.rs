@@ -294,6 +294,16 @@ fn build_oneshot_import_options(
         loader_options.push((name.to_string(), value.to_string()));
     }
 
+    for (name, value) in &loader_options {
+        if name.eq_ignore_ascii_case("baseAddr") {
+            anyhow::ensure!(
+                crate::address::ExplicitAddress::parse(value).is_some(),
+                "Invalid base address '{}': use a 0x-prefixed address",
+                value
+            );
+        }
+    }
+
     let explicit_loader_control = loader.is_some()
         || args.language.is_some()
         || args.compiler_spec.is_some()

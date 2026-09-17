@@ -788,8 +788,8 @@ fn removed_commands_are_rejected_before_loading_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
     for args in [
-        vec!["patch", "bytes", "1000", "90"],
-        vec!["patch", "nop", "1000"],
+        vec!["patch", "bytes", "0x1000", "90"],
+        vec!["patch", "nop", "0x1000"],
         vec!["patch", "export", "-o", "out.bin"],
         vec!["memory", "search", "90"],
         vec!["dump", "imports"],

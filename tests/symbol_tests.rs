@@ -245,8 +245,12 @@ fn test_symbol_name_and_address_collisions_preserve_mutation_targets() {
         .args(["symbol", "delete", hex_name, "--address", &addresses[0]])
         .run()
         .assert_success();
-    // A bare address remains available for get after the same-named label is gone.
-    assert_eq!(client.symbol_get(hex_name).unwrap(), address_symbols);
+    // Bare hexadecimal text remains an exact name after its label is gone.
+    assert!(client.symbol_get(hex_name).is_err());
+    assert_eq!(
+        client.symbol_get(&explicit_address).unwrap(),
+        address_symbols
+    );
     for args in [
         vec!["symbol", "delete", hex_name, "--all"],
         vec![
@@ -509,7 +513,7 @@ public class CreateDynamicSymbol extends GhidraScript {
     assert_eq!(error["detail"]["failed"][0]["id"], dynamic["id"]);
     assert!(error["detail"].get("partial_changes_saved").is_none());
 
-    client.symbol_create("1020", name).unwrap();
+    client.symbol_create("0x1020", name).unwrap();
     let stored = client.symbol_get_by_name(name).unwrap()["symbols"][0].clone();
     // The valid stored label appears first, so the dynamic member must be
     // rejected before either member is mutated.

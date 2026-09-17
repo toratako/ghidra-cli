@@ -89,7 +89,7 @@ final class MemoryCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "patched");
-            result.addProperty("address", addr.toString());
+            result.addProperty("address", AddressCodec.format(addr));
             result.addProperty("bytes", patchData.length);
             return result;
         } catch (Exception e) {
@@ -129,7 +129,7 @@ final class MemoryCommands {
             }
 
             if (instruction == null) {
-                return errorResult("No instruction at address " + addressStr +
+                return errorResult("No instruction at address " + AddressCodec.format(addr) +
                     ". Address may be data or unanalyzed code.");
             }
 
@@ -197,7 +197,7 @@ final class MemoryCommands {
         }
 
         JsonObject instrData = new JsonObject();
-        instrData.addProperty("address", instr.getAddress().toString());
+        instrData.addProperty("address", AddressCodec.format(instr.getAddress()));
         instrData.addProperty("bytes", bytesHex.toString());
         instrData.addProperty("mnemonic", instr.getMnemonicString());
         instrData.add("operands", operands);
@@ -242,7 +242,7 @@ final class MemoryCommands {
             boolean landed = listing.getInstructionAt(addr) != null;
 
             JsonObject result = new JsonObject();
-            result.addProperty("address", addr.toString());
+            result.addProperty("address", AddressCodec.format(addr));
             result.addProperty("already_disassembled", alreadyPresent);
             result.addProperty("ok", ok);
             result.addProperty("landed", landed);
@@ -257,12 +257,12 @@ final class MemoryCommands {
                 }
                 result.add("instructions", instrs);
             } else {
-                result.addProperty("error", "Failed to disassemble at " + addr
+                result.addProperty("error", "Failed to disassemble at " + AddressCodec.format(addr)
                     + ": no instruction was created");
                 Function owner = session.program().getFunctionManager().getFunctionContaining(addr);
                 if (owner != null) {
                     result.addProperty("hint", "Address falls inside existing function "
-                        + owner.getName() + "@" + owner.getEntryPoint()
+                        + owner.getName() + "@" + AddressCodec.format(owner.getEntryPoint())
                         + "; stale/overlapping instructions may be blocking disassembly. Try `ghidra-cli clear` first.");
                 }
             }
@@ -288,10 +288,18 @@ final class MemoryCommands {
         }
 
         try {
-            Address start = addressResolver.resolveAddress(startStr);
-            if (start == null) return errorResult("Invalid start address: " + startStr);
-            Address end = addressResolver.resolveAddress(endStr);
-            if (end == null) return errorResult("Invalid end address: " + endStr);
+            Address start = AddressCodec.parseCanonical(session.program().getAddressFactory(), startStr);
+            if (start == null) return errorResult("Invalid start address: " + startStr
+                + ". Use a 0x-prefixed address.");
+            Address end = AddressCodec.parseCanonical(session.program().getAddressFactory(), endStr);
+            if (end == null) return errorResult("Invalid end address: " + endStr
+                + ". Use a 0x-prefixed address.");
+            if (!start.getAddressSpace().equals(end.getAddressSpace())) {
+                return errorResult("Start and end must be in the same address space");
+            }
+            if (start.compareTo(end) > 0) {
+                return errorResult("Start address must not be after end address");
+            }
 
             Address disasmAt = null;
             if (disasmAtStr != null && !disasmAtStr.isEmpty()) {
@@ -304,19 +312,19 @@ final class MemoryCommands {
             try {
                 session.clearListing(start, end);
                 result.addProperty("status", "cleared");
-                result.addProperty("start", start.toString());
-                result.addProperty("end", end.toString());
+                result.addProperty("start", AddressCodec.format(start));
+                result.addProperty("end", AddressCodec.format(end));
 
                 if (disasmAt != null) {
                     boolean ok = session.disassemble(disasmAt);
                     boolean landed = session.program().getListing().getInstructionAt(disasmAt) != null;
-                    result.addProperty("disasm_at", disasmAt.toString());
+                    result.addProperty("disasm_at", AddressCodec.format(disasmAt));
                     result.addProperty("ok", ok);
                     result.addProperty("landed", landed);
                     result.addProperty("status", (ok && landed) ? "cleared_and_disassembled" : "cleared_disasm_incomplete");
                     if (!ok || !landed) {
                         result.addProperty("error", "Cleared range, but disassembly at "
-                            + disasmAt + " did not complete");
+                            + AddressCodec.format(disasmAt) + " did not complete");
                     }
                     if (!landed) {
                         result.addProperty("hint", "clearEnd may need to extend further past disasm_at: "
@@ -371,7 +379,7 @@ final class MemoryCommands {
                     Arrays.copyOfRange(bytes, i, i + pointerSize), bigEndian);
                 JsonObject ptrObj = new JsonObject();
                 ptrObj.addProperty("offset", i);
-                ptrObj.addProperty("address", pointerAddr.toString());
+                ptrObj.addProperty("address", AddressCodec.format(pointerAddr));
                 ptrObj.addProperty("value", String.format("0x%0" + (pointerSize * 2) + "x",
                     buffer.getBigInteger(0, pointerSize, false)));
 
@@ -390,7 +398,7 @@ final class MemoryCommands {
             }
 
             JsonObject result = new JsonObject();
-            result.addProperty("address", baseAddr.toString());
+            result.addProperty("address", AddressCodec.format(baseAddr));
             result.addProperty("size", bytesRead);
             result.addProperty("hex", hexStr.toString());
             result.add("pointers", pointers);

@@ -41,13 +41,13 @@ final class PcodeCommands {
             if (addr == null) return errorResult("Invalid address: " + addrStr);
 
             Instruction inst = session.program().getListing().getInstructionAt(addr);
-            if (inst == null) return errorResult("No instruction at address: " + addrStr);
+            if (inst == null) return errorResult("No instruction at address: " + AddressCodec.format(addr));
 
             JsonArray ops = new JsonArray();
             for (PcodeOp op : inst.getPcode()) ops.add(pcodeOpToJson(op));
 
             JsonObject result = new JsonObject();
-            result.addProperty("address", addr.toString());
+            result.addProperty("address", AddressCodec.format(addr));
             result.addProperty("mnemonic", inst.getMnemonicString());
             result.addProperty("instruction", inst.toString());
             result.addProperty("count", ops.size());
@@ -105,7 +105,7 @@ final class PcodeCommands {
                     Instruction inst = instructions.next();
                     for (PcodeOp op : inst.getPcode()) {
                         JsonObject opJson = pcodeOpToJson(op);
-                        opJson.addProperty("instruction_address", inst.getAddress().toString());
+                        opJson.addProperty("instruction_address", AddressCodec.format(inst.getAddress()));
                         ops.add(opJson);
                     }
                 }
@@ -113,7 +113,7 @@ final class PcodeCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("function", func.getName());
-            result.addProperty("address", func.getEntryPoint().toString());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.addProperty("level", highPcode ? "high" : "raw");
             result.addProperty("count", ops.size());
             result.add("pcode", ops);

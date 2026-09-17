@@ -426,8 +426,9 @@ fn test_type_apply() {
 /// Add bytes to a hex address while preserving its width, for the instruction
 /// window restored by this suite's type-application test.
 fn hex_addr_plus(addr: &str, delta: u64) -> String {
-    let val = u64::from_str_radix(addr, 16).expect("hex address");
-    format!("{:0width$x}", val + delta, width = addr.len())
+    let hex = addr.strip_prefix("0x").expect("prefixed hex address");
+    let val = u64::from_str_radix(hex, 16).expect("hex address");
+    format!("0x{:0width$x}", val + delta, width = hex.len())
 }
 
 /// Force-clear+redisassemble a small window at `addr` back to instructions,

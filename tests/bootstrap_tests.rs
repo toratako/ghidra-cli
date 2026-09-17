@@ -554,7 +554,7 @@ fn unsupported_loader_options_never_save_a_program() {
         assert_eq!(programs[0]["name"], "valid");
         assert_eq!(
             project.ok(&["program", "info"])[0]["min_address"],
-            "00009000"
+            "0x00009000"
         );
     }
 }

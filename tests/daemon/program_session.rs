@@ -163,7 +163,7 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
     let error = client
         .send_command(
             "memory_write",
-            Some(serde_json::json!({"address": "0", "hex": "00"})),
+            Some(serde_json::json!({"address": "0x0", "hex": "00"})),
         )
         .unwrap_err();
     assert!(

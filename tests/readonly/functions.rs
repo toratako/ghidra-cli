@@ -167,7 +167,7 @@ fn test_function_list_address_range_filter() {
     let harness = harness();
 
     // Regression: `address` comes back from the bridge as a hex string
-    // (e.g. "00401000"), never a JSON number. A numeric range filter
+    // (e.g. "0x00401000"), never a JSON number. A numeric range filter
     // against it used to fall through to the evaluator's catch-all
     // `Ok(false)` for every row -- exit 0, empty result, no error -- instead
     // of comparing addresses. Derive real bounds from the binary so this
@@ -175,7 +175,7 @@ fn test_function_list_address_range_filter() {
     let mut addrs: Vec<u64> = get_function_addresses(harness, test_project(), TEST_PROGRAM, 50)
         .iter()
         .map(|a| {
-            let hex = a.rsplit(':').next().unwrap_or(a);
+            let hex = a.strip_prefix("0x").expect("prefixed address");
             u64::from_str_radix(hex, 16).unwrap_or_else(|e| panic!("bad address {}: {}", a, e))
         })
         .collect();
@@ -204,7 +204,7 @@ fn test_function_list_address_range_filter() {
         hi
     );
     for f in &functions {
-        let hex = f.address.rsplit(':').next().unwrap_or(&f.address);
+        let hex = f.address.strip_prefix("0x").expect("prefixed address");
         let addr = u64::from_str_radix(hex, 16)
             .unwrap_or_else(|e| panic!("bad address {}: {}", f.address, e));
         assert!(
@@ -289,7 +289,7 @@ fn test_decompile_by_address() {
 
 #[test]
 #[serial]
-fn test_decompile_by_fun_style_target() {
+fn test_decompile_rejects_synthetic_fun_style_target() {
     require_ghidra!();
     let harness = harness();
 
@@ -302,11 +302,7 @@ fn test_decompile_by_fun_style_target() {
         .with_project(test_project(), TEST_PROGRAM)
         .run();
 
-    result.assert_success();
-    assert!(
-        !result.stdout.trim().is_empty(),
-        "Decompile should produce output for FUN-style target"
-    );
+    result.assert_failure();
 }
 
 #[test]
@@ -404,17 +400,20 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
             rows.as_array()
                 .unwrap()
                 .iter()
-                .map(|row| u64::from_str_radix(row["address"].as_str().unwrap(), 16).unwrap())
+                .map(|row| {
+                    u64::from_str_radix(
+                        row["address"].as_str().unwrap().strip_prefix("0x").unwrap(),
+                        16,
+                    )
+                    .unwrap()
+                })
                 .collect()
         };
         for (targets, expected) in [
+            (vec!["short_case", "0x1000", "0x1001"], vec![0x1000, 0x1003]),
+            (vec!["long_case", "0x1025"], (0x1020..=0x1034).collect()),
             (
-                vec!["short_case", "1000", "1001", "FUN_00001000"],
-                vec![0x1000, 0x1003],
-            ),
-            (vec!["long_case", "1025"], (0x1020..=0x1034).collect()),
-            (
-                vec!["split_case", "1051", "1062", "1081"],
+                vec!["split_case", "0x1051", "0x1062", "0x1081"],
                 vec![0x1050, 0x1051, 0x1060, 0x1080, 0x1081],
             ),
             (vec!["empty_case"], vec![]),
@@ -498,7 +497,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
             "{}",
             asm.stdout
         );
-        for target in ["no_such_function", "10a0", "1010"] {
+        for target in ["no_such_function", "0x10a0", "0x1010", "FUN_00001000"] {
             let result = ghidra(harness)
                 .args(["function", "disasm", target])
                 .with_project(test_project(), &name)
@@ -591,7 +590,10 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
 
     // An interior lower boundary must not rewind to the containing instruction.
     if instructions[0]["bytes"].as_str().unwrap().len() > 2 {
-        let interior = format!("{:x}", u64::from_str_radix(start, 16).unwrap() + 1);
+        let interior = format!(
+            "0x{:x}",
+            u64::from_str_radix(start.strip_prefix("0x").unwrap(), 16).unwrap() + 1
+        );
         let ranged = client.disasm_range(&interior, end, None).unwrap();
         assert_eq!(
             ranged["instructions"],
@@ -765,8 +767,7 @@ fn test_disasm_instruction_fields() {
     let addr_hex = first
         .address
         .strip_prefix("0x")
-        .or_else(|| first.address.strip_prefix("0X"))
-        .unwrap_or(&first.address);
+        .expect("instruction address must have a 0x prefix");
     assert!(
         !addr_hex.is_empty() && addr_hex.bytes().all(|b| b.is_ascii_hexdigit()),
         "Address should be hex format, got: {}",

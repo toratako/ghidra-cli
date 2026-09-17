@@ -15,6 +15,7 @@ import ghidra.app.util.opinion.LoaderService;
 import ghidra.formats.gfilesystem.FileSystemService;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.Project;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
@@ -59,7 +60,18 @@ public final class ImportSupport {
         if (args.has("loader_options")) {
             for (var option : args.getAsJsonArray("loader_options")) {
                 var pair = option.getAsJsonArray();
-                options.add(new Pair<>("-loader-" + pair.get(0).getAsString(), pair.get(1).getAsString()));
+                String optionName = pair.get(0).getAsString();
+                String value = pair.get(1).getAsString();
+                if (optionName.equalsIgnoreCase("baseAddr") && !AddressCodec.isValidSyntax(value)) {
+                    JsonObject detail = new JsonObject();
+                    detail.addProperty("stage", "import.options");
+                    detail.addProperty("import_status", "not_started");
+                    detail.addProperty("option", "-loader-" + optionName);
+                    throw new JsonProtocol.CommandException(
+                        "Base address requires explicit 0x-prefixed hexadecimal components: " + value,
+                        detail);
+                }
+                options.add(new Pair<>("-loader-" + optionName, value));
             }
         }
         Predicate<Loader> filter = candidate -> loader == null
@@ -130,8 +142,9 @@ public final class ImportSupport {
             if (spec == null) throw new IllegalArgumentException("No loader accepted the binary");
             var defaults = spec.getLoader().getDefaultOptions(provider, spec, null, false, false);
             for (var requested : options) {
-                if (defaults == null || defaults.stream().noneMatch(option ->
-                        requested.first.equalsIgnoreCase(option.getArg()))) {
+                var definition = defaults == null ? null : defaults.stream().filter(option ->
+                    requested.first.equalsIgnoreCase(option.getArg())).findFirst().orElse(null);
+                if (definition == null) {
                     JsonObject detail = new JsonObject();
                     detail.addProperty("stage", "import.options");
                     detail.addProperty("import_status", "not_started");
@@ -139,6 +152,30 @@ public final class ImportSupport {
                     detail.addProperty("loader", spec.getLoader().getClass().getSimpleName());
                     throw new JsonProtocol.CommandException("Unsupported loader option "
                         + requested.first + " for " + spec.getLoader().getName(), detail);
+                }
+                if (requested.first.equalsIgnoreCase("-loader-baseAddr")) {
+                    try {
+                        var language = spec.getLanguageCompilerSpec();
+                        var factory = language == null ? null : language.getLanguage().getAddressFactory();
+                        Address address = AddressCodec.parse(factory, requested.second);
+                        if (address == null) throw new IllegalArgumentException("No address space is available");
+                        // AutoImporter on Ghidra 12 forwards only OptionChooser.getArgs(),
+                        // so a choose() override cannot enforce the codec. Check the native
+                        // interpretation before loading anything, including truncation in
+                        // segmented spaces and sign recovery in narrower flat spaces.
+                        var nativeOption = definition.copy();
+                        if (!nativeOption.parseAndSetValueByType(requested.second, factory)
+                                || !address.equals(nativeOption.getValue())) {
+                            throw new IllegalArgumentException("Loader cannot preserve the requested address");
+                        }
+                    } catch (IllegalArgumentException error) {
+                        JsonObject detail = new JsonObject();
+                        detail.addProperty("stage", "import.options");
+                        detail.addProperty("import_status", "not_started");
+                        detail.addProperty("option", requested.first);
+                        throw new JsonProtocol.CommandException("Invalid base address " + requested.second
+                            + ": " + error.getMessage(), detail);
+                    }
                 }
             }
         }

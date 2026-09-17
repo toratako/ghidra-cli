@@ -6,9 +6,7 @@ import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
-import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionManager;
 import ghidra.util.task.TaskMonitor;
 import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
@@ -18,12 +16,10 @@ import static ghidracli.JsonProtocol.getArgString;
 
 final class DecompileCommands {
     private final ProgramSession session;
-    private final AddressResolver addressResolver;
     private final FunctionQueries functionQueries;
 
-    DecompileCommands(ProgramSession session, AddressResolver addressResolver, FunctionQueries functionQueries) {
+    DecompileCommands(ProgramSession session, FunctionQueries functionQueries) {
         this.session = session;
-        this.addressResolver = addressResolver;
         this.functionQueries = functionQueries;
     }
 
@@ -37,15 +33,9 @@ final class DecompileCommands {
             return errorResult("No address provided");
         }
 
-        Address addr = addressResolver.resolveAddress(addrStr);
-        if (addr == null) {
-            return errorResult(functionQueries.buildFunctionTargetHint(addrStr));
-        }
-
-        FunctionManager fm = session.program().getFunctionManager();
-        Function func = fm.getFunctionContaining(addr);
+        Function func = functionQueries.findFunctionByNameOrAddress(addrStr);
         if (func == null) {
-            return errorResult("No function at address " + addrStr);
+            return errorResult(functionQueries.buildFunctionTargetHint(addrStr));
         }
 
         DecompInterface decompiler = new DecompInterface();
@@ -64,7 +54,7 @@ final class DecompileCommands {
                 String code = results.getDecompiledFunction().getC();
                 JsonObject result = new JsonObject();
                 result.addProperty("name", func.getName());
-                result.addProperty("address", func.getEntryPoint().toString());
+                result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
                 String sig = null;
                 try {
                     sig = func.getPrototypeString(false, false);
@@ -140,7 +130,7 @@ final class DecompileCommands {
                     prefix = "Decompilation failed";
                 }
                 return errorResult(prefix + " for " + func.getName() + " at " +
-                    func.getEntryPoint() + ": " + detail.trim());
+                    AddressCodec.format(func.getEntryPoint()) + ": " + detail.trim());
             }
         } finally {
             decompiler.dispose();

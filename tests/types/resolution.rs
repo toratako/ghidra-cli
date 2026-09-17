@@ -248,7 +248,7 @@ public class CreateAmbiguousTypes extends GhidraScript {
         vec!["rename", "Shared", "Renamed"],
         vec!["delete", "Shared"],
         vec!["del-field", "Shared", "--name", "missing"],
-        vec!["apply", "1000", "Shared", "--force"],
+        vec!["apply", "0x1000", "Shared", "--force"],
     ] {
         let failed = type_command(&program, &args);
         failed.assert_failure();
@@ -402,12 +402,12 @@ public class PrepareTypeApplyMemory extends GhidraScript {
         )
         .unwrap();
     for (address, ty) in [
-        ("1000", "void"),
-        ("1004", "void"),
-        ("1000", "Holder"),
-        ("1004", "byte[20]"),
-        ("1004", "byte[2147483647]"),
-        ("fffffffc", "byte[8]"),
+        ("0x1000", "void"),
+        ("0x1004", "void"),
+        ("0x1000", "Holder"),
+        ("0x1004", "byte[20]"),
+        ("0x1004", "byte[2147483647]"),
+        ("0xfffffffc", "byte[8]"),
     ] {
         let failed = type_command(&program, &["apply", address, ty, "--force"]);
         failed.assert_failure();
@@ -440,7 +440,7 @@ public class CheckTypeApplyPreservation extends GhidraScript {
             .unwrap();
     }
     // Valid forced replacement still succeeds after all rejected requests.
-    type_command(&program, &["apply", "1004", "byte[4]", "--force"]).assert_success();
+    type_command(&program, &["apply", "0x1004", "byte[4]", "--force"]).assert_success();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 

@@ -32,7 +32,7 @@ final class CommandDispatcher {
         FunctionQueries functionQueries = new FunctionQueries(session, addressResolver);
         ArtifactManifest artifacts = new ArtifactManifest(session);
         functionCommands = new FunctionCommands(session, addressResolver, functionQueries);
-        decompileCommands = new DecompileCommands(session, addressResolver, functionQueries);
+        decompileCommands = new DecompileCommands(session, functionQueries);
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);

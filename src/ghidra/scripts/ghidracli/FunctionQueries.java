@@ -24,9 +24,9 @@ final class FunctionQueries {
     JsonObject functionToJson(Function func) {
         JsonObject funcData = new JsonObject();
         funcData.addProperty("name", func.getName());
-        funcData.addProperty("address", func.getEntryPoint().toString());
+        funcData.addProperty("address", AddressCodec.format(func.getEntryPoint()));
         funcData.addProperty("size", func.getBody().getNumAddresses());
-        funcData.addProperty("entry_point", func.getEntryPoint().toString());
+        funcData.addProperty("entry_point", AddressCodec.format(func.getEntryPoint()));
         funcData.add("tags", TagSupport.functionTagNames(func));
 
         String sig = null;
@@ -117,7 +117,8 @@ final class FunctionQueries {
         }
         if (candidates.size() > 1) {
             throw new IllegalArgumentException("Ambiguous function target '" + nameOrAddr
-                + "' at " + candidates.keySet() + "; use an explicit address");
+                + "' at " + candidates.keySet().stream().map(AddressCodec::format).toList()
+                + "; use a 0x-prefixed address");
         }
         return candidates.isEmpty() ? null : candidates.values().iterator().next();
     }

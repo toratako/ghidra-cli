@@ -71,7 +71,7 @@ final class CommentCommands {
                         }
 
                         JsonObject commentObj = new JsonObject();
-                        commentObj.addProperty("address", addr.toString());
+                        commentObj.addProperty("address", AddressCodec.format(addr));
                         commentObj.addProperty("type", commentNames[i]);
                         commentObj.addProperty("text", text);
                         comments.add(commentObj);
@@ -94,7 +94,7 @@ final class CommentCommands {
         if (addressStr == null) return errorResult("Address required");
 
         try {
-            Address addr = session.program().getAddressFactory().getAddress(addressStr);
+            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();
@@ -114,7 +114,7 @@ final class CommentCommands {
             }
 
             JsonObject result = new JsonObject();
-            result.addProperty("address", addressStr);
+            result.addProperty("address", AddressCodec.format(addr));
             result.add("comments", comments);
             return result;
         } catch (Exception e) {
@@ -133,7 +133,7 @@ final class CommentCommands {
         if (addressStr == null) return errorResult("Address required");
 
         try {
-            Address addr = session.program().getAddressFactory().getAddress(addressStr);
+            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Set<String> validTypes = new HashSet<>(Arrays.asList("EOL", "PRE", "POST", "PLATE"));
@@ -155,7 +155,7 @@ final class CommentCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "set");
-            result.addProperty("address", addressStr);
+            result.addProperty("address", AddressCodec.format(addr));
             return result;
         } catch (Exception e) {
             return errorResult("Failed to set comment: " + e.getMessage());
@@ -169,7 +169,7 @@ final class CommentCommands {
         if (addressStr == null) return errorResult("Address required");
 
         try {
-            Address addr = session.program().getAddressFactory().getAddress(addressStr);
+            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();
@@ -188,7 +188,7 @@ final class CommentCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");
-            result.addProperty("address", addressStr);
+            result.addProperty("address", AddressCodec.format(addr));
             return result;
         } catch (Exception e) {
             return errorResult("Failed to delete comment: " + e.getMessage());

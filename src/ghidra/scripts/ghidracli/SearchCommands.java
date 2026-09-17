@@ -58,7 +58,7 @@ final class SearchCommands {
             String haystack = caseSensitive ? text : text.toLowerCase(Locale.ROOT);
             if (!haystack.contains(needle)) continue;
             JsonObject row = new JsonObject();
-            row.addProperty("address", address.toString());
+            row.addProperty("address", AddressCodec.format(address));
             row.addProperty("disasm", text);
             Function function = session.program().getFunctionManager().getFunctionContaining(address);
             if (function != null) row.addProperty("function", function.getName());
@@ -95,7 +95,7 @@ final class SearchCommands {
                         String val = data.getValue().toString();
                         if (pattern.isEmpty() || val.toLowerCase(Locale.ROOT).contains(needle)) {
                             JsonObject item = new JsonObject();
-                            item.addProperty("address", data.getAddress().toString());
+                            item.addProperty("address", AddressCodec.format(data.getAddress()));
                             item.addProperty("value", val);
                             item.addProperty("length", data.getLength());
                             results.add(item);
@@ -170,9 +170,9 @@ final class SearchCommands {
                 for (Reference ref : refMgr.getReferencesTo(strAddr)) {
                     session.monitor().checkCancelled();
                     JsonObject item = new JsonObject();
-                    item.addProperty("string_address", strAddr.toString());
+                    item.addProperty("string_address", AddressCodec.format(strAddr));
                     item.addProperty("string_value", val);
-                    item.addProperty("from", ref.getFromAddress().toString());
+                    item.addProperty("from", AddressCodec.format(ref.getFromAddress()));
                     item.addProperty("ref_type", ref.getReferenceType().toString());
                     Function fn = fm.getFunctionContaining(ref.getFromAddress());
                     if (fn != null) {
@@ -232,7 +232,7 @@ final class SearchCommands {
             session.monitor().checkCancelled();
             if (found == null) break;
             JsonObject item = new JsonObject();
-            item.addProperty("address", found.toString());
+            item.addProperty("address", AddressCodec.format(found));
             if (encoding != null) {
                 item.addProperty("byte_length", bytes.length);
                 item.addProperty("encoding", encoding);
@@ -280,10 +280,10 @@ final class SearchCommands {
                     if (calleeFunc == null) calleeFunc = fm.getFunctionContaining(toAddr);
 
                     JsonObject item = new JsonObject();
-                    item.addProperty("call_site", fromAddr.toString());
+                    item.addProperty("call_site", AddressCodec.format(fromAddr));
                     item.addProperty("callee",
-                        calleeFunc != null ? calleeFunc.getName() : toAddr.toString());
-                    item.addProperty("callee_address", toAddr.toString());
+                        calleeFunc != null ? calleeFunc.getName() : AddressCodec.format(toAddr));
+                    item.addProperty("callee_address", AddressCodec.format(toAddr));
                     item.addProperty("type", ref.getReferenceType().toString());
                     results.add(item);
                 }
@@ -292,7 +292,8 @@ final class SearchCommands {
             JsonObject result = new JsonObject();
             result.add("results", results);
             result.addProperty("count", results.size());
-            result.addProperty("target", functionTarget);
+            result.addProperty("target", AddressCodec.isExplicit(functionTarget)
+                ? AddressCodec.format(targetFunc.getEntryPoint()) : functionTarget);
             return result;
         } catch (Exception e) {
             return errorResult("Failed to find calls: " + e.getMessage());
@@ -314,13 +315,13 @@ final class SearchCommands {
                 Address from = ref.getFromAddress();
                 JsonObject row = new JsonObject();
                 Function caller = fm.getFunctionContaining(from);
-                row.addProperty("call_site", from.toString());
+                row.addProperty("call_site", AddressCodec.format(from));
                 row.addProperty("caller", caller == null ? null : caller.getName());
-                row.addProperty("caller_address", caller == null ? null : caller.getEntryPoint().toString());
+                row.addProperty("caller_address", caller == null ? null : AddressCodec.format(caller.getEntryPoint()));
                 row.addProperty("callee", callee.getName());
-                row.addProperty("callee_address", callee.getEntryPoint().toString());
+                row.addProperty("callee_address", AddressCodec.format(callee.getEntryPoint()));
                 row.addProperty("type", ref.getReferenceType().toString());
-                row.addProperty("via", destination.toString());
+                row.addProperty("via", AddressCodec.format(destination));
                 sites.put(from, row);
                 return true;
             });
@@ -329,7 +330,8 @@ final class SearchCommands {
             JsonObject result = new JsonObject();
             result.add("results", results);
             result.addProperty("count", results.size());
-            result.addProperty("target", target);
+            result.addProperty("target", AddressCodec.isExplicit(target)
+                ? AddressCodec.format(callee.getEntryPoint()) : target);
             return result;
         } catch (Exception error) {
             return errorResult("Failed to find calls: " + error.getMessage());

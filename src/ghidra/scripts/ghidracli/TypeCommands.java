@@ -202,7 +202,7 @@ final class TypeCommands {
         }
 
         try {
-            Address addr = session.program().getAddressFactory().getAddress(addressStr);
+            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             DataType dataType = typeResolver.resolveDataType(typeName);
@@ -230,7 +230,8 @@ final class TypeCommands {
                 return errorResult("Type must have a positive applicable data length: " + typeName);
             Address clearEnd = addr.addNoWrap(length - 1);
             if (!session.program().getMemory().contains(addr, clearEnd))
-                return errorResult("Type range extends outside program memory: " + addr + "-" + clearEnd);
+                return errorResult("Type range extends outside program memory: "
+                    + AddressCodec.format(addr) + "-" + AddressCodec.format(clearEnd));
 
             // Captured before the clear below (which can silently remove the Function
             // object along with its code) so a `--force` that lands on a function's own
@@ -258,7 +259,7 @@ final class TypeCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "applied");
-            result.addProperty("address", addressStr);
+            result.addProperty("address", AddressCodec.format(addr));
             result.addProperty("type", typeName);
             if (force) {
                 result.addProperty("cleared_conflicting", true);
@@ -288,8 +289,8 @@ final class TypeCommands {
         JsonObject detail = new JsonObject();
         String description = "unknown";
         if (cu != null) {
-            detail.addProperty("conflicting_start", cu.getMinAddress().toString());
-            detail.addProperty("conflicting_end", cu.getMaxAddress().toString());
+            detail.addProperty("conflicting_start", AddressCodec.format(cu.getMinAddress()));
+            detail.addProperty("conflicting_end", AddressCodec.format(cu.getMaxAddress()));
             detail.addProperty("conflicting_length", cu.getLength());
             if (cu instanceof Instruction) {
                 detail.addProperty("conflicting_kind", "instruction");
@@ -301,11 +302,12 @@ final class TypeCommands {
                 detail.addProperty("conflicting_type", d.getDataType().getName());
                 detail.addProperty("conflicting_defined", d.isDefined());
                 description = (d.isDefined() ? "defined data of type " + d.getDataType().getName()
-                    : "undefined data") + " spanning " + cu.getMinAddress() + "-" + cu.getMaxAddress();
+                    : "undefined data") + " spanning " + AddressCodec.format(cu.getMinAddress())
+                    + "-" + AddressCodec.format(cu.getMaxAddress());
             }
         }
 
-        JsonObject err = errorResult("Conflicting data exists at " + addr + " for type " + typeName
+        JsonObject err = errorResult("Conflicting data exists at " + AddressCodec.format(addr) + " for type " + typeName
             + ": conflicts with " + description + ". Use --force to clear the conflicting range first.");
         err.add("detail", detail);
         return err;

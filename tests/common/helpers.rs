@@ -345,11 +345,7 @@ pub fn normalize_json(output: &str) -> String {
 }
 
 fn looks_like_hex_address(s: &str) -> bool {
-    let bytes = s.as_bytes();
-    bytes.len() > 2
-        && bytes[0] == b'0'
-        && (bytes[1] == b'x' || bytes[1] == b'X')
-        && bytes[2..].iter().all(|&b| b.is_ascii_hexdigit())
+    super::schemas::is_memory_address(s)
 }
 
 fn normalize_json_value(value: &mut serde_json::Value) {

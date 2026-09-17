@@ -71,7 +71,7 @@ final class SymbolCommands {
 
         SymbolTable symbolTable = session.program().getSymbolTable();
         JsonArray syms = new JsonArray();
-        boolean explicitAddress = addressOrName.startsWith("0x") || addressOrName.startsWith("0X");
+        boolean explicitAddress = AddressCodec.isExplicit(addressOrName);
 
         // Mutation candidates always use an exact name, including names such as
         // dead, 1234, or 0xdead. Public get reserves the explicit 0x/0X prefix.
@@ -82,10 +82,7 @@ final class SymbolCommands {
             }
         }
 
-        // Keep legacy bare-hex address lookup only when no exact name exists.
-        boolean bareHexAddress = addressOrName.chars()
-            .allMatch(c -> "0123456789abcdefABCDEF".indexOf(c) >= 0);
-        if (!nameOnly && syms.size() == 0 && (explicitAddress || bareHexAddress)) {
+        if (!nameOnly && explicitAddress) {
             try {
                 Address addr = new AddressResolver(session).parseAddress(addressOrName);
                 if (addr == null) return errorResult("Invalid address: " + addressOrName);
@@ -120,7 +117,7 @@ final class SymbolCommands {
         }
 
         try {
-            Address addr = session.program().getAddressFactory().getAddress(addressStr);
+            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             ProgramTransaction transaction = session.transaction("Create symbol");
@@ -135,7 +132,7 @@ final class SymbolCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
-            result.addProperty("address", addressStr);
+            result.addProperty("address", AddressCodec.format(addr));
             result.addProperty("name", name);
             return result;
         } catch (Exception e) {
@@ -147,7 +144,7 @@ final class SymbolCommands {
         JsonObject result = new JsonObject();
         result.addProperty("id", Long.toString(symbol.getID()));
         result.addProperty("name", symbol.getName());
-        result.addProperty("address", symbol.getAddress().toString());
+        result.addProperty("address", AddressCodec.format(symbol.getAddress()));
         result.addProperty("namespace", symbol.getParentNamespace().getName(true));
         result.addProperty("type", symbol.getSymbolType().toString());
         result.addProperty("source", symbol.getSource().toString());
@@ -301,7 +298,7 @@ final class SymbolCommands {
             try {
                 for (Symbol s : toRename) {
                     JsonObject entry = new JsonObject();
-                    entry.addProperty("address", s.getAddress().toString());
+                    entry.addProperty("address", AddressCodec.format(s.getAddress()));
                     s.setName(newName, SourceType.USER_DEFINED);
                     renamed.add(entry);
                 }

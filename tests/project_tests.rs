@@ -441,8 +441,8 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     let program = &info_json[0];
     assert_eq!(program["executable_format"], "Raw Binary");
     assert_eq!(program["language"], "x86/little/32/default");
-    assert_eq!(program["min_address"], "00008000");
-    assert_eq!(program["max_address"], "00008002");
+    assert_eq!(program["min_address"], "0x00008000");
+    assert_eq!(program["max_address"], "0x00008002");
 
     let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([

@@ -57,6 +57,7 @@ pub struct CreateTypeArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ApplyTypeArgs {
+    /// Explicit address, e.g. 0x404000 or overlay:0x1000
     pub address: String,
     pub type_name: String,
     /// Clear any conflicting data unit first instead of failing on it

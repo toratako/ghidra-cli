@@ -10,8 +10,8 @@ fn test_instruction_queries_on_x86_and_aarch64_without_functions() {
     require_ghidra!();
     let client = harness().client().unwrap();
     for (language, hex, last) in [
-        ("x86:LE:64:default", "4889e590c3", "1004"),
-        ("AARCH64:LE:64:v8A", "1f2003d51f2003d5c0035fd6", "1008"),
+        ("x86:LE:64:default", "4889e590c3", "0x1004"),
+        ("AARCH64:LE:64:v8A", "1f2003d51f2003d5c0035fd6", "0x1008"),
     ] {
         let name = format!("instruction-fixture-{}", uuid::Uuid::new_v4());
         client.script_run_source(r#"
@@ -49,7 +49,7 @@ public class CreateInstructionSearchFixture extends GhidraScript {
 "#, &[name.clone(), language.to_owned(), hex.to_owned()], &[], false).unwrap();
         client.open_program(&name).unwrap();
         let checked = std::panic::catch_unwind(|| {
-            let disasm = client.disasm_range("1000", last, Some(0)).unwrap();
+            let disasm = client.disasm_range("0x1000", last, Some(0)).unwrap();
             let rows = disasm["instructions"].as_array().unwrap();
             assert_eq!(rows.len(), 3, "{language}: {disasm}");
             let mnemonic = rows[1]["mnemonic"].as_str().unwrap();
@@ -65,13 +65,16 @@ public class CreateInstructionSearchFixture extends GhidraScript {
                 .unwrap()
                 .iter()
                 .all(|r| r.get("function").is_none()));
-            assert_eq!(client.disasm_range("1001", last, None).unwrap()["count"], 2);
             assert_eq!(
-                client.disasm_range("1000", "1001", None).unwrap()["count"],
+                client.disasm_range("0x1001", last, None).unwrap()["count"],
+                2
+            );
+            assert_eq!(
+                client.disasm_range("0x1000", "0x1001", None).unwrap()["count"],
                 1
             );
             assert_eq!(
-                client.disasm_range("1010", "101f", None).unwrap()["count"],
+                client.disasm_range("0x1010", "0x101f", None).unwrap()["count"],
                 0
             );
             let tail = rows[2]["mnemonic"].as_str().unwrap();
@@ -83,11 +86,13 @@ public class CreateInstructionSearchFixture extends GhidraScript {
             );
             assert_eq!(
                 client
-                    .find_instruction(tail, None, Some("1000"), false, None)
+                    .find_instruction(tail, None, Some("0x1000"), false, None)
                     .unwrap()["count"],
                 0
             );
-            let error = client.disasm_range("1000", "register:0", None).unwrap_err();
+            let error = client
+                .disasm_range("0x1000", "register:0x0", None)
+                .unwrap_err();
             assert!(error.to_string().contains("same address space"), "{error}");
         });
         client.open_program(TEST_PROGRAM).unwrap();
@@ -368,7 +373,11 @@ public class CreateSearchWindowFixture extends GhidraScript {
             assert_eq!(found["count"], 1, "{encoding}: {found}");
             let row = &found["results"][0];
             assert_eq!(
-                u64::from_str_radix(row["address"].as_str().unwrap(), 16).unwrap(),
+                u64::from_str_radix(
+                    row["address"].as_str().unwrap().strip_prefix("0x").unwrap(),
+                    16
+                )
+                .unwrap(),
                 address
             );
             assert_eq!(row["byte_length"], length);
@@ -500,7 +509,17 @@ public class CreateCallSearchFixture extends GhidraScript {
             .as_array()
             .unwrap()
             .iter()
-            .map(|row| u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap())
+            .map(|row| {
+                u64::from_str_radix(
+                    row["call_site"]
+                        .as_str()
+                        .unwrap()
+                        .strip_prefix("0x")
+                        .unwrap(),
+                    16,
+                )
+                .unwrap()
+            })
             .collect();
         assert_eq!(local_sites, [0x1000, 0x1040], "{local}");
         let outgoing = client.function_calls("search_helper").unwrap();
@@ -512,7 +531,17 @@ public class CreateCallSearchFixture extends GhidraScript {
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|row| u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap())
+                .map(|row| {
+                    u64::from_str_radix(
+                        row["call_site"]
+                            .as_str()
+                            .unwrap()
+                            .strip_prefix("0x")
+                            .unwrap(),
+                        16,
+                    )
+                    .unwrap()
+                })
                 .collect();
             assert_eq!(sites, [0x1008, 0x1010, 0x1020], "{target}: {found}");
             let graph = client.graph_callers(target, Some(1), None).unwrap();
@@ -523,7 +552,15 @@ public class CreateCallSearchFixture extends GhidraScript {
                 .map(|row| {
                     assert_eq!(row["name"], "search_caller");
                     assert_eq!(row["depth"], 0);
-                    u64::from_str_radix(row["call_site"].as_str().unwrap(), 16).unwrap()
+                    u64::from_str_radix(
+                        row["call_site"]
+                            .as_str()
+                            .unwrap()
+                            .strip_prefix("0x")
+                            .unwrap(),
+                        16,
+                    )
+                    .unwrap()
                 })
                 .collect();
             caller_sites.sort_unstable();

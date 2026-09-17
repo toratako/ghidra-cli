@@ -33,7 +33,7 @@ final class CallReferences {
         FunctionManager fm = session.program().getFunctionManager();
         ReferenceManager refs = session.program().getReferenceManager();
         Address explicit = addressResolver.parseAddress(target);
-        Set<Address> candidates = explicit == null ? addressResolver.namedAddresses(target)
+        Set<Address> candidates = explicit == null ? addressResolver.namedAddresses(target.trim())
             : Set.of(explicit);
         Map<Address, Function> functions = new LinkedHashMap<>();
         for (Address candidate : candidates) {
@@ -55,7 +55,8 @@ final class CallReferences {
             if (canonical != null) functions.put(canonical.getEntryPoint(), canonical);
         }
         if (functions.size() > 1) throw new IllegalArgumentException("Ambiguous function target '" + target
-            + "' at " + functions.keySet() + "; use an explicit address");
+            + "' at " + functions.keySet().stream().map(AddressCodec::format).toList()
+            + "; use a 0x-prefixed address");
         return functions.isEmpty() ? null : functions.values().iterator().next();
     }
 

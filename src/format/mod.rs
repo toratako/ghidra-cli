@@ -554,14 +554,14 @@ mod tests {
             code
         );
         let instructions = [
-            json!({"address": "1000", "bytes": "4889e5", "mnemonic": "MOV", "operands": ["RBP", "RSP"]}),
-            json!({"address": "1003", "bytes": "c3", "mnemonic": "RET", "operands": []}),
+            json!({"address": "0x1000", "bytes": "4889e5", "mnemonic": "MOV", "operands": ["RBP", "RSP"]}),
+            json!({"address": "0x1003", "bytes": "c3", "mnemonic": "RET", "operands": []}),
         ];
         assert_eq!(
             DefaultFormatter
                 .format(&instructions, OutputFormat::Asm)
                 .unwrap(),
-            "1000  4889e5       MOV RBP, RSP\n1003  c3           RET\n"
+            "0x1000  4889e5       MOV RBP, RSP\n0x1003  c3           RET\n"
         );
         for format in [OutputFormat::C, OutputFormat::Asm] {
             assert_eq!(

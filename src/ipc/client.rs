@@ -259,7 +259,8 @@ impl BridgeClient {
         self.send_command("symbol_get", Some(json!({"name": name})))
     }
 
-    /// Resolve exact symbol names without the address fallback used by symbol_get.
+    /// Resolve exact symbol names, including names beginning with 0x; symbol_get
+    /// reserves explicit address syntax instead.
     pub fn symbol_get_by_name(&self, name: &str) -> Result<serde_json::Value> {
         self.send_command("symbol_get_by_name", Some(json!({"name": name})))
     }

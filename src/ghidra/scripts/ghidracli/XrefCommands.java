@@ -58,8 +58,8 @@ final class XrefCommands {
                 Function toFunc = fm.getFunctionContaining(addr);
 
                 JsonObject xrefData = new JsonObject();
-                xrefData.addProperty("from", fromAddr.toString());
-                xrefData.addProperty("to", addr.toString());
+                xrefData.addProperty("from", AddressCodec.format(fromAddr));
+                xrefData.addProperty("to", AddressCodec.format(addr));
                 xrefData.addProperty("ref_type", ref.getReferenceType().toString());
                 if (fromFunc != null) {
                     xrefData.addProperty("from_function", fromFunc.getName());
@@ -118,8 +118,8 @@ final class XrefCommands {
                     Function toFunc = fm.getFunctionContaining(toAddr);
 
                     JsonObject xrefData = new JsonObject();
-                    xrefData.addProperty("from", instrAddr.toString());
-                    xrefData.addProperty("to", toAddr.toString());
+                    xrefData.addProperty("from", AddressCodec.format(instrAddr));
+                    xrefData.addProperty("to", AddressCodec.format(toAddr));
                     xrefData.addProperty("ref_type", ref.getReferenceType().toString());
                     xrefData.addProperty("from_function", func.getName());
                     if (toFunc != null) {
@@ -139,8 +139,8 @@ final class XrefCommands {
                 Function toFunc = fm.getFunctionContaining(toAddr);
 
                 JsonObject xrefData = new JsonObject();
-                xrefData.addProperty("from", addr.toString());
-                xrefData.addProperty("to", toAddr.toString());
+                xrefData.addProperty("from", AddressCodec.format(addr));
+                xrefData.addProperty("to", AddressCodec.format(toAddr));
                 xrefData.addProperty("ref_type", ref.getReferenceType().toString());
                 if (fromFunc != null) {
                     xrefData.addProperty("from_function", fromFunc.getName());
@@ -188,8 +188,8 @@ final class XrefCommands {
             Function toFunc = fm.getFunctionContaining(addr);
 
             JsonObject xrefData = new JsonObject();
-            xrefData.addProperty("from", fromAddr.toString());
-            xrefData.addProperty("to", addr.toString());
+            xrefData.addProperty("from", AddressCodec.format(fromAddr));
+            xrefData.addProperty("to", AddressCodec.format(addr));
             xrefData.addProperty("ref_type", ref.getReferenceType().toString());
             xrefData.addProperty("direction", "to");
             if (fromFunc != null) {
@@ -218,8 +218,8 @@ final class XrefCommands {
                     Function toFunc = fm.getFunctionContaining(toAddr);
 
                     JsonObject xrefData = new JsonObject();
-                    xrefData.addProperty("from", instrAddr.toString());
-                    xrefData.addProperty("to", toAddr.toString());
+                    xrefData.addProperty("from", AddressCodec.format(instrAddr));
+                    xrefData.addProperty("to", AddressCodec.format(toAddr));
                     xrefData.addProperty("ref_type", ref.getReferenceType().toString());
                     xrefData.addProperty("direction", "from");
                     xrefData.addProperty("from_function", func.getName());
@@ -240,8 +240,8 @@ final class XrefCommands {
                 Function toFunc = fm.getFunctionContaining(toAddr);
 
                 JsonObject xrefData = new JsonObject();
-                xrefData.addProperty("from", addr.toString());
-                xrefData.addProperty("to", toAddr.toString());
+                xrefData.addProperty("from", AddressCodec.format(addr));
+                xrefData.addProperty("to", AddressCodec.format(toAddr));
                 xrefData.addProperty("ref_type", ref.getReferenceType().toString());
                 xrefData.addProperty("direction", "from");
                 if (fromFunc != null) {

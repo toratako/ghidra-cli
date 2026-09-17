@@ -148,7 +148,7 @@ public class CreateSearchLimitFixture extends GhidraScript {
                 160,
             ),
             (vec!["strings", "refs", "DEFINED_NEEDLE_000"], 160),
-            (vec!["x-ref", "to", "8000"], 160),
+            (vec!["x-ref", "to", "0x8000"], 160),
             (vec!["memory", "map"], 3),
         ] {
             assert_eq!(run(&command).as_array().unwrap().len(), 2, "{command:?}");

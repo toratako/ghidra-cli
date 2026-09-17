@@ -21,6 +21,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/GhidraCliBridge.java"),
     ),
     (
+        "ghidracli/AddressCodec.java",
+        include_str!("../scripts/ghidracli/AddressCodec.java"),
+    ),
+    (
         "ghidracli/AddressResolver.java",
         include_str!("../scripts/ghidracli/AddressResolver.java"),
     ),

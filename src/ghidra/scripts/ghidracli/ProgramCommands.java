@@ -58,9 +58,9 @@ final class ProgramCommands {
             result.add("compiler", JsonNull.INSTANCE);
         }
         result.addProperty("language", session.program().getLanguage().toString());
-        result.addProperty("image_base", session.program().getImageBase().toString());
-        result.addProperty("min_address", session.program().getMinAddress().toString());
-        result.addProperty("max_address", session.program().getMaxAddress().toString());
+        result.addProperty("image_base", AddressCodec.format(session.program().getImageBase()));
+        result.addProperty("min_address", AddressCodec.format(session.program().getMinAddress()));
+        result.addProperty("max_address", AddressCodec.format(session.program().getMaxAddress()));
 
         FunctionManager fm = session.program().getFunctionManager();
         result.addProperty("function_count", fm.getFunctionCount());
@@ -334,7 +334,7 @@ final class ProgramCommands {
                 Function func = iter.next();
                 JsonObject funcObj = new JsonObject();
                 funcObj.addProperty("name", func.getName());
-                funcObj.addProperty("address", func.getEntryPoint().toString());
+                funcObj.addProperty("address", AddressCodec.format(func.getEntryPoint()));
                 funcObj.addProperty("size", func.getBody().getNumAddresses());
                 functions.add(funcObj);
             }

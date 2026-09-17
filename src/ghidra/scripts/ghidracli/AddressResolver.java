@@ -1,7 +1,6 @@
 package ghidracli;
 
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
@@ -13,8 +12,6 @@ import ghidra.program.model.symbol.SymbolTable;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 final class AddressResolver {
     private final ProgramSession session;
@@ -23,43 +20,9 @@ final class AddressResolver {
         this.session = session;
     }
 
-    private static final Pattern NAMED_HEX_ADDRESS_PATTERN =
-        Pattern.compile("(?i)^(?:FUN|SUB|LAB|DAT)_([0-9a-f]+)$");
-
     Address parseAddress(String addrStr) {
-        if (session.program() == null || addrStr == null || addrStr.isEmpty()) {
-            return null;
-        }
-
-        String target = addrStr.trim();
-        AddressFactory af = session.program().getAddressFactory();
-
-        // Try as hex address first (with and without 0x prefix)
-        Address addr = af.getAddress(target);
-        if (addr != null) {
-            return addr;
-        }
-        if (target.startsWith("0x") || target.startsWith("0X")) {
-            addr = af.getAddress(target.substring(2));
-            if (addr != null) {
-                return addr;
-            }
-        }
-
-        // Parse common Ghidra auto names like FUN_00401234 as raw addresses.
-        Matcher namedHex = NAMED_HEX_ADDRESS_PATTERN.matcher(target);
-        if (namedHex.matches()) {
-            String hexPart = namedHex.group(1);
-            addr = af.getAddress(hexPart);
-            if (addr == null) {
-                addr = af.getAddress("0x" + hexPart);
-            }
-            if (addr != null) {
-                return addr;
-            }
-        }
-
-        return null;
+        return session.program() == null ? null
+            : AddressCodec.parse(session.program().getAddressFactory(), addrStr);
     }
 
     LinkedHashSet<Address> namedAddresses(String target) {
@@ -88,7 +51,8 @@ final class AddressResolver {
         LinkedHashSet<Address> candidates = namedAddresses(target.trim());
         if (candidates.size() > 1) {
             throw new IllegalArgumentException("Ambiguous target '" + target + "' at "
-                + candidates + "; use an explicit address");
+                + candidates.stream().map(AddressCodec::format).toList()
+                + "; use a 0x-prefixed address");
         }
         return candidates.isEmpty() ? null : candidates.iterator().next();
     }
@@ -131,9 +95,9 @@ final class AddressResolver {
         Address primary = parseAddress(target);
         if (primary != null) {
             targets.add(primary);
+        } else {
+            targets.addAll(namedAddresses(target.trim()));
         }
-
-        targets.addAll(namedAddresses(target.trim()));
 
         // Add local thunk functions that ultimately dispatch to any resolved
         // external function. This is the address call references normally target

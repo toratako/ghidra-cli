@@ -29,17 +29,17 @@ fn symbol_fixture(id: &str, address: &str, kind: &str) -> Value {
 fn call_graph_fixture() -> Value {
     json!({
         "nodes": [
-            {"id": "1000", "address": "1000", "name": "zeta"},
-            {"id": "2000", "address": "2000", "name": "alpha"},
-            {"id": "3000", "address": "3000", "name": "beta"},
-            {"id": "4000", "address": "4000", "name": "omega"},
+            {"id": "0x1000", "address": "0x1000", "name": "zeta"},
+            {"id": "0x2000", "address": "0x2000", "name": "alpha"},
+            {"id": "0x3000", "address": "0x3000", "name": "beta"},
+            {"id": "0x4000", "address": "0x4000", "name": "omega"},
         ],
         "edges": [
-            {"from": "1000", "to": "2000", "type": "call"},
-            {"from": "2000", "to": "3000", "type": "call"},
-            {"from": "2000", "to": "9000", "type": "call"},
-            {"from": "3000", "to": "1000", "type": "call"},
-            {"from": "4000", "to": "3000", "type": "call"},
+            {"from": "0x1000", "to": "0x2000", "type": "call"},
+            {"from": "0x2000", "to": "0x3000", "type": "call"},
+            {"from": "0x2000", "to": "0x9000", "type": "call"},
+            {"from": "0x3000", "to": "0x1000", "type": "call"},
+            {"from": "0x4000", "to": "0x3000", "type": "call"},
         ],
         "node_count": 4,
         "edge_count": 5,
@@ -56,6 +56,12 @@ struct RecordedBridge {
 
 impl RecordedBridge {
     fn new() -> Self {
+        Self::with_info(
+            json!({"auto_save": true, "named_import": true, "explicit_addresses": true}),
+        )
+    }
+
+    fn with_info(bridge_info: Value) -> Self {
         let root = tempfile::Builder::new()
             .prefix("routing tests' ")
             .tempdir()
@@ -104,7 +110,7 @@ impl RecordedBridge {
                     continue;
                 }
                 let data = match request["command"].as_str().unwrap() {
-                    "bridge_info" => json!({"auto_save": true, "named_import": true}),
+                    "bridge_info" => bridge_info.clone(),
                     "status" => json!({
                         "bridge_state": "running", "queue_depth": 0,
                         "active_job": null, "queued_jobs": [], "recent_jobs": [],
@@ -123,7 +129,7 @@ impl RecordedBridge {
                     }
                     "import" => json!({"program": "imported"}),
                     "decompile" => {
-                        json!({"name": "main", "address": "1000", "code": "int main(void) {\n  return 0;\n}\n"})
+                        json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
                     "graph_calls" => {
                         let mut graph = call_graph_fixture();
@@ -142,9 +148,9 @@ impl RecordedBridge {
                     }
                     "disasm" | "disasm_range" | "function_disasm" | "find_instruction" => {
                         let mut rows = vec![
-                            json!({"address": "1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
-                            json!({"address": "1001", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
-                            json!({"address": "1002", "bytes": "c3", "mnemonic": "RET", "operands": [], "disasm": "RET"}),
+                            json!({"address": "0x1000", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
+                            json!({"address": "0x1001", "bytes": "90", "mnemonic": "NOP", "operands": [], "disasm": "NOP"}),
+                            json!({"address": "0x1002", "bytes": "c3", "mnemonic": "RET", "operands": [], "disasm": "RET"}),
                         ];
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
                             rows.truncate(limit as usize);
@@ -158,7 +164,7 @@ impl RecordedBridge {
                     }
                     "find_string" | "find_bytes" | "find_text" => {
                         let mut rows: Vec<_> = (0..160)
-                            .map(|i| json!({"address": format!("{i:04x}")}))
+                            .map(|i| json!({"address": format!("0x{i:04x}")}))
                             .collect();
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
                             rows.truncate(limit as usize);
@@ -179,8 +185,8 @@ impl RecordedBridge {
                             vec![]
                         } else {
                             vec![
-                                json!({"from": "1000", "from_function": "main", "string_value": "needle"}),
-                                json!({"from": "2000", "from_function": "helper", "string_value": "needle"}),
+                                json!({"from": "0x1000", "from_function": "main", "string_value": "needle"}),
+                                json!({"from": "0x2000", "from_function": "helper", "string_value": "needle"}),
                             ]
                         };
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
@@ -190,8 +196,8 @@ impl RecordedBridge {
                             vec![]
                         } else {
                             vec![
-                                symbol_fixture("9007199254740993", "00AB", "label"),
-                                symbol_fixture("9007199254740994", "00CD", "function"),
+                                symbol_fixture("9007199254740993", "0x00ab", "label"),
+                                symbol_fixture("9007199254740994", "0x00cd", "function"),
                             ]
                         }})
                     }
@@ -276,6 +282,39 @@ impl Drop for RecordedBridge {
         let _ = self.worker.take().unwrap().join();
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn explicit_address_capability_is_required_before_program_selection_or_edits() {
+    for info in [
+        json!({"auto_save": true, "named_import": true}),
+        json!({"auto_save": false, "named_import": true}),
+        json!({"auto_save": true, "named_import": true, "explicit_addresses": false}),
+    ] {
+        let bridge = RecordedBridge::with_info(info);
+        std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+        for args in [
+            vec!["program", "info", "--program", "B"],
+            vec!["comment", "set", "0x1000", "marker", "--program", "B"],
+            vec!["import", "binary", "--no-analyze"],
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge.command().args(&args).output().unwrap();
+            assert!(!output.status.success(), "{args:?}: {output:?}");
+            assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("ghidra-cli bridge restart"),
+                "{args:?}: {error}"
+            );
+            let requests = bridge.requests.lock().unwrap();
+            assert_eq!(requests.len(), 1, "No fallback or replay: {requests:?}");
+            assert_eq!(requests[0]["command"], "bridge_info");
+        }
     }
 }
 
@@ -411,9 +450,9 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
 #[test]
 fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
     let bridge = RecordedBridge::new();
-    for disasm_at in [None, Some("1000")] {
+    for disasm_at in [None, Some("0x1000")] {
         bridge.requests.lock().unwrap().clear();
-        let mut args = vec!["clear", "1000:1010"];
+        let mut args = vec!["clear", "0x1000:0x1010"];
         if let Some(address) = disasm_at {
             args.extend(["--disasm-at", address]);
         }
@@ -425,7 +464,7 @@ fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
             .unwrap();
         assert_eq!(
             clear["args"],
-            json!({"start": "1000", "end": "1010", "disasm_at": disasm_at})
+            json!({"start": "0x1000", "end": "0x1010", "disasm_at": disasm_at})
         );
         assert_eq!(
             requests
@@ -439,6 +478,69 @@ fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
 }
 
 #[test]
+fn explicit_address_clear_ranges_preserve_spaces_and_segments() {
+    let bridge = RecordedBridge::new();
+    for (range, start, end) in [
+        (
+            "overlay:0x1000:overlay:0x1010",
+            "overlay:0x1000",
+            "overlay:0x1010",
+        ),
+        ("overlay:0x1000:0x1010", "overlay:0x1000", "overlay:0x1010"),
+        (
+            "overlay:0x1000:other:0x1010",
+            "overlay:0x1000",
+            "other:0x1010",
+        ),
+        (
+            "ram:0x1234:0x0005:ram:0x1234:0x0008",
+            "ram:0x1234:0x0005",
+            "ram:0x1234:0x0008",
+        ),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        bridge.run(&["clear", range]);
+        let requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|request| request["command"] != "bridge_info")
+            .collect();
+        assert_eq!(edits.len(), 1, "{range}: {requests:?}");
+        assert_eq!(edits[0]["command"], "clear_range");
+        assert_eq!(
+            edits[0]["args"],
+            json!({"start": start, "end": end, "disasm_at": null}),
+            "{range}"
+        );
+    }
+
+    for range in [
+        "1000:1010",
+        "overlay::1000:1010",
+        "overlay:1000:overlay:1010",
+        "0x1234:0x0005:0x0008",
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        let output = bridge.command().args(["clear", range]).output().unwrap();
+        assert!(!output.status.success(), "{range}: {output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Invalid or ambiguous range"),
+            "{range}: {error}"
+        );
+        assert!(bridge
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|request| request["command"] == "bridge_info"));
+    }
+}
+
+#[test]
 fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
     let bridge = RecordedBridge::new();
     for command in [
@@ -447,12 +549,12 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
             "instruction",
             "NOP",
             "--start",
-            "1000",
+            "0x1000",
             "--end",
-            "1002",
+            "0x1002",
             "--case-sensitive",
         ],
-        vec!["disasm", "1000", "--end", "1002"],
+        vec!["disasm", "0x1000", "--end", "0x1002"],
     ] {
         let rows = bridge.run(&command);
         assert_eq!(
@@ -466,7 +568,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
         let mut filtered = command.clone();
         filtered.extend([
             "--filter",
-            "address != '1000'",
+            "address != '0x1000'",
             "--fields",
             "address",
             "--sort=-address",
@@ -475,7 +577,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
             "--limit",
             "1",
         ]);
-        assert_eq!(bridge.run(&filtered), json!([{"address": "1001"}]));
+        assert_eq!(bridge.run(&filtered), json!([{"address": "0x1001"}]));
         let mut count = command.clone();
         count.push("--count");
         assert_eq!(bridge.run(&count), 3);
@@ -489,8 +591,8 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
         assert_eq!(sent.len(), 4);
         assert_eq!(sent[0]["args"]["limit"], 1);
         for request in &sent {
-            assert_eq!(request["args"]["start"], "1000");
-            assert_eq!(request["args"]["end"], "1002");
+            assert_eq!(request["args"]["start"], "0x1000");
+            assert_eq!(request["args"]["end"], "0x1002");
             if wire == "find_instruction" {
                 assert_eq!(request["args"]["pattern"], "NOP");
                 assert_eq!(request["args"]["case_sensitive"], true);
@@ -534,7 +636,7 @@ fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batc
                 "--fields",
                 "address",
             ],
-            json!([{"address": "1001"}]),
+            json!([{"address": "0x1001"}]),
             Value::Null,
         ),
         (
@@ -694,8 +796,8 @@ fn explicit_code_formats_override_json_without_changing_output_defaults() {
         );
     }
     for command in [
-        vec!["disasm", "1000"],
-        vec!["disasm", "1000", "--end", "1002"],
+        vec!["disasm", "0x1000"],
+        vec!["disasm", "0x1000", "--end", "0x1002"],
         vec!["function", "disasm", "main"],
     ] {
         assert!(bridge.run(&command).is_array());
@@ -708,7 +810,7 @@ fn explicit_code_formats_override_json_without_changing_output_defaults() {
         assert!(output.status.success(), "{output:?}");
         assert!(String::from_utf8(output.stdout)
             .unwrap()
-            .starts_with("1000  90           NOP\n"));
+            .starts_with("0x1000  90           NOP\n"));
     }
 }
 
@@ -994,7 +1096,7 @@ fn batch_preserves_quoted_signatures_types_and_comments() {
         bridge.root.path().join("batch.txt"),
         r#"function set-signature parse_header --signature "int parse_header(char *buf, int len)"
 function set-return-type parse_header --type 'unsigned long'
-comment set 1000 'Header length includes the prefix'
+comment set 0x1000 'Header length includes the prefix'
 "#,
     )
     .unwrap();
@@ -1019,7 +1121,7 @@ comment set 1000 'Header length includes the prefix'
             ),
             (
                 json!("comment_set"),
-                json!({"address": "1000", "text": "Header length includes the prefix", "comment_type": null}),
+                json!({"address": "0x1000", "text": "Header length includes the prefix", "comment_type": null}),
             ),
         ]
     );
@@ -1031,12 +1133,12 @@ fn batch_unescapes_arguments_without_expanding_shell_syntax() {
     std::fs::write(
         bridge.root.path().join("batch.txt"),
         concat!(
-            r#"comment set 1000 "say \"hello\"; path C:\temp; slash \\; \$value"
-comment set 1001 escaped\ spaces\ and\ \'quotes\'
-comment set 1002 '$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal'
-comment set 1003 ""
+            r#"comment set 0x1000 "say \"hello\"; path C:\temp; slash \\; \$value"
+comment set 0x1001 escaped\ spaces\ and\ \'quotes\'
+comment set 0x1002 '$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal'
+comment set 0x1003 ""
 "#,
-            "comment set 1004 trailing\\ \n",
+            "comment set 0x1004 trailing\\ \n",
         ),
     )
     .unwrap();
@@ -1064,7 +1166,7 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        "# commands\ncomment set 1000 'unfinished\ncomment set 1001 \"unfinished\ncomment set 1002 trailing\\\ncomment set 1003 'valid after errors'\n",
+        "# commands\ncomment set 0x1000 'unfinished\ncomment set 0x1001 \"unfinished\ncomment set 0x1002 trailing\\\ncomment set 0x1003 'valid after errors'\n",
     )
     .unwrap();
     let output = bridge
@@ -1102,7 +1204,7 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
         .filter(|r| r["command"] == "comment_set")
         .collect();
     assert_eq!(comments.len(), 1);
-    assert_eq!(comments[0]["args"]["address"], "1003");
+    assert_eq!(comments[0]["args"]["address"], "0x1003");
     assert_eq!(comments[0]["args"]["text"], "valid after errors");
 }
 
@@ -1110,14 +1212,14 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
 fn batch_on_error_controls_command_and_syntax_failures() {
     for failing_line in [
         "symbol rename missing renamed",
-        "comment set 1000 'unfinished",
+        "comment set 0x1000 'unfinished",
         "comment set",
     ] {
         for policy in [None, Some("continue"), Some("stop")] {
             let bridge = RecordedBridge::new();
             std::fs::write(
                 bridge.root.path().join("batch.txt"),
-                format!("comment set 1000 before\n{failing_line}\ncomment set 1001 after\n"),
+                format!("comment set 0x1000 before\n{failing_line}\ncomment set 0x1001 after\n"),
             )
             .unwrap();
             let mut command = bridge.command();
@@ -1188,13 +1290,13 @@ fn nested_batch_inherits_on_error_unless_overridden() {
         std::fs::write(
             bridge.root.path().join("batch.txt"),
             format!(
-                "comment set 1000 before\nbatch nested.txt{child_option}\ncomment set 1003 outer-after\n"
+                "comment set 0x1000 before\nbatch nested.txt{child_option}\ncomment set 0x1003 outer-after\n"
             ),
         )
         .unwrap();
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            "symbol rename missing renamed\ncomment set 1002 inner-after\n",
+            "symbol rename missing renamed\ncomment set 0x1002 inner-after\n",
         )
         .unwrap();
         let output = bridge
@@ -1229,11 +1331,11 @@ fn batch_routes_each_target_and_keeps_explicit_program_switches() {
     let second = RecordedBridge::new();
     std::fs::write(
         first.root.path().join("nested.txt"),
-        "comment set 1000 nested --program C\n",
+        "comment set 0x1000 nested --program C\n",
     )
     .unwrap();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "comment set 1000 marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
+        "comment set 0x1000 marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let result = first.run(&["batch", "batch.txt", "--program", "A"]);
@@ -1316,8 +1418,8 @@ fn imports_and_exports_paginate_after_fetching_for_queries_and_batches() {
 fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
     let bridge = RecordedBridge::new();
     let all = json!([
-        {"from": "1000", "from_function": "main", "string_value": "needle"},
-        {"from": "2000", "from_function": "helper", "string_value": "needle"},
+        {"from": "0x1000", "from_function": "main", "string_value": "needle"},
+        {"from": "0x2000", "from_function": "helper", "string_value": "needle"},
     ]);
     for (pattern, flags, expected) in [
         ("needle", vec!["--limit", "0"], all.clone()),
@@ -1327,7 +1429,7 @@ fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
         (
             "needle",
             vec!["--fields", "from", "--limit", "0"],
-            json!([{"from": "1000"}, {"from": "2000"}]),
+            json!([{"from": "0x1000"}, {"from": "0x2000"}]),
         ),
         (
             "needle",
@@ -1437,6 +1539,38 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
 }
 
 #[test]
+fn explicit_address_import_bases_are_checked_before_import_or_bridge_changes() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+    for flags in [
+        vec!["--base-address", "8000"],
+        vec!["--base-address", "FUN_00008000"],
+        vec!["--loader-option", "baseAddr=8000"],
+        vec!["--loader-option", "BASEADDR=8000"],
+        vec!["--loader-option", "baseAddr=ram:8000"],
+    ] {
+        let output = bridge
+            .command()
+            .args(["import", "binary", "--no-analyze"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{flags:?}: {output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        let message = error["message"].as_str().unwrap();
+        assert!(
+            message.contains("Invalid base address"),
+            "{flags:?}: {error}"
+        );
+        assert!(message.contains("0x-prefixed"), "{flags:?}: {error}");
+        assert!(
+            bridge.requests.lock().unwrap().is_empty(),
+            "Invalid base addresses must not stop the running bridge or start an import"
+        );
+    }
+}
+
+#[test]
 fn symbol_mutations_resolve_targets_before_sending_the_edit() {
     let bridge = RecordedBridge::new();
     for (args, command, targets) in [
@@ -1450,7 +1584,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
                 "0x00ab",
             ],
             "symbol_rename",
-            json!([symbol_fixture("9007199254740993", "00AB", "label")]),
+            json!([symbol_fixture("9007199254740993", "0x00ab", "label")]),
         ),
         (
             vec![
@@ -1462,14 +1596,14 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
                 "kind=function",
             ],
             "symbol_rename",
-            json!([symbol_fixture("9007199254740994", "00CD", "function")]),
+            json!([symbol_fixture("9007199254740994", "0x00cd", "function")]),
         ),
         (
             vec!["symbol", "delete", "shared", "--all"],
             "symbol_delete",
             json!([
-                symbol_fixture("9007199254740993", "00AB", "label"),
-                symbol_fixture("9007199254740994", "00CD", "function")
+                symbol_fixture("9007199254740993", "0x00ab", "label"),
+                symbol_fixture("9007199254740994", "0x00cd", "function")
             ]),
         ),
     ] {
@@ -1522,7 +1656,7 @@ fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
             {
                 assert_eq!(
                     request["args"]["targets"],
-                    json!([symbol_fixture("9007199254740993", "00AB", "label")])
+                    json!([symbol_fixture("9007199254740993", "0x00ab", "label")])
                 );
             }
         }
@@ -1558,6 +1692,39 @@ fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
 }
 
 #[test]
+fn explicit_address_symbol_selectors_reject_bare_values_before_mutation() {
+    let bridge = RecordedBridge::new();
+    for command in [
+        vec!["symbol", "rename", "shared", "renamed"],
+        vec!["symbol", "delete", "shared"],
+    ] {
+        for address in ["00ab", "dead", "FUN_00ab", "ram:00ab", "overlay::0xab"] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge
+                .command()
+                .args(&command)
+                .args(["--address", address])
+                .output()
+                .unwrap();
+            assert!(
+                !output.status.success(),
+                "{command:?} {address}: {output:?}"
+            );
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            let message = error["message"].as_str().unwrap();
+            assert!(message.contains("Invalid --address"), "{error}");
+            assert!(message.contains("0x-prefixed"), "{error}");
+            assert!(bridge
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|request| request["command"] == "bridge_info"));
+        }
+    }
+}
+
+#[test]
 fn symbol_resolution_errors_never_send_a_mutation() {
     let bridge = RecordedBridge::new();
     for (args, diagnostic) in [
@@ -1567,11 +1734,11 @@ fn symbol_resolution_errors_never_send_a_mutation() {
         ),
         (
             vec!["symbol", "rename", "shared", "renamed"],
-            "matches 2 symbols at addresses [00AB, 00CD]",
+            "matches 2 symbols at addresses [0x00ab, 0x00cd]",
         ),
         (
-            vec!["symbol", "delete", "shared", "--address", "FFFF"],
-            "No symbol named 'shared' at address FFFF",
+            vec!["symbol", "delete", "shared", "--address", "0xffff"],
+            "No symbol named 'shared' at address 0xffff",
         ),
         (
             vec![
@@ -1722,7 +1889,7 @@ fn batch_queries_inherit_targets_without_environment_overrides() {
     let second = RecordedBridge::new();
     let env_project = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "memory map\ncomment set 1000 marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
+        "memory map\ncomment set 0x1000 marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let output = first
@@ -1818,7 +1985,7 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
     std::fs::write(bridge.root.path().join("invalid.yaml"), "aliases: [").unwrap();
     for (args, diagnostic) in [
         (
-            vec!["patch", "bytes", "1000", "90"],
+            vec!["patch", "bytes", "0x1000", "90"],
             "unrecognized subcommand",
         ),
         (vec!["memory", "search", "90"], "unrecognized subcommand"),
@@ -1845,7 +2012,7 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
 fn batch_continues_after_removed_commands_without_selecting_their_programs() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("batch.txt"),
-        "patch bytes 1000 90 --program must-not-open\nmemory search 90 --program must-not-open\ncomment set 1000 after\n"
+        "patch bytes 0x1000 90 --program must-not-open\nmemory search 90 --program must-not-open\ncomment set 0x1000 after\n"
     ).unwrap();
     let output = bridge
         .command()
@@ -1897,12 +2064,12 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
         let bridge = RecordedBridge::new();
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            format!("comment set 1000 {failure}\ncomment set 1000 must-not-run\n"),
+            format!("comment set 0x1000 {failure}\ncomment set 0x1000 must-not-run\n"),
         )
         .unwrap();
         std::fs::write(
             bridge.root.path().join("batch.txt"),
-            "program info\nbatch nested.txt\ncomment set 1000 must-not-run\n",
+            "program info\nbatch nested.txt\ncomment set 0x1000 must-not-run\n",
         )
         .unwrap();
         let output = bridge
@@ -2019,16 +2186,21 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
         (vec!["find", "bytes", "90"], "find_bytes"),
     ] {
         for (flags, expected_len, first, fetch_limit) in [
-            (vec![], 1, "0000", json!(1)),
-            (vec!["--fields", "address"], 1, "0000", json!(1)),
-            (vec!["--limit", "0"], 160, "0000", Value::Null),
-            (vec!["--limit", "120"], 120, "0000", json!(120)),
-            (vec!["--filter", "address='009f'"], 1, "009f", Value::Null),
-            (vec!["--sort=-address"], 1, "009f", Value::Null),
+            (vec![], 1, "0x0000", json!(1)),
+            (vec!["--fields", "address"], 1, "0x0000", json!(1)),
+            (vec!["--limit", "0"], 160, "0x0000", Value::Null),
+            (vec!["--limit", "120"], 120, "0x0000", json!(120)),
+            (
+                vec!["--filter", "address='0x009f'"],
+                1,
+                "0x009f",
+                Value::Null,
+            ),
+            (vec!["--sort=-address"], 1, "0x009f", Value::Null),
             (
                 vec!["--offset", "100", "--limit", "2"],
                 2,
-                "0064",
+                "0x0064",
                 Value::Null,
             ),
             (vec!["--count"], 160, "", Value::Null),
