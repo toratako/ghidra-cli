@@ -50,7 +50,9 @@ stopping a live bridge first, so `BinaryLoader`, `x86:LE:32:default`, and
 `baseAddr` reach the loader. Best-guess imports into an already-open project use
 the same `ImportSupport` save/name boundary followed by TCP analysis. Explicit
 name collisions fail before loading; omitted names can use Ghidra's collision
-suffix. Always return the saved DomainFile name. An older running bridge must
+suffix. Import input paths are absolute without resolving symlinks, preserving
+the supplied file name as the default saved name in both routes.
+Always return the saved DomainFile name. An older running bridge must
 advertise `named_import` before receiving an import.
 Loader option names are checked against the selected loader's default option
 arguments before import; unknown names fail with `import_status: not_started`.

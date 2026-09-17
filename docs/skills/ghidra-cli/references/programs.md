@@ -44,7 +44,8 @@ ghidra-cli program exports --sort name --limit 0
 Import waits for completion. Use `import --no-analyze` to omit analysis and
 `analyze --project target --program target.bin` to reanalyze.
 `import INPUT --program NAME` saves under that project file name; omitting it
-uses the input file name (Ghidra may add a suffix on collision). An explicit name
+uses the input file name, including a symlink's name rather than its target's
+name (Ghidra may add a suffix on collision). An explicit name
 must be a single file name and must not already exist. The import response reports
 the actual saved name. See [starting with a program](../SKILL.md#start-with-a-program)
 for the ordinary import workflow and recovery when an import error reports a

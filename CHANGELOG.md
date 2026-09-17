@@ -14,6 +14,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve the supplied input filename as the default saved program name when
+  importing through a symlink, including both one-shot and running-bridge imports.
 - Apply `graph calls` filters, sorting, pagination, field selection, and counts
   to function nodes while preserving the graph structure and outgoing edges.
 - Preserve component settings on unrelated structure fields during offset edits,

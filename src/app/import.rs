@@ -119,7 +119,10 @@ fn run_import_steps(
     let output = crate::app::Output::new(cli);
     let binary_path = PathBuf::from(&args.binary);
     anyhow::ensure!(binary_path.is_file(), "Binary not found: {}", args.binary);
-    let binary_path = dunce::canonicalize(binary_path)?;
+    // The importer derives the default saved name from this path. Resolve the
+    // CLI's CWD without replacing a symlink's input name with its target name.
+    let binary_path = std::path::absolute(binary_path)?;
+    let binary_path = dunce::simplified(&binary_path).to_path_buf();
     let (mut options, explicit_loader) = build_oneshot_import_options(args)?;
     options.program = args.program.clone().or_else(|| cli.program.clone());
     if let Some(name) = &options.program {

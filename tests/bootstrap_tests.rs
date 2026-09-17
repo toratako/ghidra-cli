@@ -267,6 +267,61 @@ public class CheckProgramIdentity extends GhidraScript {
 }
 
 #[test]
+fn import_symlinks_preserve_input_names_and_collision_rules() {
+    require_ghidra!();
+    let project = Project::new();
+    let inputs = project.root.path().join("input files' directory");
+    std::fs::create_dir(&inputs).unwrap();
+    let binary = inputs.join("actual.bin");
+    std::fs::copy(common::fixture_binary(), &binary).unwrap();
+    let name = "release binary.bin";
+    let link = inputs.join(name);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("actual.bin", &link).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file("actual.bin", &link)
+        .expect("file symlink creation requires Developer Mode or symlink privileges");
+
+    // A fresh project takes the one-shot route. Resolve this relative input
+    // against the CLI's CWD while preserving the link's name for saving.
+    let mut command = project.command(&["import", name, "--no-analyze"]);
+    command.current_dir(&inputs);
+    let output = common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result[0]["program"], name);
+    project.assert_program_identity(name);
+
+    // The running bridge takes the TCP route. An implicit name collision must
+    // still get Ghidra's suffix, rather than behave like an explicit --program.
+    let result = project.ok(&["import", link.to_str().unwrap(), "--no-analyze"]);
+    let suffixed = result[0]["program"].as_str().unwrap();
+    assert_ne!(suffixed, name);
+    assert_ne!(suffixed, "actual.bin");
+    project.assert_program_identity(suffixed);
+
+    let explicit = [
+        "import",
+        link.to_str().unwrap(),
+        "--program",
+        "chosen-name",
+        "--no-analyze",
+    ];
+    let result = project.ok(&explicit);
+    assert_eq!(result[0]["program"], "chosen-name");
+    project.assert_program_identity("chosen-name");
+    let duplicate = project.run(&explicit);
+    assert!(!duplicate.status.success());
+    assert!(String::from_utf8_lossy(&duplicate.stderr).contains("Program already exists"));
+    let programs = project.ok(&["program", "list"]);
+    let programs = programs.as_array().unwrap();
+    assert_eq!(programs.len(), 3);
+    assert!(programs
+        .iter()
+        .all(|program| program["name"] != "actual.bin"));
+}
+
+#[test]
 fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     require_ghidra!();
     let project = Project::new();

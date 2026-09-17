@@ -87,6 +87,8 @@ the same JVM. Stop/restart/project deletion also preserve unsaved state on final
 save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
+They check symlink input names across one-shot and running-bridge imports,
+including implicit collision suffixes and explicit-name collision errors.
 They also verify analysis-completion flags for raw imports, reanalysis and
 cancelled jobs. Program-session tests compare live and saved flags independently
 of function count and check recursive status counts across restart and deletion.
