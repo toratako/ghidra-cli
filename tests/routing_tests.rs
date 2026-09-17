@@ -1356,6 +1356,64 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
 }
 
 #[test]
+fn script_expect_row_bounds_are_checked_before_sending_the_script() {
+    let bridge = RecordedBridge::new();
+    for minimum in [
+        "9223372036854775808",
+        "18446744073709551615",
+        "18446744073709551616",
+    ] {
+        for path in ["missing.java", "-"] {
+            let output = bridge
+                .command()
+                .args([
+                    "script",
+                    "run",
+                    path,
+                    "--expect",
+                    &format!("rows.jsonl:{minimum}"),
+                ])
+                .write_stdin("must not execute")
+                .output()
+                .unwrap();
+            assert!(!output.status.success(), "{minimum}: {output:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(
+                error["message"].as_str().unwrap().contains("MIN_ROWS"),
+                "{error}"
+            );
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("9223372036854775807"),
+                "{error}"
+            );
+        }
+    }
+    assert!(!bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r["command"] == "script_run"));
+    for minimum in [0, i64::MAX] {
+        bridge.run(&[
+            "script",
+            "run",
+            "missing.java",
+            "--expect",
+            &format!("rows.jsonl:{minimum}"),
+        ]);
+        let requests = bridge.requests.lock().unwrap();
+        assert_eq!(
+            requests.last().unwrap()["args"]["expect"][0]["min_rows"],
+            minimum
+        );
+    }
+}
+
+#[test]
 fn batch_queries_inherit_targets_without_environment_overrides() {
     let first = RecordedBridge::new();
     let second = RecordedBridge::new();

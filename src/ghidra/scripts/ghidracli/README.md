@@ -129,7 +129,9 @@ check; never let GzfExporter delete the user's previous destination directly.
 ordinary C aliases remain ABI-dependent. Validate type sizes, field definitions,
 and enum members before mutation, especially before force-clearing existing data.
 Function lookup rejects ambiguous names with candidates instead of selecting the
-first match. Artifact hashing failures propagate as validation errors.
+first match. Artifact hashing failures propagate as validation errors. Artifact
+minimum row counts use the shared checked nonnegative-long argument parser and
+are validated before script execution, including for direct bridge requests.
 
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A

@@ -47,6 +47,7 @@ final class ScriptCommands {
         if ((scriptPath == null || scriptPath.isEmpty()) && (inlineSource == null || inlineSource.isEmpty())) {
             return errorResult("Script path or inline source required");
         }
+        ArtifactManifest.validateExpectations(args);
 
         File scriptFile;
         File tempDir = null;

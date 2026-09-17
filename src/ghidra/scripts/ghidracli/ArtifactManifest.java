@@ -26,6 +26,16 @@ final class ArtifactManifest {
 
     private static volatile String cachedGhidraVersion;
 
+    /** Reject invalid row constraints before a script can make changes. */
+    static void validateExpectations(JsonObject args) {
+        if (args == null || !args.has("expect") || !args.get("expect").isJsonArray()) return;
+        for (JsonElement el : args.getAsJsonArray("expect")) {
+            if (el.isJsonObject()) {
+                JsonProtocol.getNonnegativeLongArg(el.getAsJsonObject(), "min_rows");
+            }
+        }
+    }
+
     /**
      * Validate the caller's declared output artifacts (the "expect" array) and
      * attach a manifest for each. A missing artifact, an empty one (unless
@@ -67,7 +77,7 @@ final class ArtifactManifest {
                 failures.add("empty: " + manifest.get("path").getAsString());
             }
             if (spec.has("min_rows") && !spec.get("min_rows").isJsonNull()) {
-                long minRows = spec.get("min_rows").getAsLong();
+                long minRows = JsonProtocol.getNonnegativeLongArg(spec, "min_rows");
                 if (!manifest.has("rows")) {
                     failures.add("min_rows set but " + manifest.get("path").getAsString()
                         + " is not a row-countable (.jsonl/.ndjson) artifact");

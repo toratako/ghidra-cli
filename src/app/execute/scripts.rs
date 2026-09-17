@@ -9,8 +9,11 @@ pub(super) fn execute(
 ) -> anyhow::Result<serde_json::Value> {
     match cmd {
         ScriptCommands::Run(args) => {
-            let expect: Vec<serde_json::Value> =
-                args.expect.iter().map(|s| parse_expect_spec(s)).collect();
+            let expect = args
+                .expect
+                .iter()
+                .map(|s| parse_expect_spec(s))
+                .collect::<anyhow::Result<Vec<_>>>()?;
             if args.script_path == "-" {
                 // Read a one-off script's Java source from stdin so a
                 // throwaway snippet doesn't need a checked-in file; the
@@ -40,10 +43,16 @@ pub(super) fn execute(
 /// the bridge validates the same file the script wrote, regardless of the CWD
 /// the bridge JVM inherited. A trailing `:<digits>` is treated as MIN_ROWS;
 /// anything else (e.g. a Windows drive letter) stays part of the path.
-fn parse_expect_spec(spec: &str) -> serde_json::Value {
+fn parse_expect_spec(spec: &str) -> anyhow::Result<serde_json::Value> {
     let (path_part, min_rows) = match spec.rsplit_once(':') {
         Some((p, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
-            (p, n.parse::<u64>().ok())
+            let rows = n.parse::<i64>().map_err(|_| {
+                anyhow::anyhow!(
+                    "Invalid --expect MIN_ROWS '{n}': must be an integer from 0 to {}",
+                    i64::MAX
+                )
+            })?;
+            (p, Some(rows))
         }
         _ => (spec, None),
     };
@@ -55,5 +64,5 @@ fn parse_expect_spec(spec: &str) -> serde_json::Value {
     if let Some(n) = min_rows {
         obj.insert("min_rows".to_string(), serde_json::json!(n));
     }
-    serde_json::Value::Object(obj)
+    Ok(serde_json::Value::Object(obj))
 }

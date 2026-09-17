@@ -1,6 +1,7 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 /** JSON arguments and response envelopes shared by the bridge. */
@@ -66,6 +67,21 @@ final class JsonProtocol {
     static int getArgInt(JsonObject args, String key, int defaultVal) {
         if (args == null || !args.has(key) || args.get(key).isJsonNull()) return defaultVal;
         return args.get(key).getAsInt();
+    }
+
+    /** Checked nonnegative integer; an omitted/null value defaults to zero. */
+    static long getNonnegativeLongArg(JsonObject args, String name) {
+        if (args == null || !args.has(name) || args.get(name).isJsonNull()) return 0;
+        JsonElement value = args.get(name);
+        try {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                long number = value.getAsBigDecimal().longValueExact();
+                if (number >= 0) return number;
+            }
+        } catch (ArithmeticException | NumberFormatException e) {
+            // Reject fractional and overflowing values instead of narrowing them.
+        }
+        throw new IllegalArgumentException(name + " must be an integer from 0 to " + Long.MAX_VALUE);
     }
 
     static boolean getArgBool(JsonObject args, String key, boolean defaultVal) {

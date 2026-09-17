@@ -541,3 +541,75 @@ public class UnreadableArtifact extends GhidraScript {
         .unwrap()
         .contains("checksum read diagnostic"));
 }
+
+#[test]
+#[serial]
+fn test_artifact_row_bounds_are_checked_before_script_execution() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let artifact = work.path().join("rows.jsonl");
+    let source = r#"
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class WriteOneArtifactRow extends GhidraScript {
+    public void run() throws Exception {
+        Files.writeString(Path.of(getScriptArgs()[0]), "{}\n");
+    }
+}
+"#;
+    let args = [artifact.to_str().unwrap().to_owned()];
+    for minimum in [
+        serde_json::json!(9223372036854775808_u64),
+        serde_json::json!(u64::MAX),
+        serde_json::json!(-1),
+        serde_json::json!(0.5),
+        serde_json::json!("12"),
+        serde_json::json!(true),
+    ] {
+        let error = client
+            .script_run_source(
+                source,
+                &args,
+                &[serde_json::json!({"path": artifact, "min_rows": minimum})],
+                false,
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("min_rows must be an integer from 0 to 9223372036854775807"),
+            "{error}"
+        );
+        assert!(
+            !artifact.exists(),
+            "Script executed with invalid minimum {minimum}"
+        );
+    }
+    for minimum in [0, 1] {
+        let result = client
+            .script_run_source(
+                source,
+                &args,
+                &[serde_json::json!({"path": artifact, "min_rows": minimum})],
+                false,
+            )
+            .unwrap();
+        assert_eq!(result["artifacts"][0]["rows"], 1);
+    }
+    let error = client
+        .script_run_source(
+            source,
+            &args,
+            &[serde_json::json!({"path": artifact, "min_rows": i64::MAX})],
+            false,
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("1 rows, expected >= 9223372036854775807"),
+        "{error}"
+    );
+}

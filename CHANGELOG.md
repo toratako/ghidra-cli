@@ -11,6 +11,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and on the edited field when only its name or comment changes.
 - Exclude non-Program project files from `program list` and status program counts.
 - Show requested decompiler parameters and variables in compact text output.
+- Reject overflowing `--expect` minimum row counts instead of silently dropping
+  the constraint; validate bridge row-count arguments before running scripts.
 
 ### Changed
 

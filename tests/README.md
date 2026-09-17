@@ -94,6 +94,8 @@ Type tests also inspect saved component format/byte-order settings after metadat
 and layout edits.
 Program-session tests exclude root and nested data type archives from program lists
 and status counts.
+Script/routing tests check minimum-row boundaries and reject invalid constraints
+before script execution.
 Formatter tests cover requested decompiler details in compact and full text output.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and query aliases, including Unicode under a Turkish

@@ -1,6 +1,5 @@
 package ghidracli;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import ghidra.util.exception.CancelledException;
 import java.util.Locale;
@@ -44,16 +43,6 @@ final class ListQuery {
     }
 
     static long pageArgument(JsonObject args, String name) {
-        if (args == null || !args.has(name) || args.get(name).isJsonNull()) return 0;
-        JsonElement value = args.get(name);
-        try {
-            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
-                long number = value.getAsBigDecimal().longValueExact();
-                if (number >= 0) return number;
-            }
-        } catch (ArithmeticException | NumberFormatException e) {
-            // Reject truncation/overflow instead of turning a page into all rows.
-        }
-        throw new IllegalArgumentException(name + " must be an integer from 0 to " + Long.MAX_VALUE);
+        return JsonProtocol.getNonnegativeLongArg(args, name);
     }
 }
