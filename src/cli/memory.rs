@@ -109,9 +109,6 @@ pub struct DisasmAtArgs {
 pub struct ClearArgs {
     /// Address range to clear, as START:END (e.g. 0bf3:0bfa)
     pub range: String,
-    /// Clear only, leaving the range as undefined data (no redisassembly)
-    #[arg(long, conflicts_with = "disasm_at")]
-    pub to_data: bool,
     /// Re-disassemble at this address immediately after clearing
     #[arg(long)]
     pub disasm_at: Option<String>,

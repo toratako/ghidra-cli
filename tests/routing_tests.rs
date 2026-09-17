@@ -374,6 +374,36 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
 }
 
 #[test]
+fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
+    let bridge = RecordedBridge::new();
+    for disasm_at in [None, Some("1000")] {
+        bridge.requests.lock().unwrap().clear();
+        let mut args = vec!["clear", "1000:1010"];
+        if let Some(address) = disasm_at {
+            args.extend(["--disasm-at", address]);
+        }
+        bridge.run(&args);
+        let requests = bridge.requests.lock().unwrap();
+        let clear = requests
+            .iter()
+            .find(|r| r["command"] == "clear_range")
+            .unwrap();
+        assert_eq!(
+            clear["args"],
+            json!({"start": "1000", "end": "1010", "disasm_at": disasm_at})
+        );
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .count(),
+            1,
+            "clear must not dispatch a separate data creation or disassembly command"
+        );
+    }
+}
+
+#[test]
 fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
     let bridge = RecordedBridge::new();
     for command in [

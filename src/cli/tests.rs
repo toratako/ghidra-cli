@@ -164,6 +164,28 @@ fn unsupported_query_formats_do_not_remove_hex_program_export() {
 }
 
 #[test]
+fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
+    for disasm_at in [None, Some("1000")] {
+        let mut command = vec!["ghidra-cli", "clear", "1000:1010"];
+        if let Some(address) = disasm_at {
+            command.extend(["--disasm-at", address]);
+        }
+        let cli = Cli::try_parse_from(&command).unwrap();
+        let Commands::Clear(args) = cli.command else {
+            panic!("expected clear");
+        };
+        assert_eq!(args.range, "1000:1010");
+        assert_eq!(args.disasm_at.as_deref(), disasm_at);
+
+        command.push("--to-data");
+        let error = Cli::try_parse_from(command)
+            .err()
+            .expect("obsolete clear flag must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+}
+
+#[test]
 fn management_commands_accept_global_options_at_each_command_level() {
     for command in [
         vec!["bridge", "start"],

@@ -39,6 +39,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 
 - Remove `--format tree` and `--format hex`. `program export hex` is unchanged.
+- Remove `clear --to-data`. Plain `clear START:END` still clears without
+  disassembly; `--disasm-at ADDRESS` remains available.
 - Remove the implicit raw-memory fallback from `find string`; it now searches
   only defined strings, case-insensitively. Use `find text` for encoded text in
   memory, or `find bytes` for hexadecimal byte patterns.

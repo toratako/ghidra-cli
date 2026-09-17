@@ -23,9 +23,12 @@ Use `disasm-at` when auto-analysis missed a known target. If analysis ran throug
 inline data or chose the wrong boundary:
 
 ```bash
-ghidra-cli clear 0x401200:0x40121f --to-data --project target
+ghidra-cli clear 0x401200:0x40121f --project target
 ghidra-cli clear 0x401200:0x40121f --disasm-at 0x401210 --project target
 ```
+
+Plain `clear START:END` clears overlapping code units and leaves the range
+undefined. Add `--disasm-at ADDRESS` to disassemble at a new boundary after clearing.
 
 For headerless input, first choose the language and load parameters using
 [raw import](programs.md#raw-import).
