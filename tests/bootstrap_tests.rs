@@ -90,15 +90,14 @@ fn configured_startup_targets_ignore_removed_environment_defaults() {
         "--no-analyze",
     ]);
     let config = project.root.path().join("config.yaml");
-    std::fs::write(
-        &config,
-        serde_yaml::to_string(&serde_json::json!({
-            "aliases": {}, "default_project": project.path,
-            "default_program": "configured-program",
-        }))
-        .unwrap(),
-    )
-    .unwrap();
+    let mut test_config = ghidra_cli::config::Config::load().unwrap();
+    // Preserve runtime settings and exercise config-only installation lookup,
+    // even when the test runner selects Ghidra through the environment.
+    test_config.ghidra_install_dir = Some(test_config.get_ghidra_install_dir().unwrap());
+    test_config.aliases.clear();
+    test_config.default_project = Some(project.path.to_str().unwrap().to_owned());
+    test_config.default_program = Some("configured-program".to_owned());
+    std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
     let batch = project.root.path().join("batch.txt");
     std::fs::write(&batch, "program imports\nprogram exports\n").unwrap();
     for args in [
@@ -112,6 +111,7 @@ fn configured_startup_targets_ignore_removed_environment_defaults() {
             .args(&args)
             .arg("--json")
             .env("GHIDRA_CLI_CONFIG", &config)
+            .env_remove("GHIDRA_INSTALL_DIR")
             .env(
                 "GHIDRA_DEFAULT_PROJECT",
                 project.root.path().join("missing-project"),
