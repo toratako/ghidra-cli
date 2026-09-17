@@ -21,10 +21,6 @@ pub enum OutputFormat {
     Table,
     Ids,
     Count,
-    #[value(help = "Currently rendered as JSON")]
-    Tree,
-    #[value(help = "Currently rendered as JSON")]
-    Hex,
     #[value(help = "Assembly text for instruction rows; other rows remain JSON")]
     Asm,
     #[value(help = "Decompiled C text; other rows remain JSON")]
@@ -66,10 +62,6 @@ impl Formatter for DefaultFormatter {
             OutputFormat::Full => format_full(data),
             OutputFormat::Minimal | OutputFormat::Ids => format_minimal(data),
             OutputFormat::C | OutputFormat::Asm => format_code(data, format),
-            _ => {
-                // For other formats, default to JSON
-                serde_json::to_string_pretty(data).map_err(|e| e.into())
-            }
         }
     }
 }

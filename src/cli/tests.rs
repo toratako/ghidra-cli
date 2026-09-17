@@ -73,7 +73,7 @@ fn disasm_end_conflicts_with_instruction_count() {
 }
 
 #[test]
-fn output_formats_keep_existing_spellings_and_aliases() {
+fn output_formats_accept_supported_spellings_and_aliases() {
     for (name, expected) in [
         ("full", OutputFormat::Full),
         ("compact", OutputFormat::Compact),
@@ -87,8 +87,6 @@ fn output_formats_keep_existing_spellings_and_aliases() {
         ("table", OutputFormat::Table),
         ("ids", OutputFormat::Ids),
         ("count", OutputFormat::Count),
-        ("tree", OutputFormat::Tree),
-        ("hex", OutputFormat::Hex),
         ("asm", OutputFormat::Asm),
         ("c", OutputFormat::C),
     ] {
@@ -117,7 +115,7 @@ fn output_formats_keep_existing_spellings_and_aliases() {
 }
 
 #[test]
-fn shared_format_help_lists_choices_and_legacy_rendering() {
+fn shared_format_help_lists_supported_choices() {
     for command in [
         ["program", "exports"].as_slice(),
         ["memory", "read"].as_slice(),
@@ -138,10 +136,31 @@ fn shared_format_help_lists_choices_and_legacy_rendering() {
             }
             if flag == "--help" {
                 assert!(help.contains("alias: ndjson"), "{help}");
-                assert!(help.contains("Currently rendered as JSON"), "{help}");
+                assert!(!help.contains("Currently rendered as JSON"), "{help}");
             }
         }
     }
+}
+
+#[test]
+fn unsupported_query_formats_do_not_remove_hex_program_export() {
+    for format in ["tree", "hex", "TREE", "HEX"] {
+        assert!(OutputFormat::from_str(format).is_err());
+        assert!(serde_json::from_str::<OutputFormat>(&format!("\"{format}\"")).is_err());
+        for command in [["program", "imports"], ["function", "list"]] {
+            let error =
+                Cli::try_parse_from(["ghidra-cli", command[0], command[1], "--format", format])
+                    .err()
+                    .expect("unsupported query format must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+        }
+    }
+
+    let cli = Cli::try_parse_from(["ghidra-cli", "program", "export", "hex"]).unwrap();
+    let Commands::Program(ProgramCommands::Export(args)) = cli.command else {
+        panic!("expected program export");
+    };
+    assert_eq!(args.format, "hex");
 }
 
 #[test]
