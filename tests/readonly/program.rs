@@ -288,40 +288,25 @@ fn test_program_info() {
 
 #[test]
 #[serial]
-fn test_program_export_json() {
+fn test_program_export_rejects_json_and_missing_format() {
     require_ghidra!();
     let client = harness().client().unwrap();
-    let inline = client.program_export("json", None).unwrap();
-    assert!(!inline["functions"].as_array().unwrap().is_empty());
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("program.json");
-    let exported = client
-        .program_export("json", Some(path.to_str().unwrap()))
-        .unwrap();
-    assert_eq!(exported["status"], "exported");
-    let written: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(written, inline);
-    let error = client
-        .program_export("json", Some(directory.path().to_str().unwrap()))
-        .unwrap_err();
+    fs::write(&path, b"existing output").unwrap();
+    for output in [None, Some(path.to_str().unwrap())] {
+        let error = client.program_export("json", output).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Unsupported export format: json"),
+            "{error}"
+        );
+    }
+    assert_eq!(fs::read(&path).unwrap(), b"existing output");
+    let error = client.send_command("program_export", None).unwrap_err();
     assert!(
-        error.to_string().contains("Failed to write file"),
-        "{error}"
-    );
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-#[serial]
-fn test_program_export_json_write_failure() {
-    require_ghidra!();
-    let error = harness()
-        .client()
-        .unwrap()
-        .program_export("json", Some("/dev/full"))
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("Failed to write file"),
+        error.to_string().contains("Export format required"),
         "{error}"
     );
 }

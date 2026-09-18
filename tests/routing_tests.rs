@@ -1667,11 +1667,11 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
     bridge.run(&["import", "binary", "--no-analyze"]);
-    bridge.run(&["program", "export", "json", "-o", "export.json"]);
+    bridge.run(&["program", "export", "c", "-o", "export.c"]);
     let requests = bridge.requests.lock().unwrap();
     for (command, key, filename) in [
         ("import", "binary_path", "binary"),
-        ("program_export", "output", "export.json"),
+        ("program_export", "output", "export.c"),
     ] {
         let request = requests.iter().find(|r| r["command"] == command).unwrap();
         let actual = PathBuf::from(request["args"][key].as_str().unwrap());

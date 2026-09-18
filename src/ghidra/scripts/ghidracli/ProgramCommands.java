@@ -1,7 +1,5 @@
 package ghidracli;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
@@ -12,8 +10,6 @@ import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.listing.DataIterator;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Listing;
@@ -26,8 +22,6 @@ import ghidra.program.util.GhidraProgramUtilities;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -316,134 +310,96 @@ final class ProgramCommands {
         }
 
         String exportFormat = getArgString(args, "format");
-        if (exportFormat == null) exportFormat = "json";
+        if (exportFormat == null || exportFormat.isEmpty()) {
+            return errorResult("Export format required");
+        }
         String outputPath = getArgString(args, "output");
 
-        if ("json".equals(exportFormat)) {
-            // Get program info as base
-            JsonObject data = handleProgramInfo();
-            if (data.has("error")) {
-                return data;
+        try {
+            // Map short format codes to the concrete Ghidra Exporter classes.
+            // Instantiating the class directly avoids depending on a registry
+            // lookup API whose name has changed across Ghidra versions.
+            java.util.Map<String, String> classMap = new java.util.HashMap<>();
+            classMap.put("xml", "ghidra.app.util.exporter.XmlExporter");
+            classMap.put("c", "ghidra.app.util.exporter.CppExporter");
+            classMap.put("cpp", "ghidra.app.util.exporter.CppExporter");
+            classMap.put("binary", "ghidra.app.util.exporter.BinaryExporter");
+            classMap.put("bin", "ghidra.app.util.exporter.BinaryExporter");
+            classMap.put("gzf", "ghidra.app.util.exporter.GzfExporter");
+            classMap.put("asm", "ghidra.app.util.exporter.AsciiExporter");
+            classMap.put("ascii", "ghidra.app.util.exporter.AsciiExporter");
+            classMap.put("hex", "ghidra.app.util.exporter.IntelHexExporter");
+            classMap.put("html", "ghidra.app.util.exporter.HtmlExporter");
+
+            String className = classMap.get(exportFormat.toLowerCase());
+            if (className == null) {
+                return errorResult("Unsupported export format: " + exportFormat
+                    + " (supported: xml, c/cpp, binary/bin, gzf, ascii/asm, hex, html)");
             }
 
-            // Add function list
-            FunctionManager fm = session.program().getFunctionManager();
-            JsonArray functions = new JsonArray();
-            FunctionIterator iter = fm.getFunctions(true);
-            while (iter.hasNext()) {
-                Function func = iter.next();
-                JsonObject funcObj = new JsonObject();
-                funcObj.addProperty("name", func.getName());
-                funcObj.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-                funcObj.addProperty("size", func.getBody().getNumAddresses());
-                functions.add(funcObj);
-            }
-            data.add("functions", functions);
-
-            if (outputPath != null && !outputPath.isEmpty()) {
-                try (FileWriter writer = new FileWriter(outputPath)) {
-                    Gson prettyGson = new GsonBuilder().setPrettyPrinting().create();
-                    writer.write(prettyGson.toJson(data));
-                    writer.write(System.lineSeparator());
-
-                    JsonObject result = new JsonObject();
-                    result.addProperty("status", "exported");
-                    result.addProperty("format", "json");
-                    result.addProperty("output", outputPath);
-                    return result;
-                } catch (IOException e) {
-                    return errorResult("Failed to write file: " + e.getMessage());
-                }
-            } else {
-                return data;
-            }
-        } else {
-            // Resolve a built-in exporter class from the requested format.
             if (outputPath == null || outputPath.isEmpty()) {
                 return errorResult("Output path required for format: " + exportFormat);
             }
-            try {
-                // Map short format codes to the concrete Ghidra Exporter classes.
-                // Instantiating the class directly avoids depending on a registry
-                // lookup API whose name has changed across Ghidra versions.
-                java.util.Map<String, String> classMap = new java.util.HashMap<>();
-                classMap.put("xml", "ghidra.app.util.exporter.XmlExporter");
-                classMap.put("c", "ghidra.app.util.exporter.CppExporter");
-                classMap.put("cpp", "ghidra.app.util.exporter.CppExporter");
-                classMap.put("binary", "ghidra.app.util.exporter.BinaryExporter");
-                classMap.put("bin", "ghidra.app.util.exporter.BinaryExporter");
-                classMap.put("gzf", "ghidra.app.util.exporter.GzfExporter");
-                classMap.put("asm", "ghidra.app.util.exporter.AsciiExporter");
-                classMap.put("ascii", "ghidra.app.util.exporter.AsciiExporter");
-                classMap.put("hex", "ghidra.app.util.exporter.IntelHexExporter");
-                classMap.put("html", "ghidra.app.util.exporter.HtmlExporter");
 
-                String className = classMap.get(exportFormat.toLowerCase());
-                if (className == null) {
-                    return errorResult("Unsupported export format: " + exportFormat
-                        + " (supported: json, xml, c, binary, gzf, ascii/asm, hex, html)");
-                }
+            // Keep the exporter package in this bundle's OSGi imports even
+            // though the concrete class name is selected dynamically.
+            Class<?> exporterClass = Class.forName(className, true, Exporter.class.getClassLoader());
+            Object exporter = exporterClass.getDeclaredConstructor().newInstance();
 
-                // Keep the exporter package in this bundle's OSGi imports even
-                // though the concrete class name is selected dynamically.
-                Class<?> exporterClass = Class.forName(className, true, Exporter.class.getClassLoader());
-                Object exporter = exporterClass.getDeclaredConstructor().newInstance();
-
-                // Resolve export(File, DomainObject, AddressSetView, TaskMonitor) by
-                // name + arity to tolerate signature drift across Ghidra versions.
-                java.lang.reflect.Method exportMethod = null;
-                for (java.lang.reflect.Method m : exporterClass.getMethods()) {
-                    if (m.getName().equals("export") && m.getParameterCount() == 4) {
-                        exportMethod = m;
-                        break;
-                    }
+            // Resolve export(File, DomainObject, AddressSetView, TaskMonitor) by
+            // name + arity to tolerate signature drift across Ghidra versions.
+            java.lang.reflect.Method exportMethod = null;
+            for (java.lang.reflect.Method m : exporterClass.getMethods()) {
+                if (m.getName().equals("export") && m.getParameterCount() == 4) {
+                    exportMethod = m;
+                    break;
                 }
-                if (exportMethod == null) {
-                    return errorResult("Exporter has no 4-arg export method: " + exportFormat);
-                }
-
-                TaskMonitor mon = session.monitor();
-                Object exported;
-                if ("gzf".equalsIgnoreCase(exportFormat)) {
-                    session.preparePackedExport();
-                    Path destination = new File(outputPath).toPath().toAbsolutePath();
-                    // GzfExporter deletes its output before writing it. Keep that
-                    // file in a private directory beside the destination, and only
-                    // replace the destination once packing has fully succeeded.
-                    Path staging = Files.createTempDirectory(destination.getParent(), ".ghidra-cli-gzf-");
-                    Path packed = staging.resolve("program.gzf");
-                    try {
-                        exported = exportMethod.invoke(exporter, packed.toFile(), session.program(), null, mon);
-                        if (Boolean.TRUE.equals(exported)) {
-                            mon.checkCancelled();
-                            Files.move(packed, destination, StandardCopyOption.ATOMIC_MOVE,
-                                StandardCopyOption.REPLACE_EXISTING);
-                        }
-                    } finally {
-                        try {
-                            Files.deleteIfExists(packed);
-                        } finally {
-                            Files.deleteIfExists(staging);
-                        }
-                    }
-                } else {
-                    exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
-                }
-                if (!Boolean.TRUE.equals(exported)) {
-                    Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
-                    return errorResult("Failed to export (" + exportFormat + "): " + log);
-                }
-
-                JsonObject result = new JsonObject();
-                result.addProperty("status", "exported");
-                result.addProperty("format", exportFormat);
-                result.addProperty("output", outputPath);
-                return result;
-            } catch (Exception e) {
-                Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
-                    && e.getCause() != null ? e.getCause() : e;
-                return errorResult("Failed to export (" + exportFormat + "): " + cause.getMessage());
             }
+            if (exportMethod == null) {
+                return errorResult("Exporter has no 4-arg export method: " + exportFormat);
+            }
+
+            TaskMonitor mon = session.monitor();
+            Object exported;
+            if ("gzf".equalsIgnoreCase(exportFormat)) {
+                session.preparePackedExport();
+                Path destination = new File(outputPath).toPath().toAbsolutePath();
+                // GzfExporter deletes its output before writing it. Keep that
+                // file in a private directory beside the destination, and only
+                // replace the destination once packing has fully succeeded.
+                Path staging = Files.createTempDirectory(destination.getParent(), ".ghidra-cli-gzf-");
+                Path packed = staging.resolve("program.gzf");
+                try {
+                    exported = exportMethod.invoke(exporter, packed.toFile(), session.program(), null, mon);
+                    if (Boolean.TRUE.equals(exported)) {
+                        mon.checkCancelled();
+                        Files.move(packed, destination, StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } finally {
+                    try {
+                        Files.deleteIfExists(packed);
+                    } finally {
+                        Files.deleteIfExists(staging);
+                    }
+                }
+            } else {
+                exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+            }
+            if (!Boolean.TRUE.equals(exported)) {
+                Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
+                return errorResult("Failed to export (" + exportFormat + "): " + log);
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "exported");
+            result.addProperty("format", exportFormat);
+            result.addProperty("output", outputPath);
+            return result;
+        } catch (Exception e) {
+            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                && e.getCause() != null ? e.getCause() : e;
+            return errorResult("Failed to export (" + exportFormat + "): " + cause.getMessage());
         }
     }
 

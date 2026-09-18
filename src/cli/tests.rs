@@ -141,6 +141,21 @@ fn shared_format_help_lists_supported_choices() {
 }
 
 #[test]
+fn program_export_formats_exclude_json() {
+    for format in ["json", "JSON"] {
+        let error = Cli::try_parse_from(["ghidra-cli", "program", "export", format])
+            .err()
+            .expect("JSON export must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+    for format in [
+        "xml", "c", "cpp", "binary", "bin", "gzf", "ascii", "asm", "hex", "html", "GZF",
+    ] {
+        Cli::try_parse_from(["ghidra-cli", "program", "export", format]).unwrap();
+    }
+}
+
+#[test]
 fn unsupported_query_formats_do_not_remove_hex_program_export() {
     for format in ["tree", "hex", "ids", "count", "TREE", "HEX", "IDS", "COUNT"] {
         assert!(OutputFormat::from_str(format).is_err());

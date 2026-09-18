@@ -62,6 +62,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `program export json`. Use `program info --json` and
+  `function list --json --limit 0 --fields name,address,size` for JSON metadata
+  and function lists; redirect stdout to save them to files.
 - Remove `analyzer run`, the `analyze_run` bridge command, and
   `BridgeClient::analyze_run` without compatibility aliases. Use `analyze` or
   `BridgeClient::analyze` for full analysis with the current analyzer settings,
