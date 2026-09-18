@@ -74,41 +74,35 @@ pub enum Commands {
     Project(ProjectArgs),
 
     /// Program/binary management commands
-    #[command(subcommand, alias = "prog", alias = "programs")]
+    #[command(subcommand)]
     Program(ProgramCommands),
 
     /// Function operations
-    #[command(subcommand, alias = "fn", alias = "func", alias = "functions")]
+    #[command(subcommand)]
     Function(FunctionCommands),
 
     /// String operations
-    #[command(subcommand, alias = "string", alias = "str")]
+    #[command(subcommand, name = "string")]
     Strings(StringsCommands),
 
     /// Symbol operations
-    #[command(subcommand, alias = "sym", alias = "symbols")]
+    #[command(subcommand)]
     Symbol(SymbolCommands),
 
     /// Memory operations
-    #[command(subcommand, alias = "mem")]
+    #[command(subcommand)]
     Memory(MemoryCommands),
 
     /// Cross-reference operations
-    #[command(
-        subcommand,
-        alias = "xrefs",
-        alias = "xref",
-        alias = "crossref",
-        alias = "crossrefs"
-    )]
+    #[command(subcommand, name = "xref")]
     XRef(XRefCommands),
 
     /// Type operations
-    #[command(subcommand, alias = "types")]
+    #[command(subcommand)]
     Type(TypeCommands),
 
     /// Function tag operations
-    #[command(subcommand, alias = "tags")]
+    #[command(subcommand)]
     Tag(TagCommands),
 
     /// PCode operations (intermediate representation)
@@ -116,32 +110,31 @@ pub enum Commands {
     Pcode(PcodeCommands),
 
     /// List and configure analyzers; use `analyze` to run analysis
-    #[command(subcommand, alias = "analysis-control")]
+    #[command(subcommand)]
     Analyzer(AnalyzerCommands),
 
     /// Comment operations
-    #[command(subcommand, alias = "comments")]
+    #[command(subcommand)]
     Comment(CommentCommands),
 
     /// Search operations
-    #[command(subcommand, alias = "search")]
+    #[command(subcommand)]
     Find(FindCommands),
 
     /// Graph operations
-    #[command(subcommand, alias = "callgraph", alias = "cg")]
+    #[command(subcommand)]
     Graph(GraphCommands),
 
     /// Decompile function
-    #[command(alias = "decomp", alias = "dec")]
     Decompile(DecompileArgs),
 
     /// Disassemble code
-    #[command(alias = "disassemble", alias = "dis")]
+    #[command(name = "disassemble")]
     Disasm(DisasmArgs),
 
     /// Disassemble at an address, disassembling first if nothing is there yet
     /// (the common case for computed-jump targets auto-analysis never reached)
-    #[command(alias = "disassemble-at")]
+    #[command(name = "disassemble-at")]
     DisasmAt(DisasmAtArgs),
 
     /// Clear code units in a range (undoes auto-analysis that mis-disassembled
@@ -149,7 +142,7 @@ pub enum Commands {
     Clear(ClearArgs),
 
     /// Script execution
-    #[command(subcommand, alias = "scripts")]
+    #[command(subcommand)]
     Script(ScriptCommands),
 
     /// Batch operations
@@ -170,7 +163,6 @@ pub enum Commands {
     Import(ImportArgs),
 
     /// Analyze or reanalyze the entire program using its current analyzer settings
-    #[command(alias = "analysis")]
     Analyze(AnalyzeArgs),
 
     /// Bridge lifecycle and health

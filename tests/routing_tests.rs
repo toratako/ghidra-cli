@@ -190,6 +190,8 @@ impl RecordedBridge {
                         };
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
                     }
+                    "xrefs_to" => json!({"xrefs": [], "count": 0}),
+                    "disasm_at" => json!({"ok": true, "landed": true, "instructions": []}),
                     "symbol_get" | "symbol_get_by_name" => {
                         json!({"symbols": if args["name"] == "missing" {
                             vec![]
@@ -284,6 +286,79 @@ impl Drop for RecordedBridge {
         let _ = self.worker.take().unwrap().join();
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for (args, wire, key, expected) in [
+        (
+            vec!["xref", "to", "0x1000", "--limit", "0"],
+            "xrefs_to",
+            "address",
+            "0x1000",
+        ),
+        (
+            vec!["string", "refs", "needle", "--limit", "0"],
+            "string_refs",
+            "string",
+            "needle",
+        ),
+        (
+            vec!["disassemble", "0x1000", "--limit", "0"],
+            "disasm",
+            "address",
+            "0x1000",
+        ),
+        (
+            vec!["function", "disassemble", "main", "--limit", "0"],
+            "function_disasm",
+            "target",
+            "main",
+        ),
+        (
+            vec!["disassemble-at", "0x1000", "--count", "2"],
+            "disasm_at",
+            "address",
+            "0x1000",
+        ),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        let standalone = bridge.run(&args);
+        let standalone_request = bridge
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|request| request["command"] == wire)
+            .unwrap()
+            .clone();
+        assert_eq!(standalone_request["args"][key], expected);
+        if wire == "disasm_at" {
+            assert_eq!(standalone_request["args"]["count"], 2);
+        }
+        bridge.requests.lock().unwrap().clear();
+        std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+        let report = bridge.run(&["batch", "batch.txt"]);
+        assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
+        let requests = bridge.requests.lock().unwrap();
+        let request = requests
+            .iter()
+            .find(|request| request["command"] == wire)
+            .unwrap();
+        assert_eq!(request["args"], standalone_request["args"], "{args:?}");
+        let result = &report[0]["results"][0]["result"];
+        // Mutations are wrapped as one receipt in standalone JSON output.
+        assert_eq!(
+            result,
+            if wire == "disasm_at" {
+                &standalone[0]
+            } else {
+                &standalone
+            },
+            "{args:?}"
+        );
     }
 }
 
@@ -519,7 +594,7 @@ fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
         bridge.requests.lock().unwrap().clear();
         let mut args = vec!["clear", "0x1000:0x1010"];
         if let Some(address) = disasm_at {
-            args.extend(["--disasm-at", address]);
+            args.extend(["--disassemble-at", address]);
         }
         bridge.run(&args);
         let requests = bridge.requests.lock().unwrap();
@@ -619,7 +694,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
             "0x1002",
             "--case-sensitive",
         ],
-        vec!["disasm", "0x1000", "--end", "0x1002"],
+        vec!["disassemble", "0x1000", "--end", "0x1002"],
     ] {
         let rows = bridge.run(&command);
         assert_eq!(
@@ -672,7 +747,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
 #[test]
 fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
-    let all = bridge.run(&["function", "disasm", "main", "--limit", "0"]);
+    let all = bridge.run(&["function", "disassemble", "main", "--limit", "0"]);
     assert_eq!(all.as_array().unwrap().len(), 3);
     for (flags, expected, fetch_limit) in [
         (vec![], json!([all[0]]), json!(1)),
@@ -710,7 +785,7 @@ fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batc
             Value::Null,
         ),
     ] {
-        let args: Vec<_> = ["function", "disasm", "main"]
+        let args: Vec<_> = ["function", "disassemble", "main"]
             .into_iter()
             .chain(flags)
             .collect();
@@ -861,9 +936,9 @@ fn explicit_code_formats_override_json_without_changing_output_defaults() {
         );
     }
     for command in [
-        vec!["disasm", "0x1000"],
-        vec!["disasm", "0x1000", "--end", "0x1002"],
-        vec!["function", "disasm", "main"],
+        vec!["disassemble", "0x1000"],
+        vec!["disassemble", "0x1000", "--end", "0x1002"],
+        vec!["function", "disassemble", "main"],
     ] {
         assert!(bridge.run(&command).is_array());
         let output = bridge
@@ -1507,7 +1582,7 @@ fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
             json!([all[0].clone()]),
         ),
     ] {
-        let args: Vec<_> = ["strings", "refs", pattern]
+        let args: Vec<_> = ["string", "refs", pattern]
             .into_iter()
             .chain(flags)
             .collect();
@@ -1560,21 +1635,31 @@ fn project_directory_overrides_are_local_to_each_batch_line() {
 #[test]
 fn ndjson_contains_exactly_one_document_per_line() {
     let bridge = RecordedBridge::new();
-    let output = bridge
+    bridge
         .command()
-        .args(["program", "imports", "--limit", "0", "-o", "ndjson"])
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let output = String::from_utf8(output.stdout).unwrap();
-    let rows = output
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        rows,
-        vec![json!({"name": "first"}), json!({"name": "second"})]
-    );
+        .args(["config", "set", "default_output_format", "ndjson"])
+        .assert()
+        .success();
+    let config = bridge.run(&["config", "list", "--json"]);
+    assert_eq!(config["default_output_format"], "ndjson");
+    for flags in [vec![], vec!["--format", "ndjson"]] {
+        let output = bridge
+            .command()
+            .args(["program", "imports", "--limit", "0"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{flags:?}: {output:?}");
+        let output = String::from_utf8(output.stdout).unwrap();
+        let rows = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            vec![json!({"name": "first"}), json!({"name": "second"})]
+        );
+    }
 }
 
 #[test]

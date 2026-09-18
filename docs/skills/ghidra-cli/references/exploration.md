@@ -8,8 +8,8 @@ ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
 ghidra-cli decompile main --format c --project target
 ghidra-cli function calls main --project target
-ghidra-cli x-ref to main --project target
-ghidra-cli x-ref to malloc --project target
+ghidra-cli xref to main --project target
+ghidra-cli xref to malloc --project target
 ```
 
 `decompile` accepts a function name or address; `--with-vars` and `--with-params`
@@ -41,18 +41,18 @@ passing a function pointer as a parameter does not make the enclosing function a
 
 ```bash
 ghidra-cli function list --filter "name~crypt" --project target
-ghidra-cli strings list --filter "length > 12" --limit 80 --project target
+ghidra-cli string list --filter "length > 12" --limit 80 --project target
 ghidra-cli find string "password" --project target
 ghidra-cli find text "Password" --project target
 ghidra-cli find text "Password" --encoding utf-16le --project target
 ghidra-cli find text "日本" --encoding shift_jis --project target
-ghidra-cli strings refs "password" --project target
+ghidra-cli string refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
 ghidra-cli find calls CreateProcessW --project target
-ghidra-cli x-ref to malloc --project target
-ghidra-cli x-ref to 0x401000 --project target
-ghidra-cli x-ref from 0x401000 --project target
+ghidra-cli xref to malloc --project target
+ghidra-cli xref to 0x401000 --project target
+ghidra-cli xref from 0x401000 --project target
 ghidra-cli graph calls --project target
 ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target
@@ -101,7 +101,7 @@ See [patching](low-level.md#patching) for edit behavior.
 
 ## Query controls
 
-Use `function list`, `strings list`, and `memory map` for their respective lists,
+Use `function list`, `string list`, and `memory map` for their respective lists,
 and `program imports` / `program exports` for external symbols and entry points.
 These commands share filtering, field selection, sorting, pagination, and counts.
 

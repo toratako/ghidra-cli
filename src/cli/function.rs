@@ -5,14 +5,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FunctionCommands {
     /// List all functions
-    #[command(alias = "ls")]
     List(FunctionListArgs),
     /// Get function details
-    #[command(alias = "show", alias = "detail")]
     Get(FunctionGetArgs),
     /// List existing instructions in the function body, including disjoint ranges.
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
-    #[command(alias = "disassemble", alias = "dis")]
+    #[command(name = "disassemble")]
     Disasm(FunctionGetArgs),
     /// List outgoing call sites and callees inside this function
     Calls(FunctionGetArgs),

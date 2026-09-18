@@ -432,7 +432,7 @@ fn hex_addr_plus(addr: &str, delta: u64) -> String {
 }
 
 /// Force-clear+redisassemble a small window at `addr` back to instructions,
-/// via the same `clear --disasm-at` path a caller would use to recover from
+/// via the same `clear --disassemble-at` path a caller would use to recover from
 /// this (ghidra-bug.md's own suggested workaround) -- used both to armor this
 /// test against `main` having been left mid-disassembled by another test
 /// sharing the fixture, and to restore it afterward.
@@ -440,7 +440,7 @@ fn restore_disassembly(harness: &DaemonTestHarness, addr: &str) {
     ghidra(harness)
         .arg("clear")
         .arg(format!("{}:{}", addr, hex_addr_plus(addr, 15)))
-        .arg("--disasm-at")
+        .arg("--disassemble-at")
         .arg(addr)
         .arg("--json")
         .with_project(test_project(), TEST_PROGRAM)

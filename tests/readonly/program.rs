@@ -16,7 +16,7 @@ fn test_strings_list_schema_validation() {
     let harness = harness();
 
     let result = ghidra(harness)
-        .arg("strings")
+        .arg("string")
         .arg("list")
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()

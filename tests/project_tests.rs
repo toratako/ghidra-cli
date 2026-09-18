@@ -446,7 +446,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
 
     let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
-            "disasm-at",
+            "disassemble-at",
             "0x8000",
             "--count",
             "2",

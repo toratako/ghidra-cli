@@ -54,7 +54,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
             (["symbol", "list"], "symbol_list", "symbols", "name"),
             (["type", "list"], "type_list", "types", "name"),
             (["comment", "list"], "comment_list", "comments", "text"),
-            (["strings", "list"], "list_strings", "strings", "value"),
+            (["string", "list"], "list_strings", "strings", "value"),
         ] {
             let all = client.send_command(wire, Some(json!({"limit":0}))).unwrap();
             let rows = all[key].as_array().unwrap();

@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum TypeCommands {
     /// List data types
-    #[command(alias = "ls")]
     List(QueryOptions),
     /// Get type definition
     Get(TypeGetArgs),
@@ -14,13 +13,10 @@ pub enum TypeCommands {
     /// Apply type to address
     Apply(ApplyTypeArgs),
     /// Import C type definitions
-    #[command(alias = "import", alias = "parse-c")]
     ImportC(ImportCArgs),
     /// Delete a data type
-    #[command(alias = "rm")]
     Delete(TypeDeleteArgs),
     /// Rename a data type
-    #[command(alias = "mv")]
     Rename(TypeRenameArgs),
     /// Create an enum type
     CreateEnum(CreateEnumArgs),
@@ -60,8 +56,8 @@ pub struct ApplyTypeArgs {
     /// Explicit address, e.g. 0x404000 or overlay:0x1000
     pub address: String,
     pub type_name: String,
-    /// Clear any conflicting data unit first instead of failing on it
-    #[arg(long, alias = "clear-conflicting")]
+    /// Clear conflicting code/data units (including instructions) before applying the type
+    #[arg(long)]
     pub force: bool,
     #[arg(long)]
     pub program: Option<String>,

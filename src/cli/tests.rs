@@ -1,6 +1,6 @@
 use super::*;
 use crate::format::OutputFormat;
-use clap::ValueEnum;
+use clap::{CommandFactory, ValueEnum};
 
 #[test]
 fn text_search_accepts_encodings_and_rejects_empty_input() {
@@ -53,7 +53,7 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
 #[test]
 fn disasm_end_conflicts_with_instruction_count() {
     for target in [vec!["main"], vec!["--target", "main"]] {
-        let mut args = vec!["ghidra-cli", "disasm"];
+        let mut args = vec!["ghidra-cli", "disassemble"];
         args.extend(target);
         args.extend(["--end", "2000"]);
         let cli = Cli::try_parse_from(&args).unwrap();
@@ -73,14 +73,13 @@ fn disasm_end_conflicts_with_instruction_count() {
 }
 
 #[test]
-fn output_formats_accept_supported_spellings_and_aliases() {
+fn output_formats_accept_supported_spellings() {
     for (name, expected) in [
         ("full", OutputFormat::Full),
         ("compact", OutputFormat::Compact),
         ("minimal", OutputFormat::Minimal),
         ("json", OutputFormat::Json),
         ("json-compact", OutputFormat::JsonCompact),
-        ("json-stream", OutputFormat::JsonStream),
         ("ndjson", OutputFormat::JsonStream),
         ("csv", OutputFormat::Csv),
         ("tsv", OutputFormat::Tsv),
@@ -133,7 +132,8 @@ fn shared_format_help_lists_supported_choices() {
                 assert!(help.contains(possible.get_name()), "{help}");
             }
             if flag == "--help" {
-                assert!(help.contains("alias: ndjson"), "{help}");
+                assert!(help.contains("ndjson"), "{help}");
+                assert!(!help.contains("json-stream"), "{help}");
                 assert!(!help.contains("Currently rendered as JSON"), "{help}");
             }
         }
@@ -166,7 +166,7 @@ fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
     for disasm_at in [None, Some("0x1000")] {
         let mut command = vec!["ghidra-cli", "clear", "0x1000:0x1010"];
         if let Some(address) = disasm_at {
-            command.extend(["--disasm-at", address]);
+            command.extend(["--disassemble-at", address]);
         }
         let cli = Cli::try_parse_from(&command).unwrap();
         let Commands::Clear(args) = cli.command else {
@@ -346,4 +346,205 @@ fn parses_function_get_positional_target() {
         }
         _ => panic!("expected function get command"),
     }
+}
+
+#[test]
+fn canonical_commands_parse_without_aliases() {
+    for args in [
+        vec!["xref", "to", "main"],
+        vec!["xref", "from", "main"],
+        vec!["xref", "list", "main"],
+        vec!["string", "list"],
+        vec!["string", "refs", "hello"],
+        vec!["disassemble", "main"],
+        vec!["function", "disassemble", "main"],
+        vec!["disassemble-at", "0x1000"],
+        vec!["find", "string", "hello"],
+        vec!["graph", "callers", "main"],
+        vec!["graph", "callees", "main"],
+        vec!["type", "import-c", "typedef int Word;"],
+        vec!["function", "list"],
+        vec!["function", "get", "main"],
+        vec!["type", "delete", "Word"],
+        vec!["tag", "rename", "old", "new"],
+        vec!["analyzer", "list"],
+        vec!["analyze"],
+        vec!["decompile", "main"],
+    ] {
+        Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args.iter().copied()))
+            .unwrap_or_else(|error| panic!("{args:?}: {error}"));
+    }
+}
+
+#[test]
+fn removed_command_names_are_rejected() {
+    for (namespace, removed) in [
+        (
+            None,
+            vec![
+                "prog",
+                "programs",
+                "fn",
+                "func",
+                "functions",
+                "strings",
+                "str",
+                "sym",
+                "symbols",
+                "mem",
+                "x-ref",
+                "xrefs",
+                "crossref",
+                "crossrefs",
+                "types",
+                "tags",
+                "analysis-control",
+                "comments",
+                "search",
+                "callgraph",
+                "cg",
+                "decomp",
+                "dec",
+                "disasm",
+                "dis",
+                "disasm-at",
+                "scripts",
+                "analysis",
+            ],
+        ),
+        (Some("program"), vec!["ls"]),
+        (
+            Some("function"),
+            vec!["ls", "show", "detail", "disasm", "dis"],
+        ),
+        (Some("string"), vec!["ls", "references", "xrefs"]),
+        (Some("symbol"), vec!["ls"]),
+        (Some("type"), vec!["ls", "import", "parse-c", "rm", "mv"]),
+        (Some("tag"), vec!["ls", "show", "rm", "mv"]),
+        (Some("analyzer"), vec!["ls"]),
+        (Some("comment"), vec!["ls"]),
+        (Some("find"), vec!["str", "strings"]),
+        (
+            Some("graph"),
+            vec!["called-by", "incoming", "calls-to", "outgoing"],
+        ),
+    ] {
+        for name in removed {
+            let args: Vec<_> = ["ghidra-cli"]
+                .into_iter()
+                .chain(namespace)
+                .chain([name])
+                .collect();
+            let error = Cli::try_parse_from(&args)
+                .err()
+                .expect("removed command must fail");
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::InvalidSubcommand,
+                "{args:?}: {error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn canonical_options_parse_and_removed_options_are_rejected() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "import",
+        "sample.bin",
+        "--language",
+        "x86:LE:32:default",
+        "--compiler-spec",
+        "gcc",
+    ])
+    .unwrap();
+    let Commands::Import(args) = cli.command else {
+        panic!("expected import")
+    };
+    assert_eq!(args.language.as_deref(), Some("x86:LE:32:default"));
+    assert_eq!(args.compiler_spec.as_deref(), Some("gcc"));
+    let cli =
+        Cli::try_parse_from(["ghidra-cli", "type", "apply", "0x1000", "int", "--force"]).unwrap();
+    let Commands::Type(TypeCommands::Apply(args)) = cli.command else {
+        panic!("expected type apply")
+    };
+    assert!(args.force);
+
+    for args in [
+        vec!["import", "sample.bin", "--processor", "x86:LE:32:default"],
+        vec!["import", "sample.bin", "--cspec", "gcc"],
+        vec!["type", "apply", "0x1000", "int", "--clear-conflicting"],
+        vec!["clear", "0x1000:0x1010", "--disasm-at", "0x1000"],
+    ] {
+        let error = Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args.iter().copied()))
+            .err()
+            .expect("removed option must fail");
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::UnknownArgument,
+            "{args:?}: {error}"
+        );
+    }
+    let help = Cli::try_parse_from(["ghidra-cli", "type", "apply", "--help"])
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(help.contains("including instructions"), "{help}");
+}
+
+#[test]
+fn json_stream_format_is_rejected() {
+    for name in ["json-stream", "JSON-STREAM"] {
+        assert!(OutputFormat::from_str(name).is_err());
+        assert!(serde_json::from_str::<OutputFormat>(&format!("\"{name}\"")).is_err());
+        let error = Cli::try_parse_from(["ghidra-cli", "function", "list", "--format", name])
+            .err()
+            .expect("old format name must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+}
+
+#[test]
+fn command_tree_has_no_command_or_option_aliases() {
+    fn check(command: &clap::Command) {
+        assert_eq!(
+            command.get_all_aliases().count(),
+            0,
+            "{}",
+            command.get_name()
+        );
+        assert_eq!(
+            command.get_all_short_flag_aliases().count(),
+            0,
+            "{}",
+            command.get_name()
+        );
+        assert_eq!(
+            command.get_all_long_flag_aliases().count(),
+            0,
+            "{}",
+            command.get_name()
+        );
+        for arg in command.get_arguments() {
+            assert!(
+                arg.get_all_aliases().unwrap_or_default().is_empty(),
+                "{}: {}",
+                command.get_name(),
+                arg.get_id()
+            );
+            assert!(
+                arg.get_all_short_aliases().unwrap_or_default().is_empty(),
+                "{}: {}",
+                command.get_name(),
+                arg.get_id()
+            );
+        }
+        for subcommand in command.get_subcommands() {
+            check(subcommand);
+        }
+    }
+    let mut command = Cli::command();
+    command.build();
+    check(&command);
 }

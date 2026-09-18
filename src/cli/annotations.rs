@@ -33,7 +33,6 @@ pub struct RenameArgs {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum SymbolCommands {
     /// List all symbols
-    #[command(alias = "ls")]
     List(QueryOptions),
     /// Get symbol details
     Get(SymbolGetArgs),
@@ -87,18 +86,14 @@ pub struct CreateSymbolArgs {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum TagCommands {
     /// List all function tags (or one function's tags with --function)
-    #[command(alias = "ls")]
     List(TagListArgs),
     /// Show the functions carrying a tag
-    #[command(alias = "show")]
     Get(TagGetArgs),
     /// Create a function tag
     Create(TagCreateArgs),
     /// Delete a tag (detaches it from all functions)
-    #[command(alias = "rm")]
     Delete(TagDeleteArgs),
     /// Rename a tag everywhere it is used
-    #[command(alias = "mv")]
     Rename(TagRenameArgs),
     /// Set or clear a tag's comment ("" clears)
     SetComment(TagSetCommentArgs),
@@ -212,7 +207,6 @@ pub struct TagDetachArgs {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum CommentCommands {
     /// List all comments
-    #[command(alias = "ls")]
     List(QueryOptions),
     /// Get comment at address
     Get(CommentGetArgs),

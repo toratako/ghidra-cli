@@ -77,7 +77,7 @@ fn config_rejects_removed_output_formats_without_changing_the_file() {
         .assert()
         .success();
     let before = std::fs::read(&config_path).unwrap();
-    for format in ["ids", "count"] {
+    for format in ["ids", "count", "json-stream"] {
         let output = isolated_command(&temp)
             .args(["config", "set", "default_output_format", format])
             .output()
@@ -644,7 +644,7 @@ fn invalid_choices_list_valid_values_before_loading_config() {
         for (args, choices) in [
             (
                 vec!["program", "imports", "--format", "potato"],
-                "json, json-compact, json-stream",
+                "json, json-compact, ndjson",
             ),
             (vec!["function", "list", "-o", "auto"], "csv, tsv, table"),
         ] {

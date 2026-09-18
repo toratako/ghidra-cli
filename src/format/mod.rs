@@ -13,8 +13,8 @@ pub enum OutputFormat {
     Minimal,
     Json,
     JsonCompact,
-    #[value(alias = "ndjson", help = "One JSON object per line (alias: ndjson)")]
-    #[serde(alias = "ndjson")]
+    #[value(name = "ndjson", help = "One JSON object per line")]
+    #[serde(rename = "ndjson")]
     JsonStream,
     Csv,
     Tsv,
@@ -504,6 +504,31 @@ pub fn auto_detect_format(is_tty: bool) -> OutputFormat {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn ndjson_uses_its_canonical_name_and_keeps_one_row_per_line() {
+        let format = OutputFormat::from_str("ndjson").unwrap();
+        assert_eq!(serde_json::to_string(&format).unwrap(), "\"ndjson\"");
+        assert_eq!(
+            serde_json::from_str::<OutputFormat>("\"ndjson\"").unwrap(),
+            format
+        );
+        let rows = [
+            json!({"value": "first\nsecond"}),
+            json!({"value": "日本語"}),
+        ];
+        let output = DefaultFormatter.format(&rows, format).unwrap();
+        let decoded: Vec<JsonValue> = output
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(decoded, rows);
+        assert!(output.ends_with('\n'));
+        assert_eq!(
+            DefaultFormatter.format::<JsonValue>(&[], format).unwrap(),
+            ""
+        );
+    }
 
     #[test]
     fn human_decompile_formats_include_requested_parameters_and_variables() {

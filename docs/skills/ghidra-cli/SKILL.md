@@ -68,7 +68,8 @@ are not expanded. See [batch syntax and targeting](references/batch.md) for deta
 
 Output defaults to human-readable on a terminal and compact JSON when piped.
 `--json` and `--pretty` explicitly select JSON, including for management and
-configuration commands; `--fields` restricts query result fields. Results go to
+configuration commands. Use `--format ndjson` for newline-delimited JSON.
+`--fields` restricts query result fields. Results go to
 stdout. In JSON modes, errors on stderr have `status`, `message`, `exit_code`,
 and optional `detail` fields.
 

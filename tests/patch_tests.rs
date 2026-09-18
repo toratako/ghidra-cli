@@ -116,7 +116,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
 
         // An unmapped address is syntactically valid but cannot produce an instruction.
         let failed = ghidra(harness)
-            .args(["--json", "disasm-at", "0x8000"])
+            .args(["--json", "disassemble-at", "0x8000"])
             .run();
         assert_eq!(failed.exit_code, 1, "{failed:?}");
         assert!(failed.stdout.is_empty(), "{failed:?}");
@@ -136,7 +136,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let batch = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
             batch.path(),
-            "disasm-at 0x8000\ncomment set 0x1000 must-not-run\n",
+            "disassemble-at 0x8000\ncomment set 0x1000 must-not-run\n",
         )
         .unwrap();
         let failed_batch = ghidra(harness)
@@ -156,7 +156,13 @@ public class CreateDisasmFailureFixture extends GhidraScript {
             .is_empty());
 
         let cleared = ghidra(harness)
-            .args(["--json", "clear", "0x1000:0x1000", "--disasm-at", "0x8000"])
+            .args([
+                "--json",
+                "clear",
+                "0x1000:0x1000",
+                "--disassemble-at",
+                "0x8000",
+            ])
             .run();
         assert_eq!(cleared.exit_code, 1, "{cleared:?}");
         assert!(cleared.stdout.is_empty(), "{cleared:?}");

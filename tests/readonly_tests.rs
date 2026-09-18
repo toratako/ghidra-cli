@@ -130,7 +130,7 @@ fn test_snapshot_disasm_structure() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("3")

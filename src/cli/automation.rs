@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum AnalyzerCommands {
     /// List all analyzers and their enabled status
-    #[command(alias = "ls")]
     List(AnalyzerListArgs),
     /// Enable or disable an analyzer; run `analyze` to apply the setting
     Set(AnalyzerSetArgs),

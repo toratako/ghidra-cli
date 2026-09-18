@@ -20,7 +20,6 @@ pub enum ProjectCommands {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum ProgramCommands {
     /// List all programs in the project
-    #[command(alias = "ls")]
     List(ProgramTargetArgs),
     /// Open/switch to a program
     Open(ProgramTargetArgs),
@@ -78,10 +77,10 @@ pub struct ImportArgs {
     #[arg(long)]
     pub loader: Option<String>,
     /// Ghidra language ID, e.g. x86:LE:32:default
-    #[arg(long, visible_alias = "processor")]
+    #[arg(long)]
     pub language: Option<String>,
     /// Ghidra compiler spec ID for the selected language
-    #[arg(long, visible_alias = "cspec")]
+    #[arg(long)]
     pub compiler_spec: Option<String>,
     /// Explicit 0x-prefixed BinaryLoader base address (implies --loader BinaryLoader if omitted)
     #[arg(long)]

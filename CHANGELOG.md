@@ -27,6 +27,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rename `x-ref` to `xref`, `strings` to `string`, `disasm` (including
+  `function disasm`) to `disassemble`, and `disasm-at`/`--disasm-at` to
+  `disassemble-at`/`--disassemble-at`. The `string` namespace retains `list` and
+  `refs`. Use `ndjson` instead of `json-stream` for `--format` and configured
+  output formats. Previous spellings are no longer accepted.
+- Remove all command aliases. Use the canonical command names shown in help.
+  Import accepts `--language` and `--compiler-spec`, replacing `--processor` and
+  `--cspec`; `type apply --force` replaces `--clear-conflicting`.
 - Breaking: address inputs now require explicit `0x`/`0X` components, including
   qualified (`overlay:0x1000`) and segmented (`ram:0x1234:0x0005`) addresses.
   Unprefixed targets such as `add`, `dead`, `401000`, and `FUN_00401000` are
@@ -65,11 +73,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `function delete`. Target selection and receipt formatting are unchanged.
 - Remove `--format tree` and `--format hex`. `program export hex` is unchanged.
 - Remove `clear --to-data`. Plain `clear START:END` still clears without
-  disassembly; `--disasm-at ADDRESS` remains available.
+  disassembly; `--disassemble-at ADDRESS` remains available.
 - Remove the implicit raw-memory fallback from `find string`; it now searches
   only defined strings, case-insensitively. Use `find text` for encoded text in
   memory, or `find bytes` for hexadecimal byte patterns.
-- Remove `query`; use `function list`, `strings list`, `memory map`, and
+- Remove `query`; use `function list`, `string list`, `memory map`, and
   `program imports/exports`. Shared filtering and output options remain available.
 - Remove `GHIDRA_DEFAULT_PROJECT` and `GHIDRA_DEFAULT_PROGRAM` target defaults
   and the batch-specific environment override handling. Select targets with CLI
@@ -86,7 +94,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   commands.
 - Remove `memory search`, `find interesting`, `find crypto`, `find function`,
   `script java`, `script python`, and `graph export`.
-- Remove `function x-refs`, `function decompile`, and `function tag`; use `x-ref`,
+- Remove `function x-refs`, `function decompile`, and `function tag`; use `xref`,
   `decompile`, and `tag`. Use `function list --filter` for function name searches.
 
 ## [0.5.0] - 2026-09-17

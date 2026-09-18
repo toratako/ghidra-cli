@@ -19,7 +19,7 @@ the batch envelope; it does not truncate nested fields of a single object.
 | `function list` | `name` |
 | `symbol list` | `name` |
 | `type list` | `name` |
-| `strings list` | `value` |
+| `string list` | `value` |
 | `comment list` | `text` |
 
 Only a single `field~value` expression on the listed field is pushed down.

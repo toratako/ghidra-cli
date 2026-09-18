@@ -5,10 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum StringsCommands {
     /// List all strings
-    #[command(alias = "ls")]
     List(QueryOptions),
     /// Get references to a string
-    #[command(alias = "references", alias = "xrefs")]
     Refs(StringRefsArgs),
 }
 
@@ -53,7 +51,6 @@ impl XRefArgs {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FindCommands {
     /// Find a case-insensitive substring in defined strings
-    #[command(alias = "str", alias = "strings")]
     String(FindStringArgs),
     /// Find literal encoded text in program memory, including undefined data
     Text(FindTextArgs),
@@ -136,10 +133,8 @@ pub enum GraphCommands {
     /// Call graph
     Calls(QueryOptions),
     /// Get callers of function
-    #[command(alias = "called-by", alias = "incoming")]
     Callers(GraphFunctionArgs),
     /// Get callees of function
-    #[command(alias = "calls-to", alias = "outgoing")]
     Callees(GraphFunctionArgs),
 }
 

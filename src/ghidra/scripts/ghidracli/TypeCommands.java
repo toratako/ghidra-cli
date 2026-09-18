@@ -266,7 +266,7 @@ final class TypeCommands {
                 // `--force` means force: clearing a function's own entry point (as opposed
                 // to an actual conflicting data unit) "succeeds" the same way, but silently
                 // -- `function get` still reports the function's old name/size afterward,
-                // and only a later `function disasm` failing with "No instruction at
+                // and only a later `function disassemble` failing with "No instruction at
                 // address" exposes the corruption. Flag it here instead.
                 if (forcedFunctionEntry != null) {
                     result.addProperty("is_function_entry", true);

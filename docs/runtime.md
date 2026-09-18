@@ -53,7 +53,9 @@ than being replaced. Concurrent updates preserve unrelated settings.
 
 Output precedence is explicit format, `--pretty`, `--json`, configured
 `default_output_format`, then TTY detection (human-readable on TTY, compact JSON
-otherwise). `default_limit` also applies after client filtering, sorting, and
+otherwise). For newline-delimited JSON, use `--format ndjson` or
+`config set default_output_format ndjson`.
+`default_limit` also applies after client filtering, sorting, and
 offset when no explicit limit is given; `--count` and `--limit 0` bypass that cap.
 
 Project selection uses `--project`, then config `default_project`. Explicit

@@ -427,7 +427,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 );
                 assert_eq!(result["count"], expected.len());
                 let output = ghidra(harness)
-                    .args(["function", "disasm", target, "--limit", "0"])
+                    .args(["function", "disassemble", target, "--limit", "0"])
                     .with_project(test_project(), &name)
                     .run();
                 output.assert_success();
@@ -471,7 +471,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
             ),
         ] {
             let result = ghidra(harness)
-                .args(["function", "disasm", "long_case"])
+                .args(["function", "disassemble", "long_case"])
                 .args(flags)
                 .with_project(test_project(), &name)
                 .run();
@@ -481,7 +481,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
         let asm = ghidra(harness)
             .args([
                 "function",
-                "disasm",
+                "disassemble",
                 "short_case",
                 "--format",
                 "asm",
@@ -499,7 +499,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
         );
         for target in ["no_such_function", "0x10a0", "0x1010", "FUN_00001000"] {
             let result = ghidra(harness)
-                .args(["function", "disasm", target])
+                .args(["function", "disassemble", target])
                 .with_project(test_project(), &name)
                 .run();
             result
@@ -561,14 +561,14 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
     );
 
     let result = ghidra(harness)
-        .args(["disasm", start, "--end", end, "--limit", "0"])
+        .args(["disassemble", start, "--end", end, "--limit", "0"])
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
     assert_eq!(result.json::<serde_json::Value>(), baseline["instructions"]);
     let result = ghidra(harness)
         .args([
-            "disasm",
+            "disassemble",
             start,
             "--end",
             end,
@@ -631,7 +631,7 @@ fn test_explicit_c_and_asm_output_match_ghidra_results() {
     );
     let instructions = client.disasm(&address, Some(3)).unwrap();
     let result = ghidra(harness)
-        .args(["disasm", &address, "-n", "3", "--format", "asm"])
+        .args(["disassemble", &address, "-n", "3", "--format", "asm"])
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
@@ -661,7 +661,7 @@ fn test_disasm_at_main() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
@@ -689,7 +689,7 @@ fn test_disasm_with_instruction_limit() {
     let limit = 5;
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .arg("--instructions")
         .arg(limit.to_string())
@@ -720,7 +720,7 @@ fn test_disasm_small_count() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("1")
@@ -747,7 +747,7 @@ fn test_disasm_instruction_fields() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("10")
@@ -798,7 +798,7 @@ fn test_disasm_invalid_address() {
     let harness = harness();
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg("0xFFFFFFFFFFFFFFFF")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
@@ -821,7 +821,7 @@ fn test_disasm_missing_program() {
     require_ghidra!();
     let harness = harness();
 
-    let result = ghidra(harness).arg("disasm").arg("0x101000").run();
+    let result = ghidra(harness).arg("disassemble").arg("0x101000").run();
 
     result.assert_failure();
 }
@@ -835,7 +835,7 @@ fn test_disasm_zero_instructions() {
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let result = ghidra(harness)
-        .arg("disasm")
+        .arg("disassemble")
         .arg(&main_addr)
         .arg("--instructions")
         .arg("0")

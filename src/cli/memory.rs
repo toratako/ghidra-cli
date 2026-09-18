@@ -115,7 +115,7 @@ pub struct ClearArgs {
     /// The legacy :: spelling is rejected.
     pub range: String,
     /// Re-disassemble at an explicit 0x-prefixed address or exact symbol name after clearing
-    #[arg(long)]
+    #[arg(long = "disassemble-at")]
     pub disasm_at: Option<String>,
     #[arg(long)]
     pub program: Option<String>,

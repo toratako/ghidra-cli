@@ -47,7 +47,7 @@ pub struct LocalVariable {
     pub stack_offset: Option<i32>,
 }
 
-/// String data from `ghidra-cli strings list`.
+/// String data from `ghidra-cli string list`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StringData {
     pub address: String,

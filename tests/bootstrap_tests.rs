@@ -233,7 +233,7 @@ public class CheckProgramIdentity extends GhidraScript {
     project.ok(&["bridge", "stop"]);
     project.ok(&["bridge", "start", "--program", "raw-name"]);
     project.assert_program_identity("raw-name");
-    let disassembly = project.ok(&["disasm-at", "0x8000", "--count", "2"]);
+    let disassembly = project.ok(&["disassemble-at", "0x8000", "--count", "2"]);
     assert_eq!(disassembly[0]["instructions"][0]["mnemonic"], "XOR");
     let duplicate = project.run(&args);
     assert!(!duplicate.status.success());
@@ -339,7 +339,7 @@ fn analyze_reanalyzes_with_changed_settings_and_rejects_the_removed_wire_command
         "--no-analyze",
     ]);
     let client = project.client();
-    let strings = || project.ok(&["strings", "list", "--limit", "0"]);
+    let strings = || project.ok(&["string", "list", "--limit", "0"]);
     assert_eq!(strings(), serde_json::json!([]));
     let error = client
         .send_command("analyze_run", None)
