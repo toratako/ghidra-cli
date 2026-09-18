@@ -395,7 +395,6 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 AnalyzerCommands::List(_) => client.analyzer_list(),
                 AnalyzerCommands::Set(args) => client.analyzer_set(&args.name, args.enabled),
-                AnalyzerCommands::Run(_) => client.analyze_run(),
             }
         }
         _ => anyhow::bail!("Command not supported"),

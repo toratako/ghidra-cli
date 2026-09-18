@@ -115,7 +115,7 @@ pub enum Commands {
     #[command(subcommand)]
     Pcode(PcodeCommands),
 
-    /// Analysis control (list/enable/disable analyzers, re-analyze)
+    /// List and configure analyzers; use `analyze` to run analysis
     #[command(subcommand, alias = "analysis-control")]
     Analyzer(AnalyzerCommands),
 
@@ -169,7 +169,7 @@ pub enum Commands {
     /// Import a binary into a project
     Import(ImportArgs),
 
-    /// Analyze a program
+    /// Analyze or reanalyze the entire program using its current analyzer settings
     #[command(alias = "analysis")]
     Analyze(AnalyzeArgs),
 

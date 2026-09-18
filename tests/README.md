@@ -91,7 +91,11 @@ Bootstrap tests reject unknown loader options without saving a program.
 They check symlink input names across one-shot and running-bridge imports,
 including implicit collision suffixes and explicit-name collision errors.
 They also verify analysis-completion flags for raw imports, reanalysis and
-cancelled jobs. Program-session tests compare live and saved flags independently
+cancelled jobs. Analysis tests reject the removed `analyze_run` wire command and
+verify that `analyzer set` only changes settings, while `analyze` reruns full
+analysis with those settings and saves its results. Routing tests retain
+`analyze` target selection and JSON receipts in standalone and batch execution.
+Program-session tests compare live and saved flags independently
 of function count and check recursive status counts across restart and deletion.
 Real bridge tests cover OSGi loading of the whole source bundle.
 Script tests exercise JDK parsing of stdin declarations through that OSGi path.

@@ -6,10 +6,8 @@ pub enum AnalyzerCommands {
     /// List all analyzers and their enabled status
     #[command(alias = "ls")]
     List(AnalyzerListArgs),
-    /// Enable or disable an analyzer
+    /// Enable or disable an analyzer; run `analyze` to apply the setting
     Set(AnalyzerSetArgs),
-    /// Re-run analysis on the program
-    Run(AnalyzerRunArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -27,14 +25,6 @@ pub struct AnalyzerSetArgs {
     /// Enable (true) or disable (false)
     #[arg(action = clap::ArgAction::Set)]
     pub enabled: bool,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct AnalyzerRunArgs {
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

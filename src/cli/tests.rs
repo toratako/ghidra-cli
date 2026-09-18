@@ -278,6 +278,16 @@ fn management_commands_reject_old_top_level_names_and_missing_job_id() {
 }
 
 #[test]
+fn analyzer_run_is_rejected_without_a_compatibility_alias() {
+    for namespace in ["analyzer", "analysis-control"] {
+        let error = Cli::try_parse_from(["ghidra-cli", namespace, "run"])
+            .err()
+            .expect("removed analysis command must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
+    }
+}
+
+#[test]
 fn analyzer_set_parses_explicit_boolean() {
     for (value, expected) in [("true", true), ("false", false)] {
         let cli = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings", value])

@@ -47,11 +47,12 @@ ghidra-cli pcode function parse_header --high --project target
 ghidra-cli analyzer list --project target
 ghidra-cli analyzer set "ASCII Strings" false --project target
 ghidra-cli analyzer set "ASCII Strings" true --project target
-ghidra-cli analyzer run --project target --program target.bin
+ghidra-cli analyze --project target --program target.bin
 ```
 
 `analyzer set` only changes the enabled option. Choose names from `analyzer list`
-and execute with `analyzer run`.
+and execute with `analyze`. This analyzes the entire program using its current
+settings, including programs that have already been analyzed.
 
 ## Patching
 

@@ -42,7 +42,9 @@ ghidra-cli program exports --sort name --limit 0
 ## Import and reanalysis
 
 Import waits for completion. Use `import --no-analyze` to omit analysis and
-`analyze --project target --program target.bin` to reanalyze.
+`analyze --project target --program target.bin` to analyze or reanalyze the entire
+program using its current analyzer settings. `analyzer list` and `analyzer set`
+inspect or change those settings without running analysis.
 `import INPUT --program NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
 name (Ghidra may add a suffix on collision). An explicit name

@@ -50,6 +50,8 @@ final class ProgramSession {
     boolean disassemble(Address address) throws Exception { return script.disassemble(address); }
     void analyzeAll() throws CancelledException {
         monitor().checkCancelled();
+        // Ghidra's analyzeAll initializes analyzer options and schedules full
+        // reanalysis itself; do not call reAnalyzeAll separately.
         script.analyzeAll(program());
         // Ghidra's analysis entry point can return normally after cancellation.
         // Preserve an earlier completed analysis flag, but never create one for

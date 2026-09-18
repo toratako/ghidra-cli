@@ -157,6 +157,12 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--program`; supply the name to the importer.
 
+`analyze` is the sole explicit analysis command; `analyzer_list` and
+`analyzer_set` only inspect or change settings. Ghidra's `analyzeAll()` initializes
+options and schedules full reanalysis itself, so callers must not separately
+call `reAnalyzeAll(null)`. The CLI retains its `command/status/data` response
+with the saved program name and function count.
+
 `ProgramSession.analyzeAll()` and detached import analysis check cancellation
 before recording Ghidra's standard analyzed flag. The ordinary request/import
 save boundary persists that record. Program lists read the live option for the

@@ -122,7 +122,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Analyzer(cmd) => match cmd {
             cli::AnalyzerCommands::List(args) => args.project.clone(),
             cli::AnalyzerCommands::Set(args) => args.project.clone(),
-            cli::AnalyzerCommands::Run(args) => args.project.clone(),
         },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.project.clone(),
@@ -240,7 +239,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Analyzer(cmd) => match cmd {
             cli::AnalyzerCommands::List(args) => args.program.clone(),
             cli::AnalyzerCommands::Set(args) => args.program.clone(),
-            cli::AnalyzerCommands::Run(args) => args.program.clone(),
         },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.program.clone(),

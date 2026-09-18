@@ -76,24 +76,4 @@ final class AnalysisCommands {
             return errorResult("Failed to set analyzer: " + e.getMessage());
         }
     }
-
-    JsonObject handleAnalyzeRun(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        try {
-            ghidra.app.plugin.core.analysis.AutoAnalysisManager manager =
-                ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager(session.program());
-            manager.reAnalyzeAll(null);
-            // Use the same cross-version GhidraScript entry point as the normal
-            // `analyze` command after marking all analyzers for re-analysis.
-            session.analyzeAll();
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "analysis_complete");
-            result.addProperty("program", session.programName());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to run analysis: " + e.getMessage());
-        }
-    }
 }

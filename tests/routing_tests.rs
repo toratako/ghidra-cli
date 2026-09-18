@@ -124,6 +124,9 @@ impl RecordedBridge {
                         json!({"program": program})
                     }
                     "import" => json!({"program": "imported"}),
+                    "analyze" => {
+                        json!({"status": "success", "program": program, "function_count": 3})
+                    }
                     "decompile" => {
                         json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
@@ -281,6 +284,69 @@ impl Drop for RecordedBridge {
         let _ = self.worker.take().unwrap().join();
         let _ = std::fs::remove_file(bridge::port_file_path(&self.project).unwrap());
         let _ = std::fs::remove_file(bridge::pid_file_path(&self.project).unwrap());
+    }
+}
+
+#[test]
+fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let expected = json!({
+        "command": "analyze", "status": "success",
+        "data": {"status": "success", "program": "B", "function_count": 3},
+    });
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "analyze --program B\nanalyze\n",
+    )
+    .unwrap();
+    for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
+        bridge.requests.lock().unwrap().clear();
+        let output = bridge
+            .command()
+            .args(["analyze", "--program", "B"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "JSON modes suppress progress");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            json!([expected])
+        );
+        let requests = bridge.requests.lock().unwrap().clone();
+        assert_eq!(requests[requests.len() - 2]["command"], "open_program");
+        assert_eq!(requests.last().unwrap()["command"], "analyze");
+
+        bridge.requests.lock().unwrap().clear();
+        let output = bridge
+            .command()
+            .args(["batch", "batch.txt", "--program", "A"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "batch must suppress progress");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report[0]["failed"], 0);
+        let rows = report[0]["results"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            assert_eq!(row["result"], expected);
+        }
+        let requests = bridge.requests.lock().unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r["command"] == "analyze")
+                .count(),
+            2
+        );
+        let selections: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "open_program")
+            .map(|r| r["args"]["program"].as_str().unwrap())
+            .collect();
+        assert_eq!(selections, ["A", "B"]);
     }
 }
 

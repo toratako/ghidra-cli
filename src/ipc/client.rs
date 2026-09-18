@@ -227,10 +227,6 @@ impl BridgeClient {
         )
     }
 
-    pub fn analyze_run(&self) -> Result<serde_json::Value> {
-        self.send_command_with_timeout("analyze_run", None, long_op_timeout())
-    }
-
     /// List programs in the project.
     pub fn list_programs(&self) -> Result<serde_json::Value> {
         self.send_command("list_programs", None)

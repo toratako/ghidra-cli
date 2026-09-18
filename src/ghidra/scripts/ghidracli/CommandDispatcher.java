@@ -126,7 +126,6 @@ final class CommandDispatcher {
             // Analysis control
             case "analyzer_list":   return analysisCommands.handleAnalyzerList(args);
             case "analyzer_set":    return analysisCommands.handleAnalyzerSet(args);
-            case "analyze_run":     return analysisCommands.handleAnalyzeRun(args);
             // Comment commands
             case "comment_list":    return commentCommands.handleCommentList(args);
             case "comment_get":     return commentCommands.handleCommentGet(args);

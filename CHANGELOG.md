@@ -54,6 +54,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `analyzer run`, the `analyze_run` bridge command, and
+  `BridgeClient::analyze_run` without compatibility aliases. Use `analyze` or
+  `BridgeClient::analyze` for full analysis with the current analyzer settings,
+  including reanalysis. Existing `analyze` output and automatic saving are unchanged.
 - Remove `--format ids` in favor of `--format minimal`, and remove
   `--format count`; `--count` retains its existing query semantics.
 - Remove the unused `aliases` configuration field.

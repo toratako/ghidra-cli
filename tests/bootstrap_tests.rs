@@ -206,7 +206,7 @@ fn import_names_are_saved_and_selected_across_all_routes() {
             .unwrap()["program"],
         "raw-name"
     );
-    assert_eq!(client.analyze_run().unwrap()["program"], "raw-name");
+    assert_eq!(client.analyze().unwrap()["program"], "raw-name");
     let artifact = project.root.path().join("internal-name.txt");
     let result = client
         .script_run_source(
@@ -321,6 +321,71 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
 }
 
 #[test]
+fn analyze_reanalyzes_with_changed_settings_and_rejects_the_removed_wire_command() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    let text = "The quick brown fox jumps over the lazy dog.";
+    std::fs::write(&raw, format!("{text}\0")).unwrap();
+    project.ok(&[
+        "import",
+        raw.to_str().unwrap(),
+        "--program",
+        "strings-raw",
+        "--language",
+        "x86:LE:32:default",
+        "--base-address",
+        "0x8000",
+        "--no-analyze",
+    ]);
+    let client = project.client();
+    let strings = || project.ok(&["strings", "list", "--limit", "0"]);
+    assert_eq!(strings(), serde_json::json!([]));
+    let error = client
+        .send_command("analyze_run", None)
+        .expect_err("removed wire command must not run analysis");
+    assert!(error.to_string().contains("Unknown command: analyze_run"));
+    assert_eq!(strings(), serde_json::json!([]));
+
+    project.ok(&["analyzer", "set", "ASCII Strings", "false"]);
+    let first = project.ok(&["analyze"]);
+    assert_eq!(first[0]["command"], "analyze");
+    assert_eq!(first[0]["status"], "success");
+    assert_eq!(first[0]["data"]["status"], "success");
+    assert_eq!(first[0]["data"]["program"], "strings-raw");
+    assert!(first[0]["data"]["function_count"].is_u64());
+    assert_eq!(strings(), serde_json::json!([]));
+    assert_eq!(
+        client.list_programs().unwrap()["programs"][0]["analyzed"],
+        true
+    );
+
+    project.ok(&["analyzer", "set", "ASCII Strings", "true"]);
+    assert_eq!(
+        strings(),
+        serde_json::json!([]),
+        "setting alone must not analyze"
+    );
+    let second = project.ok(&["analyze"]);
+    assert_eq!(second[0]["data"]["status"], "success");
+    let rows = strings();
+    assert!(
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["value"] == text),
+        "reanalyzing an already-analyzed program must use the new settings: {rows}"
+    );
+    client.program_close().unwrap();
+    assert_eq!(
+        client.list_programs().unwrap()["programs"][0]["analyzed"],
+        true
+    );
+    client.open_program("strings-raw").unwrap();
+    assert_eq!(strings(), rows, "analysis results must survive reopening");
+}
+
+#[test]
 fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     require_ghidra!();
     let project = Project::new();
@@ -377,7 +442,7 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
         skipped["analyzed"].is_null() || skipped["analyzed"] == false,
         "{skipped}"
     );
-    client.send_command("analyze", None).unwrap();
+    client.analyze().unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
 
     let prepare = |flag: &str, cancel: bool| {
@@ -414,7 +479,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
     };
     prepare("false", false);
     assert_flag("skipped-raw", serde_json::json!(false));
-    client.analyze_run().unwrap();
+    client.analyze().unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
     client.program_close().unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
@@ -426,12 +491,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
         ("true", serde_json::json!(true)),
     ] {
         prepare(flag, true);
-        let result = if flag == "false" {
-            client.analyze_run()
-        } else {
-            client.send_command("analyze", None)
-        };
-        let error = result.expect_err("cancelled analysis must fail");
+        let error = client.analyze().expect_err("cancelled analysis must fail");
         assert!(
             error.to_string().contains("Operation cancelled"),
             "{flag}: {error}"
@@ -442,7 +502,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
         client.open_program("skipped-raw").unwrap();
     }
     // Per-job cancellation must not affect the next completed analysis or save.
-    client.send_command("analyze", None).unwrap();
+    client.analyze().unwrap();
     project.ok(&["bridge", "stop"]);
     project.ok(&["bridge", "start", "--program", "skipped-raw"]);
     let listing = project.client().list_programs().unwrap();
