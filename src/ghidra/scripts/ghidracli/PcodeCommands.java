@@ -18,6 +18,7 @@ import ghidra.program.model.pcode.Varnode;
 import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
+import static ghidracli.JsonProtocol.getDecompileTimeoutArg;
 
 final class PcodeCommands {
     private final ProgramSession session;
@@ -71,13 +72,14 @@ final class PcodeCommands {
 
             JsonArray ops = new JsonArray();
             if (highPcode) {
+                int timeoutSecs = getDecompileTimeoutArg(args);
                 DecompInterface decomp = new DecompInterface();
                 decomp.setOptions(new DecompileOptions());
                 try {
                     if (!decomp.openProgram(session.program())) {
                         return errorResult("Decompilation failed: openProgram failed: " + decomp.getLastMessage());
                     }
-                    DecompileResults results = decomp.decompileFunction(func, 30, session.monitor());
+                    DecompileResults results = decomp.decompileFunction(func, timeoutSecs, session.monitor());
                     session.monitor().checkCancelled();
                     if (!results.decompileCompleted()) {
                         String reason = results.getErrorMessage();

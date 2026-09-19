@@ -84,6 +84,20 @@ final class JsonProtocol {
         throw new IllegalArgumentException(name + " must be an integer from 0 to " + Integer.MAX_VALUE);
     }
 
+    /** Ghidra multiplies native timeout seconds by 1000 in a signed int. */
+    static int getDecompileTimeoutArg(JsonObject args) {
+        int maxSeconds = Integer.MAX_VALUE / 1000;
+        String message = "timeout_secs must be an integer from 0 to " + maxSeconds;
+        int seconds;
+        try {
+            seconds = getNonnegativeIntArg(args, "timeout_secs", 0);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(message, e);
+        }
+        if (seconds > maxSeconds) throw new IllegalArgumentException(message);
+        return seconds;
+    }
+
     /** Checked nonnegative integer; an omitted/null value defaults to zero. */
     static long getNonnegativeLongArg(JsonObject args, String name) {
         if (args == null || !args.has(name) || args.get(name).isJsonNull()) return 0;

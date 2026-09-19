@@ -104,11 +104,14 @@ Timeout values are seconds.
 | Variable | Budget and default |
 |---|---|
 | `GHIDRA_CLI_LAUNCH_TIMEOUT` | Bridge readiness, 180; also config `launch_timeout_secs` |
-| `GHIDRA_CLI_OP_TIMEOUT` | Long analyze/import/decompile socket waits, unset or 0 = unbounded |
-| `GHIDRA_CLI_DECOMPILE_TIMEOUT` | Native Ghidra decompiler limit, unset or 0 = unbounded |
+| `GHIDRA_CLI_OP_TIMEOUT` | Long analyze/import/decompile, high p-code and variable-edit socket waits, unset or 0 = unbounded |
+| `GHIDRA_CLI_DECOMPILE_TIMEOUT` | Native limit for `decompile`, `pcode function --high` and `function edit-var`; unset or 0 = unbounded, maximum 2,147,483 seconds |
 | `GHIDRA_CLI_READ_TIMEOUT` | Other request reads, 300; 0 = indefinite; includes queue wait |
 | `GHIDRA_CLI_CONNECT_DEADLINE` | Connection retries, 60; minimum 1 |
 | `GHIDRA_CLI_SHUTDOWN_TIMEOUT` | Total shutdown budget (lock, connection, reply, exit), 300; 0 = indefinite |
+
+Invalid native decompiler budgets are errors. The maximum prevents overflow in
+Ghidra's conversion from seconds to milliseconds; use 0 for an unlimited budget.
 
 ## Jobs and persistence
 

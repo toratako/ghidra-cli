@@ -19,6 +19,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Refuse `program delete` for non-Program files, preserving project data type archives.
+- Return decompiler parameters in declaration order. Apply the configured native
+  decompiler timeout to high p-code and variable edits as well as `decompile`;
+  reject invalid budgets instead of silently making them unlimited.
 - Match actual string values in `string refs`, including backslashes, quotes and
   newlines, independently of the JVM locale.
 - Reject overflowing query limits and graph depths instead of narrowing them to

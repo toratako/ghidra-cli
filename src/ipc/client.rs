@@ -14,11 +14,30 @@ use transport::long_op_timeout;
 /// Native decompiler execution budget sent to Ghidra. Ghidra defines zero as
 /// unbounded; that is the default because large, valid functions routinely take
 /// longer than its historical 30-second background-analysis default.
-fn decompile_timeout_secs() -> u32 {
-    std::env::var("GHIDRA_CLI_DECOMPILE_TIMEOUT")
+fn decompile_timeout_secs() -> Result<u32> {
+    match std::env::var("GHIDRA_CLI_DECOMPILE_TIMEOUT") {
+        Ok(value) => parse_decompile_timeout_secs(&value),
+        Err(std::env::VarError::NotPresent) => Ok(0),
+        Err(error) => Err(anyhow::anyhow!(
+            "Invalid GHIDRA_CLI_DECOMPILE_TIMEOUT: {error}"
+        )),
+    }
+}
+
+fn parse_decompile_timeout_secs(value: &str) -> Result<u32> {
+    // Ghidra converts seconds to milliseconds with signed 32-bit arithmetic.
+    const MAX_SECONDS: u32 = i32::MAX as u32 / 1000;
+    value
+        .trim()
+        .parse::<u32>()
         .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .unwrap_or(0)
+        .filter(|&seconds| seconds <= MAX_SECONDS)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "GHIDRA_CLI_DECOMPILE_TIMEOUT must be an integer from 0 to {}",
+                MAX_SECONDS
+            )
+        })
 }
 
 /// Client for communicating with the Ghidra Java bridge.
@@ -125,16 +144,23 @@ impl BridgeClient {
         with_vars: bool,
         with_params: bool,
     ) -> Result<serde_json::Value> {
-        self.send_command_with_timeout(
+        self.send_decompile_command(
             "decompile",
-            Some(json!({
+            json!({
                 "address": address,
                 "with_vars": with_vars,
                 "with_params": with_params,
-                "timeout_secs": decompile_timeout_secs(),
-            })),
-            long_op_timeout(),
+            }),
         )
+    }
+
+    fn send_decompile_command(
+        &self,
+        command: &str,
+        mut args: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        args["timeout_secs"] = json!(decompile_timeout_secs()?);
+        self.send_command_with_timeout(command, Some(args), long_op_timeout())
     }
 
     /// List strings.
@@ -210,10 +236,12 @@ impl BridgeClient {
     }
 
     pub fn pcode_function(&self, function: &str, high: bool) -> Result<serde_json::Value> {
-        self.send_command(
-            "pcode_function",
-            Some(json!({"function": function, "high": high})),
-        )
+        let args = json!({"function": function, "high": high});
+        if high {
+            self.send_decompile_command("pcode_function", args)
+        } else {
+            self.send_command("pcode_function", Some(args))
+        }
     }
 
     pub fn analyzer_list(&self) -> Result<serde_json::Value> {
@@ -583,6 +611,24 @@ impl BridgeClient {
         )
     }
 
+    pub fn function_edit_var(
+        &self,
+        target: &str,
+        var_name: &str,
+        new_name: Option<&str>,
+        type_name: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        self.send_decompile_command(
+            "function_edit_var",
+            json!({
+                "target": target,
+                "var_name": var_name,
+                "new_name": new_name,
+                "type_name": type_name,
+            }),
+        )
+    }
+
     pub fn stats(&self) -> Result<serde_json::Value> {
         self.send_command("stats", None)
     }
@@ -652,14 +698,34 @@ impl BridgeClient {
 
 #[cfg(test)]
 mod tests {
-    use super::decompile_timeout_secs;
+    use super::{decompile_timeout_secs, parse_decompile_timeout_secs};
 
     #[test]
     fn decompile_timeout_defaults_to_unbounded() {
         // Avoid changing the process environment because this suite runs tests
         // concurrently. The assertion applies to the normal unset case.
         if std::env::var_os("GHIDRA_CLI_DECOMPILE_TIMEOUT").is_none() {
-            assert_eq!(decompile_timeout_secs(), 0);
+            assert_eq!(decompile_timeout_secs().unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn decompile_timeout_rejects_invalid_or_overflowing_native_budgets() {
+        for (text, expected) in [("0", 0), (" 47 ", 47), ("2147483", 2147483)] {
+            assert_eq!(parse_decompile_timeout_secs(text).unwrap(), expected);
+        }
+        for text in [
+            "",
+            "-1",
+            "1.5",
+            "invalid",
+            "2147484",
+            "2147483647",
+            "2147483648",
+            "4294967295",
+            "18446744073709551615",
+        ] {
+            assert!(parse_decompile_timeout_secs(text).is_err(), "{text}");
         }
     }
 }

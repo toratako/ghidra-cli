@@ -130,14 +130,11 @@ pub(super) fn execute_via_bridge(
                         "convention": args.convention,
                     })),
                 ),
-                FunctionCommands::EditVar(args) => client.send_command(
-                    "function_edit_var",
-                    Some(json!({
-                        "target": args.resolved_target(),
-                        "var_name": args.var_name,
-                        "new_name": args.new_name,
-                        "type_name": args.type_name,
-                    })),
+                FunctionCommands::EditVar(args) => client.function_edit_var(
+                    args.resolved_target(),
+                    &args.var_name,
+                    args.new_name.as_deref(),
+                    args.type_name.as_deref(),
                 ),
                 FunctionCommands::SetNoReturn(args) => {
                     client.function_set_noreturn(args.resolved_target(), args.value)

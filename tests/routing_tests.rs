@@ -266,6 +266,7 @@ impl RecordedBridge {
         let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
         cmd.current_dir(self.root.path())
             .env("GHIDRA_CLI_CONFIG", self.root.path().join("config.yaml"))
+            .env_remove("GHIDRA_CLI_DECOMPILE_TIMEOUT")
             .env(
                 "GHIDRA_INSTALL_DIR",
                 self.root.path().join("unused-install"),
@@ -1406,6 +1407,7 @@ fn variable_edits_send_one_request_with_only_requested_attributes() {
             edits[0]["args"],
             json!({
                 "target": "parse_header", "var_name": "local_10", "new_name": name, "type_name": data_type,
+                "timeout_secs": 0,
             })
         );
         assert!(requests
@@ -1451,6 +1453,82 @@ comment set 0x1000 'Header length includes the prefix'
             ),
         ]
     );
+}
+
+#[test]
+fn decompiler_commands_share_native_timeout_configuration() {
+    let bridge = RecordedBridge::new();
+    for (args, wire) in [
+        (vec!["decompile", "main"], "decompile"),
+        (
+            vec!["pcode", "function", "main", "--high"],
+            "pcode_function",
+        ),
+        (
+            vec![
+                "function", "edit-var", "main", "--var", "param_1", "--name", "input",
+            ],
+            "function_edit_var",
+        ),
+    ] {
+        for (configured, expected) in [
+            (None, 0),
+            (Some("0"), 0),
+            (Some("47"), 47),
+            (Some("2147483"), 2147483),
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let mut command = bridge.command();
+            command.args(&args);
+            if let Some(value) = configured {
+                command.env("GHIDRA_CLI_DECOMPILE_TIMEOUT", value);
+            }
+            command.assert().success();
+            let requests = bridge.requests.lock().unwrap();
+            let request = requests
+                .iter()
+                .find(|request| request["command"] == wire)
+                .unwrap();
+            assert_eq!(request["args"]["timeout_secs"], expected, "{args:?}");
+        }
+        for configured in [
+            "-1",
+            "2147484",
+            "2147483648",
+            "4294967297",
+            "1.5",
+            "invalid",
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge
+                .command()
+                .env("GHIDRA_CLI_DECOMPILE_TIMEOUT", configured)
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(
+                !output.status.success(),
+                "{args:?}, {configured}: {output:?}"
+            );
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("GHIDRA_CLI_DECOMPILE_TIMEOUT"),
+                "{error}"
+            );
+            assert!(
+                bridge
+                    .requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|request| request["command"] != wire),
+                "Invalid configuration must not dispatch {wire}"
+            );
+        }
+    }
 }
 
 #[test]

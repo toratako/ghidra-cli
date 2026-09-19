@@ -16,7 +16,11 @@ Retry transient connection failures with backoff only **before sending**; replay
 a sent mutation could duplicate it. Read waits include time in the program queue.
 The write timeout is 30s; configurable read/connect/long-operation budgets are in
 [the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
-in its command adapter because it is a Ghidra parameter, not a socket budget.
+in the shared decompiler adapter because it is a Ghidra parameter, not a socket budget.
+`decompile`, high `pcode_function`, and `function_edit_var` share the native budget
+and long-operation socket wait. Their `timeout_secs` argument defaults to zero
+(unbounded); numeric integers through 2,147,483 seconds are accepted. Reject larger
+values before Ghidra's signed-int seconds-to-milliseconds conversion can overflow.
 EOF without a reply is an error; read timeouts exit 75 without cancelling the job.
 Shutdown uses the caller's remaining total deadline for connect, write, and read;
 it must not fall back to an independent generic socket timeout. The lifecycle

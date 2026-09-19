@@ -13,7 +13,8 @@ ghidra-cli xref to malloc --project target
 ```
 
 `decompile` accepts a function name or address; `--with-vars` and `--with-params`
-include local-variable and parameter details. Function names must identify one
+include local-variable and parameter details; parameters are in declaration order.
+Function names must identify one
 function; ambiguous names return candidates. Use an address to select the
 intended function.
 

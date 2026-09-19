@@ -170,6 +170,12 @@ class name. Keep the source's immediate parent as its explicitly selected bundle
 derive package names from the parser, not directory names or regex matching.
 File declarations are parsed after the bundle build to preserve compile diagnostics.
 
+Decompiler parameters use `LocalSymbolMap.getParamSymbol(i)` order; `getSymbols()`
+is hash-ordered. All native decompiler callers share checked `timeout_secs` with
+zero as unlimited and a 2,147,483-second ceiling to avoid Ghidra's millisecond
+conversion overflow. High p-code and variable edits use the same CLI budget as
+ordinary decompilation.
+
 `ImportSupport` owns the loader's detached programs until save/release. Bootstrap
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge
 imports do not analyze detached programs: the caller opens the saved file and

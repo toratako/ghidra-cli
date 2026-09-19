@@ -19,6 +19,7 @@ import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgString;
+import static ghidracli.JsonProtocol.getDecompileTimeoutArg;
 
 final class FunctionSignatureCommands {
     private final ProgramSession session;
@@ -197,6 +198,7 @@ final class FunctionSignatureCommands {
         if (varName == null || varName.isBlank()) return errorResult("Variable name required (--var)");
         if (newName == null && typeName == null) return errorResult("At least one of --name or --type is required");
         if (typeName != null && typeName.isBlank()) return errorResult("Type name must not be empty (--type)");
+        int timeoutSecs = getDecompileTimeoutArg(args);
 
         try {
             Function func = functionQueries.findFunctionByNameOrAddress(funcTarget);
@@ -218,7 +220,7 @@ final class FunctionSignatureCommands {
                 if (!decompiler.openProgram(session.program()))
                     return errorResult("Could not open program in decompiler: " + decompiler.getLastMessage());
                 TaskMonitor mon = session.monitor();
-                DecompileResults results = decompiler.decompileFunction(func, 30, mon);
+                DecompileResults results = decompiler.decompileFunction(func, timeoutSecs, mon);
                 if (!results.decompileCompleted())
                     return errorResult("Decompilation failed for " + funcTarget + ": " + results.getErrorMessage());
 

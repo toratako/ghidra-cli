@@ -11,8 +11,8 @@ import ghidra.util.task.TaskMonitor;
 import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
-import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
+import static ghidracli.JsonProtocol.getDecompileTimeoutArg;
 
 final class DecompileCommands {
     private final ProgramSession session;
@@ -37,6 +37,7 @@ final class DecompileCommands {
         if (func == null) {
             return errorResult(functionQueries.buildFunctionTargetHint(addrStr));
         }
+        int timeoutSecs = getDecompileTimeoutArg(args);
 
         DecompInterface decompiler = new DecompInterface();
         decompiler.setOptions(new DecompileOptions());
@@ -47,7 +48,6 @@ final class DecompileCommands {
             // Ghidra defines zero as no native decompiler timeout. Large but
             // valid functions can exceed the historical hard-coded 30 seconds,
             // so default to unbounded and let callers opt into a ceiling.
-            int timeoutSecs = Math.max(0, getArgInt(args, "timeout_secs", 0));
             DecompileResults results = decompiler.decompileFunction(func, timeoutSecs, mon);
 
             if (results.decompileCompleted()) {
@@ -78,17 +78,14 @@ final class DecompileCommands {
 
                         if (withParams) {
                             JsonArray params = new JsonArray();
-                            Iterator<ghidra.program.model.pcode.HighSymbol> symIter = lsm.getSymbols();
-                            while (symIter.hasNext()) {
-                                ghidra.program.model.pcode.HighSymbol sym = symIter.next();
-                                if (sym.isParameter()) {
-                                    JsonObject paramObj = new JsonObject();
-                                    paramObj.addProperty("name", sym.getName());
-                                    paramObj.addProperty("type", sym.getDataType().getName());
-                                    paramObj.addProperty("size", sym.getSize());
-                                    paramObj.addProperty("storage", sym.getStorage().toString());
-                                    params.add(paramObj);
-                                }
+                            for (int i = 0; i < lsm.getNumParams(); i++) {
+                                ghidra.program.model.pcode.HighSymbol sym = lsm.getParamSymbol(i);
+                                JsonObject paramObj = new JsonObject();
+                                paramObj.addProperty("name", sym.getName());
+                                paramObj.addProperty("type", sym.getDataType().getName());
+                                paramObj.addProperty("size", sym.getSize());
+                                paramObj.addProperty("storage", sym.getStorage().toString());
+                                params.add(paramObj);
                             }
                             result.add("params", params);
                         }
