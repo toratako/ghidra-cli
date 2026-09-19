@@ -72,6 +72,9 @@ see [disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-
 
 ## Export
 
+Supported formats are `xml`, `c`, `binary`, `gzf`, `asm`, `hex`, and `html`
+(case-insensitive). Use `c` for decompiled C and `asm` for the Ghidra text listing.
+
 ```bash
 ghidra-cli program export c --project target -o ./target.c
 ghidra-cli program export gzf --project target -o ./target.gzf

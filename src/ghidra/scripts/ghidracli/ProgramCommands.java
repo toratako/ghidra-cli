@@ -322,19 +322,16 @@ final class ProgramCommands {
             java.util.Map<String, String> classMap = new java.util.HashMap<>();
             classMap.put("xml", "ghidra.app.util.exporter.XmlExporter");
             classMap.put("c", "ghidra.app.util.exporter.CppExporter");
-            classMap.put("cpp", "ghidra.app.util.exporter.CppExporter");
             classMap.put("binary", "ghidra.app.util.exporter.BinaryExporter");
-            classMap.put("bin", "ghidra.app.util.exporter.BinaryExporter");
             classMap.put("gzf", "ghidra.app.util.exporter.GzfExporter");
             classMap.put("asm", "ghidra.app.util.exporter.AsciiExporter");
-            classMap.put("ascii", "ghidra.app.util.exporter.AsciiExporter");
             classMap.put("hex", "ghidra.app.util.exporter.IntelHexExporter");
             classMap.put("html", "ghidra.app.util.exporter.HtmlExporter");
 
             String className = classMap.get(exportFormat.toLowerCase());
             if (className == null) {
                 return errorResult("Unsupported export format: " + exportFormat
-                    + " (supported: xml, c/cpp, binary/bin, gzf, ascii/asm, hex, html)");
+                    + " (supported: xml, c, binary, gzf, asm, hex, html)");
             }
 
             if (outputPath == null || outputPath.isEmpty()) {

@@ -54,7 +54,7 @@ pub struct ProgramTargetArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ExportArgs {
     /// Export format
-    #[arg(value_parser = ["xml", "c", "cpp", "binary", "bin", "gzf", "ascii", "asm", "hex", "html"], ignore_case = true)]
+    #[arg(value_parser = ["xml", "c", "binary", "gzf", "asm", "hex", "html"], ignore_case = true)]
     pub format: String,
     #[arg(long)]
     pub program: Option<String>,

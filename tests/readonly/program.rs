@@ -288,22 +288,26 @@ fn test_program_info() {
 
 #[test]
 #[serial]
-fn test_program_export_rejects_json_and_missing_format() {
+fn test_program_export_rejects_removed_and_missing_formats() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("program.json");
+    let path = directory.path().join("program.export");
     fs::write(&path, b"existing output").unwrap();
-    for output in [None, Some(path.to_str().unwrap())] {
-        let error = client.program_export("json", output).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Unsupported export format: json"),
-            "{error}"
-        );
+    for format in ["json", "cpp", "bin", "ascii"] {
+        for spelling in [format.to_string(), format.to_uppercase()] {
+            for output in [None, Some(path.to_str().unwrap())] {
+                let error = client.program_export(&spelling, output).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("Unsupported export format: {spelling}")),
+                    "{error}"
+                );
+                assert_eq!(fs::read(&path).unwrap(), b"existing output");
+            }
+        }
     }
-    assert_eq!(fs::read(&path).unwrap(), b"existing output");
     let error = client.send_command("program_export", None).unwrap_err();
     assert!(
         error.to_string().contains("Export format required"),

@@ -62,6 +62,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove the `program export` format aliases `cpp`, `bin`, and `ascii` from
+  both the CLI and bridge. Use `c`, `binary`, and `asm`, respectively; format
+  names remain case-insensitive and exported content is unchanged.
 - Remove `xref list` and the `xrefs_list` bridge command without compatibility
   aliases. Use `xref to` and `xref from` for incoming and outgoing references.
 - Remove `program export json`. Use `program info --json` and

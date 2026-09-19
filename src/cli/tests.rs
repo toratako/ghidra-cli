@@ -252,17 +252,19 @@ fn shared_format_help_lists_supported_choices() {
 }
 
 #[test]
-fn program_export_formats_exclude_json() {
-    for format in ["json", "JSON"] {
-        let error = Cli::try_parse_from(["ghidra-cli", "program", "export", format])
-            .err()
-            .expect("JSON export must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+fn program_export_formats_accept_only_canonical_names() {
+    for format in ["json", "cpp", "bin", "ascii"] {
+        for spelling in [format.to_string(), format.to_uppercase()] {
+            let error = Cli::try_parse_from(["ghidra-cli", "program", "export", &spelling])
+                .err()
+                .expect("removed export formats must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+        }
     }
-    for format in [
-        "xml", "c", "cpp", "binary", "bin", "gzf", "ascii", "asm", "hex", "html", "GZF",
-    ] {
-        Cli::try_parse_from(["ghidra-cli", "program", "export", format]).unwrap();
+    for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
+        for spelling in [format.to_string(), format.to_uppercase()] {
+            Cli::try_parse_from(["ghidra-cli", "program", "export", &spelling]).unwrap();
+        }
     }
 }
 
