@@ -32,6 +32,79 @@ fn project_cli(project: &std::path::Path, args: &[&str]) -> std::process::Output
 
 #[test]
 #[serial]
+fn test_program_delete_rejects_archives_without_changing_selection() {
+    require_ghidra!();
+    let (_directory, project) = deletion_project();
+    let harness = DaemonTestHarness::new(project.to_str().unwrap(), TEST_PROGRAM).unwrap();
+    let client = harness.client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.DataTypeArchiveDB;
+public class CreateDeletionArchives extends GhidraScript {
+    public void run() throws Exception {
+        var root = state.getProject().getProjectData().getRootFolder();
+        var folder = root.createFolder("archives");
+        for (var parent : new ghidra.framework.model.DomainFolder[] { root, folder }) {
+            Object consumer = new Object();
+            var archive = new DataTypeArchiveDB(parent, "types.gdt", consumer);
+            archive.release(consumer);
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let selected = client.program_info().unwrap()["path"].clone();
+    for path in ["types.gdt", "/archives/types.gdt"] {
+        let output = project_cli(&project, &["program", "delete", "--program", path]);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Project file is not a program"),
+            "{error}"
+        );
+        assert_eq!(client.program_info().unwrap()["path"], selected);
+    }
+
+    // The same rejection must preserve an explicitly closed session.
+    client.program_close().unwrap();
+    let error = client.program_delete("/archives/types.gdt").unwrap_err();
+    assert!(error.to_string().contains("Project file is not a program"));
+    assert_eq!(client.bridge_info().unwrap()["has_current_program"], false);
+    client.open_program(TEST_PROGRAM).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.DataTypeArchiveDB;
+public class CheckDeletionArchives extends GhidraScript {
+    public void run() throws Exception {
+        var project = state.getProject().getProjectData();
+        for (String path : new String[] { "/types.gdt", "/archives/types.gdt" }) {
+            var file = project.getFile(path);
+            if (file == null || !DataTypeArchiveDB.class.isAssignableFrom(file.getDomainObjectClass()))
+                throw new IllegalStateException("Deletion changed the archive: " + path);
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn test_program_delete_current_closed_and_missing() {
     require_ghidra!();
     let (_directory, project) = deletion_project();

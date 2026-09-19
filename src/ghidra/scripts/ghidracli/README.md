@@ -80,8 +80,10 @@ Switching/closing save before releasing the session's consumer; failed save/open
 keeps the previous program. Shutdown drains, saves, and releases on the script
 thread. Startup omits `-process`, so `ProgramSession` also owns the initial program.
 Opening initializes the analyzer options previously registered by HeadlessAnalyzer.
-Deletion closes the selected file before removing it; a refused deletion restores
-the selection. Never release another consumer or terminate its checkout.
+Deletion rejects non-Program files with the same class check as program listings,
+before changing selection or deleting anything. It closes the selected Program
+before removing it; a refused deletion restores the selection. Never release
+another consumer or terminate its checkout.
 
 ## Command boundaries
 

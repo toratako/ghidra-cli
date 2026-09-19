@@ -81,10 +81,14 @@ final class ProgramSession {
         monitor().checkCancelled();
         for (DomainFile file : folder.getFiles()) {
             monitor().checkCancelled();
-            Class<? extends DomainObject> objectClass = file.getDomainObjectClass();
-            if (objectClass != null && Program.class.isAssignableFrom(objectClass)) files.add(file);
+            if (isProgramFile(file)) files.add(file);
         }
         for (DomainFolder child : folder.getFolders()) appendProgramFiles(child, files);
+    }
+
+    private static boolean isProgramFile(DomainFile file) {
+        Class<? extends DomainObject> objectClass = file.getDomainObjectClass();
+        return objectClass != null && Program.class.isAssignableFrom(objectClass);
     }
 
     void beginRequest(String command) {
@@ -206,6 +210,9 @@ final class ProgramSession {
     }
 
     void delete(DomainFile file) throws Exception {
+        if (!isProgramFile(file)) {
+            throw new IllegalArgumentException("Project file is not a program: " + file.getPathname());
+        }
         boolean wasCurrent = isCurrent(file);
         if (wasCurrent) closeProgram();
         try {

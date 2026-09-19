@@ -17,6 +17,8 @@ ghidra-cli bridge stop --project target
 ```
 
 `project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
+`program delete --program NAME` deletes a Program file only; data type archives
+and other project file types are rejected.
 `program list` and `program info` report the saved name and project
 file `path`. `program list` includes subfolders; `bridge status` uses the same recursive
 listing for `program_count`. Use `path` to distinguish same-named programs.
