@@ -337,7 +337,7 @@ fn comment_terminal_stdin_explains_eof_even_when_quiet() {
 
 #[test]
 #[serial]
-fn test_comments_inside_multibyte_instruction_and_data() {
+fn test_comments_at_instruction_data_external_and_unmapped_addresses() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let name = format!("comment-interior-{}", uuid::Uuid::new_v4());
@@ -348,6 +348,7 @@ import ghidra.app.script.GhidraScript;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.data.DWordDataType;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.program.util.DefaultLanguageService;
 public class CreateInteriorCommentFixture extends GhidraScript {
     public void run() throws Exception {
@@ -363,6 +364,8 @@ public class CreateInteriorCommentFixture extends GhidraScript {
                 memory.createInitializedBlock("code", start, 16, (byte) 0, monitor, false);
                 memory.setBytes(start, new byte[] {0x66, (byte) 0x90, (byte) 0xc3});
                 program.getListing().createData(start.add(8), DWordDataType.dataType);
+                program.getExternalManager().addExtFunction("comment_library",
+                    "comment_external", null, SourceType.USER_DEFINED);
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder()
                 .createFile(getScriptArgs()[0], program, monitor);
@@ -379,7 +382,12 @@ public class CreateInteriorCommentFixture extends GhidraScript {
     let checked = std::panic::catch_unwind(|| {
         let disasm = client.define_code("0x1000", None).unwrap();
         assert_eq!(disasm["landed"], true);
-        for address in ["0x1001", "0x1009"] {
+        let external = client.symbol_get("comment_external").unwrap()["symbols"][0]["address"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let addresses = ["0x1001", "0x1009", "0x10", external.as_str()];
+        for address in addresses {
             for kind in ["EOL", "PRE", "POST", "PLATE"] {
                 let text = format!("interior-{address}-{kind}");
                 client.comment_set(address, &text, Some(kind)).unwrap();
@@ -402,6 +410,35 @@ public class CreateInteriorCommentFixture extends GhidraScript {
                 .unwrap()
                 .is_empty());
         }
+
+        for address in addresses {
+            client
+                .comment_set(address, &format!("comment-page-{address}"), Some("EOL"))
+                .unwrap();
+        }
+        let all = client
+            .comment_list(None, Some("comment-page-"), None)
+            .unwrap();
+        let rows = all["comments"].as_array().unwrap();
+        assert_eq!(rows.len(), addresses.len(), "{all}");
+        for (offset, row) in rows.iter().enumerate() {
+            let page = client
+                .comment_list(Some(1), Some("comment-page-"), Some(offset))
+                .unwrap();
+            assert_eq!(page["comments"], serde_json::json!([row]), "{page}");
+        }
+        let output = common::ghidra(harness())
+            .args([
+                "comment",
+                "list",
+                "--filter",
+                "text~\"comment-page-\"",
+                "--count",
+            ])
+            .with_project(test_project(), &name)
+            .run();
+        output.assert_success();
+        assert_eq!(output.stdout.trim(), "4");
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

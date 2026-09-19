@@ -35,6 +35,7 @@ before editing; other failures can retain partial changes.
 
 `comment get ADDRESS` and `comment list` read comments. `comment set` accepts
 `--comment-type EOL` (default), `PRE`, `POST`, or `PLATE`.
+The list includes comments on external functions and unmapped addresses.
 
 `comment delete ADDRESS` deletes all four comment types at that address.
 Like `function delete`, it accepts `--fields` and `--format` for the deletion
@@ -58,6 +59,8 @@ ghidra-cli symbol rename packet_header message_header --project target
 Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `--all` to affect every match. Rename/delete take exact names (even `0x...`);
 `symbol get` accepts names or addresses.
+Exact-name lookup includes the default thunk and dynamic-label names
+shown by `symbol list`; duplicate displayed names still require disambiguation.
 
 ## Types
 

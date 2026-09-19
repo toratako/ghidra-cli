@@ -107,6 +107,8 @@ and layout edits.
 They cover explicit signed-char semantics on an unsigned-char ABI, rejected
 immutable renames, and deletion of registered arrays, pointers and aliased types
 after reopening, while preserving unrelated types that share an alias target's name.
+Comment tests include external and unmapped addresses; symbol tests round-trip
+default thunk and dynamic-label names while retaining ambiguity safeguards.
 Memory tests cover Thumb mode bits, odd x86 entries and overlay boundaries.
 Program-session tests exclude root and nested data type archives from program lists
 and status counts.

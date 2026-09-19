@@ -162,6 +162,14 @@ type before resolving its stored path; a matching path alone can name an unrelat
 user type. Rename success requires the actual name
 to match the request, since immutable Ghidra types can ignore `setName()`.
 
+Symbol name lookups retain Ghidra's indexed results and supplement them with
+matching displayed names from the symbol-list iterator, deduplicating by symbol
+ID. The iterator includes default thunks and dynamic labels that the name index
+can omit, but excludes namespaces and variables, so it cannot replace the index.
+Preserve cancellation and complete ambiguity/snapshot checks for mutations.
+Comment listing scans all comment addresses, including external and unmapped
+addresses, while retaining the four supported comment types and query ordering.
+
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A
 successful plain `javac` invocation does not validate this class-loader boundary.

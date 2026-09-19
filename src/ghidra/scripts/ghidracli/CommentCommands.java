@@ -3,10 +3,11 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressIterator;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Listing;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryBlock;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -36,7 +37,6 @@ final class CommentCommands {
         ListQuery query = new ListQuery(session, args);
 
         Listing listing = session.program().getListing();
-        Memory memory = session.program().getMemory();
         JsonArray comments = new JsonArray();
 
         int[][] commentTypes = {
@@ -47,36 +47,34 @@ final class CommentCommands {
         };
         String[] commentNames = {"EOL", "PRE", "POST", "PLATE"};
 
-        for (MemoryBlock block : memory.getBlocks()) {
+        // Comments can belong to external functions or unmapped addresses too.
+        // The comment adapter requires a non-null set, even for an unrestricted query.
+        AddressSet addresses = new AddressSet();
+        for (AddressSpace space : session.program().getAddressFactory().getAllAddressSpaces()) {
+            if (space.isMemorySpace() || space.isExternalSpace()) {
+                addresses.addRange(space.getMinAddress(), space.getMaxAddress());
+            }
+        }
+        AddressIterator addrIter = listing.getCommentAddressIterator(addresses, true);
+        while (addrIter.hasNext()) {
             if (query.isFull()) break;
 
-            ghidra.program.model.address.AddressSet addrSet =
-                new ghidra.program.model.address.AddressSet(block.getStart(), block.getEnd());
-
-            ghidra.program.model.address.AddressIterator addrIter =
-                listing.getCommentAddressIterator(addrSet, true);
-
-            while (addrIter.hasNext()) {
+            Address addr = addrIter.next();
+            for (int i = 0; i < commentNames.length; i++) {
                 if (query.isFull()) break;
 
-                Address addr = addrIter.next();
-
-                for (int i = 0; i < commentNames.length; i++) {
-                    if (query.isFull()) break;
-
-                    String text = listing.getComment(commentTypes[i][0], addr);
-                    if (text != null) {
-                        if (!query.include(text)) {
-                            continue;
-                        }
-
-                        JsonObject commentObj = new JsonObject();
-                        commentObj.addProperty("address", AddressCodec.format(addr));
-                        commentObj.addProperty("type", commentNames[i]);
-                        commentObj.addProperty("text", text);
-                        comments.add(commentObj);
-                        query.record();
+                String text = listing.getComment(commentTypes[i][0], addr);
+                if (text != null) {
+                    if (!query.include(text)) {
+                        continue;
                     }
+
+                    JsonObject commentObj = new JsonObject();
+                    commentObj.addProperty("address", AddressCodec.format(addr));
+                    commentObj.addProperty("type", commentNames[i]);
+                    commentObj.addProperty("text", text);
+                    comments.add(commentObj);
+                    query.record();
                 }
             }
         }

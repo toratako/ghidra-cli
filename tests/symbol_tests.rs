@@ -472,6 +472,110 @@ public class CreateSymbolDeletionProgram extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_default_thunk_names_round_trip_and_keep_mutations_scoped() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class CreateDefaultThunkNames extends GhidraScript {
+    public void run() throws Exception {
+        var manager = currentProgram.getFunctionManager();
+        var targetAddress = toAddr(0x1020);
+        var target = manager.createFunction("default_target", targetAddress,
+            new AddressSet(targetAddress, targetAddress), SourceType.USER_DEFINED);
+        for (long offset : new long[] {0x1030, 0x1040}) {
+            var address = toAddr(offset);
+            var thunk = manager.createFunction(null, address,
+                new AddressSet(address, address), SourceType.DEFAULT);
+            thunk.setThunkedFunction(target);
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+
+        let listed = client.symbol_list(None, None, None).unwrap();
+        let before = client.symbol_get("default_target").unwrap();
+        assert_eq!(client.symbol_get_by_name("default_target").unwrap(), before);
+        assert_eq!(before["symbols"], listed["symbols"]);
+        assert_eq!(before["symbols"].as_array().unwrap().len(), 3, "{before}");
+        let selected = client.symbol_get("0x1030").unwrap()["symbols"][0].clone();
+        let other = client.symbol_get("0x1040").unwrap()["symbols"][0].clone();
+        assert_eq!(selected["source"], "DEFAULT");
+        assert_eq!(other["source"], "DEFAULT");
+
+        for args in [
+            vec!["symbol", "rename", "default_target", "renamed_thunk"],
+            vec!["symbol", "delete", "default_target"],
+        ] {
+            ghidra(harness)
+                .args(args)
+                .with_project(test_project(), &program)
+                .run()
+                .assert_failure()
+                .assert_stderr_contains("matches 3 symbols");
+            assert_eq!(client.symbol_get("default_target").unwrap(), before);
+        }
+
+        ghidra(harness)
+            .args([
+                "symbol",
+                "rename",
+                "default_target",
+                "renamed_thunk",
+                "--address",
+                "0x1030",
+            ])
+            .with_project(test_project(), &program)
+            .run()
+            .assert_success();
+        assert_eq!(
+            client.symbol_get("renamed_thunk").unwrap()["symbols"][0]["id"],
+            selected["id"]
+        );
+        // Reject every target before mutation, even when the valid member comes first.
+        let error = client
+            .symbol_delete_targets("default_target", &[other.clone(), selected])
+            .unwrap_err();
+        assert!(error.to_string().contains("Stale"), "{error:#}");
+        assert_eq!(client.symbol_get("0x1040").unwrap()["symbols"][0], other);
+
+        // Legacy address-scoped requests must also find default thunks by displayed name.
+        client
+            .symbol_rename(
+                "default_target",
+                "legacy_renamed_thunk",
+                &["0x1040".to_string()],
+            )
+            .unwrap();
+        assert_eq!(
+            client.symbol_get("legacy_renamed_thunk").unwrap()["symbols"][0]["id"],
+            other["id"]
+        );
+        let remaining = client.symbol_get("default_target").unwrap();
+        assert_eq!(remaining["symbols"].as_array().unwrap().len(), 1);
+        assert_eq!(remaining["symbols"][0]["source"], "USER_DEFINED");
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_symbol_delete_rejects_dynamic_targets_before_deleting_any_member() {
     require_ghidra!();
     let program = create_symbol_fixture_program();
@@ -514,7 +618,9 @@ public class CreateDynamicSymbol extends GhidraScript {
     assert!(error["detail"].get("partial_changes_saved").is_none());
 
     client.symbol_create("0x1020", name).unwrap();
-    let stored = client.symbol_get_by_name(name).unwrap()["symbols"][0].clone();
+    let stored = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
+    let matches = client.symbol_get_by_name(name).unwrap();
+    assert_eq!(matches["symbols"].as_array().unwrap().len(), 2);
     // The valid stored label appears first, so the dynamic member must be
     // rejected before either member is mutated.
     let error = client

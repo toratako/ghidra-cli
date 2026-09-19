@@ -9,6 +9,7 @@ import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.util.exception.CancelledException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -53,15 +54,15 @@ final class SymbolCommands {
         return result;
     }
 
-    JsonObject handleSymbolGet(JsonObject args) {
+    JsonObject handleSymbolGet(JsonObject args) throws CancelledException {
         return lookupSymbols(args, false);
     }
 
-    JsonObject handleSymbolGetByName(JsonObject args) {
+    JsonObject handleSymbolGetByName(JsonObject args) throws CancelledException {
         return lookupSymbols(args, true);
     }
 
-    private JsonObject lookupSymbols(JsonObject args, boolean nameOnly) {
+    private JsonObject lookupSymbols(JsonObject args, boolean nameOnly) throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressOrName = getArgString(args, "name");
@@ -76,9 +77,8 @@ final class SymbolCommands {
         // Mutation candidates always use an exact name, including names such as
         // dead, 1234, or 0xdead. Public get reserves the explicit 0x/0X prefix.
         if (nameOnly || !explicitAddress) {
-            SymbolIterator symsByName = symbolTable.getSymbols(addressOrName);
-            while (symsByName.hasNext()) {
-                syms.add(symbolToJson(symsByName.next()));
+            for (Symbol symbol : symbolsNamed(symbolTable, addressOrName)) {
+                syms.add(symbolToJson(symbol));
             }
         }
 
@@ -105,6 +105,26 @@ final class SymbolCommands {
         JsonObject result = new JsonObject();
         result.add("symbols", syms);
         return result;
+    }
+
+    private List<Symbol> symbolsNamed(SymbolTable table, String name) throws CancelledException {
+        // Preserve indexed namespace/variable matches, which the address iterator omits.
+        // Then add displayed default thunks and dynamic labels missing from the name index.
+        List<Symbol> matches = new ArrayList<>();
+        Set<Long> ids = new HashSet<>();
+        SymbolIterator indexed = table.getSymbols(name);
+        while (indexed.hasNext()) {
+            session.monitor().checkCancelled();
+            Symbol symbol = indexed.next();
+            if (symbol.getName().equals(name) && ids.add(symbol.getID())) matches.add(symbol);
+        }
+        SymbolIterator symbols = table.getAllSymbols(true);
+        while (symbols.hasNext()) {
+            session.monitor().checkCancelled();
+            Symbol symbol = symbols.next();
+            if (symbol.getName().equals(name) && ids.add(symbol.getID())) matches.add(symbol);
+        }
+        return matches;
     }
 
     JsonObject handleSymbolCreate(JsonObject args) {
@@ -156,7 +176,8 @@ final class SymbolCommands {
     }
 
     /** Revalidate the entire selection before opening a mutation transaction. */
-    private List<Symbol> resolveScopedSymbols(SymbolTable table, String name, JsonObject args) {
+    private List<Symbol> resolveScopedSymbols(SymbolTable table, String name, JsonObject args)
+            throws CancelledException {
         List<Symbol> selected = new ArrayList<>();
         if (args.has("targets")) {
             JsonArray targets = args.getAsJsonArray("targets");
@@ -178,9 +199,7 @@ final class SymbolCommands {
         // Legacy address-scoped requests must validate every requested address.
         // Multiple symbols at one address require stable IDs to distinguish namespaces.
         String[] addresses = getArgStringArray(args, "addresses");
-        SymbolIterator syms = table.getSymbols(name);
-        List<Symbol> all = new ArrayList<>();
-        while (syms.hasNext()) all.add(syms.next());
+        List<Symbol> all = symbolsNamed(table, name);
         if (addresses.length > 0) {
             Set<Address> seen = new HashSet<>();
             for (String value : addresses) {

@@ -24,6 +24,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reject invalid budgets instead of silently making them unlimited.
 - Match actual string values in `string refs`, including backslashes, quotes and
   newlines, independently of the JVM locale.
+- Include external and unmapped-address comments in `comment list`, and resolve
+  default thunk and dynamic-label names consistently with `symbol list`.
 - Reject overflowing query limits and graph depths instead of narrowing them to
   unrelated values in the Java bridge.
 - Load package-declared Java scripts from files and stdin by their qualified class names.
