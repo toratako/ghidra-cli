@@ -62,6 +62,13 @@ without a separate fixed result cap. `find string` visits defined strings only;
 `find text` and `find bytes` share exact-byte memory scanning, including
 overlapping matches and cancellation checks.
 
+`disassemble`, with or without `--end`, and `function disassemble` also use
+this contract: no independent instruction-count window caps the input before
+filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.
+`disassemble-at` is a mutation with a nested instruction list, not a row query.
+The application resolves its explicit or configured limit only for that list,
+preserving the mutation receipt and its standalone/batch response shape.
+
 ## Boundaries and validation
 
 - Paging and predicates run on the existing Ghidra program lane using the active

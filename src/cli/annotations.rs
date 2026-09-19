@@ -212,8 +212,8 @@ pub enum CommentCommands {
     Get(CommentGetArgs),
     /// Set comment
     Set(CommentSetArgs),
-    /// Delete comment
-    Delete(CommentGetArgs),
+    /// Delete all EOL, PRE, POST, and PLATE comments at an address
+    Delete(CommentDeleteArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -222,6 +222,24 @@ pub struct CommentGetArgs {
     pub address: String,
     #[command(flatten)]
     pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct CommentDeleteArgs {
+    /// Explicit address, e.g. 0x401000 or overlay:0x1000
+    pub address: String,
+    /// Target program
+    #[arg(long)]
+    pub program: Option<String>,
+    /// Project name
+    #[arg(long)]
+    pub project: Option<String>,
+    /// Fields to include in the deletion receipt (comma-separated)
+    #[arg(long)]
+    pub fields: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    pub format: Option<crate::format::OutputFormat>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

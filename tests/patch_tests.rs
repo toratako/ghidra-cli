@@ -88,6 +88,14 @@ public class CreateDisasmFailureFixture extends GhidraScript {
                 var block = program.getMemory().createInitializedBlock("code", address,
                     1, (byte) 0xc3, monitor, false);
                 block.setExecute(true);
+                var longStart = address.add(0x1000);
+                program.getMemory().createInitializedBlock("long_code", longStart,
+                    21, (byte) 0x90, monitor, false).setExecute(true);
+                // Alternate one-byte NOP/CLC to avoid Ghidra's repeated-byte guard.
+                for (int offset = 1; offset < 20; offset += 2) {
+                    program.getMemory().setByte(longStart.add(offset), (byte) 0xf8);
+                }
+                program.getMemory().setByte(longStart.add(20), (byte) 0xc3);
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder()
                 .createFile(getScriptArgs()[0], program, monitor);
@@ -102,6 +110,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         .unwrap();
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
+        check_disasm_at_limits(harness, &client, &name);
         let instruction = client
             .send_command("disasm_at", Some(serde_json::json!({"address":"0x1000"})))
             .unwrap();
@@ -201,6 +210,74 @@ public class CreateDisasmFailureFixture extends GhidraScript {
     client.program_delete(&name).unwrap();
     if let Err(panic) = checked {
         std::panic::resume_unwind(panic);
+    }
+}
+
+fn check_disasm_at_limits(
+    harness: &DaemonTestHarness,
+    client: &ghidra_cli::ipc::client::BridgeClient,
+    program: &str,
+) {
+    use serde_json::{json, Value};
+    for limit in [json!(-1), json!(1.5), json!(u64::MAX)] {
+        let error = client
+            .send_command(
+                "disasm_at",
+                Some(json!({"address": "0x2000", "limit": limit})),
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("limit must be an integer"),
+            "{error}"
+        );
+    }
+    let error = client
+        .send_command("disasm_at", Some(json!({"address": "0x2000", "count": 1})))
+        .unwrap_err();
+    assert!(error.to_string().contains("use limit"), "{error}");
+    assert_eq!(
+        client.disasm_range("0x2000", "0x2014", None).unwrap()["count"],
+        0,
+        "invalid response limits must fail before creating any instructions"
+    );
+
+    let result = ghidra(harness)
+        .args(["--json", "disassemble-at", "0x2000", "--limit", "1"])
+        .with_project(test_project(), program)
+        .run();
+    result.assert_success();
+    let receipt = &result.json::<Value>()[0];
+    assert_eq!(receipt["already_disassembled"], false);
+    assert_eq!(receipt["landed"], true);
+    assert_eq!(receipt["instructions"].as_array().unwrap().len(), 1);
+    let all = client.disasm_range("0x2000", "0x2014", None).unwrap();
+    assert_eq!(
+        all["count"], 21,
+        "a response limit of one must still create the complete reachable sequence"
+    );
+    for limit in [None, Some(0), Some(i32::MAX as usize + 1)] {
+        let result = client.disasm_at("0x2000", limit).unwrap();
+        assert_eq!(result["already_disassembled"], true);
+        assert_eq!(result["instructions"], all["instructions"]);
+    }
+
+    let config_dir = tempfile::tempdir().unwrap();
+    let config = config_dir.path().join("config.yaml");
+    let mut test_config = ghidra_cli::config::Config::load().unwrap();
+    test_config.default_limit = Some(12);
+    std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
+    for (flags, count) in [(vec![], 12), (vec!["--limit", "0"], 21)] {
+        let result = ghidra(harness)
+            .args(["--json", "disassemble-at", "0x2000"])
+            .args(flags)
+            .with_project(test_project(), program)
+            .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
+            .run();
+        result.assert_success();
+        assert_eq!(
+            result.json::<Value>()[0]["instructions"],
+            json!(&all["instructions"].as_array().unwrap()[..count])
+        );
     }
 }
 
@@ -333,7 +410,7 @@ fn test_patch_odd_hex_length() {
         client
             .send_command(
                 "disasm",
-                Some(serde_json::json!({"address":address,"count":1})),
+                Some(serde_json::json!({"address":address,"limit":1})),
             )
             .unwrap()
     };
@@ -464,7 +541,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             let instructions = client
                 .send_command(
                     "disasm_at",
-                    Some(serde_json::json!({"address":address,"count":2})),
+                    Some(serde_json::json!({"address":address,"limit":2})),
                 )
                 .unwrap();
             assert_eq!(instructions["landed"], true);
@@ -477,7 +554,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             let after = client
                 .send_command(
                     "disasm",
-                    Some(serde_json::json!({"address":address,"count":2})),
+                    Some(serde_json::json!({"address":address,"limit":2})),
                 )
                 .unwrap();
             assert_eq!(after["instructions"], instructions["instructions"]);

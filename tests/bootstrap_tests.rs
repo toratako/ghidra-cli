@@ -233,7 +233,7 @@ public class CheckProgramIdentity extends GhidraScript {
     project.ok(&["bridge", "stop"]);
     project.ok(&["bridge", "start", "--program", "raw-name"]);
     project.assert_program_identity("raw-name");
-    let disassembly = project.ok(&["disassemble-at", "0x8000", "--count", "2"]);
+    let disassembly = project.ok(&["disassemble-at", "0x8000", "--limit", "2"]);
     assert_eq!(disassembly[0]["instructions"][0]["mnemonic"], "XOR");
     let duplicate = project.run(&args);
     assert!(!duplicate.status.success());

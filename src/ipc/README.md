@@ -50,6 +50,13 @@ See [query planning](../query/README.md) for when these arguments may be pushed.
 This change requires a matching CLI and Java bridge; it adds no old-bridge
 compatibility path.
 
+`disasm` and `disasm_at` also use the checked `limit` argument; missing/null/zero
+means unlimited. The CLI resolves `default_limit` before sending these requests.
+The old request argument `count` is rejected. `disasm_at` validates the limit
+before changing the program, and limits only its returned `instructions`, not
+instruction creation. Update the CLI and restart the bridge together: an older
+bridge would ignore `limit` and apply its old fixed instruction count.
+
 `bridge_info.auto_save: true` advertises saving before successful program
 responses. `program_save` retries pending saves without restarting. A save failure
 returns `error` with `detail.save_failed: true`, `saved: false`, and the original

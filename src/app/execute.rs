@@ -369,9 +369,9 @@ pub(super) fn execute_via_bridge(
         Commands::Script(cmd) => scripts::execute(client, cmd),
         Commands::Disasm(args) => match &args.end {
             Some(end) => client.disasm_range(args.resolved_target(), end, list_limit),
-            None => client.disasm(args.resolved_target(), args.num_instructions),
+            None => client.disasm(args.resolved_target(), list_limit),
         },
-        Commands::DisasmAt(args) => client.disasm_at(&args.address, args.count),
+        Commands::DisasmAt(args) => client.disasm_at(&args.address, list_limit),
         Commands::Clear(args) => {
             let (start, end) = split_range(&args.range).ok_or_else(|| {
                 anyhow::anyhow!(

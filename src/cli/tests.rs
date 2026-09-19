@@ -51,25 +51,52 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
 }
 
 #[test]
-fn disasm_end_conflicts_with_instruction_count() {
+fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
     for target in [vec!["main"], vec!["--target", "main"]] {
         let mut args = vec!["ghidra-cli", "disassemble"];
         args.extend(target);
-        args.extend(["--end", "2000"]);
+        args.extend(["--end", "0x2000", "--limit", "12"]);
         let cli = Cli::try_parse_from(&args).unwrap();
         let Commands::Disasm(disasm) = cli.command else {
             panic!("expected disasm");
         };
-        assert_eq!(disasm.end.as_deref(), Some("2000"));
+        assert_eq!(disasm.end.as_deref(), Some("0x2000"));
+        assert_eq!(disasm.options.limit, Some(12));
+    }
+    for command in ["disassemble", "disassemble-at"] {
+        for limit in ["0", "12"] {
+            let cli =
+                Cli::try_parse_from(["ghidra-cli", command, "0x1000", "--limit", limit]).unwrap();
+            let parsed_limit = match cli.command {
+                Commands::Disasm(args) => args.options.limit,
+                Commands::DisasmAt(args) => args.limit,
+                _ => unreachable!(),
+            };
+            assert_eq!(parsed_limit, Some(limit.parse().unwrap()));
+        }
         for flag in ["-n", "--instructions"] {
-            let mut conflict = args.clone();
-            conflict.extend([flag, "10"]);
-            let error = Cli::try_parse_from(conflict)
+            let error = Cli::try_parse_from(["ghidra-cli", command, "0x1000", flag, "10"])
                 .err()
-                .expect("conflicting bounds must fail");
-            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+                .expect("removed instruction count must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
         }
     }
+    for flags in [
+        vec!["--count"],
+        vec!["--count", "2"],
+        vec!["--filter", "mnemonic=RET"],
+        vec!["--sort", "address"],
+        vec!["--offset", "1"],
+    ] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "disassemble-at", "0x1000"]
+                .into_iter()
+                .chain(flags)
+        )
+        .is_err());
+    }
+    let cli = Cli::try_parse_from(["ghidra-cli", "disassemble", "main", "--count"]).unwrap();
+    assert!(matches!(cli.command, Commands::Disasm(args) if args.options.count));
 }
 
 #[test]

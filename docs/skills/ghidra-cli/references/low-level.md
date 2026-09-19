@@ -4,12 +4,20 @@
 
 ```bash
 ghidra-cli function disassemble main --limit 0 --format asm --project target
-ghidra-cli disassemble 0x401000 -n 40 --project target
+ghidra-cli disassemble 0x401000 --limit 40 --project target
 ghidra-cli disassemble 0x401000 --end 0x401080 --format asm --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target
-ghidra-cli disassemble-at 0x401234 -n 20 --project target
+ghidra-cli disassemble-at 0x401234 --limit 20 --project target
 ghidra-cli function create 0x401234 parse_entry --project target
 ```
+
+`disassemble` reads existing instructions from the selected start; `--end`
+sets an inclusive end address. It can continue beyond the starting function.
+Use `function disassemble` to restrict results to the entire function body,
+including disjoint ranges. Both use the shared filter, sort, offset, then limit
+order. `--limit N` returns at most N matching instructions; `--limit 0` is
+unlimited. Omitted limits use `default_limit` (1000 in the default configuration).
+There is no separate ten-instruction window or `-n`/`--instructions` option.
 
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
 text, case-insensitively unless `--case-sensitive` is given. Either range
@@ -19,8 +27,11 @@ space. Use `find calls` for resolved call destinations.
 Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
 operands). The default output format is unchanged.
 
-Use `disassemble-at` when auto-analysis missed a known target. If analysis ran through
-inline data or chose the wrong boundary:
+Use `disassemble-at` when auto-analysis missed a known target. Its `--limit`
+uses the same default and zero behavior, but only caps the instructions returned
+after disassembly; it does not restrict where instructions are created. It does
+not accept filter, sort, offset, or count options. The former `-n`/`--count N`
+options are removed. If analysis ran through inline data or chose the wrong boundary:
 
 ```bash
 ghidra-cli clear 0x401200:0x40121f --project target

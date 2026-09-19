@@ -35,6 +35,10 @@ before editing; other failures can retain partial changes.
 `comment get ADDRESS` and `comment list` read comments. `comment set` accepts
 `--comment-type EOL` (default), `PRE`, `POST`, or `PLATE`.
 
+`comment delete ADDRESS` deletes all four comment types at that address.
+Like `function delete`, it accepts `--fields` and `--format` for the deletion
+receipt, and rejects `--filter`, `--sort`, `--offset`, `--limit`, and `--count`.
+
 Use stdin or a file to preserve comment text containing shell metacharacters:
 
 ```bash

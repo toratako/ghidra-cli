@@ -81,7 +81,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::CommentCommands::List(opts) => opts.project.clone(),
             cli::CommentCommands::Get(args) => args.options.project.clone(),
             cli::CommentCommands::Set(args) => args.project.clone(),
-            cli::CommentCommands::Delete(args) => args.options.project.clone(),
+            cli::CommentCommands::Delete(args) => args.project.clone(),
         },
         Commands::Symbol(cmd) => match cmd {
             cli::SymbolCommands::List(opts) => opts.project.clone(),
@@ -198,7 +198,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::CommentCommands::List(opts) => opts.program.clone(),
             cli::CommentCommands::Get(args) => args.options.program.clone(),
             cli::CommentCommands::Set(args) => args.program.clone(),
-            cli::CommentCommands::Delete(args) => args.options.program.clone(),
+            cli::CommentCommands::Delete(args) => args.program.clone(),
         },
         Commands::Symbol(cmd) => match cmd {
             cli::SymbolCommands::List(opts) => opts.program.clone(),
@@ -324,6 +324,18 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => Some(opts.clone()),
             cli::CommentCommands::Get(args) => Some(args.options.clone()),
+            cli::CommentCommands::Delete(args) => Some(QueryOptions {
+                program: args.program.clone(),
+                project: args.project.clone(),
+                fields: args.fields.clone(),
+                format: args.format,
+                filter: None,
+                limit: None,
+                offset: None,
+                sort: None,
+                count: false,
+                json: false,
+            }),
             _ => None,
         },
         Commands::Graph(cmd) => match cmd {
@@ -367,7 +379,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             | cli::FindCommands::Bytes(_)
             | cli::FindCommands::Instruction(_),
         ) => Limit,
-        Commands::Disasm(args) if args.end.is_some() => Limit,
+        Commands::Disasm(_) => Limit,
         _ => Client,
     }
 }

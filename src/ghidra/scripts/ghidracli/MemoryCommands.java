@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgInt;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class MemoryCommands {
@@ -101,13 +100,13 @@ final class MemoryCommands {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressStr = getArgString(args, "address");
-        int count = getArgInt(args, "count", 10);
 
         if (addressStr == null || addressStr.isEmpty()) {
             return errorResult("Address required");
         }
 
         try {
+            long limit = disasmLimit(args);
             // Use resolveAddress which handles 0x prefix and symbol lookup
             Address addr = addressResolver.resolveAddress(addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
@@ -133,13 +132,7 @@ final class MemoryCommands {
                     ". Address may be data or unanalyzed code.");
             }
 
-            JsonArray results = new JsonArray();
-            Instruction current = instruction;
-
-            for (int i = 0; i < count && current != null; i++) {
-                results.add(instructionToJson(current));
-                current = current.getNext();
-            }
+            JsonArray results = instructionsFrom(instruction, limit);
 
             JsonObject result = new JsonObject();
             result.add("instructions", results);
@@ -183,6 +176,23 @@ final class MemoryCommands {
         return result;
     }
 
+    private long disasmLimit(JsonObject args) {
+        if (args != null && args.has("count")) {
+            throw new IllegalArgumentException("count is no longer supported; use limit");
+        }
+        return ListQuery.pageArgument(args, "limit");
+    }
+
+    private JsonArray instructionsFrom(Instruction instruction, long limit) throws Exception {
+        JsonArray instructions = new JsonArray();
+        while (instruction != null && (limit == 0 || instructions.size() < limit)) {
+            session.monitor().checkCancelled();
+            instructions.add(instructionToJson(instruction));
+            instruction = instruction.getNext();
+        }
+        return instructions;
+    }
+
     private JsonObject instructionToJson(Instruction instr) throws MemoryAccessException {
         byte[] byteArray = instr.getBytes();
         StringBuilder bytesHex = new StringBuilder();
@@ -215,12 +225,12 @@ final class MemoryCommands {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressStr = getArgString(args, "address");
-        int count = getArgInt(args, "count", 1);
         if (addressStr == null || addressStr.isEmpty()) {
             return errorResult("Address required");
         }
 
         try {
+            long limit = disasmLimit(args);
             Address addr = addressResolver.resolveAddress(addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
@@ -249,13 +259,7 @@ final class MemoryCommands {
             result.addProperty("status", landed ? "disassembled" : "failed");
 
             if (landed) {
-                JsonArray instrs = new JsonArray();
-                Instruction current = listing.getInstructionAt(addr);
-                for (int i = 0; i < count && current != null; i++) {
-                    instrs.add(instructionToJson(current));
-                    current = current.getNext();
-                }
-                result.add("instructions", instrs);
+                result.add("instructions", instructionsFrom(listing.getInstructionAt(addr), limit));
             } else {
                 result.addProperty("error", "Failed to disassemble at " + AddressCodec.format(addr)
                     + ": no instruction was created");

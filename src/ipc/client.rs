@@ -525,15 +525,9 @@ impl BridgeClient {
         )
     }
 
-    pub fn disasm(
-        &self,
-        address: &str,
-        num_instructions: Option<usize>,
-    ) -> Result<serde_json::Value> {
-        self.send_command(
-            "disasm",
-            Some(json!({"address": address, "count": num_instructions})),
-        )
+    /// Read existing instructions from the resolved start, up to `limit` (0/None = unlimited).
+    pub fn disasm(&self, address: &str, limit: Option<usize>) -> Result<serde_json::Value> {
+        self.send_command("disasm", Some(json!({"address": address, "limit": limit})))
     }
 
     /// Read existing instructions in an inclusive range. A distinct wire name
@@ -552,11 +546,12 @@ impl BridgeClient {
 
     /// Disassemble at `address`, disassembling first if no instruction is
     /// there yet. Returns `ok`/`landed` booleans plus the resulting
-    /// instructions (up to `count`).
-    pub fn disasm_at(&self, address: &str, count: Option<usize>) -> Result<serde_json::Value> {
+    /// instructions (up to `limit`, 0/None = unlimited). The limit does not
+    /// restrict instruction creation.
+    pub fn disasm_at(&self, address: &str, limit: Option<usize>) -> Result<serde_json::Value> {
         self.send_command(
             "disasm_at",
-            Some(json!({"address": address, "count": count})),
+            Some(json!({"address": address, "limit": limit})),
         )
     }
 

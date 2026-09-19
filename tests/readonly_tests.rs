@@ -132,7 +132,7 @@ fn test_snapshot_disasm_structure() {
     let result = ghidra(harness)
         .arg("disassemble")
         .arg(&main_addr)
-        .arg("--instructions")
+        .arg("--limit")
         .arg("3")
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()

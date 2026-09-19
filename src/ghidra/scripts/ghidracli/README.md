@@ -183,11 +183,18 @@ and have no hidden scan cap. The client sends an uncapped fetch when filtering,
 sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct wire
 name so an older bridge cannot silently ignore `disassemble --end`.
 
+`disasm` reads existing instructions from the resolved start, retaining its
+containing-instruction/function-entry fallback. It and `disasm_at` use checked
+nonnegative-long `limit` bounds, with missing/null/zero meaning unlimited, and
+check cancellation while collecting instructions. The CLI applies its configured
+default; the handlers have no fixed ten/one-instruction defaults. The obsolete
+`count` argument is rejected. `disasm_at` validates bounds before mutation and
+limits only the returned instruction list, not instruction creation.
+
 `function_disasm` resolves a function through `FunctionQueries` and reads existing
 instructions from its complete `getBody()` address set, including disjoint ranges.
 It shares instruction serialization with `disasm_range`; interior targets select
-the whole body. The separate wire operation prevents older bridges from silently
-returning the ten-instruction `disassemble` window. Rust fetch planning applies the
+the whole body. Rust fetch planning applies the
 usual query limits and requests all rows before client-side selection when needed.
 
 ## Validation

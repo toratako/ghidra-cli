@@ -102,24 +102,21 @@ fn test_comment_list() {
 fn test_comment_delete() {
     require_ghidra!();
     let harness = harness();
+    let client = harness.client().unwrap();
 
     // Use a dynamically resolved function address
     let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 3);
     let addr = &addrs[addrs.len() - 1];
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("comment")
-        .arg("set")
-        .arg(addr)
-        .arg("to be deleted")
-        .arg("--project")
-        .arg(test_project())
-        .arg("--program")
-        .arg(TEST_PROGRAM)
-        .assert()
-        .success();
+    for kind in ["EOL", "PRE", "POST", "PLATE"] {
+        client
+            .comment_set(addr, &format!("to be deleted: {kind}"), Some(kind))
+            .unwrap();
+    }
+    let comments = client.comment_get(addr).unwrap();
+    assert_eq!(comments["comments"].as_array().unwrap().len(), 4);
 
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("comment")
         .arg("delete")
         .arg(addr)
@@ -127,27 +124,106 @@ fn test_comment_delete() {
         .arg(test_project())
         .arg("--program")
         .arg(TEST_PROGRAM)
-        .assert()
-        .success();
-
-    // Verify comment is actually gone
-    let get_result = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("comment")
-        .arg("get")
-        .arg(addr)
-        .arg("--project")
-        .arg(test_project())
-        .arg("--program")
-        .arg(TEST_PROGRAM)
         .output()
-        .expect("Failed to run command");
-
-    let stdout = String::from_utf8_lossy(&get_result.stdout);
-    assert!(
-        !get_result.status.success() || !stdout.contains("to be deleted"),
-        "Comment should be deleted but was still found: {}",
-        stdout
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        receipt,
+        serde_json::json!([{"status": "deleted", "address": comments["address"]}])
     );
+
+    assert!(client.comment_get(addr).unwrap()["comments"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+#[serial]
+fn comment_delete_applies_fields_and_format_to_receipt() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+
+    for (format_flag, format) in [("--format", "json-compact"), ("-o", "csv")] {
+        client
+            .comment_set(&addr, "delete receipt projection", Some("EOL"))
+            .unwrap();
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .args([
+                "comment",
+                "delete",
+                &addr,
+                "--fields",
+                "status",
+                format_flag,
+                format,
+                "--project",
+                test_project(),
+                "--program",
+                TEST_PROGRAM,
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        if format == "json-compact" {
+            let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(receipt, serde_json::json!([{"status": "deleted"}]));
+        } else {
+            let receipt = String::from_utf8(output.stdout).unwrap();
+            assert_eq!(receipt.trim(), "status\ndeleted");
+        }
+        assert!(client.comment_get(&addr).unwrap()["comments"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[test]
+#[serial]
+fn comment_delete_rejects_query_flags_without_mutating_comments() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    for kind in ["EOL", "PRE", "POST", "PLATE"] {
+        client
+            .comment_set(&addr, &format!("must remain: {kind}"), Some(kind))
+            .unwrap();
+    }
+    let before = client.comment_get(&addr).unwrap();
+
+    for flag in [
+        vec!["--filter", "type=EOL"],
+        vec!["--sort", "type"],
+        vec!["--offset", "1"],
+        vec!["--limit", "0"],
+        vec!["--count"],
+    ] {
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .args([
+                "comment",
+                "delete",
+                &addr,
+                "--project",
+                test_project(),
+                "--program",
+                TEST_PROGRAM,
+            ])
+            .args(&flag)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{flag:?}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("unexpected argument"),
+            "{flag:?}: {output:?}"
+        );
+        assert_eq!(client.comment_get(&addr).unwrap(), before, "{flag:?}");
+    }
+    client.comment_delete(&addr).unwrap();
 }
 
 #[test]

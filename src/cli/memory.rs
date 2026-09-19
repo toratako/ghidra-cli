@@ -73,11 +73,8 @@ pub struct DisasmArgs {
     /// Exact symbol name or explicit 0x-prefixed address
     #[arg(long = "target", value_name = "TARGET")]
     pub target: Option<String>,
-    /// Number of instructions to disassemble
-    #[arg(long = "instructions", short = 'n')]
-    pub num_instructions: Option<usize>,
     /// Inclusive end bound: explicit 0x-prefixed address or exact symbol name
-    #[arg(long, conflicts_with = "num_instructions")]
+    #[arg(long)]
     pub end: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
@@ -96,9 +93,10 @@ impl DisasmArgs {
 pub struct DisasmAtArgs {
     /// Explicit 0x-prefixed address or exact symbol name to disassemble at
     pub address: String,
-    /// Number of instructions to report back once disassembled
-    #[arg(long = "count", short = 'n')]
-    pub count: Option<usize>,
+    /// Maximum instructions to return after disassembly (0 = unlimited; default: default_limit).
+    /// This limits the response only, not the range in which instructions are created.
+    #[arg(long)]
+    pub limit: Option<usize>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

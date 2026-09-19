@@ -128,7 +128,7 @@ pub enum Commands {
     /// Decompile function
     Decompile(DecompileArgs),
 
-    /// Disassemble code
+    /// Show existing instructions from a name or address, optionally through --end
     #[command(name = "disassemble")]
     Disasm(DisasmArgs),
 

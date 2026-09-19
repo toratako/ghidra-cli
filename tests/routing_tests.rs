@@ -191,7 +191,19 @@ impl RecordedBridge {
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
                     }
                     "xrefs_to" => json!({"xrefs": [], "count": 0}),
-                    "disasm_at" => json!({"ok": true, "landed": true, "instructions": []}),
+                    "disasm_at" => {
+                        let mut instructions = vec![
+                            json!({"address": "0x1000", "mnemonic": "NOP"}),
+                            json!({"address": "0x1001", "mnemonic": "NOP"}),
+                            json!({"address": "0x1002", "mnemonic": "RET"}),
+                        ];
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            instructions.truncate(limit as usize);
+                        }
+                        json!({"address": args["address"], "ok": true, "landed": true,
+                            "already_disassembled": true, "status": "disassembled",
+                            "instructions": instructions})
+                    }
                     "symbol_get" | "symbol_get_by_name" => {
                         json!({"symbols": if args["name"] == "missing" {
                             vec![]
@@ -207,6 +219,9 @@ impl RecordedBridge {
                     }
                     "delete_function" => {
                         json!({"status": "deleted", "name": "main", "address": "0x1000"})
+                    }
+                    "comment_delete" => {
+                        json!({"status": "deleted", "address": args["address"]})
                     }
                     "list_functions" => {
                         let mut rows = vec![
@@ -318,7 +333,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             "main",
         ),
         (
-            vec!["disassemble-at", "0x1000", "--count", "2"],
+            vec!["disassemble-at", "0x1000", "--limit", "2"],
             "disasm_at",
             "address",
             "0x1000",
@@ -336,7 +351,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             .clone();
         assert_eq!(standalone_request["args"][key], expected);
         if wire == "disasm_at" {
-            assert_eq!(standalone_request["args"]["count"], 2);
+            assert_eq!(standalone_request["args"]["limit"], 2);
         }
         bridge.requests.lock().unwrap().clear();
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
@@ -745,7 +760,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
 }
 
 #[test]
-fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
+fn disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     let all = bridge.run(&["function", "disassemble", "main", "--limit", "0"]);
     assert_eq!(all.as_array().unwrap().len(), 3);
@@ -785,36 +800,109 @@ fn function_disassembly_queries_select_rows_before_paging_in_standalone_and_batc
             Value::Null,
         ),
     ] {
-        let args: Vec<_> = ["function", "disassemble", "main"]
-            .into_iter()
-            .chain(flags)
-            .collect();
-        for batch in [false, true] {
-            bridge.requests.lock().unwrap().clear();
-            let result = if batch {
-                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
-            } else {
-                bridge.run(&args)
-            };
-            // Batch commands without query flags retain the bridge envelope.
-            let expected_result = if batch && args.len() == 3 {
-                json!({"instructions": expected, "count": expected.as_array().unwrap().len()})
-            } else {
-                expected.clone()
-            };
-            assert_eq!(result, expected_result, "{args:?}, batch={batch}");
-            let requests = bridge.requests.lock().unwrap();
-            let disassembly: Vec<_> = requests
+        for (command, wire, target_key) in [
+            (
+                vec!["function", "disassemble", "main"],
+                "function_disasm",
+                "target",
+            ),
+            (vec!["disassemble", "main"], "disasm", "address"),
+        ] {
+            let args: Vec<_> = command
                 .iter()
-                .filter(|r| matches!(r["command"].as_str(), Some("disasm" | "function_disasm")))
+                .copied()
+                .chain(flags.iter().copied())
                 .collect();
-            assert_eq!(disassembly.len(), 1);
-            assert_eq!(disassembly[0]["command"], "function_disasm");
-            assert_eq!(
-                disassembly[0]["args"],
-                json!({"target": "main", "limit": fetch_limit})
-            );
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let result = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                // Batch commands without query flags retain the bridge envelope.
+                let expected_result = if batch && flags.is_empty() {
+                    json!({"instructions": expected, "count": expected.as_array().unwrap().len()})
+                } else {
+                    expected.clone()
+                };
+                assert_eq!(result, expected_result, "{args:?}, batch={batch}");
+                let requests = bridge.requests.lock().unwrap();
+                let disassembly: Vec<_> = requests
+                    .iter()
+                    .filter(|r| matches!(r["command"].as_str(), Some("disasm" | "function_disasm")))
+                    .collect();
+                assert_eq!(disassembly.len(), 1);
+                assert_eq!(disassembly[0]["command"], wire);
+                assert_eq!(
+                    disassembly[0]["args"],
+                    json!({target_key: "main", "limit": fetch_limit})
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn disassemble_at_limits_instruction_rows_and_preserves_mutation_receipts() {
+    let bridge = RecordedBridge::new();
+    for (config, default_limit) in [
+        (None, json!(1000)),
+        (Some("{}\n"), Value::Null),
+        (Some("default_limit: 1\n"), json!(1)),
+        (Some("default_limit: 0\n"), Value::Null),
+    ] {
+        let config_path = bridge.root.path().join("config.yaml");
+        if let Some(config) = config {
+            std::fs::write(&config_path, config).unwrap();
+        } else {
+            std::fs::remove_file(&config_path).unwrap();
+        }
+        for (flags, fetch_limit, expected_count) in [
+            (
+                vec![],
+                default_limit.clone(),
+                if default_limit == 1 { 1 } else { 3 },
+            ),
+            (vec!["--limit", "2"], json!(2), 2),
+            (vec!["--limit", "0"], Value::Null, 3),
+        ] {
+            let args: Vec<_> = ["disassemble-at", "0x1000", "--program", "B"]
+                .into_iter()
+                .chain(flags)
+                .collect();
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let receipt = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)[0].clone()
+                };
+                assert!(receipt.is_object(), "{receipt}");
+                assert_eq!(
+                    receipt["instructions"].as_array().unwrap().len(),
+                    expected_count
+                );
+                assert_eq!(receipt["address"], "0x1000");
+                assert_eq!(receipt["status"], "disassembled");
+                assert_eq!(receipt["landed"], true);
+                assert_eq!(receipt["already_disassembled"], true);
+                let requests = bridge.requests.lock().unwrap();
+                let edits: Vec<_> = requests
+                    .iter()
+                    .filter(|r| r["command"] == "disasm_at")
+                    .collect();
+                assert_eq!(edits.len(), 1);
+                assert_eq!(
+                    edits[0]["args"],
+                    json!({"address": "0x1000", "limit": fetch_limit})
+                );
+                assert!(requests
+                    .iter()
+                    .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            }
         }
     }
 }
@@ -2207,12 +2295,18 @@ fn batch_continues_after_removed_commands_without_selecting_their_programs() {
 }
 
 #[test]
-fn function_delete_preserves_targets_and_receipt_output_in_standalone_and_batch() {
-    for target in [vec!["main"], vec!["--target", "0x1000"]] {
+fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
+    for (command, wire) in [
+        (vec!["function", "delete", "main"], "delete_function"),
+        (
+            vec!["function", "delete", "--target", "0x1000"],
+            "delete_function",
+        ),
+        (vec!["comment", "delete", "0x1000"], "comment_delete"),
+    ] {
         for batch in [false, true] {
             let bridge = RecordedBridge::new();
-            let mut args = vec!["function", "delete"];
-            args.extend(&target);
+            let mut args = command.clone();
             args.extend([
                 "--program",
                 "B",
@@ -2237,28 +2331,43 @@ fn function_delete_preserves_targets_and_receipt_output_in_standalone_and_batch(
             assert_eq!(domain.len(), 2, "{domain:?}");
             assert_eq!(domain[0]["command"], "open_program");
             assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], "delete_function");
+            assert_eq!(domain[1]["command"], wire);
             assert_eq!(
                 domain[1]["args"],
-                json!({"address": target.last().unwrap()})
+                json!({"address": command.last().unwrap()})
             );
         }
     }
 }
 
 #[test]
-fn batch_rejects_function_delete_query_flags_without_selecting_or_deleting() {
+fn deletion_rejects_query_flags_without_selecting_or_deleting() {
     let bridge = RecordedBridge::new();
-    let mut lines: Vec<_> = [
+    let flags = [
         "--filter name=other",
         "--sort name",
         "--offset 1",
         "--limit 0",
         "--count",
-    ]
-    .iter()
-    .map(|flag| format!("function delete main --program must-not-open {flag}"))
-    .collect();
+    ];
+    let mut lines: Vec<_> = ["function delete main", "comment delete 0x1000"]
+        .into_iter()
+        .flat_map(|command| {
+            flags
+                .iter()
+                .map(move |flag| format!("{command} --program must-not-open {flag}"))
+        })
+        .collect();
+    let rejected = lines.len();
+    for line in &lines {
+        let output = bridge
+            .command()
+            .args(line.split_whitespace())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{output:?}");
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
     lines.push("program info".into());
     std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
     let output = bridge
@@ -2268,7 +2377,12 @@ fn batch_rejects_function_delete_query_flags_without_selecting_or_deleting() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    for result in report[0]["results"].as_array().unwrap().iter().take(5) {
+    for result in report[0]["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .take(rejected)
+    {
         assert!(
             result["error"]
                 .as_str()
@@ -2278,7 +2392,7 @@ fn batch_rejects_function_delete_query_flags_without_selecting_or_deleting() {
         );
     }
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["detail"]["failed"], 5);
+    assert_eq!(error["detail"]["failed"], rejected);
     let requests = bridge.requests.lock().unwrap();
     let domain: Vec<_> = requests
         .iter()

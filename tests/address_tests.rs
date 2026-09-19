@@ -193,7 +193,7 @@ fn target_requests(target: &str) -> Vec<(&'static str, Value)> {
     vec![
         ("get_function", json!({"address": target})),
         ("decompile", json!({"address": target})),
-        ("disasm", json!({"address": target, "count": 1})),
+        ("disasm", json!({"address": target, "limit": 1})),
         ("function_disasm", json!({"target": target})),
         ("find_calls_to", json!({"function": target})),
         ("function_calls", json!({"function": target})),
@@ -280,7 +280,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
                 "memory_write",
                 json!({"address": address, "hex": "00000000"}),
             ),
-            ("disasm_at", json!({"address": address, "count": 1})),
+            ("disasm_at", json!({"address": address, "limit": 1})),
             ("clear_range", json!({"start": address, "end": "0x1607"})),
         ] {
             assert!(

@@ -523,6 +523,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 "{error}"
             );
         }
+        check_disasm_limits(harness, &client, &name);
         client.program_close().unwrap();
         assert!(client
             .function_disasm("short_case", None)
@@ -535,6 +536,103 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
     if let Err(error) = checked {
         std::panic::resume_unwind(error);
     }
+}
+
+fn check_disasm_limits(
+    harness: &crate::common::DaemonTestHarness,
+    client: &ghidra_cli::ipc::client::BridgeClient,
+    program: &str,
+) {
+    use serde_json::{json, Value};
+    let all = client.disasm("long_case", Some(0)).unwrap();
+    let rows = all["instructions"].as_array().unwrap();
+    assert!(
+        rows.len() > 21,
+        "disassemble must continue beyond the function body"
+    );
+    for limit in [None, Some(i32::MAX as usize + 1)] {
+        assert_eq!(client.disasm("long_case", limit).unwrap(), all);
+    }
+    assert_eq!(
+        client.disasm("long_case", Some(12)).unwrap()["instructions"],
+        json!(&rows[..12])
+    );
+    // Preserve existing resolution of an address inside an instruction.
+    assert_eq!(
+        client.disasm("0x1001", Some(1)).unwrap(),
+        client.disasm("short_case", Some(1)).unwrap()
+    );
+
+    let config_dir = tempfile::tempdir().unwrap();
+    let config = config_dir.path().join("config.yaml");
+    let mut test_config = ghidra_cli::config::Config::load().unwrap();
+    test_config.default_limit = Some(12);
+    std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
+    let cli = |flags: &[&str]| -> Value {
+        let result = ghidra(harness)
+            .args(["--json", "disassemble", "long_case"])
+            .args(flags.iter().copied())
+            .with_project(test_project(), program)
+            .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
+            .run();
+        result.assert_success();
+        result.json()
+    };
+    assert_eq!(cli(&[]), json!(&rows[..12]));
+    assert_eq!(cli(&["--limit", "0"]), json!(rows));
+    assert_eq!(cli(&["--limit", "13"]), json!(&rows[..13]));
+    assert_eq!(
+        cli(&["--offset", "12", "--limit", "2"]),
+        json!(&rows[12..14])
+    );
+    assert_eq!(cli(&["--count"]), json!(rows.len()));
+    assert_eq!(
+        cli(&["--offset", "12", "--limit", "2", "--count"]),
+        json!(2)
+    );
+    let returns: Vec<_> = rows.iter().filter(|row| row["mnemonic"] == "RET").collect();
+    assert!(returns.len() >= 3);
+    assert_eq!(
+        cli(&["--filter", "mnemonic=RET", "--limit", "1"]),
+        json!([returns[0]])
+    );
+    let selected: Vec<_> = returns
+        .iter()
+        .rev()
+        .skip(1)
+        .take(2)
+        .map(|row| json!({"address": row["address"]}))
+        .collect();
+    assert_eq!(
+        cli(&[
+            "--filter",
+            "mnemonic=RET",
+            "--sort=-address",
+            "--offset",
+            "1",
+            "--limit",
+            "2",
+            "--fields",
+            "address",
+        ]),
+        json!(selected)
+    );
+    for limit in [json!(-1), json!(1.5), json!(u64::MAX)] {
+        let error = client
+            .send_command(
+                "disasm",
+                Some(json!({"address": "long_case", "limit": limit})),
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("limit must be an integer"),
+            "{error}"
+        );
+    }
+    let error = client
+        .send_command("disasm", Some(json!({"address": "long_case", "count": 1})))
+        .unwrap_err();
+    assert!(error.to_string().contains("use limit"), "{error}");
 }
 
 #[test]
@@ -631,7 +729,7 @@ fn test_explicit_c_and_asm_output_match_ghidra_results() {
     );
     let instructions = client.disasm(&address, Some(3)).unwrap();
     let result = ghidra(harness)
-        .args(["disassemble", &address, "-n", "3", "--format", "asm"])
+        .args(["disassemble", &address, "--limit", "3", "--format", "asm"])
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
@@ -691,7 +789,7 @@ fn test_disasm_with_instruction_limit() {
     let result = ghidra(harness)
         .arg("disassemble")
         .arg(&main_addr)
-        .arg("--instructions")
+        .arg("--limit")
         .arg(limit.to_string())
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
@@ -713,7 +811,7 @@ fn test_disasm_with_instruction_limit() {
 
 #[test]
 #[serial]
-fn test_disasm_small_count() {
+fn test_disasm_small_limit() {
     require_ghidra!();
     let harness = harness();
 
@@ -722,7 +820,7 @@ fn test_disasm_small_count() {
     let result = ghidra(harness)
         .arg("disassemble")
         .arg(&main_addr)
-        .arg("--instructions")
+        .arg("--limit")
         .arg("1")
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
@@ -749,7 +847,7 @@ fn test_disasm_instruction_fields() {
     let result = ghidra(harness)
         .arg("disassemble")
         .arg(&main_addr)
-        .arg("--instructions")
+        .arg("--limit")
         .arg("10")
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
@@ -824,30 +922,4 @@ fn test_disasm_missing_program() {
     let result = ghidra(harness).arg("disassemble").arg("0x101000").run();
 
     result.assert_failure();
-}
-
-#[test]
-#[serial]
-fn test_disasm_zero_instructions() {
-    require_ghidra!();
-    let harness = harness();
-
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let result = ghidra(harness)
-        .arg("disassemble")
-        .arg(&main_addr)
-        .arg("--instructions")
-        .arg("0")
-        .with_project(test_project(), TEST_PROGRAM)
-        .run();
-
-    if result.exit_code == 0 {
-        if let Some(disasm) = result.try_json::<DisasmResult>() {
-            assert!(
-                disasm.results.is_empty(),
-                "Zero instruction count should return empty results"
-            );
-        }
-    }
 }
