@@ -68,6 +68,9 @@ to a node outside the returned page. Use `--limit 0` for an unlimited graph.
 `find string` searches only defined string values, using case-insensitive literal
 substring matching. It no longer falls back to raw memory when nothing matches;
 an empty result does not establish that the text is absent from the binary.
+`string refs` uses the same literal, case-insensitive matching on actual string
+values, including embedded newlines, quotes and backslashes. Its `string_value`
+field contains the actual value rather than Ghidra's escaped display text.
 
 `find text TEXT` searches the program's loaded memory regardless of string
 definitions. It encodes the non-empty literal TEXT using `--encoding` (default

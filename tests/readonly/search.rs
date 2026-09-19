@@ -297,6 +297,106 @@ fn test_find_bytes_rejects_incomplete_patterns() {
 
 #[test]
 #[serial]
+fn test_string_refs_match_string_values_independent_of_locale() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let name = format!("string-refs-{}", uuid::Uuid::new_v4());
+    let values = [
+        "C:\\Windows\\Temp",
+        "line1\nline2",
+        "say \"hello\"",
+        "INDIGO",
+    ];
+    let mut fixture_args = vec![name.clone()];
+    fixture_args.extend(values.iter().map(|value| value.to_string()));
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.data.StringDataType;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateStringRefsFixture extends GhidraScript {
+    public void run() throws Exception {
+        String[] args = getScriptArgs();
+        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(args[0], language, language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("string refs fixture");
+            try {
+                var space = program.getAddressFactory().getDefaultAddressSpace();
+                var from = space.getAddress(0x1000);
+                program.getMemory().createInitializedBlock("references", from, 0x10, (byte) 0, monitor, false);
+                for (int i = 1; i < args.length; i++) {
+                    var address = space.getAddress(0x2000 + i * 0x100);
+                    byte[] bytes = (args[i] + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    program.getMemory().createInitializedBlock("string" + i, address,
+                        new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
+                    program.getListing().createData(address, StringDataType.dataType, bytes.length);
+                    program.getReferenceManager().addMemoryReference(from.add(i), address,
+                        RefType.DATA, SourceType.USER_DEFINED, 0);
+                }
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder().createFile(args[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#, &fixture_args, &[], false).unwrap();
+    client.open_program(&name).unwrap();
+    const LOCALE_SCRIPT: &str = r#"
+import ghidra.app.script.GhidraScript;
+import java.util.Locale;
+public class StringRefsTestLocale extends GhidraScript {
+    public void run() {
+        writer.println(Locale.getDefault().toLanguageTag());
+        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
+    }
+}
+"#;
+    let previous = client
+        .script_run_source(LOCALE_SCRIPT, &["tr-TR".into()], &[], false)
+        .unwrap();
+    let previous = previous["stdout"].as_str().unwrap().trim().to_string();
+    let checked = std::panic::catch_unwind(|| {
+        for value in values {
+            let pattern = value.to_lowercase();
+            let found = client.find_string(&pattern).unwrap();
+            let references = client.string_refs(pattern.clone()).unwrap();
+            assert_eq!(found["count"], 1, "{pattern:?}: {found}");
+            assert_eq!(references["count"], 1, "{pattern:?}: {references}");
+            assert_eq!(references["results"][0]["string_value"], value);
+            assert_eq!(
+                references["results"][0]["string_address"],
+                found["results"][0]["address"]
+            );
+            let output = ghidra(harness)
+                .args(["string", "refs", &pattern, "--limit", "0", "--json"])
+                .with_project(test_project(), &name)
+                .run();
+            output.assert_success();
+            assert_eq!(output.json::<serde_json::Value>(), references["results"]);
+        }
+        // Formatting escapes must not themselves create matches in a string value.
+        assert_eq!(
+            client.string_refs("line1\\nline2".into()).unwrap()["count"],
+            0
+        );
+        assert_eq!(client.string_refs("absent".into()).unwrap()["count"], 0);
+    });
+    client
+        .script_run_source(LOCALE_SCRIPT, &[previous], &[], false)
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_find_text_encodings_and_defined_string_boundary() {
     require_ghidra!();
     let client = harness().client().unwrap();

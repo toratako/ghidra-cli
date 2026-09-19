@@ -155,6 +155,7 @@ final class SearchCommands {
 
         String pattern = getArgString(args, "string");
         if (pattern == null || pattern.isEmpty()) return errorResult("String pattern required");
+        String needle = pattern.toLowerCase(Locale.ROOT);
 
         try {
             Listing listing = session.program().getListing();
@@ -168,11 +169,10 @@ final class SearchCommands {
                 Data data = dataIter.next();
                 if (!data.hasStringValue()) continue;
 
-                String val = data.getDefaultValueRepresentation();
-                if (val != null && val.length() >= 2 && val.startsWith("\"") && val.endsWith("\"")) {
-                    val = val.substring(1, val.length() - 1);
-                }
-                if (val == null || !val.toLowerCase().contains(pattern.toLowerCase())) continue;
+                Object value = data.getValue();
+                if (value == null) continue;
+                String val = value.toString();
+                if (!val.toLowerCase(Locale.ROOT).contains(needle)) continue;
 
                 Address strAddr = data.getAddress();
                 for (Reference ref : refMgr.getReferencesTo(strAddr)) {
