@@ -27,6 +27,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Breaking: group type creation under `type create struct NAME`,
+  `type create enum NAME --values ...`, and `type create typedef NAME BASE`.
+  The former `type create NAME`, `type create-enum`, and `type typedef` forms
+  are no longer accepted; creation behavior and `type import-c` are unchanged.
 - Rename `x-ref` to `xref`, `strings` to `string`, `disasm` (including
   `function disasm`) to `disassemble`, and `disasm-at`/`--disasm-at` to
   `disassemble-at`/`--disassemble-at`. The `string` namespace retains `list` and

@@ -30,7 +30,7 @@ fn definition(name: &str) -> Value {
 
 fn create_struct() -> String {
     let name = format!("FieldEditing_{}", unique_suffix());
-    command(&["create", &name]).assert_success();
+    command(&["create", "struct", &name]).assert_success();
     name
 }
 

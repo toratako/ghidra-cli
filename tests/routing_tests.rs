@@ -374,6 +374,118 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
 }
 
 #[test]
+fn type_creation_preserves_wire_requests_and_targets_in_standalone_and_batch() {
+    let outer = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    for (mut args, wire, expected) in [
+        (
+            vec!["type", "create", "struct", "Header"],
+            "type_create",
+            json!({"definition": "Header"}),
+        ),
+        (
+            vec![
+                "type",
+                "create",
+                "enum",
+                "Mode",
+                "--values",
+                "Read=1,Write=2",
+            ],
+            "type_create_enum",
+            json!({"name": "Mode", "values": "Read=1,Write=2", "size": 4}),
+        ),
+        (
+            vec![
+                "type", "create", "enum", "WideMode", "--values", "Read=1", "--size", "8",
+            ],
+            "type_create_enum",
+            json!({"name": "WideMode", "values": "Read=1", "size": 8}),
+        ),
+        (
+            vec!["type", "create", "typedef", "HeaderPointer", "Header *"],
+            "type_typedef",
+            json!({"name": "HeaderPointer", "base_type": "Header *"}),
+        ),
+    ] {
+        args.extend([
+            "--project",
+            selected.project.to_str().unwrap(),
+            "--program",
+            "B",
+        ]);
+        for batch in [false, true] {
+            outer.requests.lock().unwrap().clear();
+            selected.requests.lock().unwrap().clear();
+            let result = if batch {
+                std::fs::write(outer.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                let report = outer.run(&["batch", "batch.txt"]);
+                assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
+                report[0]["results"][0]["result"].clone()
+            } else {
+                outer.run(&args)[0].clone()
+            };
+            assert_eq!(result["observed_program"], "B", "{args:?}: {result}");
+            let requests = selected.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|request| request["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{args:?}: {domain:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"]["program"], "B");
+            assert_eq!(domain[1]["command"], wire);
+            assert_eq!(domain[1]["args"], expected, "{args:?}");
+            assert!(outer
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|request| request["command"] == "bridge_info"));
+        }
+    }
+}
+
+#[test]
+fn legacy_type_creation_is_rejected_before_program_selection_or_mutation() {
+    let bridge = RecordedBridge::new();
+    let mut lines = Vec::new();
+    for mut args in [
+        vec!["type", "create", "Header"],
+        vec!["type", "create-enum", "Mode", "--values", "Read=1"],
+        vec!["type", "typedef", "HeaderAlias", "Header"],
+    ] {
+        args.extend(["--program", "must-not-open"]);
+        let output = bridge.command().args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
+        assert!(bridge.requests.lock().unwrap().is_empty());
+        lines.push(batch_arguments(&args));
+    }
+    std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["failed"], lines.len());
+    assert!(report[0]["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|row| row["error"].is_string()));
+    let requests = bridge.requests.lock().unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|request| request["command"] == "bridge_info"),
+        "{requests:?}"
+    );
+}
+
+#[test]
 fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     let expected = json!({

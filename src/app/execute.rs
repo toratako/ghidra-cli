@@ -217,11 +217,28 @@ pub(super) fn execute_via_bridge(
         }
         Commands::Symbol(cmd) => symbols::execute(client, cmd, fetch),
         Commands::Type(cmd) => {
-            use cli::TypeCommands;
+            use cli::{TypeCommands, TypeCreateCommands};
             match cmd {
                 TypeCommands::List(_) => client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset),
                 TypeCommands::Get(args) => client.type_get(&args.name),
-                TypeCommands::Create(args) => client.type_create(&args.definition),
+                TypeCommands::Create(cmd) => match cmd {
+                    TypeCreateCommands::Struct(args) => client.type_create(&args.name),
+                    TypeCreateCommands::Enum(args) => client.send_command(
+                        "type_create_enum",
+                        Some(json!({
+                            "name": args.name,
+                            "values": args.values,
+                            "size": args.size,
+                        })),
+                    ),
+                    TypeCreateCommands::Typedef(args) => client.send_command(
+                        "type_typedef",
+                        Some(json!({
+                            "name": args.name,
+                            "base_type": args.base_type,
+                        })),
+                    ),
+                },
                 TypeCommands::Apply(args) => {
                     client.type_apply_force(&args.address, &args.type_name, args.force)
                 }
@@ -234,21 +251,6 @@ pub(super) fn execute_via_bridge(
                 TypeCommands::Rename(args) => client.send_command(
                     "type_rename",
                     Some(json!({"old_name": args.old_name, "new_name": args.new_name})),
-                ),
-                TypeCommands::CreateEnum(args) => client.send_command(
-                    "type_create_enum",
-                    Some(json!({
-                        "name": args.name,
-                        "values": args.values,
-                        "size": args.size,
-                    })),
-                ),
-                TypeCommands::Typedef(args) => client.send_command(
-                    "type_typedef",
-                    Some(json!({
-                        "name": args.name,
-                        "base_type": args.base_type,
-                    })),
                 ),
                 TypeCommands::AddField(args) => client.send_command(
                     "type_add_field",

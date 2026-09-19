@@ -8,8 +8,9 @@ pub enum TypeCommands {
     List(QueryOptions),
     /// Get type definition
     Get(TypeGetArgs),
-    /// Create type
-    Create(CreateTypeArgs),
+    /// Create a struct, enum, or typedef
+    #[command(subcommand)]
+    Create(TypeCreateCommands),
     /// Apply type to address
     Apply(ApplyTypeArgs),
     /// Import C type definitions
@@ -18,10 +19,6 @@ pub enum TypeCommands {
     Delete(TypeDeleteArgs),
     /// Rename a data type
     Rename(TypeRenameArgs),
-    /// Create an enum type
-    CreateEnum(CreateEnumArgs),
-    /// Create a typedef (type alias)
-    Typedef(TypedefArgs),
     /// Add a field to a struct type
     AddField(TypeAddFieldArgs),
     /// Create or update a field at an exact offset without moving other fields
@@ -32,6 +29,16 @@ pub enum TypeCommands {
     DelField(TypeDelFieldArgs),
 }
 
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeCreateCommands {
+    /// Create an empty struct; add fields with `type set-field` or `type add-field`
+    Struct(CreateStructArgs),
+    /// Create an enum type
+    Enum(CreateEnumArgs),
+    /// Create a typedef (type alias)
+    Typedef(TypedefArgs),
+}
+
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TypeGetArgs {
     pub name: String,
@@ -40,11 +47,12 @@ pub struct TypeGetArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct CreateTypeArgs {
+pub struct CreateStructArgs {
     /// Bare identifier for the new (empty) struct type -- NOT a C-style
-    /// struct definition. Build fields afterward with `type add-field`.
+    /// struct definition. Build fields afterward with `type set-field` or
+    /// `type add-field`; use `type import-c` to parse C declarations.
     #[arg(value_name = "NAME")]
-    pub definition: String,
+    pub name: String,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

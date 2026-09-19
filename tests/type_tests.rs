@@ -363,13 +363,14 @@ fn test_type_get_primitive() {
 
 #[test]
 #[serial]
-fn test_type_create() {
+fn test_type_create_struct() {
     require_ghidra!();
     let _harness = harness();
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
+        .arg("struct")
         .arg("MyTestStruct")
         .arg("--project")
         .arg(test_project())
@@ -522,6 +523,7 @@ fn test_type_add_field_places_at_exact_offset() {
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
+        .arg("struct")
         .arg("OffsetPlacementStruct")
         .arg("--project")
         .arg(test_project())
@@ -600,6 +602,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("type")
         .arg("create")
+        .arg("struct")
         .arg("CTypeNameStruct")
         .arg("--project")
         .arg(test_project())

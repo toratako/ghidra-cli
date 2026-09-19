@@ -244,7 +244,7 @@ public class CreateAmbiguousTypes extends GhidraScript {
         vec!["get", "Shared"],
         vec!["get", "Shared *[2]"],
         vec!["add-field", "Holder", "--name", "bad", "--type", "Shared"],
-        vec!["typedef", "AmbiguousAlias", "Shared"],
+        vec!["create", "typedef", "AmbiguousAlias", "Shared"],
         vec!["rename", "Shared", "Renamed"],
         vec!["delete", "Shared"],
         vec!["del-field", "Shared", "--name", "missing"],
@@ -452,25 +452,25 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
     for (name, args, kind) in [
         (
             "EnumCollision",
-            vec!["create-enum", "EnumCollision", "--values", "ONE=1"],
+            vec!["create", "enum", "EnumCollision", "--values", "ONE=1"],
             "enum",
         ),
         (
             "TypedefCollision",
-            vec!["typedef", "TypedefCollision", "byte"],
+            vec!["create", "typedef", "TypedefCollision", "byte"],
             "typedef",
         ),
         (
             "StructCollision",
-            vec!["create", "StructCollision"],
+            vec!["create", "struct", "StructCollision"],
             "struct",
         ),
     ] {
         // Different kinds force Ghidra to retain both definitions under unique names.
         let initial = if kind == "struct" {
-            vec!["typedef", name, "byte"]
+            vec!["create", "typedef", name, "byte"]
         } else {
-            vec!["create", name]
+            vec!["create", "struct", name]
         };
         type_command(&program, &initial).assert_success();
         let result = type_command(&program, &args);

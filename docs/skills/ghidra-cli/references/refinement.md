@@ -63,11 +63,11 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 
 ```bash
 ghidra-cli type get Header --project target
-ghidra-cli type create Header --project target
+ghidra-cli type create struct Header --project target
 ghidra-cli type add-field Header --name magic --type uint --offset 0 --project target
 ghidra-cli type del-field Header --name magic --project target
-ghidra-cli type create-enum Mode --values "Unknown=0,Read=1,Write=2" --project target
-ghidra-cli type typedef HeaderAlias Header --project target
+ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
+ghidra-cli type create typedef HeaderAlias Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
 ghidra-cli type apply 0x404000 Header --project target
@@ -87,8 +87,8 @@ ghidra-cli type import-c --file recovered_types.h --category /Recovered
 ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 ```
 
-`type create` accepts a bare name and creates an empty struct; use `set-field`,
-`add-field`, or `import-c` for its definition.
+`type create struct` accepts a bare name and creates an empty struct; use
+`set-field`, `add-field`, or `import-c` for its definition.
 
 `type apply --force` clears a conflicting data unit before applying the type.
 Type applicability, size, memory range, and field-layout checks precede

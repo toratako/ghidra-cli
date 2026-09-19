@@ -163,7 +163,7 @@ final class TypeCommands {
         // after the whole (unparsed) string, e.g. `struct Foo {}` -- that
         // used to succeed and leave a garbage type behind with no error.
         if (!typeName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
-            return errorResult("Invalid type name: '" + typeName + "'. `type create` takes a "
+            return errorResult("Invalid type name: '" + typeName + "'. `type create struct` takes a "
                 + "bare identifier and always creates an empty struct; build fields afterward "
                 + "with `type add-field`. It does not parse a C-style struct definition.");
         }
