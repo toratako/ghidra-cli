@@ -28,8 +28,16 @@ fn memory_read_64_bit_little_endian() {
     check_pointer_layout("x86:LE:64:default", 8, false, 0xffff_8000_0709_da30);
 }
 
+#[test]
+#[serial]
+fn memory_read_arm_thumb_function_pointers() {
+    check_pointer_layout("ARM:LE:32:v8", 4, false, 0xf123_4560);
+}
+
 fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, high: u64) {
     require_ghidra!();
+    let thumb = language == "ARM:LE:32:v8";
+    let odd_function_entry = language.starts_with("x86:");
     let directory = tempfile::Builder::new()
         .prefix("ghidra-memory-")
         .tempdir()
@@ -42,7 +50,9 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
         0,
         0x0040_1000, // Unmapped, despite falling inside the old code-address range.
         0x1000,      // Mapped data with no function.
-        OUTSIDE_OLD_RANGE + 1, // A function interior is not an entry point.
+        OUTSIDE_OLD_RANGE + 1, // Thumb entry pointer; otherwise a function interior.
+        OUTSIDE_OLD_RANGE + 3, // Still an interior after stripping a code-mode bit.
+        0x3001,      // A real odd entry on x86 must remain odd.
         if pointer_size == 4 {
             u32::MAX as u64
         } else {
@@ -85,6 +95,10 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program)
         .expect("start fixture bridge");
     let client = harness.client().unwrap();
+    let mut target_addresses = vec![format!("{OUTSIDE_OLD_RANGE:x}"), format!("{high:x}")];
+    if odd_function_entry {
+        target_addresses.push("3001".to_owned());
+    }
     client
         .script_run_source(
             r#"
@@ -94,20 +108,25 @@ import ghidra.program.model.symbol.SourceType;
 public class CreatePointerTargets extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
-        String[] names = {"outside_range_target", "high_address_target"};
-        for (int i = 0; i < names.length; i++) {
+        String[] names = {"outside_range_target", "high_address_target", "odd_address_target"};
+        for (int i = 0; i < args.length; i++) {
             var address = currentProgram.getAddressFactory().getDefaultAddressSpace()
                 .getAddress(Long.parseUnsignedLong(args[i], 16));
             var block = currentProgram.getMemory().createInitializedBlock(names[i],
                 address, 4, (byte) 0, monitor, false);
             block.setExecute(true);
+            var thumbMode = currentProgram.getRegister("TMode");
+            if (thumbMode != null) {
+                currentProgram.getProgramContext().setValue(thumbMode, address,
+                    address.add(3), java.math.BigInteger.ONE);
+            }
             currentProgram.getFunctionManager().createFunction(names[i], address,
                 new AddressSet(address, address.add(3)), SourceType.USER_DEFINED);
         }
     }
 }
 "#,
-            &[format!("{OUTSIDE_OLD_RANGE:x}"), format!("{high:x}")],
+            &target_addresses,
             &[],
             false,
         )
@@ -136,12 +155,16 @@ public class CreatePointerTargets extends GhidraScript {
             pointer["value"],
             format!("0x{value:0width$x}", width = pointer_size * 2)
         );
-        if i < 2 {
+        let expected_function = match i {
+            0 => Some("outside_range_target"),
+            1 => Some("high_address_target"),
+            5 if thumb => Some("outside_range_target"),
+            7 if odd_function_entry => Some("odd_address_target"),
+            _ => None,
+        };
+        if let Some(name) = expected_function {
             assert_eq!(pointer.as_object().unwrap().len(), 4);
-            assert_eq!(
-                pointer["function"],
-                ["outside_range_target", "high_address_target"][i]
-            );
+            assert_eq!(pointer["function"], name);
         } else {
             assert_eq!(pointer.as_object().unwrap().len(), 3);
             assert!(pointer.get("function").is_none(), "{pointer}");
@@ -178,11 +201,11 @@ public class CreatePointerTargets extends GhidraScript {
     );
 
     if pointer_size == 4 {
-        check_overlay_pointers(&client);
+        check_overlay_pointers(&client, thumb);
     }
 }
 
-fn check_overlay_pointers(client: &BridgeClient) {
+fn check_overlay_pointers(client: &BridgeClient, thumb: bool) {
     client
         .script_run_source(
             r#"
@@ -200,8 +223,18 @@ public class CreateOverlayPointerTargets extends GhidraScript {
         var overlay = memory.createInitializedBlock("overlay", space.getAddress(0x1000),
             0x1004, (byte) 0, monitor, true);
         var start = overlay.getStart();
-        memory.setBytes(start, new byte[] {0, 0x20, 0, 0, 0x30, (byte) 0xda, 9, 7});
+        var thumbMode = currentProgram.getRegister("TMode");
+        byte modeBit = (byte) (thumbMode == null ? 0 : 1);
+        memory.setBytes(start, new byte[] {modeBit, 0x20, 0, 0,
+            (byte) (0x30 | modeBit), (byte) 0xda, 9, 7});
         var target = start.add(0x1000);
+        if (thumbMode != null) {
+            currentProgram.getProgramContext().setValue(thumbMode, target,
+                target.add(3), java.math.BigInteger.ONE);
+            var oddOverlay = memory.createInitializedBlock("odd_overlay", base.add(1),
+                4, (byte) 0, monitor, true);
+            memory.setBytes(oddOverlay.getStart(), new byte[] {1, 0x20, 0, 0});
+        }
         currentProgram.getFunctionManager().createFunction("overlay_target", target,
             new AddressSet(target, target.add(3)), SourceType.USER_DEFINED);
     }
@@ -227,6 +260,18 @@ public class CreateOverlayPointerTargets extends GhidraScript {
     }
     assert_eq!(result["pointers"][0]["function"], "overlay_target");
     assert_eq!(result["pointers"][1]["function"], "outside_range_target");
+    assert_eq!(
+        result["pointers"][0]["value"],
+        if thumb { "0x00002001" } else { "0x00002000" }
+    );
+    if thumb {
+        let boundary = read_memory(client, "odd_overlay:0x2001", 4);
+        assert_eq!(boundary["pointers"][0]["value"], "0x00002001");
+        assert!(
+            boundary["pointers"][0].get("function").is_none(),
+            "normalization must not substitute the physical-space base_target: {boundary}"
+        );
+    }
 }
 
 fn read_memory(client: &BridgeClient, address: &str, size: usize) -> Value {

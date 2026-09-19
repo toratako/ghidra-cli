@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.app.util.PseudoDisassembler;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
@@ -447,10 +448,14 @@ final class MemoryCommands {
                 // overlay, segmented, and addressable-word pointer semantics.
                 Address funcAddr = PointerDataType.getAddressValue(buffer, pointerSize,
                     pointerAddr.getAddressSpace());
-                if (funcAddr != null && mem.contains(funcAddr)) {
-                    Function func = session.program().getFunctionManager().getFunctionAt(funcAddr);
-                    if (func != null) {
-                        ptrObj.addProperty("function", func.getName());
+                if (funcAddr != null) {
+                    Address entry = PseudoDisassembler.getNormalizedDisassemblyAddress(session.program(), funcAddr);
+                    // Removing a code-mode bit must not escape an overlay into its physical space.
+                    if (entry.getAddressSpace().equals(funcAddr.getAddressSpace()) && mem.contains(entry)) {
+                        Function func = session.program().getFunctionManager().getFunctionAt(entry);
+                        if (func != null) {
+                            ptrObj.addProperty("function", func.getName());
+                        }
                     }
                 }
 
