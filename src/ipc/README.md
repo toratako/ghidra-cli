@@ -50,6 +50,14 @@ See [query planning](../query/README.md) for when these arguments may be pushed.
 This change requires a matching CLI and Java bridge; it adds no old-bridge
 compatibility path.
 
+`list_imports`, `list_exports`, `tag_list`, `tag_get`, `graph_calls`,
+`graph_callers`, `graph_callees`, and `find_instruction` accept `limit` only in
+`0..=2147483647`. Graph `depth` uses the same checked range and defaults to 1.
+Missing/null limits default to zero (unlimited); fractional, nonnumeric and
+overflowing values fail. The CLI validates these limits before bridge work,
+including when filtering leaves the limit in Rust. Other long-based paging
+arguments retain their existing range.
+
 `disasm` uses the checked `limit` argument; missing/null/zero means unlimited.
 The CLI resolves `default_limit` before sending these requests. The old request
 argument `count` is rejected. Update the CLI and restart the bridge together:

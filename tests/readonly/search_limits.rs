@@ -5,6 +5,107 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn test_int_query_limits_reject_overflow_without_truncating_results() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("int-query-limits-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/scripts/CreateQueryFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class CompleteIntQueryLimitFixture extends GhidraScript {
+    public void run() throws Exception {
+        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
+        for (int i = 0; i < 2; i++) {
+            var address = space.getAddress(0x1000 + i * 0x10);
+            currentProgram.getMemory().setByte(address, (byte) 0xc3);
+            if (!new DisassembleCommand(address, new AddressSet(address), false).applyTo(currentProgram, monitor)) {
+                throw new IllegalStateException("Could not disassemble fixture");
+            }
+            currentProgram.getSymbolTable().addExternalEntryPoint(address);
+            currentProgram.getExternalManager().addExtFunction("test_library", "import" + i, null, SourceType.USER_DEFINED);
+        }
+        currentProgram.getFunctionManager().getFunctionAt(space.getAddress(0x1000)).addTag("second");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        for (wire, args, key) in [
+            ("list_imports", json!({}), "imports"),
+            ("list_exports", json!({}), "exports"),
+            ("tag_list", json!({}), "tags"),
+            ("tag_get", json!({"name":"selected"}), "functions"),
+            ("graph_calls", json!({}), "nodes"),
+            ("find_instruction", json!({"pattern":"RET"}), "results"),
+        ] {
+            let baseline = client.send_command(wire, Some(args.clone())).unwrap();
+            let rows = baseline[key].as_array().unwrap();
+            assert!(rows.len() >= 2, "{wire}: {baseline}");
+            for limit in [Value::Null, json!(0), json!(i32::MAX)] {
+                let mut bounded = args.clone();
+                bounded["limit"] = limit;
+                assert_eq!(
+                    client.send_command(wire, Some(bounded.clone())).unwrap(),
+                    baseline,
+                    "{wire}: {bounded}"
+                );
+            }
+            let mut bounded = args.clone();
+            bounded["limit"] = json!(1);
+            assert_eq!(
+                client.send_command(wire, Some(bounded)).unwrap()[key],
+                json!(rows[..1]),
+                "{wire}"
+            );
+            for limit in [
+                json!(-1),
+                json!(1.5),
+                json!("1"),
+                json!(2147483648u64),
+                json!(4294967296u64),
+                json!(4294967297u64),
+                json!(u64::MAX),
+            ] {
+                let mut invalid = args.clone();
+                invalid["limit"] = limit;
+                let error = client
+                    .send_command(wire, Some(invalid.clone()))
+                    .expect_err(&format!("{wire} accepted {invalid}"));
+                assert!(
+                    error
+                        .to_string()
+                        .contains("limit must be an integer from 0 to 2147483647"),
+                    "{wire}: {invalid}: {error}"
+                );
+            }
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_search_limits_and_client_defaults_on_complete_results() {
     require_ghidra!();
     let harness = harness();

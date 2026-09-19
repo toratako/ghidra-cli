@@ -384,3 +384,39 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         _ => Client,
     }
 }
+
+/// Validate the command's bounds even when filtering keeps its limit in Rust.
+pub(super) fn validate_query_bounds(
+    command: &Commands,
+    plan: &crate::query::QueryPlan,
+) -> anyhow::Result<()> {
+    let int_limit = matches!(
+        command,
+        Commands::Program(cli::ProgramCommands::Imports(_) | cli::ProgramCommands::Exports(_))
+            | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
+            | Commands::Graph(_)
+            | Commands::Find(cli::FindCommands::Instruction(_))
+    );
+    if int_limit {
+        let limit = plan
+            .post
+            .as_ref()
+            .and_then(|query| query.limit)
+            .or(plan.fetch.limit);
+        anyhow::ensure!(
+            limit.is_none_or(|limit| limit <= i32::MAX as usize),
+            "--limit must be between 0 and {} for this command (0 means unlimited)",
+            i32::MAX
+        );
+    }
+    if let Commands::Graph(cli::GraphCommands::Callers(args) | cli::GraphCommands::Callees(args)) =
+        command
+    {
+        anyhow::ensure!(
+            args.depth.is_none_or(|depth| depth <= i32::MAX as usize),
+            "--depth must be between 0 and {}",
+            i32::MAX
+        );
+    }
+    Ok(())
+}

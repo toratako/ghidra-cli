@@ -14,7 +14,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgInt;
+import static ghidracli.JsonProtocol.getNonnegativeIntArg;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class GraphCommands {
@@ -29,7 +29,7 @@ final class GraphCommands {
     JsonObject handleGraphCalls(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
-        int limit = getArgInt(args, "limit", 0);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
 
         FunctionManager fm = session.program().getFunctionManager();
         ReferenceManager refMgr = session.program().getReferenceManager();
@@ -83,8 +83,8 @@ final class GraphCommands {
 
         String funcName = getArgString(args, "function");
         if (funcName == null) return errorResult("Function name required");
-        int depth = getArgInt(args, "depth", 1);
-        int limit = getArgInt(args, "limit", 0);
+        int depth = getNonnegativeIntArg(args, "depth", 1);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
 
         CallReferences calls = new CallReferences(session, new AddressResolver(session));
         Function targetFunc = calls.resolveTarget(funcName);
@@ -150,8 +150,8 @@ final class GraphCommands {
 
         String funcName = getArgString(args, "function");
         if (funcName == null) return errorResult("Function name required");
-        int depth = getArgInt(args, "depth", 1);
-        int limit = getArgInt(args, "limit", 0);
+        int depth = getNonnegativeIntArg(args, "depth", 1);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
 
         Function targetFunc = functionQueries.findFunctionByNameOrAddress(funcName);
         if (targetFunc == null) return errorResult(functionQueries.buildFunctionTargetHint(funcName));

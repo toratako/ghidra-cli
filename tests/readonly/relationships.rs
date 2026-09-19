@@ -430,6 +430,42 @@ public class CreateGraphDepthFixture extends GhidraScript {
                 expected.len(),
                 "cycle must terminate: {unbounded}"
             );
+            assert_eq!(
+                query(Some(i32::MAX as usize), Some(i32::MAX as usize)),
+                unbounded,
+                "{direction}: maximum supported bounds must retain all rows"
+            );
+            let wire = format!("graph_{direction}");
+            let defaults = client
+                .send_command(
+                    &wire,
+                    Some(serde_json::json!({"function":root, "depth":null, "limit":null})),
+                )
+                .unwrap();
+            assert_eq!(defaults, query(None, None));
+            for field in ["depth", "limit"] {
+                for value in [
+                    serde_json::json!(-1),
+                    serde_json::json!(1.5),
+                    serde_json::json!("1"),
+                    serde_json::json!(2147483648u64),
+                    serde_json::json!(4294967296u64),
+                    serde_json::json!(4294967297u64),
+                    serde_json::json!(u64::MAX),
+                ] {
+                    let mut args = serde_json::json!({"function":root});
+                    args[field] = value;
+                    let error = client
+                        .send_command(&wire, Some(args.clone()))
+                        .expect_err(&format!("{wire} accepted {args}"));
+                    assert!(
+                        error
+                            .to_string()
+                            .contains(&format!("{field} must be an integer from 0 to 2147483647")),
+                        "{wire}: {args}: {error}"
+                    );
+                }
+            }
             for ((row, (name, index, depth)), site) in all.iter().zip(expected).zip(sites) {
                 assert_eq!(row.as_object().unwrap().len(), 4, "row shape: {row}");
                 assert_eq!(row["name"], format!("{direction}_{name}"));

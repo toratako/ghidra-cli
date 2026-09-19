@@ -122,6 +122,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         query_options.as_ref().and(config.default_limit),
         options::query_fetch_support(&cli.command),
     );
+    options::validate_query_bounds(&cli.command, &plan)?;
 
     // Extract project from command args, fall back to global --project, then config default
     let project_from_cmd =

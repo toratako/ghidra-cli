@@ -128,6 +128,10 @@ The default cap also applies with no query options or with only `--fields`.
 An explicit limit overrides it; `--count` ignores the default but honors an
 explicit offset/limit, returning the selected page's count. Byte, text, and string
 searches have no additional fixed result cap.
+`program imports/exports`, `tag list/get`, `graph` queries and `find instruction`
+accept limits through 2,147,483,647; graph depths have the same maximum.
+Larger values are rejected, including configured limits. Use `--limit 0` for
+unlimited results. Other commands retain their existing larger numeric ranges.
 Output precedence: explicit format, `--pretty`, `--json`, configured default,
 TTY detection.
 

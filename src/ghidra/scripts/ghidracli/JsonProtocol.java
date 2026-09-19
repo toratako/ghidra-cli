@@ -69,6 +69,21 @@ final class JsonProtocol {
         return args.get(key).getAsInt();
     }
 
+    /** Checked nonnegative int; omitted/null values retain the command's default. */
+    static int getNonnegativeIntArg(JsonObject args, String name, int defaultVal) {
+        if (args == null || !args.has(name) || args.get(name).isJsonNull()) return defaultVal;
+        JsonElement value = args.get(name);
+        try {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                int number = value.getAsBigDecimal().intValueExact();
+                if (number >= 0) return number;
+            }
+        } catch (ArithmeticException | NumberFormatException e) {
+            // Reject fractional and overflowing values instead of narrowing them.
+        }
+        throw new IllegalArgumentException(name + " must be an integer from 0 to " + Integer.MAX_VALUE);
+    }
+
     /** Checked nonnegative integer; an omitted/null value defaults to zero. */
     static long getNonnegativeLongArg(JsonObject args, String name) {
         if (args == null || !args.has(name) || args.get(name).isJsonNull()) return 0;

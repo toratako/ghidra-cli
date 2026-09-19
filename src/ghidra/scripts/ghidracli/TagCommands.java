@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
-import static ghidracli.JsonProtocol.getArgInt;
+import static ghidracli.JsonProtocol.getNonnegativeIntArg;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getArgStringArray;
 
@@ -29,7 +29,7 @@ final class TagCommands {
 
     JsonObject handleTagList(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
-        int limit = getArgInt(args, "limit", 0);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
         String funcTarget = getArgString(args, "function");
         FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
 
@@ -60,7 +60,7 @@ final class TagCommands {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
         if (name == null || name.isEmpty()) return errorResult("Tag name required");
-        int limit = getArgInt(args, "limit", 0);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
 
         FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
         FunctionTag tag = tm.getFunctionTag(name);

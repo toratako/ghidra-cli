@@ -21,6 +21,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Refuse `program delete` for non-Program files, preserving project data type archives.
 - Match actual string values in `string refs`, including backslashes, quotes and
   newlines, independently of the JVM locale.
+- Reject overflowing query limits and graph depths instead of narrowing them to
+  unrelated values in the Java bridge.
 - Load package-declared Java scripts from files and stdin by their qualified class names.
 - Recognize Thumb function pointers in memory annotations while preserving raw values.
 - Preserve explicit `signed char` signedness on unsigned-char ABIs, reject type

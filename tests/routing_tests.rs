@@ -1454,6 +1454,104 @@ comment set 0x1000 'Header length includes the prefix'
 }
 
 #[test]
+fn bounded_queries_reject_oversized_limits_before_bridge_work() {
+    let bridge = RecordedBridge::new();
+    for args in [
+        vec!["program", "imports"],
+        vec!["program", "exports"],
+        vec!["tag", "list"],
+        vec!["tag", "get", "interesting"],
+        vec!["graph", "calls"],
+        vec!["graph", "callers", "main"],
+        vec!["graph", "callees", "main"],
+        vec!["find", "instruction", "CALL"],
+    ] {
+        for limit in ["2147483648", "4294967297"] {
+            for selection in [vec![], vec!["--filter", "name~item"], vec!["--count"]] {
+                let output = bridge
+                    .command()
+                    .args(&args)
+                    .args(["--limit", limit])
+                    .args(&selection)
+                    .output()
+                    .unwrap();
+                assert!(
+                    !output.status.success(),
+                    "{args:?}, {selection:?}: {output:?}"
+                );
+                let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                assert!(
+                    error["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("--limit must be between 0 and 2147483647"),
+                    "{error}"
+                );
+                assert!(bridge.requests.lock().unwrap().is_empty());
+            }
+        }
+    }
+    for subcommand in ["callers", "callees"] {
+        let output = bridge
+            .command()
+            .args(["graph", subcommand, "main", "--depth", "4294967297"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("--depth must be between 0 and 2147483647"),
+            "{error}"
+        );
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn bounded_query_defaults_respect_count_and_explicit_unlimited() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_limit: 2147483648\n",
+    )
+    .unwrap();
+    for selection in [vec![], vec!["--filter", "name~a"]] {
+        let output = bridge
+            .command()
+            .args(["graph", "calls"])
+            .args(selection)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("--limit must be between 0 and 2147483647"),
+            "{error}"
+        );
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+    assert_eq!(bridge.run(&["graph", "calls", "--count"]), 4);
+    for limit in ["0", "2147483647"] {
+        let result = bridge.run(&["graph", "calls", "--limit", limit]);
+        assert_eq!(result[0]["node_count"], 4);
+    }
+    // The list planner already supports checked 64-bit paging; keep that contract.
+    bridge.run(&["function", "list", "--limit", "2147483648"]);
+    let requests = bridge.requests.lock().unwrap();
+    let list = requests
+        .iter()
+        .find(|request| request["command"] == "list_functions")
+        .unwrap();
+    assert_eq!(list["args"]["limit"], 2147483648_u64);
+}
+
+#[test]
 fn batch_unescapes_arguments_without_expanding_shell_syntax() {
     let bridge = RecordedBridge::new();
     std::fs::write(

@@ -13,7 +13,7 @@ import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgInt;
+import static ghidracli.JsonProtocol.getNonnegativeIntArg;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class ListingCommands {
@@ -69,7 +69,7 @@ final class ListingCommands {
             return errorResult("No program loaded");
         }
 
-        int limit = getArgInt(args, "limit", 0);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
         JsonArray imports = new JsonArray();
         SymbolTable symbolTable = session.program().getSymbolTable();
         ExternalManager extMgr = session.program().getExternalManager();
@@ -101,7 +101,7 @@ final class ListingCommands {
             return errorResult("No program loaded");
         }
 
-        int limit = getArgInt(args, "limit", 0);
+        int limit = getNonnegativeIntArg(args, "limit", 0);
         JsonArray exports = new JsonArray();
         SymbolTable symbolTable = session.program().getSymbolTable();
 

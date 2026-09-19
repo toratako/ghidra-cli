@@ -31,7 +31,7 @@ import java.util.Locale;
 import java.util.regex.PatternSyntaxException;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
-import static ghidracli.JsonProtocol.getArgInt;
+import static ghidracli.JsonProtocol.getNonnegativeIntArg;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class SearchCommands {
@@ -50,8 +50,7 @@ final class SearchCommands {
         String pattern = getArgString(args, "pattern");
         if (pattern == null || pattern.isEmpty()) return errorResult("Non-empty pattern required");
         boolean caseSensitive = getArgBool(args, "case_sensitive", false);
-        int limit = getArgInt(args, "limit", 0);
-        if (limit < 0) return errorResult("Limit must be non-negative (0 means unlimited)");
+        int limit = getNonnegativeIntArg(args, "limit", 0);
         AddressSetView range = addressResolver.instructionRange(
             getArgString(args, "start"), getArgString(args, "end"));
         String needle = caseSensitive ? pattern : pattern.toLowerCase(Locale.ROOT);
