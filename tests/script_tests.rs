@@ -395,6 +395,117 @@ public class \u0055nicode$Stdin extends GhidraScript {
 
 #[test]
 #[serial]
+fn java_packaged_scripts_run_from_files_and_stdin() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let source_dir = directory.path().join("scripts's space");
+    #[cfg(unix)]
+    let source_dir = source_dir.join(r"back\slash");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source = r#"
+// package comment.decoy;
+package audit /* package another.decoy; */ . \u0070ackaged;
+import ghidra.app.script.GhidraScript;
+public final class PackagedAudit extends GhidraScript {
+    public void run() {
+        println(getClass().getName() + ":" + PackageMessage.text() + ":" + getScriptArgs()[0]);
+    }
+}
+"#;
+    let helper = |message: &str| {
+        format!(
+            r#"final class PackageMessage {{
+    static String text() {{ return "{message}"; }}
+}}
+"#
+        )
+    };
+    let path = source_dir.join("PackagedAudit.java");
+    fs::write(&path, source).unwrap();
+    fs::write(
+        source_dir.join("PackageMessage.java"),
+        format!("package audit.packaged;\n{}", helper("file")),
+    )
+    .unwrap();
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .current_dir(directory.path())
+        .args(["--json", "--quiet", "script", "run"])
+        .arg(path.strip_prefix(directory.path()).unwrap())
+        .args([
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+            "--",
+            "arg with spaces",
+        ])
+        .timeout(std::time::Duration::from_secs(120))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        result[0]["stdout"],
+        "audit.packaged.PackagedAudit:file:arg with spaces\n"
+    );
+
+    // A registered ancestor must not supply a same-named packaged class when
+    // the explicitly requested child bundle contains a different script/helper.
+    let child = source_dir.join("child");
+    fs::create_dir(&child).unwrap();
+    let child_path = child.join("PackagedAudit.java");
+    fs::write(&child_path, source).unwrap();
+    fs::write(
+        child.join("PackageMessage.java"),
+        format!("package audit.packaged;\n{}", helper("child")),
+    )
+    .unwrap();
+    let result = client
+        .script_run(
+            child_path.to_str().unwrap(),
+            &["child arg".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert_eq!(
+        result["stdout"],
+        "audit.packaged.PackagedAudit:child:child arg\n"
+    );
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args([
+            "--json",
+            "--quiet",
+            "script",
+            "run",
+            "-",
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+            "--",
+            "stdin arg",
+        ])
+        .write_stdin(format!("{source}\n{}", helper("stdin")))
+        .timeout(std::time::Duration::from_secs(120))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        result[0]["stdout"],
+        "audit.packaged.PackagedAudit:stdin:stdin arg\n"
+    );
+    assert_eq!(result[0]["script"], "PackagedAudit.java");
+    assert!(!std::path::Path::new(result[0]["path"].as_str().unwrap()).exists());
+}
+
+#[test]
+#[serial]
 fn java_source_on_stdin_reports_invalid_declarations() {
     require_ghidra!();
     let _harness = harness();

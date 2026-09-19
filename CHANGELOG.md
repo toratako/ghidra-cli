@@ -19,6 +19,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Refuse `program delete` for non-Program files, preserving project data type archives.
+- Load package-declared Java scripts from files and stdin by their qualified class names.
 - Preserve the supplied input filename as the default saved program name when
   importing through a symlink, including both one-shot and running-bridge imports.
 - Apply `graph calls` filters, sorting, pagination, field selection, and counts

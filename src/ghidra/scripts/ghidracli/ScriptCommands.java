@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URI;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -51,6 +53,7 @@ final class ScriptCommands {
 
         File scriptFile;
         File tempDir = null;
+        String declaredClassName = null;
         if (inlineSource != null && !inlineSource.isEmpty()) {
             // Stdin-sourced one-offs (`ghidra-cli script run -`): stage the source into a
             // temp file and run it through the exact same compile/execute path as a
@@ -58,9 +61,10 @@ final class ScriptCommands {
             // inline snippets going through Ghidra's normal script bundle/compile gate
             // instead of adding a second, less-sandboxed execution path.
             try {
-                String className = inlineClassName(inlineSource);
+                declaredClassName = javaClassName(inlineSource, true);
+                String simpleName = declaredClassName.substring(declaredClassName.lastIndexOf('.') + 1);
                 tempDir = java.nio.file.Files.createTempDirectory("ghidra-cli-stdin-script").toFile();
-                scriptFile = new File(tempDir, className + ".java");
+                scriptFile = new File(tempDir, simpleName + ".java");
                 try (FileWriter fw = new FileWriter(scriptFile)) {
                     fw.write(inlineSource);
                 }
@@ -172,9 +176,12 @@ final class ScriptCommands {
                         + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
                 }
                 Bundle osgiBundle = (Bundle) rawOsgiBundle;
-                String className = (String) bundleClass
-                    .getMethod("classNameForScript", ResourceFile.class)
-                    .invoke(bundle, source);
+                // The source's parent is our exact bundle root, so Ghidra's
+                // path-based classNameForScript omits any declared package.
+                // Parse file sources after building to retain Ghidra's compile
+                // diagnostics; stdin already needed this name for staging.
+                String className = declaredClassName != null ? declaredClassName
+                    : javaClassName(Files.readString(scriptFile.toPath(), Charset.defaultCharset()), false);
                 Class<?> loadedClass;
                 try {
                     loadedClass = osgiBundle.loadClass(className);
@@ -236,12 +243,13 @@ final class ScriptCommands {
         }
     }
 
-    private static String inlineClassName(String source)
+    private static String javaClassName(String source, boolean inline)
             throws IOException, ReflectiveOperationException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
-            throw new IllegalArgumentException("Inline Java source requires a full JDK compiler");
+            throw new IllegalArgumentException("Java source requires a full JDK compiler");
         }
+        String sourceDescription = inline ? "Inline Java source" : "Java source";
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         JavaFileObject input = new SimpleJavaFileObject(
                 URI.create("string:///Stdin.java"), JavaFileObject.Kind.SOURCE) {
@@ -260,17 +268,21 @@ final class ScriptCommands {
                 .getMethod("parse").invoke(task);
             for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
                 if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
-                    throw new IllegalArgumentException("Invalid inline Java source at line "
+                    throw new IllegalArgumentException("Invalid "
+                        + (inline ? "inline Java source" : "Java source") + " at line "
                         + diagnostic.getLineNumber() + ", column " + diagnostic.getColumnNumber()
                         + ": " + diagnostic.getMessage(Locale.ROOT));
                 }
             }
             String className = null;
+            String packageName = null;
             Class<?> compilationUnit = javacApi("tree.CompilationUnitTree");
             Class<?> tree = javacApi("tree.Tree");
             Class<?> classTree = javacApi("tree.ClassTree");
             Class<?> modifiersTree = javacApi("tree.ModifiersTree");
             for (Object unit : units) {
+                Object packageTree = compilationUnit.getMethod("getPackageName").invoke(unit);
+                if (packageTree != null) packageName = packageTree.toString();
                 for (Object declaration : (List<?>) compilationUnit.getMethod("getTypeDecls").invoke(unit)) {
                     Enum<?> kind = (Enum<?>) tree.getMethod("getKind").invoke(declaration);
                     if (!kind.name().equals("CLASS")) continue;
@@ -279,16 +291,16 @@ final class ScriptCommands {
                     if (!flags.contains(Modifier.PUBLIC)) continue;
                     if (className != null) {
                         throw new IllegalArgumentException(
-                            "Inline Java source must define exactly one top-level public class");
+                            sourceDescription + " must define exactly one top-level public class");
                     }
                     className = classTree.getMethod("getSimpleName").invoke(declaration).toString();
                 }
             }
             if (className == null) {
                 throw new IllegalArgumentException(
-                    "Inline Java source must define exactly one top-level public class");
+                    sourceDescription + " must define exactly one top-level public class");
             }
-            return className;
+            return packageName == null ? className : packageName + "." + className;
         }
     }
 

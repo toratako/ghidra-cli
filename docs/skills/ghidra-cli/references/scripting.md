@@ -16,6 +16,8 @@ Java source uses Ghidra's bundle/compile path. Use `script run PATH` or
 `script run -` with Java source on stdin.
 
 Stdin source must declare exactly one top-level public class that Ghidra can load
-as a script.
+as a script. Package declarations are supported for both file and stdin scripts;
+the public class must extend `GhidraScript`. File scripts retain their parent
+directory as the source bundle, so supporting source files belong in that bundle.
 
 Scripts follow the shared [save and failure behavior](../SKILL.md#results-edits-and-jobs).

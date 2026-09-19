@@ -160,6 +160,10 @@ are validated before script execution, including for direct bridge requests.
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A
 successful plain `javac` invocation does not validate this class-loader boundary.
+File and stdin Java sources share JDK declaration parsing for their qualified
+class name. Keep the source's immediate parent as its explicitly selected bundle;
+derive package names from the parser, not directory names or regex matching.
+File declarations are parsed after the bundle build to preserve compile diagnostics.
 
 `ImportSupport` owns the loader's detached programs until save/release. Bootstrap
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge
