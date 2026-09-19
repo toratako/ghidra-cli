@@ -156,6 +156,11 @@ Function lookup rejects ambiguous names with candidates instead of selecting the
 first match. Artifact hashing failures propagate as validation errors. Artifact
 minimum row counts use the shared checked nonnegative-long argument parser and
 are validated before script execution, including for direct bridge requests.
+Type deletion resolves registered program types directly; detached array/pointer
+expressions are not database identities. Alias fallback must match a registered
+type before resolving its stored path; a matching path alone can name an unrelated
+user type. Rename success requires the actual name
+to match the request, since immutable Ghidra types can ignore `setName()`.
 
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A

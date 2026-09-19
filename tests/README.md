@@ -104,6 +104,9 @@ partial results through successful and failed saves; type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
 Type tests also inspect saved component format/byte-order settings after metadata
 and layout edits.
+They cover explicit signed-char semantics on an unsigned-char ABI, rejected
+immutable renames, and deletion of registered arrays, pointers and aliased types
+after reopening, while preserving unrelated types that share an alias target's name.
 Memory tests cover Thumb mode bits, odd x86 entries and overlay boundaries.
 Program-session tests exclude root and nested data type archives from program lists
 and status counts.

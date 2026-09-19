@@ -54,8 +54,23 @@ final class TypeResolver {
         m.put("unsigned long long", "ulonglong");
         m.put("unsigned short", "ushort");
         m.put("unsigned char", "uchar");
-        m.put("signed char", "char");
+        m.put("signed char", "schar");
         return m;
+    }
+
+    DataType resolveRegisteredDataType(String name) {
+        if (name == null || name.trim().isEmpty()) return null;
+        String trimmed = name.trim();
+        DataTypeManager dtm = session.program().getDataTypeManager();
+        // Deletion needs the stored object, not a detached pointer/array expression.
+        DataType registered = trimmed.startsWith("/") ? dtm.getDataType(trimmed)
+            : findDataTypeByName(dtm, trimmed, trimmed);
+        if (registered != null) return registered;
+        // Built-in alias clones may equal a registered type. Check equivalence
+        // before using its path so a same-named user type cannot be deleted.
+        DataType resolved = resolveDataType(trimmed);
+        if (resolved == null || !dtm.contains(resolved)) return null;
+        return dtm.getDataType(resolved.getPathName());
     }
 
     DataType resolveDataType(String name) {

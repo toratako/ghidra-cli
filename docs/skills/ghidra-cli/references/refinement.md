@@ -105,6 +105,12 @@ Fallback aliases `uint8_t`/`u8`, `uint16_t`/`u16`, `uint32_t`/`u32`, and
 `uint64_t`/`u64` have fixed widths of 1, 2, 4, and 8 bytes. Signed equivalents
 use `intN_t`/`sN`. Existing types with the requested name take precedence;
 ordinary C spellings such as `unsigned int` use the target ABI.
+`signed char` remains signed even when the ABI's plain `char` is unsigned.
+
+`type delete` selects a registered program type by name or full path, including
+array and pointer types. `type rename` fails when Ghidra cannot change the name
+(for example, primitive, array and pointer types); use `type create typedef`
+for an alias.
 
 ### Growing recovered structures
 

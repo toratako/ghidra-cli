@@ -319,7 +319,7 @@ final class TypeCommands {
         if (typeName == null || typeName.isEmpty()) return errorResult("Type name required");
 
         try {
-            DataType dataType = typeResolver.resolveDataType(typeName);
+            DataType dataType = typeResolver.resolveRegisteredDataType(typeName);
             if (dataType == null) return errorResult("Type not found: " + typeName);
 
             String fullPath = dataType.getPathName();
@@ -360,6 +360,8 @@ final class TypeCommands {
             ProgramTransaction transaction = session.transaction("Rename type");
             try {
                 dataType.setName(newName);
+                if (!newName.equals(dataType.getName()))
+                    throw new IllegalArgumentException("Type cannot be renamed: " + oldName);
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(true);
