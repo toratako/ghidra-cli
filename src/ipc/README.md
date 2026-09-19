@@ -50,12 +50,22 @@ See [query planning](../query/README.md) for when these arguments may be pushed.
 This change requires a matching CLI and Java bridge; it adds no old-bridge
 compatibility path.
 
-`disasm` and `disasm_at` also use the checked `limit` argument; missing/null/zero
-means unlimited. The CLI resolves `default_limit` before sending these requests.
-The old request argument `count` is rejected. `disasm_at` validates the limit
-before changing the program, and limits only its returned `instructions`, not
-instruction creation. Update the CLI and restart the bridge together: an older
-bridge would ignore `limit` and apply its old fixed instruction count.
+`disasm` uses the checked `limit` argument; missing/null/zero means unlimited.
+The CLI resolves `default_limit` before sending these requests. The old request
+argument `count` is rejected. Update the CLI and restart the bridge together:
+an older bridge would ignore `limit` and apply its old fixed instruction count.
+
+`define_code` accepts `target` and optional inclusive `end`, both exact names or
+explicit addresses. Bounds are validated before mutation. It follows native
+Ghidra code flow but confines complete instructions and delay-slot groups to the
+requested range when `end` is given. It does not run auto-analysis. The
+receipt contains `address`, `end`, `status` (`defined`/`unchanged`/`failed`),
+`already_defined`, `changed`, `ok`, and `landed`, without instruction rows.
+No definition at the target is an error with the receipt retained in detail.
+The old `disasm_at` command is removed; `limit`, `count`, and other query
+arguments are rejected. The distinct wire name prevents an old bridge from
+silently ignoring bounds. The optional `clear_range.disasm_at` argument is
+unchanged and does not use this bounded operation.
 
 `bridge_info.auto_save: true` advertises saving before successful program
 responses. `program_save` retries pending saves without restarting. A save failure

@@ -132,10 +132,10 @@ pub enum Commands {
     #[command(name = "disassemble")]
     Disasm(DisasmArgs),
 
-    /// Disassemble at an address, disassembling first if nothing is there yet
-    /// (the common case for computed-jump targets auto-analysis never reached)
-    #[command(name = "disassemble-at")]
-    DisasmAt(DisasmAtArgs),
+    /// Define instructions in Ghidra by following code flow from a name or address.
+    /// Returns a change receipt; use disassemble to read the instructions.
+    #[command(name = "define-code")]
+    DefineCode(DefineCodeArgs),
 
     /// Clear code units in a range (undoes auto-analysis that mis-disassembled
     /// through inline data), optionally re-disassembling at a precise address

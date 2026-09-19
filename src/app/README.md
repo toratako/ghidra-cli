@@ -49,6 +49,9 @@ Fully qualify both endpoints to disambiguate a range, for example
 `ram:0x1234:0x0:ram:0x1234:0x8`; the delimiter remains a single colon.
 Name-or-address operations keep exact names such as `dead` and `FUN_...`; they
 never derive a numeric address from them. Offsets and byte patterns are separate.
+`define-code` accepts exactly one positional/`--target` start and optional `--end`.
+It forwards a bounded mutation and returns only its receipt, without query options
+or a configured row limit. Use `disassemble` separately to read the definitions.
 Client-side comparisons read canonical segmented addresses with a space name;
 symbol `--address` requires that name for segmented targets because the client
 cannot distinguish an unnamed segment from a numeric-looking registered space.

@@ -117,19 +117,11 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         .map_err(describe_query_error)?
         .flatten();
     let config = load_config(&cli.projects_dir)?;
-    let mut plan = QueryPlan::new(
+    let plan = QueryPlan::new(
         query,
         query_options.as_ref().and(config.default_limit),
         options::query_fetch_support(&cli.command),
     );
-    if let Commands::DisasmAt(args) = &cli.command {
-        // Cap the instructions inside the mutation receipt without treating the
-        // receipt itself as query rows or changing its shape in batch results.
-        plan.fetch.limit = args
-            .limit
-            .or(config.default_limit)
-            .filter(|&limit| limit != 0);
-    }
 
     // Extract project from command args, fall back to global --project, then config default
     let project_from_cmd =

@@ -140,7 +140,7 @@ final class CommandDispatcher {
             // Other commands
             case "disasm":          return memoryCommands.handleDisasm(args);
             case "disasm_range":    return memoryCommands.handleDisasmRange(args);
-            case "disasm_at":       return memoryCommands.handleDisasmAt(args);
+            case "define_code":     return memoryCommands.handleDefineCode(args);
             case "clear_range":     return memoryCommands.handleClearRange(args);
             case "stats":           return programCommands.handleStats();
             // Script commands

@@ -377,9 +377,7 @@ public class CreateInteriorCommentFixture extends GhidraScript {
         .unwrap();
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
-        let disasm = client
-            .send_command("disasm_at", Some(serde_json::json!({"address":"0x1000"})))
-            .unwrap();
+        let disasm = client.define_code("0x1000", None).unwrap();
         assert_eq!(disasm["landed"], true);
         for address in ["0x1001", "0x1009"] {
             for kind in ["EOL", "PRE", "POST", "PLATE"] {

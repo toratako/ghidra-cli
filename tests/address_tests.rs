@@ -280,7 +280,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
                 "memory_write",
                 json!({"address": address, "hex": "00000000"}),
             ),
-            ("disasm_at", json!({"address": address, "limit": 1})),
+            ("define_code", json!({"target": address})),
             ("clear_range", json!({"start": address, "end": "0x1607"})),
         ] {
             assert!(

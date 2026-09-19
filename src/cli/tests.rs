@@ -63,40 +63,65 @@ fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
         assert_eq!(disasm.end.as_deref(), Some("0x2000"));
         assert_eq!(disasm.options.limit, Some(12));
     }
-    for command in ["disassemble", "disassemble-at"] {
-        for limit in ["0", "12"] {
-            let cli =
-                Cli::try_parse_from(["ghidra-cli", command, "0x1000", "--limit", limit]).unwrap();
-            let parsed_limit = match cli.command {
-                Commands::Disasm(args) => args.options.limit,
-                Commands::DisasmAt(args) => args.limit,
-                _ => unreachable!(),
+    for limit in ["0", "12"] {
+        let cli =
+            Cli::try_parse_from(["ghidra-cli", "disassemble", "0x1000", "--limit", limit]).unwrap();
+        assert!(
+            matches!(cli.command, Commands::Disasm(args) if args.options.limit == Some(limit.parse().unwrap()))
+        );
+    }
+    for flag in ["-n", "--instructions"] {
+        let error = Cli::try_parse_from(["ghidra-cli", "disassemble", "0x1000", flag, "10"])
+            .err()
+            .expect("removed instruction count must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+    let cli = Cli::try_parse_from(["ghidra-cli", "disassemble", "main", "--count"]).unwrap();
+    assert!(matches!(cli.command, Commands::Disasm(args) if args.options.count));
+}
+
+#[test]
+fn define_code_accepts_exclusive_targets_and_bounds_without_query_options() {
+    for target in [vec!["entry"], vec!["--target", "entry"]] {
+        for end in [None, Some("0x2000")] {
+            let mut args = vec!["ghidra-cli", "define-code"];
+            args.extend(&target);
+            if let Some(end) = end {
+                args.extend(["--end", end]);
+            }
+            let cli = Cli::try_parse_from(args).unwrap();
+            let Commands::DefineCode(args) = cli.command else {
+                panic!("expected define-code")
             };
-            assert_eq!(parsed_limit, Some(limit.parse().unwrap()));
-        }
-        for flag in ["-n", "--instructions"] {
-            let error = Cli::try_parse_from(["ghidra-cli", command, "0x1000", flag, "10"])
-                .err()
-                .expect("removed instruction count must fail");
-            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+            assert_eq!(args.resolved_target(), "entry");
+            assert_eq!(args.end.as_deref(), end);
         }
     }
+    assert!(Cli::try_parse_from(["ghidra-cli", "define-code"]).is_err());
+    let error = Cli::try_parse_from(["ghidra-cli", "define-code", "entry", "--target", "other"])
+        .err()
+        .expect("conflicting targets must fail");
+    assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    assert!(Cli::try_parse_from(["ghidra-cli", "disassemble-at", "0x1000"]).is_err());
     for flags in [
+        vec!["--limit", "1"],
+        vec!["-n", "1"],
+        vec!["--instructions", "1"],
         vec!["--count"],
         vec!["--count", "2"],
         vec!["--filter", "mnemonic=RET"],
         vec!["--sort", "address"],
         vec!["--offset", "1"],
+        vec!["--fields", "address"],
+        vec!["--format", "asm"],
     ] {
         assert!(Cli::try_parse_from(
-            ["ghidra-cli", "disassemble-at", "0x1000"]
+            ["ghidra-cli", "define-code", "0x1000"]
                 .into_iter()
                 .chain(flags)
         )
         .is_err());
     }
-    let cli = Cli::try_parse_from(["ghidra-cli", "disassemble", "main", "--count"]).unwrap();
-    assert!(matches!(cli.command, Commands::Disasm(args) if args.options.count));
 }
 
 #[test]
@@ -400,7 +425,7 @@ fn canonical_commands_parse_without_aliases() {
         vec!["string", "refs", "hello"],
         vec!["disassemble", "main"],
         vec!["function", "disassemble", "main"],
-        vec!["disassemble-at", "0x1000"],
+        vec!["define-code", "0x1000"],
         vec!["find", "string", "hello"],
         vec!["graph", "callers", "main"],
         vec!["graph", "callees", "main"],

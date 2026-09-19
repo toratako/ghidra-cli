@@ -67,7 +67,7 @@ ghidra-cli import ./firmware.bin --project firmware \
 `--base-address`, `--block-name`, `--file-offset`, and `--length` imply
 `BinaryLoader`. Use `--language` to select the ISA and `--compiler-spec` to select
 the compiler specification. Raw import does not establish
-an entry point. Use `disassemble-at` and `function create` at a known code address;
+an entry point. Use `define-code` and `function create` at a known code address;
 see [disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-boundaries).
 
 ## Export

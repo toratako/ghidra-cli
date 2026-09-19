@@ -7,7 +7,8 @@ ghidra-cli function disassemble main --limit 0 --format asm --project target
 ghidra-cli disassemble 0x401000 --limit 40 --project target
 ghidra-cli disassemble 0x401000 --end 0x401080 --format asm --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target
-ghidra-cli disassemble-at 0x401234 --limit 20 --project target
+ghidra-cli define-code --target 0x401234 --end 0x401280 --project target
+ghidra-cli disassemble 0x401234 --end 0x401280 --limit 20 --project target
 ghidra-cli function create 0x401234 parse_entry --project target
 ```
 
@@ -27,11 +28,24 @@ space. Use `find calls` for resolved call destinations.
 Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
 operands). The default output format is unchanged.
 
-Use `disassemble-at` when auto-analysis missed a known target. Its `--limit`
-uses the same default and zero behavior, but only caps the instructions returned
-after disassembly; it does not restrict where instructions are created. It does
-not accept filter, sort, offset, or count options. The former `-n`/`--count N`
-options are removed. If analysis ran through inline data or chose the wrong boundary:
+Use `define-code TARGET` (or `define-code --target TARGET`) when auto-analysis
+missed a known code location. Choose one target form, not both. It decodes the
+loaded bytes and saves instruction definitions in Ghidra without changing those
+bytes or executing the program. Ghidra follows statically known code flow; this
+is not a linear sweep of every byte. Without `--end`, there is no explicit range
+restriction. With `--end END`, only complete instructions and delay-slot groups
+inside the inclusive TARGET:END range are created; out-of-range branch targets
+are not defined. Endpoints accept exact names or explicit addresses and must be
+ascending in the same address space. Existing instructions/data are not overwritten;
+an instruction already at TARGET produces an unchanged receipt.
+
+The command returns only a receipt (`address`, `end`, `status`, `changed`,
+`already_defined`, `ok`, `landed`), never instruction rows. Status is `defined`,
+`unchanged`, or `failed`; failure to define an instruction at TARGET is an error.
+Use `disassemble` afterward to read instructions. There is no `--limit`, and
+`default_limit` does not affect code creation. Query flags are not accepted.
+The old standalone `disassemble-at` command is removed. If analysis ran through
+inline data or chose the wrong boundary:
 
 ```bash
 ghidra-cli clear 0x401200:0x40121f --project target
@@ -40,6 +54,9 @@ ghidra-cli clear 0x401200:0x40121f --disassemble-at 0x401210 --project target
 
 Plain `clear START:END` clears overlapping code units and leaves the range
 undefined. Add `--disassemble-at ADDRESS` to disassemble at a new boundary after clearing.
+This existing `clear` option is separate from `define-code`: its subsequent
+disassembly is not confined to the cleared range. To bound code creation, run
+plain `clear` followed by `define-code --target START --end END` instead.
 `clear` ranges stay within one space. `overlay:0x1000:0x1010` inherits the start
 space; segmented endpoints must be fully qualified, e.g.
 `ram:0x1234:0x0:ram:0x1234:0x8`. For numeric space names, use
@@ -75,7 +92,7 @@ ghidra-cli memory write 0x401234 "90 90" --project target
 contiguous or quoted with spaces. Supply the intended instruction encoding for
 the target ISA. The entire range must be mapped and initialized. Writing clears
 existing code units in that range and restores any temporarily changed block
-write permissions. Use `disassemble-at` to re-disassemble when needed.
+write permissions. Use `define-code` to restore instruction definitions when needed.
 Failed nested mutations can retain partial changes; see
 [persistence semantics](../SKILL.md#results-edits-and-jobs).
 

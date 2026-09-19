@@ -12,6 +12,7 @@ import ghidra.util.task.TaskMonitor;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 /** Live view of script state; never caches a Program or a per-job monitor. */
 final class ProgramSession {
@@ -96,6 +97,35 @@ final class ProgramSession {
         if (requestTransaction != null) {
             requestTransaction.end(true);
             requestTransaction = null;
+        }
+    }
+
+    /**
+     * Run a program-only preview in its own rollback transaction. The caller must
+     * not hold a handler transaction or switch programs. Commit our known request
+     * transaction first so rolling back the preview cannot erase earlier edits.
+     * Return detached values, never listing objects invalidated by rollback.
+     */
+    <T> T preview(String description, Callable<T> operation) throws Exception {
+        var info = program().getCurrentTransactionInfo();
+        if (!requestActive || requestTransaction == null || info == null
+                || info.getOpenSubTransactions().size() != 1) {
+            throw new IllegalStateException("Preview requires the sole owned request transaction");
+        }
+        String requestDescription = info.getDescription();
+        endRequestTransaction();
+        if (program().getCurrentTransactionInfo() != null) {
+            throw new IllegalStateException("Preview cannot roll back a nested transaction");
+        }
+        ProgramTransaction preview = transaction(description);
+        try {
+            return operation.call();
+        } finally {
+            try {
+                preview.end(false);
+            } finally {
+                requestTransaction = transaction(requestDescription);
+            }
         }
     }
 

@@ -90,17 +90,36 @@ impl DisasmArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct DisasmAtArgs {
-    /// Explicit 0x-prefixed address or exact symbol name to disassemble at
-    pub address: String,
-    /// Maximum instructions to return after disassembly (0 = unlimited; default: default_limit).
-    /// This limits the response only, not the range in which instructions are created.
+pub struct DefineCodeArgs {
+    /// Exact symbol name or explicit 0x-prefixed start address
+    #[arg(
+        value_name = "TARGET",
+        required_unless_present = "target",
+        conflicts_with = "target"
+    )]
+    pub positional_target: Option<String>,
+    /// Exact symbol name or explicit 0x-prefixed start address
+    #[arg(long = "target", value_name = "TARGET")]
+    pub target: Option<String>,
+    /// Inclusive end of the permitted instruction-definition range.
+    /// Without this bound, follow code flow without an explicit range restriction.
     #[arg(long)]
-    pub limit: Option<usize>,
+    pub end: Option<String>,
+    /// Target program
     #[arg(long)]
     pub program: Option<String>,
+    /// Project name
     #[arg(long)]
     pub project: Option<String>,
+}
+
+impl DefineCodeArgs {
+    pub fn resolved_target(&self) -> &str {
+        self.target
+            .as_deref()
+            .or(self.positional_target.as_deref())
+            .expect("clap should ensure target is provided")
+    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

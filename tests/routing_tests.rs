@@ -191,19 +191,9 @@ impl RecordedBridge {
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
                     }
                     "xrefs_to" => json!({"xrefs": [], "count": 0}),
-                    "disasm_at" => {
-                        let mut instructions = vec![
-                            json!({"address": "0x1000", "mnemonic": "NOP"}),
-                            json!({"address": "0x1001", "mnemonic": "NOP"}),
-                            json!({"address": "0x1002", "mnemonic": "RET"}),
-                        ];
-                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
-                            instructions.truncate(limit as usize);
-                        }
-                        json!({"address": args["address"], "ok": true, "landed": true,
-                            "already_disassembled": true, "status": "disassembled",
-                            "instructions": instructions})
-                    }
+                    "define_code" => json!({"address": args["target"], "end": args["end"],
+                        "ok": true, "landed": true, "already_defined": false,
+                        "changed": true, "status": "defined"}),
                     "symbol_get" | "symbol_get_by_name" => {
                         json!({"symbols": if args["name"] == "missing" {
                             vec![]
@@ -333,9 +323,9 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             "main",
         ),
         (
-            vec!["disassemble-at", "0x1000", "--limit", "2"],
-            "disasm_at",
-            "address",
+            vec!["define-code", "0x1000", "--end", "0x1010"],
+            "define_code",
+            "target",
             "0x1000",
         ),
     ] {
@@ -350,8 +340,8 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             .unwrap()
             .clone();
         assert_eq!(standalone_request["args"][key], expected);
-        if wire == "disasm_at" {
-            assert_eq!(standalone_request["args"]["limit"], 2);
+        if wire == "define_code" {
+            assert_eq!(standalone_request["args"]["end"], "0x1010");
         }
         bridge.requests.lock().unwrap().clear();
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
@@ -367,7 +357,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
         // Mutations are wrapped as one receipt in standalone JSON output.
         assert_eq!(
             result,
-            if wire == "disasm_at" {
+            if wire == "define_code" {
                 &standalone[0]
             } else {
                 &standalone
@@ -845,13 +835,13 @@ fn disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
 }
 
 #[test]
-fn disassemble_at_limits_instruction_rows_and_preserves_mutation_receipts() {
+fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
     let bridge = RecordedBridge::new();
-    for (config, default_limit) in [
-        (None, json!(1000)),
-        (Some("{}\n"), Value::Null),
-        (Some("default_limit: 1\n"), json!(1)),
-        (Some("default_limit: 0\n"), Value::Null),
+    for config in [
+        None,
+        Some("{}\n"),
+        Some("default_limit: 1\n"),
+        Some("default_limit: 0\n"),
     ] {
         let config_path = bridge.root.path().join("config.yaml");
         if let Some(config) = config {
@@ -859,17 +849,17 @@ fn disassemble_at_limits_instruction_rows_and_preserves_mutation_receipts() {
         } else {
             std::fs::remove_file(&config_path).unwrap();
         }
-        for (flags, fetch_limit, expected_count) in [
+        for (target, flags, end) in [
+            (vec!["0x1000"], vec![], Value::Null),
             (
-                vec![],
-                default_limit.clone(),
-                if default_limit == 1 { 1 } else { 3 },
+                vec!["--target", "0x1000"],
+                vec!["--end", "0x1010"],
+                json!("0x1010"),
             ),
-            (vec!["--limit", "2"], json!(2), 2),
-            (vec!["--limit", "0"], Value::Null, 3),
         ] {
-            let args: Vec<_> = ["disassemble-at", "0x1000", "--program", "B"]
+            let args: Vec<_> = ["define-code", "--program", "B"]
                 .into_iter()
+                .chain(target)
                 .chain(flags)
                 .collect();
             for batch in [false, true] {
@@ -882,23 +872,18 @@ fn disassemble_at_limits_instruction_rows_and_preserves_mutation_receipts() {
                 };
                 assert!(receipt.is_object(), "{receipt}");
                 assert_eq!(
-                    receipt["instructions"].as_array().unwrap().len(),
-                    expected_count
+                    receipt,
+                    json!({"address": "0x1000", "end": end,
+                    "ok": true, "landed": true, "already_defined": false,
+                    "changed": true, "status": "defined"})
                 );
-                assert_eq!(receipt["address"], "0x1000");
-                assert_eq!(receipt["status"], "disassembled");
-                assert_eq!(receipt["landed"], true);
-                assert_eq!(receipt["already_disassembled"], true);
                 let requests = bridge.requests.lock().unwrap();
                 let edits: Vec<_> = requests
                     .iter()
-                    .filter(|r| r["command"] == "disasm_at")
+                    .filter(|r| r["command"] == "define_code")
                     .collect();
                 assert_eq!(edits.len(), 1);
-                assert_eq!(
-                    edits[0]["args"],
-                    json!({"address": "0x1000", "limit": fetch_limit})
-                );
+                assert_eq!(edits[0]["args"], json!({"target": "0x1000", "end": end}));
                 assert!(requests
                     .iter()
                     .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
@@ -2241,6 +2226,11 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
             "unrecognized subcommand",
         ),
         (vec!["memory", "search", "90"], "unrecognized subcommand"),
+        (vec!["disassemble-at", "0x1000"], "unrecognized subcommand"),
+        (
+            vec!["define-code", "0x1000", "--limit", "1"],
+            "unexpected argument",
+        ),
     ] {
         for invalid_config in [false, true] {
             let mut command = bridge.command();
@@ -2258,6 +2248,37 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
             assert!(bridge.requests.lock().unwrap().is_empty());
         }
     }
+}
+
+#[test]
+fn define_code_rejects_query_flags_and_legacy_name_before_batch_mutations() {
+    let bridge = RecordedBridge::new();
+    let invalid = [
+        "disassemble-at 0x1000 --program must-not-open",
+        "define-code 0x1000 --limit 1 --program must-not-open",
+        "define-code 0x1000 --target other --program must-not-open",
+    ];
+    std::fs::write(bridge.root.path().join("batch.txt"), invalid.join("\n")).unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["failed"], invalid.len());
+    assert!(report[0]["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|row| row["error"].is_string()));
+    let requests = bridge.requests.lock().unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|request| request["command"] == "bridge_info"),
+        "{requests:?}"
+    );
 }
 
 #[test]

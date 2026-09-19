@@ -371,7 +371,9 @@ pub(super) fn execute_via_bridge(
             Some(end) => client.disasm_range(args.resolved_target(), end, list_limit),
             None => client.disasm(args.resolved_target(), list_limit),
         },
-        Commands::DisasmAt(args) => client.disasm_at(&args.address, list_limit),
+        Commands::DefineCode(args) => {
+            client.define_code(args.resolved_target(), args.end.as_deref())
+        }
         Commands::Clear(args) => {
             let (start, end) = split_range(&args.range).ok_or_else(|| {
                 anyhow::anyhow!(

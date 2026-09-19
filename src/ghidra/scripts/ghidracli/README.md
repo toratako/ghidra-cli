@@ -65,6 +65,14 @@ request, so nested handlers retain partial changes; standalone transactions hono
 commit/rollback. Earlier requests are already committed and saved. Failed requests
 flush retained changes and report `partial_changes_saved` in error detail.
 
+Bounded code definition uses `ProgramSession.preview()` before opening its handler
+transaction. It requires the sole owned request transaction, commits that known
+transaction, runs a program-only preview in a separate transaction that is always
+rolled back, then restores the request transaction. It must never run within a
+handler transaction or switch programs. This is not a nested rollback: earlier
+edits remain committed, preview edits cannot be saved, and the real operation
+still ends and saves through the normal request boundary.
+
 Saving uses a non-cancelled monitor after the transaction ends, even on cancelled
 requests. Save errors fail the response, retain the command response in error
 detail, and keep the program available for in-place `program_save` retries.
@@ -184,12 +192,24 @@ sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct w
 name so an older bridge cannot silently ignore `disassemble --end`.
 
 `disasm` reads existing instructions from the resolved start, retaining its
-containing-instruction/function-entry fallback. It and `disasm_at` use checked
+containing-instruction/function-entry fallback. It uses checked
 nonnegative-long `limit` bounds, with missing/null/zero meaning unlimited, and
 check cancellation while collecting instructions. The CLI applies its configured
-default; the handlers have no fixed ten/one-instruction defaults. The obsolete
-`count` argument is rejected. `disasm_at` validates bounds before mutation and
-limits only the returned instruction list, not instruction creation.
+default; the handler has no fixed ten-instruction default. The obsolete `count`
+argument is rejected.
+
+`define_code` replaces `disasm_at`. It returns a change receipt, never instruction
+rows, and rejects query bounds such as `limit`. `target` and optional inclusive
+`end` resolve as exact names or explicit addresses in the same space. Existing
+instructions at the target are left unchanged. Auto-analysis is not run as part
+of the definition operation. The native flow-following disassembler
+retains custom processor decoding, future context, delay slots, and no-return
+handling. For bounded calls, `definitionStarts` previews and rolls back the
+native command, excludes starts whose complete instruction/delay-slot group
+crosses the byte bounds, and repeats until safe before the real run. Ghidra's
+plain restricted address set only bounds instruction starts, so it alone is not
+sufficient. Never replace this with per-instruction decoding, which loses flow
+context such as Thumb IT. `clear_range` keeps its existing optional redisassembly.
 
 `function_disasm` resolves a function through `FunctionQueries` and reads existing
 instructions from its complete `getBody()` address set, including disjoint ranges.

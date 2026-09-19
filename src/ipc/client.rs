@@ -544,15 +544,10 @@ impl BridgeClient {
         )
     }
 
-    /// Disassemble at `address`, disassembling first if no instruction is
-    /// there yet. Returns `ok`/`landed` booleans plus the resulting
-    /// instructions (up to `limit`, 0/None = unlimited). The limit does not
-    /// restrict instruction creation.
-    pub fn disasm_at(&self, address: &str, limit: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command(
-            "disasm_at",
-            Some(json!({"address": address, "limit": limit})),
-        )
+    /// Define instructions from `target`, optionally bounded by inclusive `end`.
+    /// Returns a change receipt only; use `disasm` to read instruction rows.
+    pub fn define_code(&self, target: &str, end: Option<&str>) -> Result<serde_json::Value> {
+        self.send_command("define_code", Some(json!({"target": target, "end": end})))
     }
 
     /// Clear all code units overlapping `[start, end]`, optionally

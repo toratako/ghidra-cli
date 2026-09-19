@@ -444,11 +444,30 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     assert_eq!(program["min_address"], "0x00008000");
     assert_eq!(program["max_address"], "0x00008002");
 
+    let definition = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args([
+            "define-code",
+            "--target",
+            "0x8000",
+            "--end",
+            "0x8002",
+            "--project",
+            &project,
+            "--program",
+            "x86_raw.bin",
+            "--json",
+        ])
+        .output()
+        .expect("define raw code");
+    assert!(definition.status.success(), "{definition:?}");
+    let receipt: serde_json::Value = serde_json::from_slice(&definition.stdout).unwrap();
+    assert_eq!(receipt[0]["changed"], true);
+    assert!(receipt[0].get("instructions").is_none());
     let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
-            "disassemble-at",
+            "disassemble",
             "0x8000",
-            "--count",
+            "--limit",
             "2",
             "--project",
             &project,
@@ -461,9 +480,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     assert!(disasm.status.success());
     let disasm_json: serde_json::Value =
         serde_json::from_slice(&disasm.stdout).expect("disassembly JSON");
-    let instructions = disasm_json[0]["instructions"]
-        .as_array()
-        .expect("instructions");
+    let instructions = disasm_json.as_array().expect("instructions");
     assert_eq!(instructions.len(), 2);
     assert_eq!(instructions[0]["mnemonic"], "XOR");
     assert_eq!(instructions[1]["mnemonic"], "RET");

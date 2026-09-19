@@ -65,9 +65,9 @@ overlapping matches and cancellation checks.
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before
 filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.
-`disassemble-at` is a mutation with a nested instruction list, not a row query.
-The application resolves its explicit or configured limit only for that list,
-preserving the mutation receipt and its standalone/batch response shape.
+`define-code` is a mutation returning only a receipt, not a row query. It accepts
+no query options and does not use `default_limit`. Its optional `--end` bounds
+instruction creation, not response rows. Use `disassemble` for subsequent reads.
 
 ## Boundaries and validation
 

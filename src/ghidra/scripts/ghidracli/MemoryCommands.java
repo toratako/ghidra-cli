@@ -3,7 +3,9 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.Function;
@@ -214,35 +216,47 @@ final class MemoryCommands {
         return instrData;
     }
 
-    /**
-     * Disassemble at ADDRESS if no instruction is there yet (auto-analysis
-     * often never reaches computed-jump targets / inline-table resume
-     * addresses), then report whether an instruction actually landed there --
-     * disassemble() can return false, or even true while the target still has
-     * no instruction, with no exception either way.
-     */
-    JsonObject handleDisasmAt(JsonObject args) {
+    /** Define code without returning instruction rows; disasm owns reading. */
+    JsonObject handleDefineCode(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
-        String addressStr = getArgString(args, "address");
+        String addressStr = getArgString(args, "target");
         if (addressStr == null || addressStr.isEmpty()) {
-            return errorResult("Address required");
+            return errorResult("Target required");
         }
 
         try {
-            long limit = disasmLimit(args);
+            for (String option : new String[]{"limit", "count", "filter", "sort", "offset", "fields", "format"}) {
+                if (args.has(option)) return errorResult("define_code does not support " + option
+                    + "; use disassemble to read instructions");
+            }
             Address addr = addressResolver.resolveAddress(addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
+            String endStr = getArgString(args, "end");
+            Address end = endStr == null ? null : addressResolver.resolveAddress(endStr);
+            if (endStr != null && end == null) return errorResult("Invalid end address: " + endStr);
+            if (end != null) {
+                if (!addr.getAddressSpace().equals(end.getAddressSpace())) {
+                    return errorResult("Start and end must be in the same address space");
+                }
+                if (addr.compareTo(end) > 0) return errorResult("Start address must not be after end address");
+            }
 
             Listing listing = session.program().getListing();
             boolean alreadyPresent = listing.getInstructionAt(addr) != null;
             boolean ok = alreadyPresent;
+            boolean changed = false;
+            AddressSet permitted = !alreadyPresent && end != null ? definitionStarts(addr, end) : null;
 
-            ProgramTransaction transaction = session.transaction("Disassemble at address");
+            ProgramTransaction transaction = session.transaction("Define code");
             try {
-                if (!alreadyPresent) {
-                    ok = session.disassemble(addr);
+                if (!alreadyPresent && (permitted == null || permitted.contains(addr))) {
+                    DisassembleCommand command = new DisassembleCommand(addr, permitted, true);
+                    command.enableCodeAnalysis(false);
+                    ok = command.applyTo(session.program(), session.monitor());
+                    changed = !command.getDisassembledAddressSet().isEmpty();
                 }
+                session.monitor().checkCancelled();
                 transaction.end(true);
             } catch (Exception e) {
                 transaction.end(true);
@@ -253,16 +267,16 @@ final class MemoryCommands {
 
             JsonObject result = new JsonObject();
             result.addProperty("address", AddressCodec.format(addr));
-            result.addProperty("already_disassembled", alreadyPresent);
+            result.addProperty("end", end == null ? null : AddressCodec.format(end));
+            result.addProperty("already_defined", alreadyPresent);
+            result.addProperty("changed", changed);
             result.addProperty("ok", ok);
             result.addProperty("landed", landed);
-            result.addProperty("status", landed ? "disassembled" : "failed");
+            result.addProperty("status", landed ? (changed ? "defined" : "unchanged") : "failed");
 
-            if (landed) {
-                result.add("instructions", instructionsFrom(listing.getInstructionAt(addr), limit));
-            } else {
-                result.addProperty("error", "Failed to disassemble at " + AddressCodec.format(addr)
-                    + ": no instruction was created");
+            if (!landed) {
+                result.addProperty("error", "Failed to define code at " + AddressCodec.format(addr)
+                    + ": no complete instruction was created within the requested range");
                 Function owner = session.program().getFunctionManager().getFunctionContaining(addr);
                 if (owner != null) {
                     result.addProperty("hint", "Address falls inside existing function "
@@ -272,8 +286,50 @@ final class MemoryCommands {
             }
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to disassemble at " + addressStr + ": " + e.getMessage());
+            return errorResult("Failed to define code at " + addressStr + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Ghidra's restrictedSet bounds instruction starts, not complete instructions
+     * or delay slots. Preview the ordinary flow-following command and roll it back,
+     * excluding starts of any groups that cross the byte bounds before the real run.
+     * Retaining the native command preserves processor future context (e.g. Thumb
+     * IT), custom decoders, and no-return handling. Auto-analysis is not run here.
+     */
+    private AddressSet definitionStarts(Address start, Address end) throws Exception {
+        AddressSet bounds = new AddressSet(start, end);
+        AddressSet permitted = new AddressSet(start, end);
+        while (permitted.contains(start)) {
+            session.monitor().checkCancelled();
+            AddressSet excluded = session.preview("Preview bounded code definition", () -> {
+                DisassembleCommand command = new DisassembleCommand(start, permitted, true);
+                command.enableCodeAnalysis(false);
+                command.applyTo(session.program(), session.monitor());
+                session.monitor().checkCancelled();
+                AddressSet rejected = new AddressSet();
+                Listing listing = session.program().getListing();
+                for (Instruction instruction : listing.getInstructions(command.getDisassembledAddressSet(), true)) {
+                    session.monitor().checkCancelled();
+                    if (bounds.contains(instruction.getMinAddress(), instruction.getMaxAddress())) continue;
+                    // A delay slot belongs to its preceding branch, not an independent start.
+                    Instruction group = instruction;
+                    while (group.isInDelaySlot()) {
+                        Instruction previous = group.getPrevious();
+                        if (previous == null) throw new IllegalStateException("Delay slot without its parent instruction");
+                        group = previous;
+                    }
+                    rejected.add(group.getAddress());
+                }
+                return rejected;
+            });
+            if (excluded.isEmpty()) return permitted;
+            if (!permitted.intersects(excluded)) {
+                throw new IllegalStateException("Cannot safely constrain code definition to the requested range");
+            }
+            permitted.delete(excluded);
+        }
+        return permitted;
     }
 
     /**
