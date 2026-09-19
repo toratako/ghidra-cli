@@ -7,7 +7,7 @@ ghidra-cli function disassemble main --limit 0 --format asm --project target
 ghidra-cli disassemble 0x401000 --limit 40 --project target
 ghidra-cli disassemble 0x401000 --end 0x401080 --format asm --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target
-ghidra-cli define-code --target 0x401234 --end 0x401280 --project target
+ghidra-cli define-code 0x401234 --end 0x401280 --project target
 ghidra-cli disassemble 0x401234 --end 0x401280 --limit 20 --project target
 ghidra-cli function create 0x401234 parse_entry --project target
 ```
@@ -28,8 +28,8 @@ space. Use `find calls` for resolved call destinations.
 Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
 operands). The default output format is unchanged.
 
-Use `define-code TARGET` (or `define-code --target TARGET`) when auto-analysis
-missed a known code location. Choose one target form, not both. It decodes the
+Use `define-code TARGET` when auto-analysis missed a known code location.
+TARGET is a required positional argument, not a `--target` option. It decodes the
 loaded bytes and saves instruction definitions in Ghidra without changing those
 bytes or executing the program. Ghidra follows statically known code flow; this
 is not a linear sweep of every byte. Without `--end`, there is no explicit range
@@ -56,7 +56,7 @@ Plain `clear START:END` clears overlapping code units and leaves the range
 undefined. Add `--disassemble-at ADDRESS` to disassemble at a new boundary after clearing.
 This existing `clear` option is separate from `define-code`: its subsequent
 disassembly is not confined to the cleared range. To bound code creation, run
-plain `clear` followed by `define-code --target START --end END` instead.
+plain `clear` followed by `define-code START --end END` instead.
 `clear` ranges stay within one space. `overlay:0x1000:0x1010` inherits the start
 space; segmented endpoints must be fully qualified, e.g.
 `ram:0x1234:0x0:ram:0x1234:0x8`. For numeric space names, use

@@ -92,15 +92,8 @@ impl DisasmArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DefineCodeArgs {
     /// Exact symbol name or explicit 0x-prefixed start address
-    #[arg(
-        value_name = "TARGET",
-        required_unless_present = "target",
-        conflicts_with = "target"
-    )]
-    pub positional_target: Option<String>,
-    /// Exact symbol name or explicit 0x-prefixed start address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Inclusive end of the permitted instruction-definition range.
     /// Without this bound, follow code flow without an explicit range restriction.
     #[arg(long)]
@@ -111,15 +104,6 @@ pub struct DefineCodeArgs {
     /// Project name
     #[arg(long)]
     pub project: Option<String>,
-}
-
-impl DefineCodeArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

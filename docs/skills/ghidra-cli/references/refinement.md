@@ -19,6 +19,7 @@ ghidra-cli function set-noreturn abort_path --project target
 it does not accept `--filter` or `--all`.
 
 `function delete TARGET` deletes one function by exact name or explicit address.
+TARGET is a required positional argument; there is no `--target` option.
 Use `--fields` and `--format` to format its deletion receipt. It does not accept
 `--filter`, `--sort`, `--offset`, `--limit`, or `--count`.
 

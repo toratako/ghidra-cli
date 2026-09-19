@@ -81,11 +81,10 @@ fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
 }
 
 #[test]
-fn define_code_accepts_exclusive_targets_and_bounds_without_query_options() {
-    for target in [vec!["entry"], vec!["--target", "entry"]] {
+fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
+    for target in ["entry", "0x1000"] {
         for end in [None, Some("0x2000")] {
-            let mut args = vec!["ghidra-cli", "define-code"];
-            args.extend(&target);
+            let mut args = vec!["ghidra-cli", "define-code", target];
             if let Some(end) = end {
                 args.extend(["--end", end]);
             }
@@ -93,15 +92,10 @@ fn define_code_accepts_exclusive_targets_and_bounds_without_query_options() {
             let Commands::DefineCode(args) = cli.command else {
                 panic!("expected define-code")
             };
-            assert_eq!(args.resolved_target(), "entry");
+            assert_eq!(args.target, target);
             assert_eq!(args.end.as_deref(), end);
         }
     }
-    assert!(Cli::try_parse_from(["ghidra-cli", "define-code"]).is_err());
-    let error = Cli::try_parse_from(["ghidra-cli", "define-code", "entry", "--target", "other"])
-        .err()
-        .expect("conflicting targets must fail");
-    assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     assert!(Cli::try_parse_from(["ghidra-cli", "disassemble-at", "0x1000"]).is_err());
     for flags in [
         vec!["--limit", "1"],
@@ -121,6 +115,71 @@ fn define_code_accepts_exclusive_targets_and_bounds_without_query_options() {
                 .chain(flags)
         )
         .is_err());
+    }
+}
+
+#[test]
+fn mutation_targets_require_one_positional_without_target_flag_compatibility() {
+    for command in [vec!["function", "delete"], vec!["define-code"]] {
+        for target in ["entry", "0x1000"] {
+            let cli = Cli::try_parse_from(
+                ["ghidra-cli"]
+                    .into_iter()
+                    .chain(command.iter().copied())
+                    .chain(["--program", "sample", target, "--project", "project"]),
+            )
+            .unwrap();
+            let (actual, program, project) = match cli.command {
+                Commands::Function(FunctionCommands::Delete(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::DefineCode(args) => (args.target, args.program, args.project),
+                _ => panic!("unexpected command"),
+            };
+            assert_eq!(actual, target);
+            assert_eq!(program.as_deref(), Some("sample"));
+            assert_eq!(project.as_deref(), Some("project"));
+        }
+        let missing =
+            Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command.iter().copied()))
+                .err()
+                .expect("positional target must be required");
+        assert_eq!(
+            missing.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        for args in [
+            vec!["--target", "entry"],
+            vec!["--target=entry"],
+            vec!["entry", "--target", "entry"],
+            vec!["entry", "--target", "other"],
+            vec!["--target", "entry", "other"],
+            vec!["entry", "other"],
+        ] {
+            let error = Cli::try_parse_from(
+                ["ghidra-cli"]
+                    .into_iter()
+                    .chain(command.iter().copied())
+                    .chain(args),
+            )
+            .err()
+            .expect("removed target flag or second target must fail");
+            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        }
+        for flag in ["-h", "--help"] {
+            let help = Cli::try_parse_from(
+                ["ghidra-cli"]
+                    .into_iter()
+                    .chain(command.iter().copied())
+                    .chain([flag]),
+            )
+            .err()
+            .expect("expected help");
+            assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+            let help = help.to_string();
+            assert!(help.contains("<TARGET>"), "{help}");
+            assert!(!help.contains("--target"), "{help}");
+        }
     }
 }
 

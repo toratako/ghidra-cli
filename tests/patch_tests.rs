@@ -281,14 +281,7 @@ fn check_define_code_ranges(
     );
 
     let result = ghidra(harness)
-        .args([
-            "--json",
-            "define-code",
-            "--target",
-            "code_start",
-            "--end",
-            "code_end",
-        ])
+        .args(["--json", "define-code", "code_start", "--end", "code_end"])
         .with_project(test_project(), program)
         .run();
     result.assert_success();

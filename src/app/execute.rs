@@ -106,7 +106,7 @@ pub(super) fn execute_via_bridge(
                 FunctionCommands::Delete(args) => client.send_command(
                     "delete_function",
                     Some(json!({
-                        "address": args.resolved_target(),
+                        "address": args.target,
                     })),
                 ),
                 FunctionCommands::SetSignature(args) => client.send_command(
@@ -371,9 +371,7 @@ pub(super) fn execute_via_bridge(
             Some(end) => client.disasm_range(args.resolved_target(), end, list_limit),
             None => client.disasm(args.resolved_target(), list_limit),
         },
-        Commands::DefineCode(args) => {
-            client.define_code(args.resolved_target(), args.end.as_deref())
-        }
+        Commands::DefineCode(args) => client.define_code(&args.target, args.end.as_deref()),
         Commands::Clear(args) => {
             let (start, end) = split_range(&args.range).ok_or_else(|| {
                 anyhow::anyhow!(

@@ -849,17 +849,12 @@ fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
         } else {
             std::fs::remove_file(&config_path).unwrap();
         }
-        for (target, flags, end) in [
-            (vec!["0x1000"], vec![], Value::Null),
-            (
-                vec!["--target", "0x1000"],
-                vec!["--end", "0x1010"],
-                json!("0x1010"),
-            ),
+        for (flags, end) in [
+            (vec![], Value::Null),
+            (vec!["--end", "0x1010"], json!("0x1010")),
         ] {
-            let args: Vec<_> = ["define-code", "--program", "B"]
+            let args: Vec<_> = ["define-code", "0x1000", "--program", "B"]
                 .into_iter()
-                .chain(target)
                 .chain(flags)
                 .collect();
             for batch in [false, true] {
@@ -2256,7 +2251,6 @@ fn define_code_rejects_query_flags_and_legacy_name_before_batch_mutations() {
     let invalid = [
         "disassemble-at 0x1000 --program must-not-open",
         "define-code 0x1000 --limit 1 --program must-not-open",
-        "define-code 0x1000 --target other --program must-not-open",
     ];
     std::fs::write(bridge.root.path().join("batch.txt"), invalid.join("\n")).unwrap();
     let output = bridge
@@ -2277,6 +2271,66 @@ fn define_code_rejects_query_flags_and_legacy_name_before_batch_mutations() {
         requests
             .iter()
             .all(|request| request["command"] == "bridge_info"),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn removed_mutation_target_flags_fail_before_selection_or_mutation() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
+    let mut lines = Vec::new();
+    for command in ["function delete", "define-code"] {
+        for args in [
+            "--target entry",
+            "--target=entry",
+            "entry --target entry",
+            "entry --target other",
+            "--target entry other",
+        ] {
+            let line = format!("{command} {args} --program must-not-open");
+            for invalid_config in [false, true] {
+                let mut command = bridge.command();
+                command.args(line.split_whitespace());
+                if invalid_config {
+                    command.env("GHIDRA_CLI_CONFIG", bridge.root.path().join("invalid.yaml"));
+                }
+                let output = command.output().unwrap();
+                assert_eq!(output.status.code(), Some(2), "{line}: {output:?}");
+                let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                assert!(
+                    error["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("unexpected argument '--target"),
+                    "{line}: {error}"
+                );
+                assert!(bridge.requests.lock().unwrap().is_empty());
+            }
+            lines.push(line);
+        }
+    }
+    std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["failed"], lines.len());
+    for row in report[0]["results"].as_array().unwrap() {
+        assert!(
+            row["error"]
+                .as_str()
+                .unwrap()
+                .contains("unexpected argument '--target"),
+            "{row}"
+        );
+    }
+    let requests = bridge.requests.lock().unwrap();
+    assert!(
+        requests.iter().all(|r| r["command"] == "bridge_info"),
         "{requests:?}"
     );
 }
@@ -2319,10 +2373,7 @@ fn batch_continues_after_removed_commands_without_selecting_their_programs() {
 fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
     for (command, wire) in [
         (vec!["function", "delete", "main"], "delete_function"),
-        (
-            vec!["function", "delete", "--target", "0x1000"],
-            "delete_function",
-        ),
+        (vec!["function", "delete", "0x1000"], "delete_function"),
         (vec!["comment", "delete", "0x1000"], "comment_delete"),
     ] {
         for batch in [false, true] {
