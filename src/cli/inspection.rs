@@ -23,8 +23,6 @@ pub enum XRefCommands {
     To(XRefArgs),
     /// Get cross-references from address
     From(XRefArgs),
-    /// List all cross-references
-    List(XRefArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

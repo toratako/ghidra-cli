@@ -129,8 +129,6 @@ pub struct XRef {
     pub from_function: Option<String>,
     #[serde(default)]
     pub to_function: Option<String>,
-    #[serde(default)]
-    pub direction: Option<String>,
 }
 
 /// Wrapper for lists of items with optional metadata.

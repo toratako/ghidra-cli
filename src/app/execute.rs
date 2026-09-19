@@ -172,10 +172,6 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 XRefCommands::To(args) => client.xrefs_to(args.resolved_target().to_string()),
                 XRefCommands::From(args) => client.xrefs_from(args.resolved_target().to_string()),
-                XRefCommands::List(args) => client.send_command(
-                    "xrefs_list",
-                    Some(json!({"address": args.resolved_target()})),
-                ),
             }
         }
         Commands::Program(cmd) => {

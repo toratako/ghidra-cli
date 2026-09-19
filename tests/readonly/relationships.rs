@@ -74,39 +74,17 @@ fn test_xref_from() {
 
 #[test]
 #[serial]
-fn test_xref_list() {
+fn test_xref_list_wire_command_is_rejected() {
     require_ghidra!();
     let harness = harness();
-
-    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "add_numbers");
-
-    let result = ghidra(harness)
-        .arg("xref")
-        .arg("list")
-        .arg(&addr)
-        .with_project(test_project(), TEST_PROGRAM)
-        .json_format()
-        .run();
-
-    result.assert_success();
-
-    let xrefs: Vec<XRef> = result.json();
+    let error = harness
+        .client()
+        .unwrap()
+        .send_command("xrefs_list", Some(serde_json::json!({"address": "main"})))
+        .unwrap_err();
     assert!(
-        !xrefs.is_empty(),
-        "add_numbers should have cross-references in list view"
-    );
-    // Should have both directions when function has incoming refs and outgoing refs
-    let has_to = xrefs.iter().any(|x| x.direction.as_deref() == Some("to"));
-    let has_from = xrefs.iter().any(|x| x.direction.as_deref() == Some("from"));
-    // add_numbers is called by main, so it must have "to" xrefs
-    assert!(has_to, "xref list should include incoming (to) references");
-    // add_numbers has a function body, so it should have "from" xrefs too
-    // (at minimum, stack/register references)
-    eprintln!(
-        "xref list: {} total, has_to={}, has_from={}",
-        xrefs.len(),
-        has_to,
-        has_from
+        error.to_string().contains("Unknown command: xrefs_list"),
+        "{error}"
     );
 }
 

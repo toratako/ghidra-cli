@@ -62,6 +62,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `xref list` and the `xrefs_list` bridge command without compatibility
+  aliases. Use `xref to` and `xref from` for incoming and outgoing references.
 - Remove `program export json`. Use `program info --json` and
   `function list --json --limit 0 --fields name,address,size` for JSON metadata
   and function lists; redirect stdout to save them to files.

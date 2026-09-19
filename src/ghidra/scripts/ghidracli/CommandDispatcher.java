@@ -67,7 +67,6 @@ final class CommandDispatcher {
             case "memory_map":      return listingCommands.handleMemoryMap();
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
-            case "xrefs_list":      return xrefCommands.handleXrefsList(args);
             case "import":          return programCommands.handleImport(args);
             case "analyze":         return programCommands.handleAnalyze(args);
             case "list_programs":   return programCommands.handleListPrograms();

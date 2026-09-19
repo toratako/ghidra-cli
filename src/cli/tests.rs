@@ -479,7 +479,6 @@ fn canonical_commands_parse_without_aliases() {
     for args in [
         vec!["xref", "to", "main"],
         vec!["xref", "from", "main"],
-        vec!["xref", "list", "main"],
         vec!["string", "list"],
         vec!["string", "refs", "hello"],
         vec!["disassemble", "main"],
@@ -545,6 +544,7 @@ fn removed_command_names_are_rejected() {
         ),
         (Some("string"), vec!["ls", "references", "xrefs"]),
         (Some("symbol"), vec!["ls"]),
+        (Some("xref"), vec!["list"]),
         (Some("type"), vec!["ls", "import", "parse-c", "rm", "mv"]),
         (Some("tag"), vec!["ls", "show", "rm", "mv"]),
         (Some("analyzer"), vec!["ls"]),

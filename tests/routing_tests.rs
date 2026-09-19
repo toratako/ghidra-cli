@@ -190,7 +190,7 @@ impl RecordedBridge {
                         };
                         json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
                     }
-                    "xrefs_to" => json!({"xrefs": [], "count": 0}),
+                    "xrefs_to" | "xrefs_from" => json!({"xrefs": [], "count": 0}),
                     "define_code" => json!({"address": args["target"], "end": args["end"],
                         "ok": true, "landed": true, "already_defined": false,
                         "changed": true, "status": "defined"}),
@@ -301,6 +301,12 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
         (
             vec!["xref", "to", "0x1000", "--limit", "0"],
             "xrefs_to",
+            "address",
+            "0x1000",
+        ),
+        (
+            vec!["xref", "from", "0x1000", "--limit", "0"],
+            "xrefs_from",
             "address",
             "0x1000",
         ),
@@ -2221,6 +2227,7 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
             "unrecognized subcommand",
         ),
         (vec!["memory", "search", "90"], "unrecognized subcommand"),
+        (vec!["xref", "list", "main"], "unrecognized subcommand"),
         (vec!["disassemble-at", "0x1000"], "unrecognized subcommand"),
         (
             vec!["define-code", "0x1000", "--limit", "1"],
@@ -2339,7 +2346,7 @@ fn removed_mutation_target_flags_fail_before_selection_or_mutation() {
 fn batch_continues_after_removed_commands_without_selecting_their_programs() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("batch.txt"),
-        "patch bytes 0x1000 90 --program must-not-open\nmemory search 90 --program must-not-open\ncomment set 0x1000 after\n"
+        "patch bytes 0x1000 90 --program must-not-open\nmemory search 90 --program must-not-open\nxref list main --program must-not-open\ncomment set 0x1000 after\n"
     ).unwrap();
     let output = bridge
         .command()
@@ -2348,10 +2355,10 @@ fn batch_continues_after_removed_commands_without_selecting_their_programs() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["detail"]["commands_executed"], 3);
-    assert_eq!(error["detail"]["failed"], 2);
+    assert_eq!(error["detail"]["commands_executed"], 4);
+    assert_eq!(error["detail"]["failed"], 3);
     assert_eq!(error["detail"]["not_executed"], 0);
-    for index in [0, 1] {
+    for index in [0, 1, 2] {
         assert!(
             serde_json::from_slice::<Value>(&output.stdout).unwrap()[0]["results"][index]["error"]
                 .as_str()

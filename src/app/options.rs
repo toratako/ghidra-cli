@@ -60,7 +60,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.project.clone(),
             cli::XRefCommands::From(args) => args.options.project.clone(),
-            cli::XRefCommands::List(args) => args.options.project.clone(),
         },
         Commands::Disasm(args) => args.options.project.clone(),
         Commands::DefineCode(args) => args.project.clone(),
@@ -177,7 +176,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.program.clone(),
             cli::XRefCommands::From(args) => args.options.program.clone(),
-            cli::XRefCommands::List(args) => args.options.program.clone(),
         },
         Commands::Disasm(args) => args.options.program.clone(),
         Commands::DefineCode(args) => args.program.clone(),
@@ -303,7 +301,6 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => Some(args.options.clone()),
             cli::XRefCommands::From(args) => Some(args.options.clone()),
-            cli::XRefCommands::List(args) => Some(args.options.clone()),
         },
         Commands::Symbol(cmd) => match cmd {
             cli::SymbolCommands::List(opts) => Some(opts.clone()),
