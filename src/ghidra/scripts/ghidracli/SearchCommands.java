@@ -3,6 +3,7 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
@@ -11,16 +12,23 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
+import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.datastruct.Accumulator;
+import ghidra.util.datastruct.ListAccumulator;
+import ghidra.util.task.TaskMonitor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.util.Locale;
+import java.util.regex.PatternSyntaxException;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgInt;
@@ -217,6 +225,73 @@ final class SearchCommands {
             return searchMemory(searchBytes, limit, null);
         } catch (Exception e) {
             return errorResult("Failed to find bytes: " + e.getMessage());
+        }
+    }
+
+    JsonObject handleFindBytesRegex(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String pattern = getArgString(args, "pattern");
+        if (pattern == null || pattern.isEmpty()) return errorResult("Non-empty byte regex required");
+
+        try {
+            long limit = ListQuery.pageArgument(args, "limit");
+            // Resolve the optional native API only for this command. Direct
+            // imports would prevent the entire bridge from compiling on Ghidra
+            // versions predating memsearch, and its classes became generic in
+            // newer releases. Load through Ghidra's application class loader,
+            // without making these packages hard OSGi bundle dependencies.
+            ClassLoader loader = GhidraScript.class.getClassLoader();
+            String prefix = "ghidra.features.base.memsearch.";
+            Class<?> settingsClass = loader.loadClass(prefix + "gui.SearchSettings");
+            Class<?> matcherClass = loader.loadClass(prefix + "matcher.RegExByteMatcher");
+            Class<?> sourceClass = loader.loadClass(prefix + "bytesource.ProgramByteSource");
+            Class<?> searcherClass = loader.loadClass(prefix + "searcher.MemorySearcher");
+            Class<?> matchClass = loader.loadClass(prefix + "searcher.MemoryMatch");
+            Object settings = settingsClass.getConstructor().newInstance();
+            Object matcher = matcherClass.getConstructor(String.class, settingsClass)
+                .newInstance(pattern, settings);
+            Object source = sourceClass.getConstructor(Program.class).newInstance(session.program());
+            Memory memory = session.program().getMemory();
+            // The native accumulator and JSON arrays both have int-sized lengths;
+            // do not narrow large valid wire limits by wrapping them to int.
+            int nativeLimit = limit == 0 ? Integer.MAX_VALUE : (int) Math.min(limit, Integer.MAX_VALUE);
+            Object searcher = searcherClass.getConstructor(
+                loader.loadClass(prefix + "bytesource.AddressableByteSource"),
+                loader.loadClass(prefix + "matcher.ByteMatcher"), AddressSetView.class, int.class)
+                .newInstance(source, matcher, memory.getLoadedAndInitializedAddressSet(), nativeLimit);
+            ListAccumulator<Object> matches = new ListAccumulator<>();
+            session.monitor().checkCancelled();
+            searcherClass.getMethod("findAll", Accumulator.class, TaskMonitor.class)
+                .invoke(searcher, matches, session.monitor());
+            // The native search returns partial results on cancellation. Never
+            // report those as a successful, complete query.
+            session.monitor().checkCancelled();
+            JsonArray results = new JsonArray();
+            Method getAddress = matchClass.getMethod("getAddress");
+            Method getLength = matchClass.getMethod("getLength");
+            for (Object match : matches) {
+                session.monitor().checkCancelled();
+                JsonObject row = new JsonObject();
+                row.addProperty("address", AddressCodec.format((Address) getAddress.invoke(match)));
+                row.addProperty("byte_length", (Number) getLength.invoke(match));
+                results.add(row);
+            }
+            JsonObject result = new JsonObject();
+            result.add("results", results);
+            result.addProperty("count", results.size());
+            return result;
+        } catch (ClassNotFoundException | NoSuchMethodException e) {
+            return errorResult("Native byte regex search is unavailable in this Ghidra installation: " + e.getMessage());
+        } catch (Exception e) {
+            Throwable cause = e instanceof InvocationTargetException ? e.getCause() : e;
+            if (cause instanceof PatternSyntaxException) {
+                PatternSyntaxException syntax = (PatternSyntaxException) cause;
+                return errorResult("Invalid byte regex at index " + syntax.getIndex() + ": " + syntax.getDescription());
+            }
+            if (cause instanceof IllegalArgumentException && "Must provide at least 1 byte".equals(cause.getMessage())) {
+                return errorResult("Byte regex produced a zero-length match; use a pattern that consumes at least one byte");
+            }
+            return errorResult("Failed to find byte regex: " + cause.getMessage());
         }
     }
 

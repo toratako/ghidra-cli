@@ -52,7 +52,7 @@ pub enum FindCommands {
     String(FindStringArgs),
     /// Find literal encoded text in program memory, including undefined data
     Text(FindTextArgs),
-    /// Find byte patterns
+    /// Find exact hex bytes or a byte regular expression in program memory
     Bytes(FindBytesArgs),
     /// Find a substring in already-disassembled instructions (does not require xrefs)
     Instruction(FindInstructionArgs),
@@ -81,8 +81,13 @@ pub struct FindTextArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FindBytesArgs {
-    /// Hex bytes, contiguous or quoted with spaces (e.g. 488b05 or "48 8b 05")
+    /// Hex bytes (e.g. "48 8b 05"), or a Java byte pattern with --regex
+    #[arg(value_name = "PATTERN")]
     pub hex: String,
+    /// Use Ghidra's native byte regex search (case-sensitive; . matches any byte)
+    #[arg(long)]
+    #[serde(default)]
+    pub regex: bool,
     #[command(flatten)]
     pub options: QueryOptions,
 }

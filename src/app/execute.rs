@@ -350,7 +350,13 @@ pub(super) fn execute_via_bridge(
                 FindCommands::String(args) => {
                     client.find_string_with_limit(&args.pattern, list_limit)
                 }
-                FindCommands::Bytes(args) => client.find_bytes_with_limit(&args.hex, list_limit),
+                FindCommands::Bytes(args) => {
+                    if args.regex {
+                        client.find_bytes_regex_with_limit(&args.hex, list_limit)
+                    } else {
+                        client.find_bytes_with_limit(&args.hex, list_limit)
+                    }
+                }
                 FindCommands::Text(args) => {
                     client.find_text_with_limit(&args.text, &args.encoding, list_limit)
                 }

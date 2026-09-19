@@ -74,6 +74,7 @@ public class CreateSearchLimitFixture extends GhidraScript {
         let bytes = "4341505f4e4545444c455f"; // CAP_NEEDLE_
         for command in [
             vec!["find", "bytes", bytes],
+            vec!["find", "bytes", "--regex", "CAP_NEEDLE_[0-9]{3}"],
             vec!["find", "text", "CAP_NEEDLE_"],
             vec!["find", "string", "DEFINED_NEEDLE_"],
         ] {
@@ -106,6 +107,9 @@ public class CreateSearchLimitFixture extends GhidraScript {
             client.find_string("DEFINED_NEEDLE_").unwrap(),
             client.find_text("CAP_NEEDLE_", "utf-8").unwrap(),
             client.find_bytes(bytes).unwrap(),
+            client
+                .find_bytes_regex_with_limit("CAP_NEEDLE_[0-9]{3}", None)
+                .unwrap(),
         ] {
             assert_eq!(data["count"], 160);
             assert_eq!(data["results"].as_array().unwrap().len(), 160);
@@ -115,6 +119,9 @@ public class CreateSearchLimitFixture extends GhidraScript {
                 .find_string_with_limit("DEFINED_NEEDLE_", Some(120))
                 .unwrap(),
             client.find_bytes_with_limit(bytes, Some(120)).unwrap(),
+            client
+                .find_bytes_regex_with_limit("CAP_NEEDLE_[0-9]{3}", Some(120))
+                .unwrap(),
             client
                 .find_text_with_limit("CAP_NEEDLE_", "utf-8", Some(120))
                 .unwrap(),
@@ -126,6 +133,10 @@ public class CreateSearchLimitFixture extends GhidraScript {
             ("find_string", json!({"pattern":"DEFINED_NEEDLE_"})),
             ("find_text", json!({"text":"CAP_NEEDLE_"})),
             ("find_bytes", json!({"hex": bytes})),
+            (
+                "find_bytes_regex",
+                json!({"pattern": "CAP_NEEDLE_[0-9]{3}"}),
+            ),
         ] {
             for limit in [json!(0), json!(4294967296u64)] {
                 args["limit"] = limit;
@@ -194,6 +205,7 @@ public class AddDenseSearchBlock extends GhidraScript {
             .unwrap();
         for (wire, args) in [
             ("find_bytes", json!({"hex": "0000"})),
+            ("find_bytes_regex", json!({"pattern": r"\x00\x00"})),
             ("find_text", json!({"text": "\0\0"})),
         ] {
             let worker = harness.client().unwrap();
@@ -222,6 +234,12 @@ public class AddDenseSearchBlock extends GhidraScript {
             );
             assert_eq!(
                 client.find_bytes_with_limit("0000", Some(2)).unwrap()["count"],
+                2
+            );
+            assert_eq!(
+                client
+                    .find_bytes_regex_with_limit(r"\x00\x00", Some(2))
+                    .unwrap()["count"],
                 2
             );
             assert_eq!(

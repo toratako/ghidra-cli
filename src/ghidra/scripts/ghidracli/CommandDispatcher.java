@@ -80,6 +80,7 @@ final class CommandDispatcher {
             case "find_text":       return searchCommands.handleFindText(args);
             case "string_refs":     return searchCommands.handleStringRefs(args);
             case "find_bytes":      return searchCommands.handleFindBytes(args);
+            case "find_bytes_regex": return searchCommands.handleFindBytesRegex(args);
             case "find_instruction": return searchCommands.handleFindInstruction(args);
             case "find_calls_to":   return searchCommands.handleFindCalls(args);
             case "function_calls":  return searchCommands.handleFunctionCalls(args);

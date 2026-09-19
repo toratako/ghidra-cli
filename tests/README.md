@@ -121,7 +121,10 @@ and standalone/batch equivalence.
 `readonly/search.rs` checks defined-only string search and exact text searches
 in UTF-8, UTF-16LE/BE, and Shift_JIS, including overlaps and encoding errors.
 `readonly/search_limits.rs` checks paging/counts for string, text, and byte
-searches and cancellation of both raw search commands.
+searches (including byte regex) and cancellation of all raw search modes.
+`readonly/byte_regex.rs` checks native byte regex semantics, result lengths,
+initialized memory boundaries, overlays, invalid/zero-length matches, and CLI/batch
+parity. CLI/routing tests also preserve regex escaping and query fetch limits.
 Batch coverage checks nonzero failure exits, preservation of per-command results
 and save errors, and stopping subsequent commands after a save failure or timeout.
 Program deletion coverage includes the initial program, closed files with matching

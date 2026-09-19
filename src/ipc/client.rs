@@ -485,6 +485,18 @@ impl BridgeClient {
         self.send_command("find_bytes", Some(json!({"hex": hex, "limit": limit})))
     }
 
+    /// Search program memory using Ghidra's native byte regular expressions.
+    pub fn find_bytes_regex_with_limit(
+        &self,
+        pattern: &str,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "find_bytes_regex",
+            Some(json!({"pattern": pattern, "limit": limit})),
+        )
+    }
+
     pub fn find_instruction(
         &self,
         pattern: &str,

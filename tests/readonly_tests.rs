@@ -9,6 +9,8 @@ use common::{ensure_test_project, get_function_address, ghidra, test_project, Da
 
 #[path = "readonly/batch.rs"]
 mod batch;
+#[path = "readonly/byte_regex.rs"]
+mod byte_regex;
 #[path = "readonly/functions.rs"]
 mod functions;
 #[path = "readonly/program.rs"]

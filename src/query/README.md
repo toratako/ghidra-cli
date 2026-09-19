@@ -59,8 +59,11 @@ options retains its original bridge envelope.
 
 `find bytes`, `find text`, and `find string` use this same limit contract,
 without a separate fixed result cap. `find string` visits defined strings only;
-`find text` and `find bytes` share exact-byte memory scanning, including
-overlapping matches and cancellation checks.
+`find text` and literal `find bytes` share exact-byte memory scanning, including
+overlapping matches and cancellation checks. `find bytes --regex` uses native
+Ghidra byte regex scanning with the same query plan; the regex is applied in
+the bridge before any fetch cap, while residual filters/sorts/counts/offsets
+still request all matching rows.
 
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before

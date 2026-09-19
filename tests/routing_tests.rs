@@ -161,7 +161,7 @@ impl RecordedBridge {
                         };
                         json!({key: rows, "count": rows.len()})
                     }
-                    "find_string" | "find_bytes" | "find_text" => {
+                    "find_string" | "find_bytes" | "find_bytes_regex" | "find_text" => {
                         let mut rows: Vec<_> = (0..160)
                             .map(|i| json!({"address": format!("0x{i:04x}")}))
                             .collect();
@@ -2735,6 +2735,10 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
         (vec!["find", "string", "needle"], "find_string"),
         (vec!["find", "text", "needle"], "find_text"),
         (vec!["find", "bytes", "90"], "find_bytes"),
+        (
+            vec!["find", "bytes", "--regex", r"\x90.{2}"],
+            "find_bytes_regex",
+        ),
     ] {
         for (flags, expected_len, first, fetch_limit) in [
             (vec![], 1, "0x0000", json!(1)),
@@ -2795,6 +2799,41 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
                 assert_eq!(sent[0]["args"]["limit"], fetch_limit, "{args:?}");
             }
         }
+    }
+}
+
+#[test]
+fn byte_regex_preserves_pattern_and_program_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let pattern = r"\x00(?:A B|'quote')\xff.{2,4}";
+    let args = [
+        "find",
+        "bytes",
+        "--regex",
+        pattern,
+        "--program",
+        "B",
+        "--limit",
+        "2",
+    ];
+    for batch in [false, true] {
+        bridge.requests.lock().unwrap().clear();
+        if batch {
+            std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+            bridge.run(&["batch", "batch.txt"]);
+        } else {
+            bridge.run(&args);
+        }
+        let requests = bridge.requests.lock().unwrap();
+        let search = requests
+            .iter()
+            .find(|r| r["command"] == "find_bytes_regex")
+            .unwrap();
+        assert_eq!(search["args"], json!({"pattern": pattern, "limit": 2}));
+        assert!(requests
+            .iter()
+            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        assert!(!requests.iter().any(|r| r["command"] == "find_bytes"));
     }
 }
 

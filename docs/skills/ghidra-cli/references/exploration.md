@@ -48,6 +48,7 @@ ghidra-cli find text "Password" --encoding utf-16le --project target
 ghidra-cli find text "日本" --encoding shift_jis --project target
 ghidra-cli string refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
+ghidra-cli find bytes --regex '\x48\x8b.{4}' --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
 ghidra-cli find calls CreateProcessW --project target
 ghidra-cli xref to malloc --project target
@@ -80,6 +81,19 @@ Java's `utf-16` encoding includes a BOM in the search bytes.
 Rows contain `address` (the match start), `byte_length`, and the canonical
 `encoding` name. Search does not create string definitions or infer surrounding
 string boundaries. `find bytes HEX` remains available for exact byte patterns.
+
+`find bytes --regex PATTERN` searches loaded, initialized memory with Ghidra's
+native byte regular expressions, including undefined data. Quote the pattern to
+preserve backslashes: `\xNN` matches one byte, `.` matches any byte including NUL
+and newline, and alternation/classes/repetition use Java regex syntax. Matching
+is case-sensitive by default; inline flags such as `(?i)` are supported. No text
+decoding or `--encoding` is applied. Rows contain `address` (match start) and
+`byte_length`. Empty or invalid patterns are errors; an encountered zero-length
+match also fails the request. Native regex matching does not enumerate every
+overlapping occurrence (`aa` in `aaaaa` gives two hits; literal hex `6161` gives
+four). Ghidra searches in buffers with limited overlap: long matches, lookaround,
+and anchors can be affected by buffer boundaries. Matches never bridge gaps in
+initialized memory. Shared limit/filter/sort/count options apply to these hits.
 
 String names and external/import names resolve directly. For plain `graph
 callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,

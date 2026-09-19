@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `find bytes --regex PATTERN` searches memory with Ghidra's native byte regex
+  engine and returns match addresses and byte lengths. It supports shared query
+  options and cancellation, preserves literal hex search, and rejects invalid
+  patterns and encountered zero-length matches.
 - `find text TEXT --encoding CHARSET` searches program memory for exact encoded
   text regardless of string definitions. UTF-8 is the default; results include
   match addresses, byte lengths, and encoding names. Unrepresentable text is

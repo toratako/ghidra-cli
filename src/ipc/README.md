@@ -82,6 +82,15 @@ identify the match start without extracting surrounding text. `find_string`
 now searches defined strings only. Update the bridge with the CLI to remove
 the old implicit raw-memory fallback.
 
+`find_bytes_regex` accepts non-empty `pattern` (Java byte regex syntax) and the
+same checked `limit`. It returns
+`{"results":[{"address":"0x1000","byte_length":6}],"count":1}`.
+The bridge invokes Ghidra's native memory search over loaded, initialized memory;
+it does not decode text. Invalid patterns and encountered zero-length matches
+fail. Native buffering and overlap semantics apply. Cancellation is checked
+after the native search, which otherwise returns partial results. The distinct
+wire command prevents older bridges from treating a regex as literal hex.
+
 `bridge_info.explicit_addresses: true` advertises strict address parsing and
 canonical address output. Before program dispatch, the CLI rejects a bridge
 without this capability and requests an explicit restart; it never downgrades

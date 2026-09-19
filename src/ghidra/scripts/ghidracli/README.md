@@ -191,6 +191,21 @@ and have no hidden scan cap. The client sends an uncapped fetch when filtering,
 sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct wire
 name so an older bridge cannot silently ignore `disassemble --end`.
 
+`find_bytes_regex` uses Ghidra's `RegExByteMatcher` and `MemorySearcher` over
+loaded, initialized memory. `SearchCommands` resolves those optional classes
+through Ghidra's application class loader on demand, so installations without
+the API can still compile/start the bridge and run other commands. Reflection
+also tolerates the transition from non-generic to generic search classes.
+Keep Java regex syntax errors from reflective calls readable. Native
+`MemoryMatch` rejects zero-byte matches; surface this as an error, never silently
+skip them. Check the session monitor before and after the native search and
+while serializing hits: native cancellation can otherwise look like successful
+partial results. Cancellation is cooperative and cannot interrupt an individual
+Java regex evaluation. The native implementation uses finite buffers/overlap;
+do not promise unbounded match spans, global anchor semantics, or all overlapping
+hits. Integration tests cover normal cross-buffer and contiguous-block matches,
+memory gaps, unsigned bytes, zero-length errors, query limits and cancellation.
+
 `disasm` reads existing instructions from the resolved start, retaining its
 containing-instruction/function-entry fallback. It uses checked
 nonnegative-long `limit` bounds, with missing/null/zero meaning unlimited, and

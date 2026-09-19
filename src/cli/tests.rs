@@ -3,6 +3,38 @@ use crate::format::OutputFormat;
 use clap::{CommandFactory, ValueEnum};
 
 #[test]
+fn byte_search_accepts_regex_without_changing_literal_defaults() {
+    for args in [
+        vec!["ghidra-cli", "find", "bytes", "--regex", r"\x48\x8b.{4}"],
+        vec!["ghidra-cli", "find", "bytes", r"\x48\x8b.{4}", "--regex"],
+    ] {
+        let cli = Cli::try_parse_from(args).unwrap();
+        let Commands::Find(FindCommands::Bytes(args)) = cli.command else {
+            panic!("expected byte search");
+        };
+        assert!(args.regex);
+        assert_eq!(args.hex, r"\x48\x8b.{4}");
+    }
+    let cli = Cli::try_parse_from(["ghidra-cli", "find", "bytes", "48 8b"]).unwrap();
+    assert!(matches!(cli.command, Commands::Find(FindCommands::Bytes(args)) if !args.regex));
+    for args in [
+        vec!["ghidra-cli", "find", "string", "--regex", "needle"],
+        vec!["ghidra-cli", "find", "text", "--regex", "needle"],
+        vec![
+            "ghidra-cli",
+            "find",
+            "bytes",
+            "--regex",
+            ".",
+            "--encoding",
+            "utf-8",
+        ],
+    ] {
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+}
+
+#[test]
 fn text_search_accepts_encodings_and_rejects_empty_input() {
     for encoding in [None, Some("utf-16le"), Some("shift_jis")] {
         let mut args = vec!["ghidra-cli", "find", "text", "日本"];
