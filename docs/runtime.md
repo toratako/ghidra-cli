@@ -25,6 +25,13 @@ Setup downloads and extracts into private staging, validates the installation,
 and publishes it only when complete. It reuses a valid existing installation and
 refuses an incomplete existing destination; inspect that directory before moving
 or removing it and retrying. Saved installation paths are absolute.
+Setup preserves archive file modification times: Ghidra uses them to decide
+whether compiled `.sla` language definitions need rebuilding. Older CLI versions
+discarded these times, which can trigger unnecessary recompilation on import.
+To replace an affected installation, stop its running bridges and install the
+same Ghidra release into a new directory with `setup --version VERSION --dir DIR`.
+Setup selects the new installation in config; update `GHIDRA_INSTALL_DIR` too if
+it is set. Reusing the old directory does not repair its file times.
 
 ## Project configuration
 
