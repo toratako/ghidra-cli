@@ -1,5 +1,8 @@
 # Ghidra CLI
 
+> ⚠️ This project is under very active development and all types of backward compatibility are not being considered. ⚠️
+> Check this repository and frequently update executable and skills for the better experience!
+
 A Rust CLI for AI agents automating native-binary reverse engineering with
 Ghidra: decompilation, queries, types, scripts, and patches. One persistent Java
 bridge per project keeps analysis state in Ghidra's JVM between commands.
@@ -18,12 +21,9 @@ ghidra-cli doctor
 ```
 
 For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
-`ghidra-cli setup`. Doctor exits with code 1 if a readiness check fails.
+`ghidra-cli setup`.
 
 ## Usage
-
-Use explicit addresses such as `0x401000` or `overlay:0x1000`; unprefixed
-targets are exact names. Address results can be reused directly as inputs.
 
 - [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
 - [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
