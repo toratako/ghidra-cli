@@ -25,8 +25,7 @@ by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
 or both. Omitted attributes are not explicitly reassigned. `before` reports the
 decompiler's variable and `after` the updated database definition, including name,
 type/path, and storage. A rename can leave the database type undefined so the
-decompiler continues inferring it. Known name conflicts and invalid types fail
-before editing; later failure or cancellation rolls back the whole edit.
+decompiler continues inferring it.
 
 ## Comments
 
@@ -56,9 +55,6 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `symbol get` accepts names or addresses.
 Exact-name lookup includes the default thunk and dynamic-label names
 shown by `symbol list`; duplicate displayed names still require disambiguation.
-Multi-symbol deletion is atomic: if any deletion fails, all deletions in that
-request are rolled back. Error detail includes `attempted_deleted`, `failed`,
-and `not_attempted`; these describe attempted work, not committed deletions.
 
 ## Types
 
@@ -92,9 +88,6 @@ ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 `set-field`, `add-field`, or `import-c` for its definition.
 
 `type apply --force` clears a conflicting data unit before applying the type.
-Type applicability, size, memory range, and field-layout checks precede
-destructive edits. Later failure or cancellation restores the cleared data and
-rolls back the type changes from that request.
 
 Type expressions accept pointers and fixed-length arrays, such as `byte[16]`,
 `Hook *[8]`, and `byte[2][3]`. Array counts are positive decimal integers; sizes

@@ -89,23 +89,20 @@ Explicit verbosity still enables diagnostic logs.
 
 Edits are saved automatically before success is returned, including analysis,
 scripts, and each operation in a batch.
-Ordinary edits are atomic per request: failure or cancellation rolls back that
-request's changes and reports `detail.rolled_back: true`; earlier requests remain
-intact. Analysis, scripts, imports, exports, and program open/close/save/delete
-can retain partial changes or external effects.
+Ordinary edits roll back the request's changes on failure or cancellation
+(`detail.rolled_back: true`). Analysis, scripts, imports, exports, and program
+open/close/save/delete can retain partial changes or external effects.
 After `detail.save_failed: true`, keep the bridge running and retry `program save`
-with the same project/program; edits may remain in memory and the original
-response is in `detail.command_response`. Do not repeat the edit.
-`detail.transaction_failed: true` does not confirm rollback; resolve any active
-transaction through its owning script before retrying ordinary edits. If the
-error reports a pending rollback, let that cleanup finish before saving or
-replaying the command; its edits cannot be committed.
+with the same project/program; edits may remain in memory. Do not repeat the edit.
+`detail.transaction_failed: true` leaves rollback unconfirmed. Keep the bridge
+running and close any outstanding transaction through its owning script before
+saving or retrying.
 
 `batch` exits nonzero if any command fails; its report remains on stdout.
-Commands run sequentially; the batch itself is not atomic.
-`--on-error continue` (default) runs subsequent commands after ordinary errors;
-use `--on-error stop` for dependent edits. Transaction-boundary failures, save
-failures, and timeouts always stop the batch. Do not replay successful edits.
+Commands run sequentially; later failures do not undo completed edits.
+`--on-error continue` (default) continues after ordinary errors, including completed
+rollbacks; use `--on-error stop` for dependent edits. Transaction-boundary failures,
+save failures, and timeouts always stop the batch. Do not replay successful edits.
 See [batch results](references/batch.md#result-structure) for per-command results
 and error details.
 
