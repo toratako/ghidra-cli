@@ -200,6 +200,28 @@ pub fn extract_zip(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<Pa
             }
             let mut outfile = File::create(&outpath)?;
             std::io::copy(&mut file, &mut outfile)?;
+            // Ghidra compares language sources with their compiled .sla files.
+            // Extraction order must not make unchanged sources appear newer.
+            if let Some(modified) = file.last_modified() {
+                let date = chrono::NaiveDate::from_ymd_opt(
+                    modified.year().into(),
+                    modified.month().into(),
+                    modified.day().into(),
+                )
+                .and_then(|date| {
+                    date.and_hms_opt(
+                        modified.hour().into(),
+                        modified.minute().into(),
+                        modified.second().into(),
+                    )
+                })
+                .context("Archive contains an invalid modification time")?;
+                outfile
+                    .set_modified(std::time::SystemTime::from(date.and_utc()))
+                    .with_context(|| {
+                        format!("Preserve modification time of {}", outpath.display())
+                    })?;
+            }
         }
 
         // Set permissions on Unix
@@ -407,6 +429,45 @@ mod tests {
                 0o755
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_zip_preserves_language_freshness() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let zip_path = temp.path().join("ghidra.zip");
+        let mut archive = zip::ZipWriter::new(File::create(&zip_path)?);
+        let source_time = zip::DateTime::from_date_and_time(2026, 1, 2, 3, 4, 0)?;
+        let compiled_time = zip::DateTime::from_date_and_time(2026, 1, 2, 3, 5, 0)?;
+        let options = zip::write::SimpleFileOptions::default();
+        // Archive order is independent of build order. The compiled language
+        // can precede a source it includes, as x86-64.sla precedes x86.slaspec.
+        archive.start_file(
+            "ghidra_test/languages/x86-64.sla",
+            options.last_modified_time(compiled_time),
+        )?;
+        archive.write_all(b"compiled language")?;
+        archive.start_file(
+            "ghidra_test/languages/x86.slaspec",
+            options.last_modified_time(source_time),
+        )?;
+        archive.write_all(b"language source")?;
+        archive.finish()?;
+
+        let root = extract_zip(&zip_path, &temp.path().join("install"), true)?;
+        let compiled = root.join("languages/x86-64.sla");
+        let source = root.join("languages/x86.slaspec");
+        let compiled_modified = compiled.metadata()?.modified()?;
+        let source_modified = source.metadata()?.modified()?;
+        assert!(compiled_modified > source_modified);
+        let expected = chrono::NaiveDate::from_ymd_opt(2026, 1, 2)
+            .unwrap()
+            .and_hms_opt(3, 5, 0)
+            .unwrap()
+            .and_utc();
+        assert_eq!(compiled_modified, std::time::SystemTime::from(expected));
+        assert_eq!(std::fs::read(compiled)?, b"compiled language");
+        assert_eq!(std::fs::read(source)?, b"language source");
         Ok(())
     }
 
