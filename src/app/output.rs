@@ -176,7 +176,7 @@ fn output_format(cli: &Cli) -> OutputFormat {
     let configured = crate::config::Config::load()
         .ok()
         .and_then(|config| config.default_output_format)
-        .and_then(|format| OutputFormat::from_str(&format).ok());
+        .and_then(|format| format.parse::<OutputFormat>().ok());
     output_format_with_default(cli, configured)
 }
 

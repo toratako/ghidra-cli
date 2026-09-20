@@ -5,6 +5,7 @@
 ```bash
 cargo xtask test --no-fail-fast
 cargo test -p xtask
+cargo xtask gen-tree --check
 cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
 ```
@@ -56,8 +57,8 @@ INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
 ```
 
 These fail until reviewed snapshots are added; normal schema tests need no
-snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli` and the `xtask`
-tests on Linux and Windows. See
+snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
+tests, and the generated command tree check on Linux and Windows. See
 [the test workflow](../.github/workflows/test.yml) for suite groupings.
 
 `readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial

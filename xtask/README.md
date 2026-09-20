@@ -9,6 +9,8 @@ remains the default package for `cargo build`, `cargo run`, and `cargo test`. Th
 ```bash
 cargo xtask test --no-fail-fast
 cargo xtask test --test comment_tests --test type_tests
+cargo xtask gen-tree
+cargo xtask gen-tree --check
 ```
 
 `test` runs `cargo test` with every following argument unchanged and in order,
@@ -21,17 +23,27 @@ Cargo's exit status. See [test commands and coverage](../tests/README.md) and
 implementation details. Ghidra suites require a working
 [Ghidra and JDK installation](../docs/runtime.md#installation).
 
+`gen-tree` writes [the command tree](../docs/tree.md) from the same Clap definitions
+as the CLI, including Clap's automatically generated help commands. The task
+resolves the workspace root independently of the caller's working directory and
+always writes `docs/tree.md` there. Regenerate it after changing command
+definitions. `--check` leaves the file unchanged and fails if it is missing or
+stale; it accepts CRLF line endings in Windows checkouts.
+
 ## Implementation and checks
 
 | Source | Responsibility |
 |---|---|
 | [src/main.rs](src/main.rs) | Task dispatch |
 | [src/test.rs](src/test.rs) | Cargo argument forwarding and run-scoped fixture lifetime |
+| [src/gen_tree.rs](src/gen_tree.rs) | Command tree rendering, generation, and freshness checks |
+| [../src/cli.rs](../src/cli.rs) | Shared CLI command definitions |
 
-These checks cover the task package without Ghidra:
+These checks cover the task package and generated documentation without Ghidra:
 
 ```bash
 cargo test -p xtask
+cargo xtask gen-tree --check
 cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
 ```

@@ -35,7 +35,7 @@ pub(super) fn handle_config_command(
                 match key.as_str() {
                     "default_output_format" => {
                         if !value.eq_ignore_ascii_case("auto") {
-                            crate::format::OutputFormat::from_str(&value)?;
+                            value.parse::<crate::format::OutputFormat>()?;
                         }
                         config.default_output_format = Some(value);
                     }

@@ -43,6 +43,9 @@ jobs:
       - name: Run xtask tests
         run: cargo test -p xtask --verbose
 
+      - name: Check generated command tree
+        run: cargo xtask gen-tree --check
+
       - name: Run CLI tests
         run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 

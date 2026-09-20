@@ -6,4 +6,6 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.104"
+clap = "4.6.6"
+ghidra-cli = { path = ".." }
 tempfile = "3.27.0"

@@ -239,7 +239,7 @@ pub struct CommentDeleteArgs {
     pub fields: Option<String>,
     /// Output format (omitted: compact on TTY, json-compact otherwise)
     #[arg(long, short = 'o', value_enum, ignore_case = true)]
-    pub format: Option<crate::format::OutputFormat>,
+    pub format: Option<super::OutputFormat>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -1,4 +1,4 @@
-use crate::format::OutputFormat;
+use super::OutputFormat;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 

@@ -1,5 +1,4 @@
 use super::*;
-use crate::format::OutputFormat;
 use clap::{CommandFactory, ValueEnum};
 
 #[test]
@@ -231,7 +230,7 @@ fn output_formats_accept_supported_spellings() {
         ("c", OutputFormat::C),
     ] {
         for spelling in [name.to_string(), name.to_uppercase()] {
-            assert_eq!(OutputFormat::from_str(&spelling).unwrap(), expected);
+            assert_eq!(spelling.parse::<OutputFormat>().unwrap(), expected);
             for command in [["program", "imports"], ["function", "list"]] {
                 for flag in ["-o", "--format"] {
                     let cli = Cli::try_parse_from([
@@ -303,7 +302,7 @@ fn program_export_formats_accept_only_canonical_names() {
 #[test]
 fn unsupported_query_formats_do_not_remove_hex_program_export() {
     for format in ["tree", "hex", "ids", "count", "TREE", "HEX", "IDS", "COUNT"] {
-        assert!(OutputFormat::from_str(format).is_err());
+        assert!(format.parse::<OutputFormat>().is_err());
         assert!(serde_json::from_str::<OutputFormat>(&format!("\"{format}\"")).is_err());
         for command in [["program", "imports"], ["function", "list"]] {
             let error =
@@ -787,7 +786,7 @@ fn canonical_options_parse_and_removed_options_are_rejected() {
 #[test]
 fn json_stream_format_is_rejected() {
     for name in ["json-stream", "JSON-STREAM"] {
-        assert!(OutputFormat::from_str(name).is_err());
+        assert!(name.parse::<OutputFormat>().is_err());
         assert!(serde_json::from_str::<OutputFormat>(&format!("\"{name}\"")).is_err());
         let error = Cli::try_parse_from(["ghidra-cli", "function", "list", "--format", name])
             .err()

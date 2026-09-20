@@ -119,11 +119,11 @@ fn parse_cli() -> Cli {
                     format = args
                         .next()
                         .and_then(|arg| arg.to_str())
-                        .and_then(|f| format::OutputFormat::from_str(f).ok());
+                        .and_then(|f| f.parse::<format::OutputFormat>().ok());
                 } else if let Some(value) =
                     arg.to_str().and_then(|arg| arg.strip_prefix("--format="))
                 {
-                    format = format::OutputFormat::from_str(value).ok();
+                    format = value.parse::<format::OutputFormat>().ok();
                 }
             }
             if let Some(format) = format {

@@ -1,36 +1,9 @@
-use crate::error::{GhidraError, Result};
-use clap::ValueEnum;
+pub use crate::cli::OutputFormat;
+use crate::error::Result;
 use comfy_table::{presets::UTF8_FULL, Table};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashSet;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
-#[serde(rename_all = "kebab-case")]
-pub enum OutputFormat {
-    Full,
-    Compact,
-    Minimal,
-    Json,
-    JsonCompact,
-    #[value(name = "ndjson", help = "One JSON object per line")]
-    #[serde(rename = "ndjson")]
-    JsonStream,
-    Csv,
-    Tsv,
-    Table,
-    #[value(help = "Assembly text for instruction rows; other rows remain JSON")]
-    Asm,
-    #[value(help = "Decompiled C text; other rows remain JSON")]
-    C,
-}
-
-impl OutputFormat {
-    pub fn from_str(s: &str) -> Result<Self> {
-        <Self as ValueEnum>::from_str(s, true)
-            .map_err(|_| GhidraError::InvalidFormat(format!("Unknown format: {}", s)))
-    }
-}
 
 pub trait Formatter {
     fn format<T: Serialize>(&self, data: &[T], format: OutputFormat) -> Result<String>;
@@ -507,7 +480,7 @@ mod tests {
 
     #[test]
     fn ndjson_uses_its_canonical_name_and_keeps_one_row_per_line() {
-        let format = OutputFormat::from_str("ndjson").unwrap();
+        let format = "ndjson".parse::<OutputFormat>().unwrap();
         assert_eq!(serde_json::to_string(&format).unwrap(), "\"ndjson\"");
         assert_eq!(
             serde_json::from_str::<OutputFormat>("\"ndjson\"").unwrap(),

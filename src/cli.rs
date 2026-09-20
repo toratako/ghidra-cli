@@ -9,6 +9,7 @@ mod inspection;
 mod management;
 mod memory;
 mod options;
+mod output;
 mod project;
 mod types;
 
@@ -22,6 +23,7 @@ pub use inspection::*;
 pub use management::*;
 pub use memory::*;
 pub use options::QueryOptions;
+pub use output::OutputFormat;
 pub use project::*;
 pub use types::*;
 

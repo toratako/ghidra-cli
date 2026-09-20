@@ -3,6 +3,8 @@
 `src/main.rs` owns parsing, environment overrides, logging, setup's async runtime,
 and error/exit reporting; these private modules own workflows. `src/cli.rs` owns
 the command tree and re-exports family arguments/query options from `src/cli/`.
+The library exposes that same definition to `xtask` for documentation generation.
+`src/cli/output.rs` owns output format names and parsing; `src/format/` owns rendering.
 
 | File | Responsibility |
 |------|----------------|

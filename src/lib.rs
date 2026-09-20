@@ -1,6 +1,8 @@
-//! Library exports for ghidra-cli testing infrastructure.
+//! Library exports for ghidra-cli development tools and testing infrastructure.
 //!
-//! This module exposes internal components needed for integration tests.
+//! This module exposes the CLI definition and components needed for integration tests.
+
+pub mod cli;
 
 #[path = "error.rs"]
 pub mod error;
