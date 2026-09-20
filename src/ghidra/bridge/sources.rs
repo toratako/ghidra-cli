@@ -105,6 +105,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/MemoryCommands.java"),
     ),
     (
+        "ghidracli/MemoryPatch.java",
+        include_str!("../scripts/ghidracli/MemoryPatch.java"),
+    ),
+    (
         "ghidracli/NameSuggestions.java",
         include_str!("../scripts/ghidracli/NameSuggestions.java"),
     ),

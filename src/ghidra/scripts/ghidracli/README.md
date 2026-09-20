@@ -122,7 +122,7 @@ another consumer or terminate its checkout.
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
 | `StringQueries` | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
-| `MemoryCommands`, `AnalysisCommands` | Memory/disassembly operations, analyzer configuration |
+| `MemoryCommands`, `MemoryPatch`, `AnalysisCommands` | Memory/disassembly operations, preservation checks for byte edits, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressCodec`, `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Explicit address syntax/formatting, shared lookup and diagnostics; no handler-to-handler dependencies |
 | `CallReferences` | Shared call-site validation, endpoint resolution, and incoming/outgoing enumeration for all call graphs |
@@ -162,9 +162,26 @@ delete components.
 Metadata-only edits preserve packing. Zero-length structures report a logical
 size of 0 here despite Ghidra's minimum display length of 1.
 
-Memory write validation rejects empty, odd-length, or invalid hex before clearing code
-units or changing block permissions. Callers supply verified bytes through
-`memory_write`. Export success
+Memory write validation rejects empty, odd-length, or invalid hex before mutation.
+`MemoryPatch` validates the initialized range and plans against only changed bytes.
+It retains data records/settings, clears overlapping instructions using Ghidra's
+delay-slot boundaries, and writes separate changed ranges so unchanged instructions
+never reach `Memory.setBytes`. Block permission flags describe the target program;
+database byte edits do not require toggling them.
+
+Preflight walks affected data components, evaluates built-in string storage lengths
+against a bounded patched buffer with the original settings, and rejects unknown
+dynamic layouts. All overlapping union members must remain valid, but none is
+selected for pointer updates. Pointer values use the applied type's interpretation;
+only matching DEFAULT DATA references on operand 0, including pointer-typedef
+component offsets, are replaced. Other references retain their source, form, and
+primary status and suppress automatic additions on that operand. Never call
+`updateDataReferences`, which removes explicit references. Changes through mapped
+blocks or their mapped source ranges are rejected until all affected views can be
+validated together. The shared request boundary rolls back write/reference failures
+and cancellation; this helper owns no transactions or saves.
+
+Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
 `ProgramCommands` references `Exporter` directly so OSGi imports the exporter

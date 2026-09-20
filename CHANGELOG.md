@@ -54,6 +54,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve applied data types and settings during `memory write`, changing only
+  differing bytes and clearing only affected instructions without redisassembly.
+  Update identifiable automatic pointer references while retaining explicit
+  references. Reject edits that change string storage lengths, affect unsupported
+  dynamic layouts, or modify shared byte/bit-mapped memory.
 - Preserve the first save failure across every request lifecycle path, without
   an implicit second save at request completion. Pending edits remain available
   for `program save`; a failed later atomic edit does not save or discard them.

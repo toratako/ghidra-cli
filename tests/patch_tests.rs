@@ -16,6 +16,9 @@ use common::{ensure_test_project, get_function_address, ghidra, DaemonTestHarnes
 use common::test_project;
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
+#[path = "patch/memory_write.rs"]
+mod memory_write;
+
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {
@@ -49,14 +52,7 @@ fn test_memory_write_success() {
         .arg(TEST_PROGRAM)
         .run();
 
-    // Patching at code addresses may conflict with existing instructions in Ghidra
-    assert!(
-        result.exit_code == 0
-            || result.stderr.contains("conflict")
-            || result.stderr.contains("Memory change"),
-        "Expected success or instruction conflict, got: stderr={}",
-        result.stderr
-    );
+    result.assert_success();
 }
 
 /// Disassembly failures retain diagnostics, stop dependent edits, and roll back clearing.
@@ -824,10 +820,8 @@ public class CreatePatchRangeFixture extends GhidraScript {
             assert_eq!(client.send_command("memory_map", None).unwrap(), map);
         }
 
-        // The alias retains instructions outside the patch's cleared range.
-        // Ghidra writes the first block, then rejects the second block because
-        // its mapped alias still has instructions. Rollback must undo both the
-        // earlier byte write and listing clear, and leave permissions intact.
+        // A change to the shared source must be rejected before clearing or
+        // writing the earlier block, preserving both views and their metadata.
         for address in ["0x4000", "0x4002", "0x5000"] {
             assert_eq!(client.define_code(address, None).unwrap()["landed"], true);
         }
@@ -842,10 +836,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
         let error = error
             .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
             .unwrap();
-        assert!(
-            error.message.contains("conflicts with instruction"),
-            "{error}"
-        );
+        assert!(error.message.contains("shared mapped memory"), "{error}");
         assert_eq!(error.detail["rolled_back"], true);
         assert!(error.detail.get("partial_changes_saved").is_none());
         for reopen in [false, true] {

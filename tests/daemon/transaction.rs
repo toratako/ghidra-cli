@@ -14,6 +14,8 @@ import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 import java.io.IOException;
@@ -36,6 +38,7 @@ public class RequestTransactionProbe extends GhidraScript {
     private int savesToFail;
     private int saveCalls;
     private int commentWrites;
+    private int memoryWrites;
     private Address address;
     private String prior;
 
@@ -156,10 +159,34 @@ public class RequestTransactionProbe extends GhidraScript {
                 }
                 return result;
             });
+        Memory memory = (Memory) Proxy.newProxyInstance(Memory.class.getClassLoader(),
+            new Class<?>[] { Memory.class }, (proxy, method, args) -> {
+                Object result = invoke(method, real.getMemory(), args);
+                if (method.getName().equals("setBytes") && fault != null && fault.startsWith("memory-")) {
+                    if (++memoryWrites == 2) {
+                        String mode = fault;
+                        fault = null;
+                        if (mode.equals("memory-cancel")) requestMonitor.cancel();
+                        else throw new IllegalStateException("injected failure after second byte range");
+                    }
+                }
+                return result;
+            });
+        ReferenceManager references = (ReferenceManager) Proxy.newProxyInstance(ReferenceManager.class.getClassLoader(),
+            new Class<?>[] { ReferenceManager.class }, (proxy, method, args) -> {
+                Object result = invoke(method, real.getReferenceManager(), args);
+                if (method.getName().equals("addMemoryReference") && "pointer-error".equals(fault)) {
+                    fault = null;
+                    throw new IllegalStateException("injected failure after pointer reference update");
+                }
+                return result;
+            });
         selected = (Program) Proxy.newProxyInstance(Program.class.getClassLoader(),
             new Class<?>[] { Program.class }, (proxy, method, args) -> {
                 if (method.getName().equals("getListing")) return listing;
                 if (method.getName().equals("getFunctionManager")) return functions;
+                if (method.getName().equals("getMemory")) return memory;
+                if (method.getName().equals("getReferenceManager")) return references;
                 if (method.getName().equals("startTransaction") && failNextTransaction) {
                     failNextTransaction = false;
                     throw new IllegalStateException("injected transaction start failure");
@@ -217,6 +244,56 @@ public class RequestTransactionProbe extends GhidraScript {
         // A fresh successful request still commits after cancellation/failure.
         success(command("comment_set", comment("next-request", "PRE")));
         savedComment(CodeUnit.PRE_COMMENT, "next-request");
+    }
+
+    private void testMemoryFailure(String mode) throws Exception {
+        var base = real.getAddressFactory().getDefaultAddressSpace().getAddress(0x50000000);
+        int tx = real.startTransaction("memory rollback fixture");
+        try {
+            real.getMemory().createInitializedBlock("memory_rollback", base, 32, (byte)0, requestMonitor, false);
+            real.getMemory().setBytes(base, new byte[]{0x66,(byte)0x90});
+            check(new ghidra.app.cmd.disassemble.DisassembleCommand(base,
+                new ghidra.program.model.address.AddressSet(base, base.add(1)), false)
+                .applyTo(real, requestMonitor), "Fixture instruction");
+            var scalar = real.getListing().createData(base.add(4), ghidra.program.model.data.DWordDataType.dataType);
+            ghidra.docking.settings.FormatSettingsDefinition.DEF.setChoice(scalar,
+                ghidra.docking.settings.FormatSettingsDefinition.BINARY);
+            real.getMemory().setLong(base.add(8), base.add(24).getOffset());
+            real.getListing().createData(base.add(8),
+                new ghidra.program.model.data.PointerDataType(null, 8, real.getDataTypeManager()));
+        } finally { real.endTransaction(tx, true); }
+        real.save("memory rollback fixture", requestMonitor);
+        byte[] before = new byte[16];
+        real.getMemory().getBytes(base, before);
+        byte[] patch = before.clone();
+        patch[0] = (byte)0x90;
+        patch[4] = 42;
+        patch[8] = 28;
+        JsonObject args = new JsonObject();
+        args.addProperty("address", "0x50000000");
+        args.addProperty("hex", java.util.HexFormat.of().formatHex(patch));
+        fault = mode;
+        JsonObject response = command("memory_write", args);
+        rolledBack(response);
+        check(fault == null, "Failure was not injected after the edits");
+        if (mode.equals("memory-cancel")) check(response.getAsJsonObject("detail").get("cancelled").getAsBoolean(), "Missing cancellation detail");
+        requestMonitor.clearCancelled();
+        Object reader = new Object();
+        Program saved = (Program)real.getDomainFile().getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, requestMonitor);
+        try {
+            for (Program program : new Program[]{real, saved}) {
+                byte[] actual = new byte[16];
+                program.getMemory().getBytes(base, actual);
+                check(java.util.Arrays.equals(before, actual), "Failed memory write changed bytes");
+                check(program.getListing().getInstructionAt(base) != null, "Instruction clear escaped rollback");
+                var scalar = program.getListing().getDefinedDataAt(base.add(4));
+                check(scalar != null && ghidra.docking.settings.FormatSettingsDefinition.DEF.getChoice(scalar)
+                    == ghidra.docking.settings.FormatSettingsDefinition.BINARY, "Data settings lost");
+                var refs = program.getReferenceManager();
+                check(refs.getReference(base.add(8), base.add(24), 0) != null
+                    && refs.getReference(base.add(8), base.add(28), 0) == null, "Pointer reference update escaped rollback");
+            }
+        } finally { saved.release(reader); }
     }
 
     private void testSaveRecovery() throws Exception {
@@ -408,6 +485,7 @@ public class RequestTransactionProbe extends GhidraScript {
             savedComment(CodeUnit.EOL_COMMENT, prior);
             switch (mode) {
                 case "late-error": case "cancel": case "native-false": testLateFailure(mode); break;
+                case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": testSaveRecovery(); break;
                 case "foreign-transaction": testForeignTransaction(); break;
                 case "start-failure": testTransactionStartFailure(); break;
@@ -492,6 +570,24 @@ fn run_transaction_probe(mode: &str) {
 #[serial]
 fn test_late_error_rolls_back_only_the_failed_request() {
     run_transaction_probe("late-error");
+}
+
+#[test]
+#[serial]
+fn test_memory_write_late_failure_restores_bytes_definitions_and_references() {
+    run_transaction_probe("memory-error");
+}
+
+#[test]
+#[serial]
+fn test_memory_write_cancellation_restores_bytes_definitions_and_references() {
+    run_transaction_probe("memory-cancel");
+}
+
+#[test]
+#[serial]
+fn test_memory_write_reference_failure_restores_bytes_definitions_and_references() {
+    run_transaction_probe("pointer-error");
 }
 
 #[test]

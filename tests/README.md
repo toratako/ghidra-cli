@@ -118,7 +118,13 @@ Script tests exercise JDK parsing of stdin declarations through that OSGi path.
 Symbol tests cover generated-label rejection, rollback of cascading multi-symbol
 deletions, and foreign transaction rejection without erasing the owner's edits.
 Patch tests verify that failed writes and clear/redisassembly requests restore
-bytes, listing definitions, and permissions. Type tests verify that
+bytes, listing definitions, and permissions. `patch/memory_write.rs` checks saved
+data/component settings, unchanged instructions in mixed writes, nested and typed
+pointer references across widths/byte orders, explicit reference precedence,
+string storage validation, shared-memory rejection, independent overlays, and
+delay slots. The transaction probes inject failures after byte ranges and pointer
+reference updates, plus cancellation, and check live and saved rollback state.
+Type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
 Type tests also inspect saved component format/byte-order settings after metadata
 and layout edits.

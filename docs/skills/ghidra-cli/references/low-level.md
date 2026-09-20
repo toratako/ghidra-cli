@@ -76,7 +76,16 @@ For analyzer settings and whole-program reanalysis, see
 ghidra-cli memory write 0x401234 "90 90" --project target
 ```
 
-`memory write` requires mapped, initialized memory and clears existing code
-units in the written range. Use `define-code` to restore instruction definitions.
+`memory write` requires mapped, initialized memory. It preserves data definitions
+and clears instructions overlapping changed bytes, including associated delay slots.
+Use `define-code` to restore instruction definitions.
+
+After changing a typed pointer, check `xref from` at its address: explicit and
+analysis references are preserved, and union members' references are not updated
+automatically.
+
+String edits must preserve their occupied length. To change the length or data
+layout, use `clear`, write the bytes, then
+[apply the intended type](refinement.md#types).
 
 Use [program export binary](programs.md#export) to write the edited binary.

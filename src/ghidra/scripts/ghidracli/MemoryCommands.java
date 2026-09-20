@@ -13,12 +13,8 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.ByteMemBufferImpl;
-import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
-import ghidra.program.model.mem.MemoryBlock;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -57,29 +53,7 @@ final class MemoryCommands {
                 patchData[i] = (byte) Integer.parseInt(hexClean.substring(i * 2, i * 2 + 2), 16);
             }
 
-            Memory memory = session.program().getMemory();
-            Listing listing = session.program().getListing();
-            Address endAddr = addr.addNoWrap(patchData.length - 1);
-            // Validate the whole range before clearing any instructions or defined data.
-            if (!memory.getAllInitializedAddressSet().contains(addr, endAddr)) {
-                return errorResult("Patch range must be fully mapped and initialized");
-            }
-            List<MemoryBlock> readOnlyBlocks = new ArrayList<>();
-            Address cursor = addr;
-            while (true) {
-                MemoryBlock block = memory.getBlock(cursor);
-                if (block == null) return errorResult("Patch range must be fully mapped and initialized");
-                if (!block.isWrite()) readOnlyBlocks.add(block);
-                if (block.getEnd().compareTo(endAddr) >= 0) break;
-                cursor = block.getEnd().addNoWrap(1);
-            }
-            try {
-                for (MemoryBlock block : readOnlyBlocks) block.setWrite(true);
-                listing.clearCodeUnits(addr, endAddr, false);
-                memory.setBytes(addr, patchData);
-            } finally {
-                for (MemoryBlock block : readOnlyBlocks) block.setWrite(false);
-            }
+            MemoryPatch.write(session, addr, patchData);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "patched");
