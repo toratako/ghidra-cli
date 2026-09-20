@@ -7,6 +7,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consolidate call queries under `graph callers` and `graph callees`; remove
+  `find calls`, `function calls`, and their bridge/client adapters. All call
+  graphs share instruction validation and thunk/typed-pointer resolution.
+  Traversal rows now contain both endpoints, call site, original reference
+  destination/type, and depth in a common `calls` array. Keep undefined endpoints
+  and calls into function interiors; only recursive expansion needs a function.
+  Whole-program graph edges carry the same call details alongside `from`/`to`.
 - Make `type add-field` append-only. Use `type set-field --offset` for creating
   or updating a field at a specific position. `set-field` now accepts `--size`
   with `--type`, preserving explicit-length field placement and returning

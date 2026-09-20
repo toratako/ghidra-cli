@@ -26,24 +26,44 @@ fn symbol_fixture(id: &str, address: &str, kind: &str) -> Value {
     })
 }
 
+fn call_rows_fixture() -> Vec<Value> {
+    vec![
+        json!({"caller": "entry", "caller_address": "0x1000", "callee": "helper", "callee_address": "0x2000", "call_site": "0x1010", "destination": "0x2000", "via": "0x2000", "type": "UNCONDITIONAL_CALL", "depth": 0}),
+        json!({"caller": "entry", "caller_address": "0x1000", "callee": null, "callee_address": "0x9000", "call_site": "0x1020", "destination": "0x9000", "via": "0x9000", "type": "UNCONDITIONAL_CALL", "depth": 0}),
+        json!({"caller": "helper", "caller_address": "0x2000", "callee": "leaf", "callee_address": "0x3000", "call_site": "0x2010", "destination": "0x3004", "via": "0x3004", "type": "UNCONDITIONAL_CALL", "depth": 1}),
+    ]
+}
+
 fn call_graph_fixture() -> Value {
-    json!({
-        "nodes": [
-            {"id": "0x1000", "address": "0x1000", "name": "zeta"},
-            {"id": "0x2000", "address": "0x2000", "name": "alpha"},
-            {"id": "0x3000", "address": "0x3000", "name": "beta"},
-            {"id": "0x4000", "address": "0x4000", "name": "omega"},
-        ],
-        "edges": [
-            {"from": "0x1000", "to": "0x2000", "type": "call"},
-            {"from": "0x2000", "to": "0x3000", "type": "call"},
-            {"from": "0x2000", "to": "0x9000", "type": "call"},
-            {"from": "0x3000", "to": "0x1000", "type": "call"},
-            {"from": "0x4000", "to": "0x3000", "type": "call"},
-        ],
-        "node_count": 4,
-        "edge_count": 5,
+    let nodes = vec![
+        json!({"id": "0x1000", "address": "0x1000", "name": "zeta"}),
+        json!({"id": "0x2000", "address": "0x2000", "name": "alpha"}),
+        json!({"id": "0x3000", "address": "0x3000", "name": "beta"}),
+        json!({"id": "0x4000", "address": "0x4000", "name": "omega"}),
+    ];
+    let edges: Vec<_> = [
+        (0, Some(1)),
+        (1, Some(2)),
+        (1, None),
+        (2, Some(0)),
+        (3, Some(2)),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(site, (from, to))| {
+        let caller = &nodes[from];
+        let callee = to.map(|i| &nodes[i]);
+        let destination = callee.map(|n| n["id"].clone()).unwrap_or(json!("0x9000"));
+        json!({
+            "from": caller["id"], "to": destination,
+            "caller": caller["name"], "caller_address": caller["id"],
+            "callee": callee.map(|n| &n["name"]), "callee_address": destination,
+            "call_site": format!("0x{:x}", 0x5000 + site), "destination": destination, "via": destination,
+            "type": "UNCONDITIONAL_CALL",
+        })
     })
+    .collect();
+    json!({"node_count": nodes.len(), "edge_count": edges.len(), "nodes": nodes, "edges": edges})
 }
 
 struct RecordedBridge {
@@ -137,6 +157,13 @@ impl RecordedBridge {
                             {"offset": 4, "address": "0x1004", "value": "0x00000001"},
                         ],
                     }),
+                    "graph_callers" | "graph_callees" => {
+                        let mut calls = call_rows_fixture();
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            calls.truncate(limit as usize);
+                        }
+                        json!({"target": args["function"], "count": calls.len(), "calls": calls})
+                    }
                     "graph_calls" => {
                         let mut graph = call_graph_fixture();
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
@@ -1553,6 +1580,63 @@ fn decompiler_commands_share_native_timeout_configuration() {
 }
 
 #[test]
+fn call_traversal_queries_share_rows_and_preserve_selection_before_limits() {
+    let bridge = RecordedBridge::new();
+    for direction in ["callers", "callees"] {
+        let wire = format!("graph_{direction}");
+        for (flags, expected, fetch_limit) in [
+            (vec![], json!(&call_rows_fixture()[..1]), json!(1)),
+            (
+                vec!["--limit", "0"],
+                json!(call_rows_fixture()),
+                Value::Null,
+            ),
+            (vec!["--count"], json!(3), Value::Null),
+            (vec!["--limit", "2", "--count"], json!(2), Value::Null),
+            (
+                vec!["--filter", "callee=leaf", "--fields", "caller,callee,via"],
+                json!([{"caller": "helper", "callee": "leaf", "via": "0x3004"}]),
+                Value::Null,
+            ),
+            (
+                vec!["--sort", "-call_site", "--offset", "1", "--limit", "1"],
+                json!([call_rows_fixture()[1].clone()]),
+                Value::Null,
+            ),
+        ] {
+            let mut args = vec!["graph", direction, "entry", "--depth", "3"];
+            args.extend(flags);
+            bridge.requests.lock().unwrap().clear();
+            assert_eq!(bridge.run(&args), expected, "{args:?}");
+            let standalone = {
+                let requests = bridge.requests.lock().unwrap();
+                let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+                assert_eq!(operations.len(), 1);
+                let request = operations[0]["args"].clone();
+                assert_eq!(request["function"], "entry");
+                assert_eq!(request["depth"], 3);
+                assert_eq!(request["limit"], fetch_limit, "{args:?}");
+                request
+            };
+            bridge.requests.lock().unwrap().clear();
+            std::fs::write(bridge.root.path().join("calls.txt"), batch_arguments(&args)).unwrap();
+            let batch = bridge.run(&["batch", "calls.txt"]);
+            let actual = &batch[0]["results"][0]["result"];
+            if args.len() == 5 {
+                assert_eq!(actual["calls"], expected);
+                assert_eq!(actual["count"], 1);
+            } else {
+                assert_eq!(*actual, expected, "{args:?}: {batch}");
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+            assert_eq!(operations.len(), 1);
+            assert_eq!(operations[0]["args"], standalone);
+        }
+    }
+}
+
+#[test]
 fn bounded_queries_reject_oversized_limits_before_bridge_work() {
     let bridge = RecordedBridge::new();
     for args in [
@@ -2593,13 +2677,7 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
             "target",
         ),
         (vec!["function", "get", "entry"], "get_function", "address"),
-        (
-            vec!["function", "calls", "entry"],
-            "function_calls",
-            "function",
-        ),
         (vec!["decompile", "entry"], "decompile", "address"),
-        (vec!["find", "calls", "entry"], "find_calls_to", "function"),
         (
             vec!["graph", "callers", "entry"],
             "graph_callers",
@@ -2770,22 +2848,6 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
         .collect();
     assert_eq!(domain.len(), 1, "{domain:?}");
     assert_eq!(domain[0]["command"], "program_info");
-}
-
-#[test]
-fn incoming_search_and_outgoing_function_calls_use_distinct_requests() {
-    let bridge = RecordedBridge::new();
-    bridge.run(&["find", "calls", "target"]);
-    bridge.run(&["function", "calls", "target"]);
-    let requests = bridge.requests.lock().unwrap();
-    let calls: Vec<_> = requests
-        .iter()
-        .filter_map(|r| {
-            let command = r["command"].as_str()?;
-            command.contains("calls").then_some(command)
-        })
-        .collect();
-    assert_eq!(calls, ["find_calls_to", "function_calls"]);
 }
 
 #[test]

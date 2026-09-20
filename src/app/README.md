@@ -63,7 +63,7 @@ Name-or-address operations keep exact names such as `dead` and `FUN_...`; they
 never derive a numeric address from them. Offsets and byte patterns are separate.
 Commands taking `TARGET` require exactly one positional target, including
 function edits and queries, decompilation, disassembly,
-xrefs, call searches, and caller/callee graphs.
+xrefs, and caller/callee traversals.
 `define-code` also accepts an optional inclusive `--end`.
 It forwards a bounded mutation and returns only its receipt, without query options
 or a configured row limit. Use `disassemble` separately to read the definitions.

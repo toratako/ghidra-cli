@@ -54,7 +54,7 @@ find string "password"
 # Read a function; use its address if the name is ambiguous.
 decompile main
 # List outgoing calls from this function.
-function calls main
+graph callees main
 # Find references to a function name or data address.
 xref to 0x404000
 # Read 32 bytes.

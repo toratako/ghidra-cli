@@ -36,14 +36,12 @@ import static ghidracli.JsonProtocol.getArgString;
 
 final class SearchCommands {
     private final ProgramSession session;
-    private final FunctionQueries functionQueries;
     private final AddressResolver addressResolver;
     private final StringQueries stringQueries;
 
-    SearchCommands(ProgramSession session, FunctionQueries functionQueries, AddressResolver addressResolver,
+    SearchCommands(ProgramSession session, AddressResolver addressResolver,
             StringQueries stringQueries) {
         this.session = session;
-        this.functionQueries = functionQueries;
         this.addressResolver = addressResolver;
         this.stringQueries = stringQueries;
     }
@@ -299,94 +297,6 @@ final class SearchCommands {
         result.add("results", results);
         result.addProperty("count", results.size());
         return result;
-    }
-
-    JsonObject handleFunctionCalls(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String functionTarget = getArgString(args, "function");
-        if (functionTarget == null || functionTarget.isEmpty()) {
-            return errorResult("No function target provided");
-        }
-
-        try {
-            FunctionManager fm = session.program().getFunctionManager();
-            Function targetFunc = functionQueries.findFunctionByNameOrAddress(functionTarget);
-            if (targetFunc == null) {
-                return errorResult(functionQueries.buildFunctionTargetHint(functionTarget));
-            }
-
-            ReferenceManager refMgr = session.program().getReferenceManager();
-            JsonArray results = new JsonArray();
-            ghidra.program.model.address.AddressIterator srcIter =
-                refMgr.getReferenceSourceIterator(targetFunc.getBody(), true);
-            while (srcIter.hasNext()) {
-                session.monitor().checkCancelled();
-                Address fromAddr = srcIter.next();
-                for (Reference ref : refMgr.getReferencesFrom(fromAddr)) {
-                    session.monitor().checkCancelled();
-                    if (!ref.getReferenceType().isCall()) continue;
-                    Address toAddr = ref.getToAddress();
-                    Function calleeFunc = fm.getFunctionAt(toAddr);
-                    if (calleeFunc == null) calleeFunc = fm.getFunctionContaining(toAddr);
-
-                    JsonObject item = new JsonObject();
-                    item.addProperty("call_site", AddressCodec.format(fromAddr));
-                    item.addProperty("callee",
-                        calleeFunc != null ? calleeFunc.getName() : AddressCodec.format(toAddr));
-                    item.addProperty("callee_address", AddressCodec.format(toAddr));
-                    item.addProperty("type", ref.getReferenceType().toString());
-                    results.add(item);
-                }
-            }
-
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            result.addProperty("target", AddressCodec.isExplicit(functionTarget)
-                ? AddressCodec.format(targetFunc.getEntryPoint()) : functionTarget);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to find calls: " + e.getMessage());
-        }
-    }
-
-    /** Search incoming call sites across the program, resolving thunks and import slots. */
-    JsonObject handleFindCalls(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String target = getArgString(args, "function");
-        if (target == null || target.isEmpty()) return errorResult("No function target provided");
-        try {
-            FunctionManager fm = session.program().getFunctionManager();
-            CallReferences calls = new CallReferences(session, addressResolver);
-            Function callee = calls.resolveTarget(target);
-            if (callee == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
-            java.util.Map<Address, JsonObject> sites = new java.util.TreeMap<>();
-            calls.visitCallsTo(callee, (ref, destination) -> {
-                Address from = ref.getFromAddress();
-                JsonObject row = new JsonObject();
-                Function caller = fm.getFunctionContaining(from);
-                row.addProperty("call_site", AddressCodec.format(from));
-                row.addProperty("caller", caller == null ? null : caller.getName());
-                row.addProperty("caller_address", caller == null ? null : AddressCodec.format(caller.getEntryPoint()));
-                row.addProperty("callee", callee.getName());
-                row.addProperty("callee_address", AddressCodec.format(callee.getEntryPoint()));
-                row.addProperty("type", ref.getReferenceType().toString());
-                row.addProperty("via", AddressCodec.format(destination));
-                sites.put(from, row);
-                return true;
-            });
-            JsonArray results = new JsonArray();
-            sites.values().forEach(results::add);
-            JsonObject result = new JsonObject();
-            result.add("results", results);
-            result.addProperty("count", results.size());
-            result.addProperty("target", AddressCodec.isExplicit(target)
-                ? AddressCodec.format(callee.getEntryPoint()) : target);
-            return result;
-        } catch (Exception error) {
-            return errorResult("Failed to find calls: " + error.getMessage());
-        }
     }
 
 }

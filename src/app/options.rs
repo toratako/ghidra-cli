@@ -38,7 +38,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::List(args) => args.options.project.clone(),
             cli::FunctionCommands::Get(args) => args.options.project.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.project.clone(),
-            cli::FunctionCommands::Calls(args) => args.options.project.clone(),
             cli::FunctionCommands::Rename(args) => args.project.clone(),
             cli::FunctionCommands::Create(args) => args.project.clone(),
             cli::FunctionCommands::Delete(args) => args.project.clone(),
@@ -69,7 +68,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Text(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
             cli::FindCommands::Instruction(args) => args.options.project.clone(),
-            cli::FindCommands::Calls(args) => args.options.project.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.project.clone(),
@@ -158,7 +156,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::List(args) => args.options.program.clone(),
             cli::FunctionCommands::Get(args) => args.options.program.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.program.clone(),
-            cli::FunctionCommands::Calls(args) => args.options.program.clone(),
             cli::FunctionCommands::Rename(args) => args.program.clone(),
             cli::FunctionCommands::Create(args) => args.program.clone(),
             cli::FunctionCommands::Delete(args) => args.program.clone(),
@@ -189,7 +186,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Text(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
             cli::FindCommands::Instruction(args) => args.options.program.clone(),
-            cli::FindCommands::Calls(args) => args.options.program.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.program.clone(),
@@ -282,7 +278,6 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some(args.options.clone()),
             cli::FunctionCommands::Disasm(args) => Some(args.options.clone()),
-            cli::FunctionCommands::Calls(args) => Some(args.options.clone()),
             cli::FunctionCommands::Delete(args) => Some(QueryOptions {
                 program: args.program.clone(),
                 project: args.project.clone(),
@@ -353,7 +348,6 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::FindCommands::Text(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
             cli::FindCommands::Instruction(args) => Some(args.options.clone()),
-            cli::FindCommands::Calls(args) => Some(args.options.clone()),
         },
         _ => None,
     }

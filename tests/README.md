@@ -136,7 +136,11 @@ Formatter tests cover requested decompiler details in compact and full text outp
 Graph routing tests cover node filtering, sorting, paging, counts and projection
 in standalone/batch results while preserving outgoing edges beyond the page.
 `readonly/relationships.rs` checks graph queries against the real bridge's nodes
-and edges.
+and edges. `readonly/calls.rs` compares incoming, outgoing, and whole-program
+call edges across thunks, import pointers, pointer chains/cycles, disjoint bodies,
+interior/undefined destinations, unowned callers, multiple targets, and duplicate
+reference evidence, embedded pointer tables, and primary call overrides. It also
+exercises field selection and standalone/batch queries.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
 supported list handlers and `find string`, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds

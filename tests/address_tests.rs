@@ -161,24 +161,21 @@ fn check_name_and_address_reads(client: &BridgeClient) {
             client.disasm(name, Some(1)).unwrap()["instructions"][0]["address"],
             address
         );
-        for command in ["find_calls_to", "function_calls"] {
+        for command in ["graph_callers", "graph_callees"] {
             let by_name = client
                 .send_command(command, Some(json!({"function": name})))
                 .unwrap();
             let by_address = client
                 .send_command(command, Some(json!({"function": address})))
                 .unwrap();
-            assert_eq!(
-                by_name["results"], by_address["results"],
-                "{command}: {name}"
-            );
+            assert_eq!(by_name["calls"], by_address["calls"], "{command}: {name}");
         }
     }
-    let incoming = client.find_calls("dead").unwrap();
-    assert_eq!(incoming["results"][0]["caller_address"], "0x00001000");
-    assert_eq!(incoming["results"][0]["callee_address"], "0x00001100");
-    let outgoing = client.function_calls("dead").unwrap();
-    assert_eq!(outgoing["results"][0]["callee_address"], "0x00001200");
+    let incoming = client.graph_callers("dead", None, None).unwrap();
+    assert_eq!(incoming["calls"][0]["caller_address"], "0x00001000");
+    assert_eq!(incoming["calls"][0]["callee_address"], "0x00001100");
+    let outgoing = client.graph_callees("dead", None, None).unwrap();
+    assert_eq!(outgoing["calls"][0]["callee_address"], "0x00001200");
     assert_eq!(
         get_function(client, "FUN_00001400")["address"],
         "0x00001400"
@@ -195,8 +192,6 @@ fn target_requests(target: &str) -> Vec<(&'static str, Value)> {
         ("decompile", json!({"address": target})),
         ("disasm", json!({"address": target, "limit": 1})),
         ("function_disasm", json!({"target": target})),
-        ("find_calls_to", json!({"function": target})),
-        ("function_calls", json!({"function": target})),
         ("graph_callers", json!({"function": target})),
         ("graph_callees", json!({"function": target})),
         (

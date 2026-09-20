@@ -11,6 +11,8 @@ use common::{ensure_test_project, get_function_address, ghidra, test_project, Da
 mod batch;
 #[path = "readonly/byte_regex.rs"]
 mod byte_regex;
+#[path = "readonly/calls.rs"]
+mod calls;
 #[path = "readonly/functions.rs"]
 mod functions;
 #[path = "readonly/program.rs"]
@@ -179,9 +181,10 @@ fn test_snapshot_graph_callees_structure() {
 
     let json: serde_json::Value = result.json();
     insta::assert_json_snapshot!("graph_callees_structure", json, {
-        ".nodes[].id" => "[ID]",
-        ".nodes[].address" => "[ADDR]",
-        ".edges[].from" => "[ID]",
-        ".edges[].to" => "[ID]",
+        "[].caller_address" => "[ADDR]",
+        "[].callee_address" => "[ADDR]",
+        "[].call_site" => "[ADDR]",
+        "[].destination" => "[ADDR]",
+        "[].via" => "[ADDR]",
     });
 }

@@ -99,8 +99,6 @@ fn response_array_key(obj: &serde_json::Map<String, serde_json::Value>) -> Optio
         "tags",
         "comments",
         "symbols",
-        "callers",
-        "callees",
         "calls",
         "instructions",
         "sections",

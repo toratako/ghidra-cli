@@ -514,14 +514,6 @@ impl BridgeClient {
         )
     }
 
-    pub fn find_calls(&self, function: &str) -> Result<serde_json::Value> {
-        self.send_command("find_calls_to", Some(json!({"function": function})))
-    }
-
-    pub fn function_calls(&self, function: &str) -> Result<serde_json::Value> {
-        self.send_command("function_calls", Some(json!({"function": function})))
-    }
-
     pub fn memory_write(&self, address: &str, hex: &str) -> Result<serde_json::Value> {
         self.send_command(
             "memory_write",

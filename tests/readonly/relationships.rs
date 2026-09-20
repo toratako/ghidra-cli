@@ -1,9 +1,5 @@
 use super::{harness, TEST_PROGRAM};
-use crate::common::{
-    get_function_address, ghidra,
-    schemas::{GraphResult, XRef},
-    test_project,
-};
+use crate::common::{get_function_address, ghidra, schemas::XRef, test_project};
 use serial_test::serial;
 
 // XRef Tests
@@ -196,68 +192,6 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
 
 #[test]
 #[serial]
-fn test_graph_callers() {
-    require_ghidra!();
-    let harness = harness();
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let result = ghidra(harness)
-        .arg("graph")
-        .arg("callers")
-        .arg(&main_addr)
-        .with_project(test_project(), TEST_PROGRAM)
-        .json_format()
-        .run();
-
-    result.assert_success();
-
-    if let Some(graph) = result.try_json::<GraphResult>() {
-        eprintln!("Callers graph for main has {} nodes", graph.nodes.len());
-    }
-}
-
-#[test]
-#[serial]
-fn test_graph_callees() {
-    require_ghidra!();
-    let harness = harness();
-    let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-
-    let result = ghidra(harness)
-        .arg("graph")
-        .arg("callees")
-        .arg(&main_addr)
-        .with_project(test_project(), TEST_PROGRAM)
-        .json_format()
-        .run();
-
-    result.assert_success();
-
-    if let Some(graph) = result.try_json::<GraphResult>() {
-        let node_labels: Vec<_> = graph
-            .nodes
-            .iter()
-            .filter_map(|n| n.label.as_deref())
-            .collect();
-
-        let has_add_numbers = node_labels
-            .iter()
-            .any(|l| l.contains("add_numbers") || l.contains("_add_numbers"));
-        let has_multiply = node_labels
-            .iter()
-            .any(|l| l.contains("multiply") || l.contains("_multiply"));
-
-        if has_add_numbers {
-            eprintln!("Found add_numbers in callees");
-        }
-        if has_multiply {
-            eprintln!("Found multiply in callees");
-        }
-    }
-}
-
-#[test]
-#[serial]
 fn test_graph_callees_limit_is_enforced_by_bridge() {
     require_ghidra!();
     let harness = harness();
@@ -270,7 +204,7 @@ fn test_graph_callees_limit_is_enforced_by_bridge() {
         .graph_callees(&main_addr, Some(0), Some(2))
         .expect("bounded callees graph");
     let callees = result
-        .get("callees")
+        .get("calls")
         .and_then(|v| v.as_array())
         .expect("callees array");
     assert_eq!(
@@ -286,7 +220,7 @@ fn test_graph_callees_limit_is_enforced_by_bridge() {
         .expect("bounded callers graph");
     assert!(
         callers
-            .get("callers")
+            .get("calls")
             .and_then(|v| v.as_array())
             .is_some_and(|rows| rows.len() <= 2),
         "callers bridge response must respect the traversal cap"
@@ -376,6 +310,12 @@ public class CreateGraphDepthFixture extends GhidraScript {
             ),
         ] {
             let root = format!("{direction}_root");
+            let endpoint = if direction == "callees" {
+                "callee"
+            } else {
+                "caller"
+            };
+            let endpoint_address = format!("{endpoint}_address");
             let query = |depth, limit| {
                 if direction == "callees" {
                     client.graph_callees(&root, depth, limit)
@@ -390,10 +330,10 @@ public class CreateGraphDepthFixture extends GhidraScript {
             //      -> short ---------> join
             // DFS expanded join first at distance 3, then missed leaf at depth 4.
             let bounded = query(Some(4), None);
-            let rows = bounded[direction].as_array().expect("graph rows");
+            let rows = bounded["calls"].as_array().expect("graph rows");
             assert!(
                 rows.iter()
-                    .any(|row| row["name"] == format!("{direction}_leaf")),
+                    .any(|row| row[endpoint] == format!("{direction}_leaf")),
                 "{direction} must include leaf via the shorter branch: {bounded}"
             );
 
@@ -408,7 +348,7 @@ public class CreateGraphDepthFixture extends GhidraScript {
                 ("join", 4, 4),
             ];
             let unbounded = query(Some(0), Some(0));
-            let all = unbounded[direction].as_array().expect("unbounded rows");
+            let all = unbounded["calls"].as_array().expect("unbounded rows");
             assert_eq!(
                 all.len(),
                 expected.len(),
@@ -451,10 +391,13 @@ public class CreateGraphDepthFixture extends GhidraScript {
                 }
             }
             for ((row, (name, index, depth)), site) in all.iter().zip(expected).zip(sites) {
-                assert_eq!(row.as_object().unwrap().len(), 4, "row shape: {row}");
-                assert_eq!(row["name"], format!("{direction}_{name}"));
+                assert_eq!(row.as_object().unwrap().len(), 9, "row shape: {row}");
+                assert_eq!(row[endpoint], format!("{direction}_{name}"));
                 assert_eq!(row["depth"], depth, "row depth: {row}");
-                for (field, offset) in [("address", index * 0x10), ("call_site", site)] {
+                for (field, offset) in [
+                    (endpoint_address.as_str(), index * 0x10),
+                    ("call_site", site),
+                ] {
                     assert_eq!(
                         u64::from_str_radix(
                             row[field]
@@ -474,17 +417,17 @@ public class CreateGraphDepthFixture extends GhidraScript {
             // Immediate references retain depth 0; depth 0 and limit 0 mean unbounded.
             for (depth, count) in [(1, 2), (2, 4), (3, 6), (4, 7), (5, 8), (0, 8)] {
                 let result = query(Some(depth), None);
-                assert_eq!(result["function"], root);
+                assert_eq!(result["target"], root);
                 assert_eq!(result["count"], count);
-                assert_eq!(result[direction].as_array().unwrap(), &all[..count]);
+                assert_eq!(result["calls"].as_array().unwrap(), &all[..count]);
                 for limit in [1, 2, 5, 20] {
                     let limited = query(Some(depth), Some(limit));
                     let retained = count.min(limit);
                     assert_eq!(limited["count"], retained);
-                    assert_eq!(limited[direction].as_array().unwrap(), &all[..retained]);
+                    assert_eq!(limited["calls"].as_array().unwrap(), &all[..retained]);
                 }
             }
-            assert_eq!(query(None, None)[direction].as_array().unwrap(), &all[..2]);
+            assert_eq!(query(None, None)["calls"].as_array().unwrap(), &all[..2]);
         }
     });
     client

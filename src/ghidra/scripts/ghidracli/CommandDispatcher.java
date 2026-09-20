@@ -39,7 +39,7 @@ final class CommandDispatcher {
         programCommands = new ProgramCommands(session);
         listingCommands = new ListingCommands(session, stringQueries);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
-        searchCommands = new SearchCommands(session, functionQueries, addressResolver, stringQueries);
+        searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         symbolCommands = new SymbolCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
@@ -83,8 +83,6 @@ final class CommandDispatcher {
             case "find_bytes":      return searchCommands.handleFindBytes(args);
             case "find_bytes_regex": return searchCommands.handleFindBytesRegex(args);
             case "find_instruction": return searchCommands.handleFindInstruction(args);
-            case "find_calls_to":   return searchCommands.handleFindCalls(args);
-            case "function_calls":  return searchCommands.handleFunctionCalls(args);
             // Symbol commands
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);

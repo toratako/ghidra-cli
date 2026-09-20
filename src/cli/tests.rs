@@ -164,12 +164,10 @@ fn targets_require_one_positional() {
         ],
         vec!["function", "get"],
         vec!["function", "disassemble"],
-        vec!["function", "calls"],
         vec!["decompile"],
         vec!["disassemble"],
         vec!["xref", "to"],
         vec!["xref", "from"],
-        vec!["find", "calls"],
         vec!["graph", "callers"],
         vec!["graph", "callees"],
     ] {
@@ -202,18 +200,13 @@ fn targets_require_one_positional() {
                     (args.target, args.program, args.project)
                 }
                 Commands::Function(
-                    FunctionCommands::Get(args)
-                    | FunctionCommands::Disasm(args)
-                    | FunctionCommands::Calls(args),
+                    FunctionCommands::Get(args) | FunctionCommands::Disasm(args),
                 ) => (args.target, args.options.program, args.options.project),
                 Commands::Decompile(args) => {
                     (args.target, args.options.program, args.options.project)
                 }
                 Commands::Disasm(args) => (args.target, args.options.program, args.options.project),
                 Commands::XRef(XRefCommands::To(args) | XRefCommands::From(args)) => {
-                    (args.target, args.options.program, args.options.project)
-                }
-                Commands::Find(FindCommands::Calls(args)) => {
                     (args.target, args.options.program, args.options.project)
                 }
                 Commands::Graph(GraphCommands::Callers(args) | GraphCommands::Callees(args)) => {

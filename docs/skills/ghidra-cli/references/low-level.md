@@ -21,7 +21,8 @@ including disjoint ranges. Both use the shared
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
 text, case-insensitively unless `--case-sensitive` is given. Either range
 bound can be omitted; a one-sided range stays in the supplied endpoint's address
-space. Use `find calls` for resolved call destinations.
+space. For resolved call sites, use
+[graph callers](exploration.md#search-strings-xrefs-and-graphs).
 
 `--format asm` prints one instruction per line (address, bytes, mnemonic, operands).
 

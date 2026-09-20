@@ -71,6 +71,18 @@ overflowing values fail. The CLI validates these limits before bridge work,
 including when filtering leaves the limit in Rust. Other long-based paging
 arguments retain their existing range.
 
+`graph_callers` and `graph_callees` take `function`, `depth`, and `limit` and
+return `{target, calls, count}`. Each call has `caller`, nullable `caller_address`,
+`callee`, `callee_address`, `call_site`, `destination`, `via`, `type`, and `depth`. Function names
+are null when undefined; `callee_address` remains the known destination in that
+case, otherwise it is the canonical function entry. `destination` is the resolved
+landing address, retaining interior offsets. `via` is the original
+reference destination and `type` is its Ghidra reference type. Immediate rows have
+depth zero. Callers accepts undefined destination addresses; callees needs a
+function body. `graph_calls` retains its nodes/edges envelope and node-based query
+contract; its edges carry the same call fields except depth, plus `from`/`to` IDs.
+Edges to external or undefined destinations need not have a node in the response.
+
 `disasm` uses the checked `limit` argument; missing/null/zero means unlimited.
 The CLI resolves `default_limit` before sending these requests.
 

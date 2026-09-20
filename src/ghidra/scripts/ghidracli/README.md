@@ -125,7 +125,7 @@ another consumer or terminate its checkout.
 | `MemoryCommands`, `AnalysisCommands` | Memory/disassembly operations, analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressCodec`, `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Explicit address syntax/formatting, shared lookup and diagnostics; no handler-to-handler dependencies |
-| `CallReferences` | Shared incoming call-site validation and thunk/typed-pointer traversal for search and caller graphs |
+| `CallReferences` | Shared call-site validation, endpoint resolution, and incoming/outgoing enumeration for all call graphs |
 
 Handlers construct domain results; the dispatcher adds the wire envelope.
 Errors use `error` for messages and `detail` for diagnostics. Additional fields
@@ -232,10 +232,23 @@ selected file and saved metadata for other files; missing or malformed flags are
 `null`, never inferred from function counts. `ProgramSession.programFiles()` owns
 the recursive file enumeration shared by program lists and control snapshots.
 
-`find_calls_to` resolves a target across the selected program, follows thunk and
-typed pointer references, and emits only call sites. `function_calls` retains the
-outgoing scan of one function. Distinct wire names cause an older bridge to report
-an unknown command instead of silently returning results for the wrong direction.
+`CallReferences` owns call validation and thunk/typed-pointer resolution for
+`graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows
+reverse references to function bodies (including interior destinations), thunks,
+and typed pointer slots; every candidate is checked by the same outgoing edge
+resolver. One call site can have multiple destinations; duplicate references to
+one resolved landing address produce one row, preferring CALL evidence over READ/DATA.
+Distinct landing addresses within one function remain distinct calls. Typed pointer
+resolution precedes containing-function lookup so embedded literal pools are not
+misidentified as callees.
+Undefined endpoint metadata is null, and known destination addresses are retained.
+Outgoing root selection inspects the selected function body without canonicalizing
+it to a thunk's target. Resolved callees are canonicalized for subsequent traversal.
+`GraphCommands` uses BFS with one expansion per function and preserves call edges
+at every level, including cycles and endpoints without a function. A missing
+function stops expansion, not row emission. Depth defaults to one level; row depth
+starts at zero, and a zero depth/limit argument is unlimited. Limits count rows
+for traversal queries and source function nodes for the whole-program graph.
 
 `find_instruction` scans existing listing instructions using literal text matching
 (`Locale.ROOT` when case-insensitive). It and `disasm_range` share inclusive,

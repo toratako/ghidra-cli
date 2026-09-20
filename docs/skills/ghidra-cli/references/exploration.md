@@ -7,7 +7,7 @@ ghidra-cli function list --fields name,address,size --limit 100 --project target
 ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
 ghidra-cli decompile main --format c --project target
-ghidra-cli function calls main --project target
+ghidra-cli graph callees main --project target
 ghidra-cli xref to main --project target
 ghidra-cli xref to malloc --project target
 ```
@@ -24,12 +24,13 @@ Decompilation has no native time limit by default; use
 
 ## Search, strings, xrefs, and graphs
 
-`find calls TARGET` finds incoming calls across the program, resolving thunks
-and import pointers; `function calls TARGET` lists outgoing calls within TARGET.
-Use `graph callers` or `graph callees` to traverse relationships at a chosen depth.
-Call discovery uses Ghidra's references, so unresolved indirect calls may be
-absent. Passing a function pointer as data does not make a function a caller.
-`via` identifies the referenced target or pointer/thunk address.
+Call queries resolve thunks and typed pointers using Ghidra's references;
+unresolved indirect calls may be absent. Passing a function pointer as data
+does not make a function a caller.
+`via` is the referenced address before thunk/pointer resolution. `destination`
+is the resolved landing address; `callee_address` is the function entry when
+defined. Use `graph callers ADDRESS` to investigate a destination before
+defining a function there.
 
 ```bash
 ghidra-cli function list --filter "name~crypt" --project target
@@ -42,7 +43,7 @@ ghidra-cli string refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find bytes --regex '\x48\x8b.{4}' --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
-ghidra-cli find calls CreateProcessW --project target
+ghidra-cli graph callers CreateProcessW --project target
 ghidra-cli xref to malloc --project target
 ghidra-cli xref to 0x401000 --project target
 ghidra-cli xref from 0x401000 --project target
@@ -52,8 +53,7 @@ ghidra-cli graph callees main --depth 2 --limit 100 --project target
 ```
 
 `graph calls` applies query controls to function nodes; `--count` counts selected
-nodes. Edges include outgoing calls from selected nodes, so a destination ID may
-refer to a node outside the returned page.
+nodes. Edges from selected nodes can point outside the returned node set.
 
 `find string` and `string refs` use case-insensitive literal substring matching
 on defined string values. An empty result does not establish that the text is

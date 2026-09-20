@@ -44,8 +44,6 @@ pub enum FindCommands {
     Bytes(FindBytesArgs),
     /// Find a substring in already-disassembled instructions (does not require xrefs)
     Instruction(FindInstructionArgs),
-    /// Find calls to the target across the selected program (including resolved thunks/import pointers)
-    Calls(FindCallsArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -98,30 +96,22 @@ pub struct FindInstructionArgs {
     pub options: QueryOptions,
 }
 
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct FindCallsArgs {
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET")]
-    pub target: String,
-    #[command(flatten)]
-    pub options: QueryOptions,
-}
-
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum GraphCommands {
     /// Call graph
     Calls(QueryOptions),
-    /// Get callers of function
+    /// List incoming call sites, resolving thunks and import pointers
     Callers(GraphFunctionArgs),
-    /// Get callees of function
+    /// List outgoing call sites, retaining destinations without a defined function
     Callees(GraphFunctionArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct GraphFunctionArgs {
-    /// Exact function name or explicit 0x-prefixed address
+    /// Exact name or explicit 0x-prefixed address (callees requires a function body)
     #[arg(value_name = "TARGET")]
     pub target: String,
+    /// Number of call levels to traverse (default: 1; 0: unlimited)
     #[arg(long)]
     pub depth: Option<usize>,
     #[command(flatten)]

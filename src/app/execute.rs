@@ -82,7 +82,6 @@ pub(super) fn execute_via_bridge(
                     client.send_command("get_function", Some(json!({"address": args.target})))
                 }
                 FunctionCommands::Disasm(args) => client.function_disasm(&args.target, list_limit),
-                FunctionCommands::Calls(args) => client.function_calls(&args.target),
                 FunctionCommands::Rename(args) => client.send_command(
                     "rename_function",
                     Some(json!({
@@ -354,7 +353,6 @@ pub(super) fn execute_via_bridge(
                     args.case_sensitive,
                     list_limit,
                 ),
-                FindCommands::Calls(args) => client.find_calls(&args.target),
             }
         }
         Commands::Script(cmd) => scripts::execute(client, cmd),

@@ -190,30 +190,6 @@ pub struct StatsResult {
     pub memory_blocks: Option<usize>,
 }
 
-/// Graph result for call graph operations.
-#[derive(Debug, Deserialize)]
-pub struct GraphResult {
-    pub nodes: Vec<GraphNode>,
-    pub edges: Vec<GraphEdge>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GraphNode {
-    pub id: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    #[serde(default)]
-    pub address: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GraphEdge {
-    pub from: String,
-    pub to: String,
-    #[serde(default)]
-    pub edge_type: Option<String>,
-}
-
 // ============================================================================
 // Validation trait and implementations
 // ============================================================================

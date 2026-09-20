@@ -12,8 +12,6 @@ pub enum FunctionCommands {
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(name = "disassemble")]
     Disasm(FunctionGetArgs),
-    /// List outgoing call sites and callees inside this function
-    Calls(FunctionGetArgs),
     /// Rename function
     Rename(FunctionRenameArgs),
     /// Create function

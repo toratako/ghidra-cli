@@ -29,7 +29,6 @@ ghidra-cli
 │   ├── list
 │   ├── get
 │   ├── disassemble
-│   ├── calls
 │   ├── rename
 │   ├── create
 │   ├── delete
@@ -93,8 +92,7 @@ ghidra-cli
 │   ├── string
 │   ├── text
 │   ├── bytes
-│   ├── instruction
-│   └── calls
+│   └── instruction
 ├── graph
 │   ├── calls
 │   ├── callers
@@ -128,4 +126,4 @@ ghidra-cli
 └── setup
 ```
 
-116 command nodes (excluding the root), 0 aliases.
+114 command nodes (excluding the root), 0 aliases.
