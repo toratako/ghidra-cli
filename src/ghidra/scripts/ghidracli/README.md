@@ -154,9 +154,11 @@ request-owned transaction. Never replace the whole structure with the staged cop
 Ghidra discards component settings when rebuilding it. Metadata-only edits update
 the original component, preserving its settings; layout edits leave other
 components' settings intact.
-`set-field`, `clear-field`, and explicit-offset `add-field` share this path;
-append and `del-field` retain their existing behavior. Never use packed
-replacement/clearing for offset edits: Ghidra may repack or delete components.
+`set-field` and `clear-field` share this path. `add-field` only appends;
+`del-field` removes bytes. Both `add-field` and `set-field` validate explicit
+sizes before applying changes; `set-field --size` requires `--type`.
+Never use packed replacement/clearing for offset edits: Ghidra may repack or
+delete components.
 Metadata-only edits preserve packing. Zero-length structures report a logical
 size of 0 here despite Ghidra's minimum display length of 1.
 

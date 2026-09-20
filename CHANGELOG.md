@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Make `type add-field` append-only. Use `type set-field --offset` for creating
+  or updating a field at a specific position. `set-field` now accepts `--size`
+  with `--type`, preserving explicit-length field placement and returning
+  created/updated/unchanged receipts with before/after definitions.
 - Ordinary single-program commands now commit only on success and roll back the
   current request on failure or cancellation. This includes C type import,
   function/variable edits, memory writes, clear plus disassembly, and multi-symbol

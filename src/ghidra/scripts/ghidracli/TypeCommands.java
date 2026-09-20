@@ -430,27 +430,21 @@ final class TypeCommands {
             if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
 
             Structure struct = (Structure) structType;
-            if (getArgString(args, "offset") != null) {
-                Integer size = getArgString(args, "size") == null ? null : getArgInt(args, "size", 0);
-                StructureFields.set(struct, StructureFields.offset(args), fieldName,
-                    fieldDataType, null, false, size).apply(struct);
+            DataTypeUtilities.checkAncestry(struct, fieldDataType);
+            Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
+            Integer size = StructureFields.size(args);
+            if (size != null) {
+                if ((long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
+                    return errorResult("Field size must fit within the structure");
+                DataTypeComponent added = staged.add(fieldDataType, size, fieldName, null);
+                if (added.getLength() != size)
+                    return errorResult("Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
             } else {
-                DataTypeUtilities.checkAncestry(struct, fieldDataType);
-                Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
-                Integer size = getArgString(args, "size") == null ? null : getArgInt(args, "size", 0);
-                if (size != null) {
-                    if (size <= 0 || (long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
-                        return errorResult("Field size must be positive and fit within the structure");
-                    DataTypeComponent added = staged.add(fieldDataType, size, fieldName, null);
-                    if (added.getLength() != size)
-                        return errorResult("Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
-                } else {
-                    staged.add(fieldDataType, fieldName, null);
-                }
-                // Preserve existing components and their per-field default settings.
-                if (size != null) struct.add(fieldDataType, size, fieldName, null);
-                else struct.add(fieldDataType, fieldName, null);
+                staged.add(fieldDataType, fieldName, null);
             }
+            // Preserve existing components and their per-field default settings.
+            if (size != null) struct.add(fieldDataType, size, fieldName, null);
+            else struct.add(fieldDataType, fieldName, null);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "field_added");
@@ -481,7 +475,8 @@ final class TypeCommands {
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
             return StructureFields.set(struct, StructureFields.offset(args),
-                getArgString(args, "field_name"), type, comment, comment != null, null).apply(struct);
+                getArgString(args, "field_name"), type, comment, comment != null,
+                StructureFields.size(args)).apply(struct);
         } catch (Exception e) {
             return errorResult("Failed to set field: " + e.getMessage(), e);
         }

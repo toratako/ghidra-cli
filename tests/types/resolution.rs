@@ -172,7 +172,7 @@ fn invalid_arrays_fail_before_registering_types_or_growing_structures() {
         let failed = type_command(
             &program,
             &[
-                "add-field",
+                "set-field",
                 "Holder",
                 "--name",
                 "invalid",

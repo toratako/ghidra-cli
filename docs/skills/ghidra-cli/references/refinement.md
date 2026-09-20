@@ -51,7 +51,7 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 ```bash
 ghidra-cli type get Header --project target
 ghidra-cli type create struct Header --project target
-ghidra-cli type add-field Header --name magic --type uint --offset 0 --project target
+ghidra-cli type add-field Header --name magic --type uint --project target
 ghidra-cli type del-field Header --name magic --project target
 ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
 ghidra-cli type create typedef HeaderAlias Header --project target
@@ -106,8 +106,9 @@ is optional. An empty comment clears it.
 
 Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field.
-`add-field` appends unless `--offset` is given. For fixed byte spans, use an
-array type such as `byte[8]`; `--size` must match the size of the chosen type.
+`add-field` appends. For fixed byte spans, use an array type such as `byte[8]`.
+For types that need an explicit length, use `--type string --size 8` with
+`add-field` or `set-field`.
 
 `clear-field` replaces the field with undefined bytes and preserves structure
 size and later offsets. `del-field --name NAME` removes bytes and shifts later

@@ -724,7 +724,7 @@ fn test_type_apply_force_on_function_entry_warns() {
 
 #[test]
 #[serial]
-fn test_type_add_field_places_at_exact_offset() {
+fn test_type_set_field_places_at_exact_offset() {
     require_ghidra!();
     let _harness = harness();
 
@@ -760,7 +760,7 @@ fn test_type_add_field_places_at_exact_offset() {
     for (name, offset) in [("field_a", 36), ("field_b", 40), ("field_c", 60)] {
         assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("type")
-            .arg("add-field")
+            .arg("set-field")
             .arg("OffsetPlacementStruct")
             .arg("--name")
             .arg(name)

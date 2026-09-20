@@ -19,7 +19,7 @@ pub enum TypeCommands {
     Delete(TypeDeleteArgs),
     /// Rename a data type
     Rename(TypeRenameArgs),
-    /// Add a field to a struct type
+    /// Append a field to the end of a struct type
     AddField(TypeAddFieldArgs),
     /// Create or update a field at an exact offset without moving other fields
     SetField(TypeSetFieldArgs),
@@ -153,9 +153,6 @@ pub struct TypeAddFieldArgs {
     /// Field type (e.g., "int", "byte", "pointer", a custom struct name)
     #[arg(long = "type")]
     pub field_type: String,
-    /// Byte offset in decimal or 0x hexadecimal (if omitted, appends at end)
-    #[arg(long, value_parser = parse_field_offset)]
-    pub offset: Option<i32>,
     /// Field size override
     #[arg(long)]
     pub size: Option<i32>,
@@ -208,6 +205,9 @@ pub struct TypeSetFieldArgs {
     /// Field type; required when creating a field in undefined space
     #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub field_type: Option<String>,
+    /// Field size override; requires --type
+    #[arg(long, requires = "field_type")]
+    pub size: Option<i32>,
     /// Field comment; an empty string clears it, omission preserves it
     #[arg(long)]
     pub comment: Option<String>,

@@ -29,6 +29,13 @@ final class StructureFields {
         catch (NumberFormatException e) { throw new IllegalArgumentException("Offset exceeds 2147483647"); }
     }
 
+    static Integer size(JsonObject args) {
+        if (args == null || !args.has("size") || args.get("size").isJsonNull()) return null;
+        int size = JsonProtocol.getNonnegativeIntArg(args, "size", 0);
+        if (size == 0) throw new IllegalArgumentException("Field size must be positive");
+        return size;
+    }
+
     static JsonObject describe(DataTypeComponent field) {
         if (field == null) return null;
         JsonObject result = new JsonObject();
@@ -66,6 +73,8 @@ final class StructureFields {
 
     static Plan set(Structure struct, int offset, String name, DataType type,
             String comment, boolean commentSpecified, Integer sizeOverride) throws Exception {
+        if (sizeOverride != null && type == null)
+            throw new IllegalArgumentException("--size requires --type");
         DataTypeComponent old = target(struct, offset);
         if (name == null && type == null && !commentSpecified)
             throw new IllegalArgumentException("At least one of --name, --type, or --comment is required");
@@ -88,7 +97,6 @@ final class StructureFields {
         int newSize = old == null ? 0 : old.getLength();
         if (type != null) {
             type = type.clone(struct.getDataTypeManager());
-            // Explicit sizes remain available to the existing add-field command.
             newSize = sizeOverride != null ? sizeOverride : type.getLength();
             if (newSize <= 0 || type.isZeroLength())
                 throw new IllegalArgumentException("Field type must have a fixed positive size");

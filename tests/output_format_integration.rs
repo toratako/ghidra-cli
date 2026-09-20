@@ -543,6 +543,17 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
             "",
         ],
         vec!["type", "clear-field", "Manager"],
+        vec![
+            "type",
+            "set-field",
+            "Manager",
+            "--offset",
+            "0",
+            "--name",
+            "hook",
+            "--size",
+            "8",
+        ],
     ];
     for offset in [
         "",
@@ -555,7 +566,7 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
         "2147483648",
         "0x80000000",
     ] {
-        for command in ["set-field", "clear-field", "add-field"] {
+        for command in ["set-field", "clear-field"] {
             let mut args = vec!["type", command, "Manager", "--offset", offset];
             if command != "clear-field" {
                 args.extend(["--name", "hook", "--type", "int"]);

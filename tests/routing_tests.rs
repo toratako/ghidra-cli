@@ -1270,7 +1270,7 @@ fn type_import_reads_code_files_and_stdin_in_the_client() {
 #[test]
 fn field_edits_route_offsets_and_preserve_omitted_attributes() {
     let bridge = RecordedBridge::new();
-    for (offset, flags, name, field_type, comment) in [
+    for (offset, flags, name, field_type, comment, size) in [
         (
             "0x1c",
             vec![
@@ -1284,11 +1284,13 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
             json!("hook"),
             json!("Hook *"),
             json!("callback"),
+            Value::Null,
         ),
         (
             "28",
             vec!["--name", "hook"],
             json!("hook"),
+            Value::Null,
             Value::Null,
             Value::Null,
         ),
@@ -1298,6 +1300,7 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
             Value::Null,
             json!("Hook *"),
             Value::Null,
+            Value::Null,
         ),
         (
             "28",
@@ -1305,6 +1308,15 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
             Value::Null,
             Value::Null,
             json!(""),
+            Value::Null,
+        ),
+        (
+            "0x1c",
+            vec!["--type", "string", "--size", "8"],
+            Value::Null,
+            json!("string"),
+            Value::Null,
+            json!(8),
         ),
     ] {
         let mut args = vec![
@@ -1328,7 +1340,7 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
             edits[0]["args"],
             json!({
                 "type_name": "/Recovered/Manager", "offset": 28,
-                "field_name": name, "field_type": field_type, "comment": comment,
+                "field_name": name, "field_type": field_type, "comment": comment, "size": size,
             })
         );
         assert!(requests
@@ -1365,8 +1377,6 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         "type",
         "add-field",
         "Manager",
-        "--offset",
-        "0x1c",
         "--name",
         "hook",
         "--type",
@@ -1377,7 +1387,12 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         .iter()
         .find(|r| r["command"] == "type_add_field")
         .unwrap();
-    assert_eq!(added["args"]["offset"], 28);
+    assert_eq!(
+        added["args"],
+        json!({
+            "type_name": "Manager", "field_name": "hook", "field_type": "Hook *", "size": null,
+        })
+    );
 }
 
 #[test]

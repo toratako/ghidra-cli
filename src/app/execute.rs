@@ -201,7 +201,9 @@ pub(super) fn execute_via_bridge(
         Commands::Type(cmd) => {
             use cli::{TypeCommands, TypeCreateCommands};
             match cmd {
-                TypeCommands::List(_) => client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset),
+                TypeCommands::List(_) => {
+                    client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset)
+                }
                 TypeCommands::Get(args) => client.type_get(&args.name),
                 TypeCommands::Create(cmd) => match cmd {
                     TypeCreateCommands::Struct(args) => client.type_create(&args.name),
@@ -240,14 +242,14 @@ pub(super) fn execute_via_bridge(
                         "type_name": args.type_name,
                         "field_name": args.name,
                         "field_type": args.field_type,
-                        "offset": args.offset,
                         "size": args.size,
                     })),
                 ),
                 TypeCommands::SetField(args) => client.send_command(
                     "type_set_field",
                     Some(json!({"type_name": args.type_name, "offset": args.offset,
-                        "field_name": args.name, "field_type": args.field_type, "comment": args.comment})),
+                        "field_name": args.name, "field_type": args.field_type,
+                        "size": args.size, "comment": args.comment})),
                 ),
                 TypeCommands::ClearField(args) => client.send_command(
                     "type_clear_field",

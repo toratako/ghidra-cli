@@ -143,17 +143,11 @@ public class CreateFieldSettings extends GhidraScript {
         assert_saved_field_settings(&name, &["0", tail]);
     }
     let name = format!("{prefix}Unpacked");
-    command(&[
-        "add-field",
+    success(set(
         &name,
-        "--offset",
         "8",
-        "--name",
-        "inserted",
-        "--type",
-        "uint32_t",
-    ])
-    .assert_success();
+        &["--name", "inserted", "--type", "uint32_t"],
+    ));
     assert_saved_field_settings(&name, &["0", "16"]);
     success(set(&name, "8", &["--type", "byte[6]"]));
     assert_saved_field_settings(&name, &["0", "16"]);
@@ -325,36 +319,6 @@ fn validation_rejects_interior_overlap_collision_and_invalid_sizes_without_chang
         set(&name, "0", &["--type", "byte[8]"]),
         "overlaps",
     );
-    rejected_unchanged(
-        &name,
-        &before,
-        command(&[
-            "add-field",
-            &name,
-            "--offset",
-            "0x0",
-            "--name",
-            "blocked",
-            "--type",
-            "byte[8]",
-        ]),
-        "overlaps",
-    );
-    rejected_unchanged(
-        &name,
-        &before,
-        command(&[
-            "add-field",
-            &name,
-            "--offset",
-            "0x6",
-            "--name",
-            "blocked",
-            "--type",
-            "byte",
-        ]),
-        "inside a field",
-    );
     let collision = rejected_unchanged(
         &name,
         &before,
@@ -428,19 +392,23 @@ fn offset_field_size_is_honored_or_rejected_before_changing_the_structure() {
         "4",
         &["--name", "anchor", "--type", "byte[4]", "--comment", "keep"],
     ));
-    command(&[
-        "add-field",
+    let created = success(set(
         &name,
-        "--offset",
         "12",
-        "--name",
-        "sized",
-        "--type",
-        "string",
-        "--size",
-        "8",
-    ])
-    .assert_success();
+        &[
+            "--name",
+            "sized",
+            "--type",
+            "string",
+            "--size",
+            "8",
+            "--comment",
+            "text",
+        ],
+    ));
+    assert_eq!(created["status"], "created");
+    assert!(created["before"].is_null());
+    assert_eq!(created["after"]["size"], 8);
     let before = definition(&name);
     assert_eq!(field(&before, "sized")["size"], 8);
     assert_eq!(before["size"], 20);
@@ -451,47 +419,84 @@ fn offset_field_size_is_honored_or_rejected_before_changing_the_structure() {
         rejected_unchanged(
             &name,
             &before,
-            command(&[
-                "add-field",
+            set(
                 &name,
-                "--offset",
                 offset,
-                "--name",
-                "invalid",
-                "--type",
-                "byte",
-                "--size",
-                "4",
-            ]),
+                &["--name", "invalid", "--type", "byte", "--size", "4"],
+            ),
             "Ghidra cannot honor --size",
         );
     }
 
     // Ghidra can honor a smaller component length even for a fixed-size array.
     // Accept it only when the stored component and structure use that length.
-    command(&[
-        "add-field",
+    success(set(
         &name,
-        "--offset",
         "24",
-        "--name",
-        "bounded",
-        "--type",
-        "byte[4]",
-        "--size",
-        "1",
-    ])
-    .assert_success();
+        &["--name", "bounded", "--type", "byte[4]", "--size", "1"],
+    ));
     let after = definition(&name);
     assert_eq!(field(&after, "bounded")["offset"], 24);
     assert_eq!(field(&after, "bounded")["size"], 1);
     assert_eq!(after["size"], 25);
     assert_eq!(field(&after, "anchor"), field(&before, "anchor"));
     assert_eq!(field(&after, "sized"), field(&before, "sized"));
+    let resized = success(set(&name, "12", &["--type", "string", "--size", "4"]));
+    assert_eq!(resized["status"], "updated");
+    assert_eq!(resized["before"], created["after"]);
+    assert_eq!(resized["after"]["name"], "sized");
+    assert_eq!(resized["after"]["comment"], "text");
+    assert_eq!(resized["after"]["size"], 4);
+    assert_eq!(resized["size_before"], 25);
+    assert_eq!(resized["size_after"], 25);
+    let same = success(set(&name, "12", &["--type", "string", "--size", "4"]));
+    assert_eq!(same["status"], "unchanged");
+    assert_eq!(same["changed"], false);
+    let saved = definition(&name);
+    assert_eq!(field(&saved, "bounded"), field(&after, "bounded"));
+    assert_eq!(field(&saved, "anchor"), field(&before, "anchor"));
     let client = harness().client().unwrap();
     client.program_close().unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
-    assert_eq!(definition(&name), after);
+    assert_eq!(definition(&name), saved);
+}
+
+#[test]
+#[serial]
+fn field_sizes_require_a_type_and_valid_integer_before_mutation() {
+    require_ghidra!();
+    let name = create_struct();
+    success(set(&name, "0", &["--name", "anchor", "--type", "byte[4]"]));
+    let before = definition(&name);
+    rejected_unchanged(
+        &name,
+        &before,
+        set(&name, "0", &["--type", "byte", "--size", "0"]),
+        "Field size must be positive",
+    );
+
+    let client = harness().client().unwrap();
+    for (command, args, message) in [
+        (
+            "type_set_field",
+            json!({"type_name": name, "offset": 0, "field_name": "renamed", "size": 2}),
+            "--size requires --type",
+        ),
+        (
+            "type_set_field",
+            json!({"type_name": name, "offset": 0, "field_type": "byte", "size": 4294967297_u64}),
+            "size must be an integer",
+        ),
+        (
+            "type_add_field",
+            json!({"type_name": name, "field_name": "invalid", "field_type": "byte", "size": 1.5}),
+            "size must be an integer",
+        ),
+    ] {
+        let error = client.send_command(command, Some(args)).unwrap_err();
+        assert!(error.to_string().contains(message), "{error:#}");
+        assert_eq!(definition(&name), before);
+    }
 }
 
 #[test]
@@ -502,17 +507,11 @@ fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() 
     for (offset, field_name, field_type) in
         [("0x0", "head", "byte[8]"), ("0x10", "later", "byte[4]")]
     {
-        command(&[
-            "add-field",
+        success(set(
             &name,
-            "--offset",
             offset,
-            "--name",
-            field_name,
-            "--type",
-            field_type,
-        ])
-        .assert_success();
+            &["--name", field_name, "--type", field_type],
+        ));
     }
     command(&["add-field", &name, "--name", "appended", "--type", "byte"]).assert_success();
     let original = definition(&name);
