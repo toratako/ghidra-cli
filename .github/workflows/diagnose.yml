@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        mode: [fixed-parallel]
+        mode: [concurrent-first-use]
 
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +48,7 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v6
+          key: ghidra-${{ matrix.os }}-v5
 
       - name: Record diagnostic baseline
         run: python .github/scripts/ghidra_diagnostics.py begin
@@ -87,18 +87,10 @@ jobs:
         run: cargo run -- doctor --runtime
         timeout-minutes: 5
 
-      - name: Run bootstrap probe
+      - name: Probe concurrent first-use imports
         shell: pwsh
-        run: |
-          if ('${{ matrix.mode }}' -eq 'single') {
-            cargo xtask test --test bootstrap_tests import_symlinks_preserve_input_names_and_collision_rules -- --exact --nocapture
-          } else {
-            cargo xtask test --test bootstrap_tests -- --nocapture
-          }
-          exit $LASTEXITCODE
-        timeout-minutes: 80
-        env:
-          RUST_LOG: info
+        run: .github/scripts/probe_concurrent_import.ps1
+        timeout-minutes: 15
 
       - name: Collect current-run diagnostics
         if: always()
