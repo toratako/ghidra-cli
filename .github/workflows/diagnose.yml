@@ -1,8 +1,8 @@
-name: Windows bootstrap diagnosis
+name: Windows bootstrap probes
 
 on:
   push:
-    branches: [diagnose/windows-bootstrap]
+    branches: [diagnose/windows-bootstrap-probes]
 
 permissions:
   contents: read
@@ -12,13 +12,14 @@ env:
 
 jobs:
   test:
-    name: Test ${{ matrix.os }}
+    name: Bootstrap ${{ matrix.mode }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest]
+        mode: [single, parallel]
 
     steps:
       - uses: actions/checkout@v7
@@ -80,8 +81,15 @@ jobs:
         run: cargo run -- doctor --runtime
         timeout-minutes: 5
 
-      - name: Run all tests
-        run: cargo xtask test --no-fail-fast --verbose -- --nocapture
+      - name: Run bootstrap probe
+        shell: pwsh
+        run: |
+          if ('${{ matrix.mode }}' -eq 'single') {
+            cargo xtask test --test bootstrap_tests import_symlinks_preserve_input_names_and_collision_rules -- --exact --nocapture
+          } else {
+            cargo xtask test --test bootstrap_tests -- --nocapture
+          }
+          exit $LASTEXITCODE
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -94,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ghidra-diagnostics-${{ matrix.os }}
+          name: ghidra-diagnostics-${{ matrix.mode }}
           path: diagnostics/
           retention-days: 7
           if-no-files-found: warn
