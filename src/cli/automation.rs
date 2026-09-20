@@ -34,7 +34,9 @@ pub struct AnalyzerSetArgs {
 pub enum ScriptCommands {
     /// Run a script file (pass "-" to read Java source from stdin instead of a path)
     Run(ScriptRunArgs),
-    /// List available scripts
+    /// List .java and .py files in Ghidra's script directories
+    ///
+    /// Listing does not check whether a file can be executed.
     List,
 }
 

@@ -72,6 +72,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Describe `script list` as listing `.java` and `.py` files in Ghidra's script
+  directories without checking whether they can be executed.
 - Preserve applied data types and settings during `memory write`, changing only
   differing bytes and clearing only affected instructions without redisassembly.
   Update identifiable automatic pointer references while retaining explicit
