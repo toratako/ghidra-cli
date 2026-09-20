@@ -83,7 +83,7 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
 
 #[test]
 fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
-    for target in [vec!["main"], vec!["--target", "main"]] {
+    for target in [vec!["main"], vec!["0x1000"]] {
         let mut args = vec!["ghidra-cli", "disassemble"];
         args.extend(target);
         args.extend(["--end", "0x2000", "--limit", "12"]);
@@ -150,8 +150,38 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
 }
 
 #[test]
-fn mutation_targets_require_one_positional_without_target_flag_compatibility() {
-    for command in [vec!["function", "delete"], vec!["define-code"]] {
+fn targets_require_one_positional_without_target_flag_compatibility() {
+    for command in [
+        vec!["function", "delete"],
+        vec!["define-code"],
+        vec![
+            "function",
+            "set-signature",
+            "--signature",
+            "int entry(void)",
+        ],
+        vec!["function", "set-return-type", "--type", "int"],
+        vec![
+            "function",
+            "set-calling-convention",
+            "--convention",
+            "__cdecl",
+        ],
+        vec!["function", "set-noreturn"],
+        vec![
+            "function", "edit-var", "--var", "local_10", "--name", "value",
+        ],
+        vec!["function", "get"],
+        vec!["function", "disassemble"],
+        vec!["function", "calls"],
+        vec!["decompile"],
+        vec!["disassemble"],
+        vec!["xref", "to"],
+        vec!["xref", "from"],
+        vec!["find", "calls"],
+        vec!["graph", "callers"],
+        vec!["graph", "callees"],
+    ] {
         for target in ["entry", "0x1000"] {
             let cli = Cli::try_parse_from(
                 ["ghidra-cli"]
@@ -165,6 +195,39 @@ fn mutation_targets_require_one_positional_without_target_flag_compatibility() {
                     (args.target, args.program, args.project)
                 }
                 Commands::DefineCode(args) => (args.target, args.program, args.project),
+                Commands::Function(FunctionCommands::SetSignature(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::Function(FunctionCommands::SetReturnType(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::Function(FunctionCommands::SetCallingConvention(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::Function(FunctionCommands::SetNoReturn(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::Function(FunctionCommands::EditVar(args)) => {
+                    (args.target, args.program, args.project)
+                }
+                Commands::Function(
+                    FunctionCommands::Get(args)
+                    | FunctionCommands::Disasm(args)
+                    | FunctionCommands::Calls(args),
+                ) => (args.target, args.options.program, args.options.project),
+                Commands::Decompile(args) => {
+                    (args.target, args.options.program, args.options.project)
+                }
+                Commands::Disasm(args) => (args.target, args.options.program, args.options.project),
+                Commands::XRef(XRefCommands::To(args) | XRefCommands::From(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
+                Commands::Find(FindCommands::Calls(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
+                Commands::Graph(GraphCommands::Callers(args) | GraphCommands::Callees(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
                 _ => panic!("unexpected command"),
             };
             assert_eq!(actual, target);
@@ -617,11 +680,11 @@ fn analyzer_set_help_is_available() {
 }
 
 #[test]
-fn parses_decompile_target_flag() {
-    let cli = Cli::try_parse_from(["ghidra-cli", "decompile", "--target", "FUN_00401000"])
-        .expect("decompile --target should parse");
+fn parses_decompile_positional_target() {
+    let cli = Cli::try_parse_from(["ghidra-cli", "decompile", "FUN_00401000"])
+        .expect("decompile positional target should parse");
     match cli.command {
-        Commands::Decompile(args) => assert_eq!(args.resolved_target(), "FUN_00401000"),
+        Commands::Decompile(args) => assert_eq!(args.target, "FUN_00401000"),
         _ => panic!("expected decompile command"),
     }
 }
@@ -632,7 +695,7 @@ fn parses_function_get_positional_target() {
         .expect("function get positional target should parse");
     match cli.command {
         Commands::Function(FunctionCommands::Get(args)) => {
-            assert_eq!(args.resolved_target(), "main");
+            assert_eq!(args.target, "main");
         }
         _ => panic!("expected function get command"),
     }

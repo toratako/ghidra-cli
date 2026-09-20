@@ -2571,11 +2571,117 @@ fn define_code_rejects_query_flags_and_legacy_name_before_batch_mutations() {
 }
 
 #[test]
-fn removed_mutation_target_flags_fail_before_selection_or_mutation() {
+fn positional_targets_preserve_requests_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for (args, wire, key) in [
+        (
+            vec![
+                "function",
+                "set-signature",
+                "entry",
+                "--signature",
+                "int entry(void)",
+            ],
+            "function_set_signature",
+            "target",
+        ),
+        (
+            vec![
+                "function",
+                "set-return-type",
+                "entry",
+                "--type",
+                "unsigned long",
+            ],
+            "function_set_return_type",
+            "target",
+        ),
+        (
+            vec![
+                "function",
+                "set-calling-convention",
+                "entry",
+                "--convention",
+                "__cdecl",
+            ],
+            "function_set_calling_convention",
+            "target",
+        ),
+        (
+            vec!["function", "set-noreturn", "entry", "--value", "false"],
+            "function_set_noreturn",
+            "target",
+        ),
+        (
+            vec![
+                "function", "edit-var", "entry", "--var", "local_10", "--name", "value",
+            ],
+            "function_edit_var",
+            "target",
+        ),
+        (vec!["function", "get", "entry"], "get_function", "address"),
+        (
+            vec!["function", "calls", "entry"],
+            "function_calls",
+            "function",
+        ),
+        (vec!["decompile", "entry"], "decompile", "address"),
+        (vec!["find", "calls", "entry"], "find_calls_to", "function"),
+        (
+            vec!["graph", "callers", "entry"],
+            "graph_callers",
+            "function",
+        ),
+        (
+            vec!["graph", "callees", "entry"],
+            "graph_callees",
+            "function",
+        ),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        bridge.run(&args);
+        let standalone = {
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+            assert_eq!(operations.len(), 1, "{args:?}: {requests:?}");
+            assert_eq!(operations[0]["args"][key], "entry", "{args:?}");
+            operations[0]["args"].clone()
+        };
+        bridge.requests.lock().unwrap().clear();
+        std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+        let report = bridge.run(&["batch", "batch.txt"]);
+        assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
+        let requests = bridge.requests.lock().unwrap();
+        let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+        assert_eq!(operations.len(), 1, "{args:?}: {requests:?}");
+        assert_eq!(operations[0]["args"], standalone, "{args:?}");
+    }
+}
+
+#[test]
+fn removed_target_flags_fail_before_selection_or_operation() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
     let mut lines = Vec::new();
-    for command in ["function delete", "define-code"] {
+    for command in [
+        "function delete",
+        "define-code",
+        "function set-signature --signature int()",
+        "function set-return-type --type int",
+        "function set-calling-convention --convention __cdecl",
+        "function set-noreturn",
+        "function edit-var --var local_10 --name value",
+        "function get",
+        "function disassemble",
+        "function calls",
+        "decompile",
+        "disassemble",
+        "xref to",
+        "xref from",
+        "find calls",
+        "graph callers",
+        "graph callees",
+    ] {
         for args in [
             "--target entry",
             "--target=entry",

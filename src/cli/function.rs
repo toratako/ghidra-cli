@@ -51,11 +51,8 @@ pub struct FunctionRenameArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetNoReturnArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Set to false to clear a previously-set no-return flag
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub value: bool,
@@ -63,15 +60,6 @@ pub struct SetNoReturnArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-}
-
-impl SetNoReturnArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -89,22 +77,10 @@ pub struct FunctionListArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FunctionGetArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     #[command(flatten)]
     pub options: QueryOptions,
-}
-
-impl FunctionGetArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -140,11 +116,8 @@ pub struct CreateFunctionArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetSignatureArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// C-style signature string, e.g. "int main(int argc, char** argv)"
     #[arg(long)]
     pub signature: String,
@@ -154,23 +127,11 @@ pub struct SetSignatureArgs {
     pub project: Option<String>,
 }
 
-impl SetSignatureArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetReturnTypeArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Return type name
     #[arg(long = "type")]
     pub return_type: String,
@@ -180,23 +141,11 @@ pub struct SetReturnTypeArgs {
     pub project: Option<String>,
 }
 
-impl SetReturnTypeArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct SetCallingConventionArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Calling convention name (e.g., "__cdecl", "__stdcall", "__fastcall")
     #[arg(long)]
     pub convention: String,
@@ -206,24 +155,12 @@ pub struct SetCallingConventionArgs {
     pub project: Option<String>,
 }
 
-impl SetCallingConventionArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["new_name", "type_name"])))]
 pub struct EditVarArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Current variable name (exact match, from decompile --with-vars/--with-params)
     #[arg(long = "var", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub var_name: String,
@@ -239,23 +176,11 @@ pub struct EditVarArgs {
     pub project: Option<String>,
 }
 
-impl EditVarArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DecompileArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact function name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Include local variable details (name, type, storage)
     #[arg(long)]
     pub with_vars: bool,
@@ -264,13 +189,4 @@ pub struct DecompileArgs {
     pub with_params: bool,
     #[command(flatten)]
     pub options: QueryOptions,
-}
-
-impl DecompileArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }

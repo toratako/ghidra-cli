@@ -68,25 +68,13 @@ pub struct PcodeFunctionArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct DisasmArgs {
     /// Exact symbol name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET", required_unless_present = "target")]
-    pub positional_target: Option<String>,
-    /// Exact symbol name or explicit 0x-prefixed address
-    #[arg(long = "target", value_name = "TARGET")]
-    pub target: Option<String>,
+    #[arg(value_name = "TARGET")]
+    pub target: String,
     /// Inclusive end bound: explicit 0x-prefixed address or exact symbol name
     #[arg(long)]
     pub end: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
-}
-
-impl DisasmArgs {
-    pub fn resolved_target(&self) -> &str {
-        self.target
-            .as_deref()
-            .or(self.positional_target.as_deref())
-            .expect("clap should ensure target is provided")
-    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

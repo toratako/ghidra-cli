@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- Remove the remaining `--target` options from function edits and queries,
+  `decompile`, `disassemble`, `xref to/from`, `find calls`, and
+  `graph callers/callees`. Pass one required positional `TARGET` instead.
+  Supplying `--target` now fails during argument parsing instead of silently
+  overriding a positional target, including in batch commands.
+
 ## [0.6.1] - 2026-09-21
 
 ### Fixed

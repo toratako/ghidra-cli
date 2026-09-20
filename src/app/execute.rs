@@ -65,11 +65,9 @@ pub(super) fn execute_via_bridge(
                 "data": result
             }))
         }
-        Commands::Decompile(args) => client.decompile(
-            args.resolved_target().to_string(),
-            args.with_vars,
-            args.with_params,
-        ),
+        Commands::Decompile(args) => {
+            client.decompile(args.target.clone(), args.with_vars, args.with_params)
+        }
         Commands::Function(cmd) => {
             use cli::FunctionCommands;
             match cmd {
@@ -80,14 +78,11 @@ pub(super) fn execute_via_bridge(
                     args.untagged,
                     fetch.offset,
                 ),
-                FunctionCommands::Get(args) => client.send_command(
-                    "get_function",
-                    Some(json!({"address": args.resolved_target()})),
-                ),
-                FunctionCommands::Disasm(args) => {
-                    client.function_disasm(args.resolved_target(), list_limit)
+                FunctionCommands::Get(args) => {
+                    client.send_command("get_function", Some(json!({"address": args.target})))
                 }
-                FunctionCommands::Calls(args) => client.function_calls(args.resolved_target()),
+                FunctionCommands::Disasm(args) => client.function_disasm(&args.target, list_limit),
+                FunctionCommands::Calls(args) => client.function_calls(&args.target),
                 FunctionCommands::Rename(args) => client.send_command(
                     "rename_function",
                     Some(json!({
@@ -112,32 +107,32 @@ pub(super) fn execute_via_bridge(
                 FunctionCommands::SetSignature(args) => client.send_command(
                     "function_set_signature",
                     Some(json!({
-                        "target": args.resolved_target(),
+                        "target": args.target,
                         "signature": args.signature,
                     })),
                 ),
                 FunctionCommands::SetReturnType(args) => client.send_command(
                     "function_set_return_type",
                     Some(json!({
-                        "target": args.resolved_target(),
+                        "target": args.target,
                         "return_type": args.return_type,
                     })),
                 ),
                 FunctionCommands::SetCallingConvention(args) => client.send_command(
                     "function_set_calling_convention",
                     Some(json!({
-                        "target": args.resolved_target(),
+                        "target": args.target,
                         "convention": args.convention,
                     })),
                 ),
                 FunctionCommands::EditVar(args) => client.function_edit_var(
-                    args.resolved_target(),
+                    &args.target,
                     &args.var_name,
                     args.new_name.as_deref(),
                     args.type_name.as_deref(),
                 ),
                 FunctionCommands::SetNoReturn(args) => {
-                    client.function_set_noreturn(args.resolved_target(), args.value)
+                    client.function_set_noreturn(&args.target, args.value)
                 }
             }
         }
@@ -167,8 +162,8 @@ pub(super) fn execute_via_bridge(
         Commands::XRef(cmd) => {
             use cli::XRefCommands;
             match cmd {
-                XRefCommands::To(args) => client.xrefs_to(args.resolved_target().to_string()),
-                XRefCommands::From(args) => client.xrefs_from(args.resolved_target().to_string()),
+                XRefCommands::To(args) => client.xrefs_to(args.target.clone()),
+                XRefCommands::From(args) => client.xrefs_from(args.target.clone()),
             }
         }
         Commands::Program(cmd) => {
@@ -334,10 +329,10 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 GraphCommands::Calls(_) => client.graph_calls(list_limit),
                 GraphCommands::Callers(args) => {
-                    client.graph_callers(args.resolved_target(), args.depth, list_limit)
+                    client.graph_callers(&args.target, args.depth, list_limit)
                 }
                 GraphCommands::Callees(args) => {
-                    client.graph_callees(args.resolved_target(), args.depth, list_limit)
+                    client.graph_callees(&args.target, args.depth, list_limit)
                 }
             }
         }
@@ -364,13 +359,13 @@ pub(super) fn execute_via_bridge(
                     args.case_sensitive,
                     list_limit,
                 ),
-                FindCommands::Calls(args) => client.find_calls(args.resolved_target()),
+                FindCommands::Calls(args) => client.find_calls(&args.target),
             }
         }
         Commands::Script(cmd) => scripts::execute(client, cmd),
         Commands::Disasm(args) => match &args.end {
-            Some(end) => client.disasm_range(args.resolved_target(), end, list_limit),
-            None => client.disasm(args.resolved_target(), list_limit),
+            Some(end) => client.disasm_range(&args.target, end, list_limit),
+            None => client.disasm(&args.target, list_limit),
         },
         Commands::DefineCode(args) => client.define_code(&args.target, args.end.as_deref()),
         Commands::Clear(args) => {
