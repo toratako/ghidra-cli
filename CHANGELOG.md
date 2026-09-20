@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve file modification times when installing Ghidra from its ZIP archive,
+  keeping compiled language definitions newer than their sources and avoiding
+  unnecessary recompilation during parallel imports. CI installation caches are
+  refreshed; existing installations can be recreated in a new `setup --dir`.
+
 ## [0.6.0] - 2026-09-21
 
 ### Added

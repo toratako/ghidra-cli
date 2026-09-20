@@ -85,7 +85,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          # v6 installations preserve archive times; v5 can recompile shared languages.
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Build
         run: cargo build --verbose
@@ -140,7 +141,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          # v6 installations preserve archive times; v5 can recompile shared languages.
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Build
         run: cargo build --verbose
@@ -206,7 +208,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          # v6 installations preserve archive times; v5 can recompile shared languages.
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Build
         run: cargo build --verbose
@@ -272,7 +275,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          # v6 installations preserve archive times; v5 can recompile shared languages.
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Build
         run: cargo build --verbose
