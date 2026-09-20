@@ -18,7 +18,6 @@ Use `function disassemble` to restrict results to the entire function body,
 including disjoint ranges. Both use the shared filter, sort, offset, then limit
 order. `--limit N` returns at most N matching instructions; `--limit 0` is
 unlimited. Omitted limits use `default_limit` (1000 in the default configuration).
-There is no separate ten-instruction window or `-n`/`--instructions` option.
 
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
 text, case-insensitively unless `--case-sensitive` is given. Either range
@@ -44,8 +43,8 @@ The command returns only a receipt (`address`, `end`, `status`, `changed`,
 `unchanged`, or `failed`; failure to define an instruction at TARGET is an error.
 Use `disassemble` afterward to read instructions. There is no `--limit`, and
 `default_limit` does not affect code creation. Query flags are not accepted.
-The old standalone `disassemble-at` command is removed. If analysis ran through
-inline data or chose the wrong boundary:
+
+If analysis ran through inline data or chose the wrong boundary:
 
 ```bash
 ghidra-cli clear 0x401200:0x40121f --project target

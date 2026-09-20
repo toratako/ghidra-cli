@@ -70,8 +70,7 @@ to a node outside the returned page. Use `--limit 0` for an unlimited graph.
 substring matching. It no longer falls back to raw memory when nothing matches;
 an empty result does not establish that the text is absent from the binary.
 `string refs` uses the same literal, case-insensitive matching on actual string
-values, including embedded newlines, quotes and backslashes. Its `string_value`
-field contains the actual value rather than Ghidra's escaped display text.
+values, including embedded newlines, quotes and backslashes.
 
 `find text TEXT` searches the program's loaded memory regardless of string
 definitions. It encodes the non-empty literal TEXT using `--encoding` (default
@@ -87,17 +86,9 @@ Rows contain `address` (the match start), `byte_length`, and the canonical
 string boundaries. `find bytes HEX` remains available for exact byte patterns.
 
 `find bytes --regex PATTERN` searches loaded, initialized memory with Ghidra's
-native byte regular expressions, including undefined data. Quote the pattern to
-preserve backslashes: `\xNN` matches one byte, `.` matches any byte including NUL
-and newline, and alternation/classes/repetition use Java regex syntax. Matching
-is case-sensitive by default; inline flags such as `(?i)` are supported. No text
-decoding or `--encoding` is applied. Rows contain `address` (match start) and
-`byte_length`. Empty or invalid patterns are errors; an encountered zero-length
-match also fails the request. Native regex matching does not enumerate every
-overlapping occurrence (`aa` in `aaaaa` gives two hits; literal hex `6161` gives
-four). Ghidra searches in buffers with limited overlap: long matches, lookaround,
-and anchors can be affected by buffer boundaries. Matches never bridge gaps in
-initialized memory. Shared limit/filter/sort/count options apply to these hits.
+native byte regular expressions, including undefined data. No text decoding or
+`--encoding` is applied. It does not enumerate every overlapping match; long
+matches, lookaround, and anchors can be affected by buffer boundaries.
 
 String names and external/import names resolve directly. For plain `graph
 callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
@@ -129,10 +120,6 @@ The default cap also applies with no query options or with only `--fields`.
 An explicit limit overrides it; `--count` ignores the default but honors an
 explicit offset/limit, returning the selected page's count. Byte, text, and string
 searches have no additional fixed result cap.
-`program imports/exports`, `tag list/get`, `graph` queries and `find instruction`
-accept limits through 2,147,483,647; graph depths have the same maximum.
-Larger values are rejected, including configured limits. Use `--limit 0` for
-unlimited results. Other commands retain their existing larger numeric ranges.
 Output precedence: explicit format, `--pretty`, `--json`, configured default,
 TTY detection.
 

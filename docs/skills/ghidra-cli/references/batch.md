@@ -60,4 +60,5 @@ Each result has `line` (the one-based source line number) and `command`. Success
 commands have `result`; failures have `error`, `exit_code`, and, when supplied by
 the command, `detail`. A save failure also sets `save_failed: true` on the report.
 Nested batch reports appear within the containing command's result or error
-detail. A nonzero exit still leaves the report on stdout for inspection.
+detail. A nonzero exit still leaves the report on stdout; stderr contains only
+the batch diagnostic and summary.

@@ -19,9 +19,6 @@ ghidra-cli function set-noreturn abort_path --project target
 it does not accept `--filter` or `--all`.
 
 `function delete TARGET` deletes one function by exact name or explicit address.
-TARGET is a required positional argument; there is no `--target` option.
-Use `--fields` and `--format` to format its deletion receipt. It does not accept
-`--filter`, `--sort`, `--offset`, `--limit`, or `--count`.
 
 `function edit-var FUNCTION --var CURRENT_NAME` edits a local variable or parameter
 by exact name; ambiguous names fail with candidates. Supply `--name`, `--type`,
@@ -38,8 +35,6 @@ before editing; other failures can retain partial changes.
 The list includes comments on external functions and unmapped addresses.
 
 `comment delete ADDRESS` deletes all four comment types at that address.
-Like `function delete`, it accepts `--fields` and `--format` for the deletion
-receipt, and rejects `--filter`, `--sort`, `--offset`, `--limit`, and `--count`.
 
 Use stdin or a file to preserve comment text containing shell metacharacters:
 
@@ -108,12 +103,10 @@ Fallback aliases `uint8_t`/`u8`, `uint16_t`/`u16`, `uint32_t`/`u32`, and
 `uint64_t`/`u64` have fixed widths of 1, 2, 4, and 8 bytes. Signed equivalents
 use `intN_t`/`sN`. Existing types with the requested name take precedence;
 ordinary C spellings such as `unsigned int` use the target ABI.
-`signed char` remains signed even when the ABI's plain `char` is unsigned.
 
-`type delete` selects a registered program type by name or full path, including
-array and pointer types. `type rename` fails when Ghidra cannot change the name
-(for example, primitive, array and pointer types); use `type create typedef`
-for an alias.
+`type delete` selects a registered program type by name or full path.
+`type rename` cannot rename primitive, array, or pointer types; use
+`type create typedef` for an alias.
 
 ### Growing recovered structures
 
@@ -147,8 +140,6 @@ Layout changes require packing to be disabled. Packed structures allow
 name/comment edits, but reject type changes and clearing defined fields.
 Bit-fields and zero-length fields cannot be edited with these offset commands.
 
-`set-field` and `clear-field` report `changed`, the structure's full `path`,
-`offset`, `size_before`, `size_after`, and `before`/`after` field definitions.
 `type get` includes `packing_enabled` and each field's `type_path` and `comment`.
 An unnamed field has `name: null`; `display_name` gives its generated name.
 

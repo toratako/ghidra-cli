@@ -82,14 +82,12 @@ After a save failure, keep the bridge running and retry `program save` with the
 same project/program; it saves in place without repeating the edit.
 Failed or cancelled operations can retain partial changes; do not assume rollback.
 
-`batch` exits nonzero if any command fails, but writes its report to stdout even
-on partial failure. In JSON output, read `.[0].results` for attempted results and
-per-command error details; stderr contains only the batch diagnostic and summary.
-`--on-error continue` (default) runs subsequent commands
-after ordinary errors; use `--on-error stop` for edits that depend on earlier
-commands succeeding.
-Save failures and timeouts always stop the batch, with
-`not_executed` counting remaining commands. Do not replay successful edits.
+`batch` exits nonzero if any command fails; its report remains on stdout.
+`--on-error continue` (default) runs subsequent commands after ordinary errors;
+use `--on-error stop` for dependent edits. Save failures and timeouts always stop
+the batch. Do not replay successful edits.
+See [batch results](references/batch.md#result-structure) for per-command results
+and error details.
 
 A socket timeout does not cancel the job. Inspect `job list` for active, queued,
 and recent jobs, or `job get ID` for one job, before retrying a mutation.
@@ -100,11 +98,11 @@ from a command failure.
 
 ## Read details as needed
 
-| When | Reference |
-| --- | --- |
-| Choose queries, follow references, inspect memory, or control result size | [Exploration](references/exploration.md) |
-| Refine names, comments, variables, signatures, types, symbols, or tags | [Refinement](references/refinement.md) |
-| Inspect instructions or PCode, repair analysis boundaries, or patch code | [Low-level analysis](references/low-level.md) |
-| Run custom Java processing and validate its artifacts | [Scripting](references/scripting.md) |
+| When                                                                       | Reference                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------ |
+| Choose queries, follow references, inspect memory, or control result size  | [Exploration](references/exploration.md)         |
+| Refine names, comments, variables, signatures, types, symbols, or tags     | [Refinement](references/refinement.md)           |
+| Inspect instructions or PCode, repair analysis boundaries, or patch code   | [Low-level analysis](references/low-level.md)    |
+| Run custom Java processing and validate its artifacts                      | [Scripting](references/scripting.md)             |
 | Manage projects/programs, import raw input, reanalyze, or export artifacts | [Programs and artifacts](references/programs.md) |
-| Check batch quoting, target inheritance, nesting, or result structure | [Batch](references/batch.md) |
+| Check batch quoting, target inheritance, nesting, or result structure      | [Batch](references/batch.md)                     |
