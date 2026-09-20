@@ -7,6 +7,11 @@ description = "CLI for AI agents automating native-binary reverse engineering wi
 license = "GPL-3.0"
 repository = "https://github.com/toratako/ghidra-cli"
 
+[workspace]
+members = [".", "xtask"]
+default-members = ["."]
+resolver = "2"
+
 [dependencies]
 # CLI framework
 clap = { version = "4.6.6", features = ["derive", "env", "cargo"] }
@@ -94,7 +99,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "ghidra-cli"
 path = "src/main.rs"
-
-[[example]]
-name = "test-runner"
-path = "tests/support/test_runner.rs"

@@ -40,6 +40,9 @@ jobs:
       - name: Run unit tests
         run: cargo test --lib --bin ghidra-cli --verbose
 
+      - name: Run xtask tests
+        run: cargo test -p xtask --verbose
+
       - name: Run CLI tests
         run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 
@@ -159,7 +162,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run read-only integration tests
-        run: cargo test-run --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
+        run: cargo xtask test --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -225,7 +228,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run mutation integration tests
-        run: cargo test-run --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
+        run: cargo xtask test --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -291,7 +294,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run infrastructure tests
-        run: cargo test-run --test daemon_tests --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests --verbose -- --nocapture
+        run: cargo xtask test --test daemon_tests --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

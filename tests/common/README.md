@@ -39,10 +39,11 @@ fixture compilation, serial execution, commands, and unbootstrapped snapshots.
 source project basename `project`. `ensure_test_project()` copies the run's closed,
 analyzed source into it once. Never open or mutate the source with a bridge.
 
-`tests/support/test_runner.rs` supplies `GHIDRA_TEST_RUN_DIR` and removes it after
-Cargo exits, including on failure. Without the runner, executables own local
-storage. This internal variable must not point to a persistent cache; parent
-configuration and source files must stay fixed during an invocation.
+[`xtask/src/test.rs`](../../xtask/src/test.rs) supplies `GHIDRA_TEST_RUN_DIR` for
+`cargo xtask test` and removes it after Cargo exits, including on failure.
+Without the runner, executables own local storage. This internal variable must
+not point to a persistent cache; parent configuration and source files must stay
+fixed during an invocation.
 
 `fixture.rs` locks each preparation stage with an OS file lock and publishes by
 directory rename only on success; interrupted builders cannot publish partial

@@ -1,2 +1,2 @@
 [alias]
-test-run = "run --quiet --example test-runner --"
+xtask = "run --quiet --package xtask --"

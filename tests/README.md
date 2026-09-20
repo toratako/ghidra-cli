@@ -3,9 +3,10 @@
 ## Run
 
 ```bash
-cargo test-run --no-fail-fast
+cargo xtask test --no-fail-fast
+cargo test -p xtask
 cargo fmt --all -- --check
-cargo clippy -- -D warnings
+cargo clippy --workspace -- -D warnings
 ```
 
 Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
@@ -13,16 +14,22 @@ checks `ghidra-cli doctor` once per test executable and retains failures with th
 diagnostics; never turn a failed prerequisite into a skip. The parent test
 process must keep its Ghidra/JDK configuration fixed. Tests of doctor itself or
 changed child environments invoke doctor directly.
-Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK.
+Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK;
+see [runtime installation](../docs/runtime.md#installation).
 
-`cargo test-run` forwards arguments (including `--help`) to `cargo test`, preserves
-its order and failure status, and shares a fresh temporary fixture across suites
-for one invocation. Plain `cargo test` limits fixture reuse to each test executable.
-Use `test-run` when selecting several Ghidra suites:
+`cargo xtask test` forwards arguments (including `--help`) to `cargo test`, preserves
+their order, the caller's working directory and Cargo's failure status, and shares
+a fresh temporary fixture across suites for one invocation. Plain `cargo test`
+limits fixture reuse to each test executable. Use `cargo xtask test` when selecting
+several Ghidra suites:
 
 ```bash
-cargo test-run --test comment_tests --test type_tests
+cargo xtask test --test comment_tests --test type_tests
 ```
+
+At the workspace root, the root package's tests run unless packages are selected
+explicitly. `cargo test -p xtask` checks the developer tasks without Ghidra; see
+[task commands and implementation](../xtask/README.md).
 
 For a targeted run:
 
@@ -49,8 +56,9 @@ INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
 ```
 
 These fail until reviewed snapshots are added; normal schema tests need no
-snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`. Suite groupings are in
-[the test workflow](../.github/workflows/test.yml).
+snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli` and the `xtask`
+tests on Linux and Windows. See
+[the test workflow](../.github/workflows/test.yml) for suite groupings.
 
 `readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial
 locks; domain modules under `readonly/` and `daemon/` remain in those executables.
