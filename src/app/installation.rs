@@ -17,7 +17,7 @@ pub(crate) async fn run_setup(cli: Cli) -> anyhow::Result<()> {
     output.progress("Ghidra Setup Wizard");
 
     // 1. Check Java — Ghidra needs a full JDK (not a JRE) to compile scripts.
-    if !args.force {
+    if !args.skip_java_check {
         let explicit = Config::load().ok().and_then(|c| c.get_java_home());
         match ghidra::java::resolve_jdk(explicit.as_deref(), ghidra::java::DEFAULT_MIN_JAVA) {
             ghidra::java::JavaStatus::Ok(info) => {
@@ -30,13 +30,13 @@ pub(crate) async fn run_setup(cli: Cli) -> anyhow::Result<()> {
             }
             other => {
                 anyhow::bail!(
-                    "Java prerequisite check failed: {}. Use --force to continue anyway.",
+                    "Java prerequisite check failed: {}. Use --skip-java-check to continue installation without checking Java.",
                     ghidra::java::describe_failure(&other)
                 );
             }
         }
     } else {
-        output.progress("Skipping Java check (--force specified)");
+        output.progress("Skipping Java check (--skip-java-check specified)");
     }
 
     // 2. Determine Install Directory

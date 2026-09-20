@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rename setup's Java prerequisite bypass to `--skip-java-check`.
+
 - Make `tag get NAME` return tag details (`name`, `comment`, `use_count`). Use
   `function list --tag NAME` for member functions. `tag get` retains target and
   output options; filtering, sorting, pagination, and count options are removed.

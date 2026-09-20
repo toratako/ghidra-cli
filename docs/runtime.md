@@ -8,6 +8,8 @@ existing Ghidra 11+ installation. A full JDK is required (`javac` and
 JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
 Use `ghidra-cli setup --version 11.0` (or a patch release such as `11.0.1`)
 to select a release number; omit `--version` to install the latest release.
+Use `setup --skip-java-check` to install Ghidra before a JDK is available;
+running Ghidra still requires a suitable full JDK.
 `find bytes --regex` requires Ghidra's native `memsearch` API, introduced in
 Ghidra 11.2. Installations without it report an error for that command; other
 commands remain available.

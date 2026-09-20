@@ -279,7 +279,7 @@ fn publish_archive(zip_path: &Path, target_dir: &Path, quiet: bool) -> Result<Pa
         .ok_or_else(|| anyhow!("Missing installation directory name"))?;
     let destination = target_dir.join(root);
     // Serialize publication; never replace an existing version, including an
-    // incomplete tree. --force only bypasses the Java prerequisite check.
+    // incomplete tree. --skip-java-check only bypasses the Java prerequisite check.
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)

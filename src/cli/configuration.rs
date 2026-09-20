@@ -33,7 +33,7 @@ pub struct SetupArgs {
     #[arg(long, short = 'd')]
     pub dir: Option<String>,
 
-    /// Skip Java check
+    /// Skip the Java prerequisite check during installation
     #[arg(long)]
-    pub force: bool,
+    pub skip_java_check: bool,
 }
