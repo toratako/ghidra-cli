@@ -145,6 +145,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/SearchCommands.java"),
     ),
     (
+        "ghidracli/ConstantSearch.java",
+        include_str!("../scripts/ghidracli/ConstantSearch.java"),
+    ),
+    (
         "ghidracli/SymbolCommands.java",
         include_str!("../scripts/ghidracli/SymbolCommands.java"),
     ),

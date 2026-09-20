@@ -46,6 +46,11 @@ final class SearchCommands {
         this.stringQueries = stringQueries;
     }
 
+    JsonObject handleFindConstant(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        return ConstantSearch.find(session, addressResolver, args);
+    }
+
     JsonObject handleFindInstruction(JsonObject args) throws Exception {
         if (session.program() == null) return errorResult("No program loaded");
         String pattern = getArgString(args, "pattern");

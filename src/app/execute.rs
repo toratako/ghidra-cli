@@ -362,6 +362,14 @@ pub(super) fn execute_via_bridge(
                     args.case_sensitive,
                     list_limit,
                 ),
+                FindCommands::Constant(args) => client.send_command(
+                    "find_constant",
+                    Some(json!({
+                        "value": args.value, "min": args.min, "max": args.max,
+                        "bits": args.bits, "start": args.start, "end": args.end,
+                        "limit": list_limit,
+                    })),
+                ),
             }
         }
         Commands::Script(cmd) => scripts::execute(client, cmd),

@@ -68,6 +68,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Text(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
             cli::FindCommands::Instruction(args) => args.options.project.clone(),
+            cli::FindCommands::Constant(args) => args.options.project.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.project.clone(),
@@ -187,6 +188,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Text(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
             cli::FindCommands::Instruction(args) => args.options.program.clone(),
+            cli::FindCommands::Constant(args) => args.options.program.clone(),
         },
         Commands::Graph(cmd) => match cmd {
             cli::GraphCommands::Calls(opts) => opts.program.clone(),
@@ -350,6 +352,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::FindCommands::Text(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
             cli::FindCommands::Instruction(args) => Some(args.options.clone()),
+            cli::FindCommands::Constant(args) => Some(args.options.clone()),
         },
         _ => None,
     }
@@ -378,7 +381,8 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         | Commands::Find(
             cli::FindCommands::Text(_)
             | cli::FindCommands::Bytes(_)
-            | cli::FindCommands::Instruction(_),
+            | cli::FindCommands::Instruction(_)
+            | cli::FindCommands::Constant(_),
         ) => Limit,
         Commands::Disasm(_) => Limit,
         _ => Client,
@@ -390,12 +394,15 @@ pub(super) fn validate_query_bounds(
     command: &Commands,
     plan: &crate::query::QueryPlan,
 ) -> anyhow::Result<()> {
+    if let Commands::Find(cli::FindCommands::Constant(args)) = command {
+        args.validate().map_err(anyhow::Error::msg)?;
+    }
     let int_limit = matches!(
         command,
         Commands::Symbol(cli::SymbolCommands::Externals(_) | cli::SymbolCommands::EntryPoints(_))
             | Commands::Tag(cli::TagCommands::List(_))
             | Commands::Graph(_)
-            | Commands::Find(cli::FindCommands::Instruction(_))
+            | Commands::Find(cli::FindCommands::Instruction(_) | cli::FindCommands::Constant(_))
     );
     if int_limit {
         let limit = plan

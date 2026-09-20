@@ -83,6 +83,7 @@ final class CommandDispatcher {
             case "find_bytes":      return searchCommands.handleFindBytes(args);
             case "find_bytes_regex": return searchCommands.handleFindBytesRegex(args);
             case "find_instruction": return searchCommands.handleFindInstruction(args);
+            case "find_constant": return searchCommands.handleFindConstant(args);
             // Symbol commands
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);

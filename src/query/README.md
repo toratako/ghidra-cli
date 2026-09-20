@@ -66,6 +66,10 @@ It shares `StringQueries` with `string list`, including row fields
 `address`, `value`, `char_length` (Unicode code points) and `byte_length`
 (occupied Ghidra data bytes, potentially including terminators/padding).
 The former `length` field is removed from both commands.
+`find constant` matches numeric Scalar operands before applying the same
+limit-only fetch plan as `find instruction`. Its value/range and optional width
+predicates run in Java; query filters, sorts, counts and offsets request all
+matches for residual selection in Rust.
 `find text` and literal `find bytes` share exact-byte memory scanning, including
 overlapping matches and cancellation checks. `find bytes --regex` uses native
 Ghidra byte regex scanning with the same query plan; the regex is applied in

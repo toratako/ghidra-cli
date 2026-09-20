@@ -195,6 +195,23 @@ impl RecordedBridge {
                         };
                         json!({key: rows, "count": rows.len()})
                     }
+                    "find_constant" => {
+                        let mut rows: Vec<_> = [8, 16, 32, 64]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, bits)| {
+                                json!({
+                                    "address": format!("0x{:x}", 0x1000 + i),
+                                    "disasm": "MOV reg,0x1", "operand_index": 1,
+                                    "bits": bits, "value": "0x1", "signed_value": "1",
+                                })
+                            })
+                            .collect();
+                        if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        json!({"results": rows, "count": rows.len()})
+                    }
                     "find_string" | "find_bytes" | "find_bytes_regex" | "find_text" => {
                         let mut rows: Vec<_> = (0..160)
                             .map(|i| json!({"address": format!("0x{i:04x}")}))
@@ -956,6 +973,120 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
         }
         for request in &sent[1..] {
             assert!(request["args"]["limit"].is_null());
+        }
+    }
+}
+
+#[test]
+fn constant_queries_preserve_values_and_apply_selection_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let all = bridge.run(&["find", "constant", "1", "--limit", "0"]);
+    for (selection, expected_selection) in [
+        (
+            vec!["0xffffffffffffffff"],
+            json!({"value": "0xffffffffffffffff"}),
+        ),
+        (
+            vec!["-0x1", "--bits", "32"],
+            json!({"value": "-0x1", "bits": 32}),
+        ),
+        (
+            vec!["--min", "-1", "--max", "500"],
+            json!({"min": "-1", "max": "500"}),
+        ),
+    ] {
+        for (flags, expected, fetch_limit) in [
+            (vec![], json!([all[0]]), json!(1)),
+            (vec!["--limit", "0"], all.clone(), Value::Null),
+            (vec!["--count"], json!(4), Value::Null),
+            (
+                vec![
+                    "--filter",
+                    "bits >= 16",
+                    "--sort=-address",
+                    "--offset",
+                    "1",
+                    "--limit",
+                    "1",
+                    "--fields",
+                    "address,bits",
+                ],
+                json!([{"address": "0x1002", "bits": 32}]),
+                Value::Null,
+            ),
+        ] {
+            let args: Vec<_> = ["find", "constant"]
+                .into_iter()
+                .chain(selection.iter().copied())
+                .chain(["--start", "0x1000", "--end", "0x2000", "--program", "B"])
+                .chain(flags.iter().copied())
+                .collect();
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let result = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                        .unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                let expected = if batch && flags.is_empty() {
+                    json!({"results": expected, "count": 1})
+                } else {
+                    expected.clone()
+                };
+                assert_eq!(result, expected, "{args:?}, batch={batch}");
+                let requests = bridge.requests.lock().unwrap();
+                let request = requests
+                    .iter()
+                    .find(|r| r["command"] == "find_constant")
+                    .unwrap();
+                for key in ["value", "min", "max", "bits"] {
+                    assert_eq!(request["args"][key], expected_selection[key], "{args:?}");
+                }
+                assert_eq!(request["args"]["start"], "0x1000");
+                assert_eq!(request["args"]["end"], "0x2000");
+                assert_eq!(request["args"]["limit"], fetch_limit);
+                assert!(requests
+                    .iter()
+                    .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_constant_ranges_fail_before_program_selection_or_search() {
+    let bridge = RecordedBridge::new();
+    for selection in [
+        vec!["--min", "500", "--max", "400"],
+        vec!["--min", "-1", "--max", "0xffffffffffffffff"],
+    ] {
+        let args: Vec<_> = ["find", "constant"]
+            .into_iter()
+            .chain(selection)
+            .chain(["--program", "B"])
+            .collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let output = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge
+                    .command()
+                    .args(["batch", "batch.txt"])
+                    .output()
+                    .unwrap()
+            } else {
+                bridge.command().args(&args).output().unwrap()
+            };
+            assert!(!output.status.success(), "{args:?}, batch={batch}");
+            assert!(bridge
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|r| r["command"] == "bridge_info"));
         }
     }
 }

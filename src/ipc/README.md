@@ -69,12 +69,22 @@ external functions when present. Membership queries use `list_functions` with
 `tags`, which lists non-external functions.
 
 `symbol_externals`, `symbol_entry_points`, `tag_list`, `graph_calls`,
-`graph_callers`, `graph_callees`, and `find_instruction` accept `limit` only in
+`graph_callers`, `graph_callees`, `find_instruction`, and `find_constant` accept `limit` only in
 `0..=2147483647`. Graph `depth` uses the same checked range and defaults to 1.
 Missing/null limits default to zero (unlimited); fractional, nonnumeric and
 overflowing values fail. The CLI validates these limits before bridge work,
 including when filtering leaves the limit in Rust. Other long-based paging
 arguments retain their existing range.
+
+`find_constant` takes either `value` or both `min` and `max` as decimal or
+`0x`-prefixed integer strings. Nonnegative values compare unsigned; a negative
+value or minimum selects signed comparison. A signed range's maximum must fit
+signed 64-bit. Optional `bits` selects a Scalar width in 1..=64, while `start`
+and `end` use the same inclusive instruction-address bounds as `find_instruction`.
+Only Scalar objects in existing instruction operands are scanned. Results use
+`{results, count}` with `address`, `disasm`, `operand_index` (zero-based), `bits`,
+unsigned hexadecimal `value`, decimal `signed_value`, and `function` when known.
+Both value representations are strings to preserve all 64 bits across consumers.
 
 `type_create_union` takes `name` and creates an empty union. `type_set_field`
 selects a struct field with `offset` or an existing union member with `ordinal`;

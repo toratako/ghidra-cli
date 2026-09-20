@@ -58,6 +58,8 @@ pub enum FindCommands {
     Bytes(FindBytesArgs),
     /// Find a substring in already-disassembled instructions (does not require xrefs)
     Instruction(FindInstructionArgs),
+    /// Find immediate values and displacements in already-disassembled instructions
+    Constant(FindConstantArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -108,6 +110,97 @@ pub struct FindInstructionArgs {
     pub case_sensitive: bool,
     #[command(flatten)]
     pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindConstantArgs {
+    /// Exact integer in decimal or 0x-prefixed hex; negative values compare signed
+    #[arg(value_name = "VALUE", allow_hyphen_values = true, required_unless_present = "min", conflicts_with_all = ["min", "max"], value_parser = parse_constant_value)]
+    pub value: Option<String>,
+    /// Inclusive minimum; a negative minimum selects signed comparison for the range
+    #[arg(long, value_name = "MIN", allow_hyphen_values = true, requires = "max", value_parser = parse_constant_value)]
+    pub min: Option<String>,
+    /// Inclusive maximum (decimal or 0x-prefixed hex)
+    #[arg(long, value_name = "MAX", allow_hyphen_values = true, requires = "min", value_parser = parse_constant_value)]
+    pub max: Option<String>,
+    /// Match only operand scalars with this bit width (default: any width)
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=64))]
+    pub bits: Option<u32>,
+    /// Inclusive start bound: explicit 0x-prefixed address or exact symbol name
+    #[arg(long)]
+    pub start: Option<String>,
+    /// Inclusive end bound: explicit 0x-prefixed address or exact symbol name (same space)
+    #[arg(long)]
+    pub end: Option<String>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+impl FindConstantArgs {
+    /// Validate the complete selection before connecting, including batch requests.
+    pub fn validate(&self) -> Result<(), String> {
+        match (&self.value, &self.min, &self.max) {
+            (Some(value), None, None) => {
+                constant_number(value)?;
+            }
+            (None, Some(min), Some(max)) => {
+                let min = constant_number(min)?;
+                let max = constant_number(max)?;
+                if min > max {
+                    return Err("--min must not be greater than --max".into());
+                }
+                if min < 0 && max > i64::MAX as i128 {
+                    return Err(
+                        "A signed range requires --max to fit a signed 64-bit integer".into(),
+                    );
+                }
+            }
+            _ => return Err("Provide VALUE or both --min and --max".into()),
+        }
+        if self.bits.is_some_and(|bits| !(1..=64).contains(&bits)) {
+            return Err("--bits must be an integer from 1 to 64".into());
+        }
+        Ok(())
+    }
+}
+
+fn parse_constant_value(value: &str) -> Result<String, String> {
+    constant_number(value).map(|_| value.to_owned())
+}
+
+fn constant_number(value: &str) -> Result<i128, String> {
+    let invalid = || {
+        "Expected a decimal or 0x-prefixed integer from -9223372036854775808 to 18446744073709551615"
+            .to_owned()
+    };
+    let (negative, magnitude) = match value.strip_prefix('-') {
+        Some(magnitude) => (true, magnitude),
+        None => (false, value),
+    };
+    let (digits, radix) = match magnitude
+        .strip_prefix("0x")
+        .or_else(|| magnitude.strip_prefix("0X"))
+    {
+        Some(digits) => (digits, 16),
+        None => (magnitude, 10),
+    };
+    if digits.is_empty()
+        || !digits.bytes().all(|digit| match radix {
+            16 => digit.is_ascii_hexdigit(),
+            _ => digit.is_ascii_digit(),
+        })
+    {
+        return Err(invalid());
+    }
+    let magnitude = u64::from_str_radix(digits, radix).map_err(|_| invalid())?;
+    if negative {
+        if magnitude > 1u64 << 63 {
+            return Err(invalid());
+        }
+        Ok(-(magnitude as i128))
+    } else {
+        Ok(magnitude as i128)
+    }
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]

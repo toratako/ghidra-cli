@@ -164,6 +164,9 @@ and occupied byte lengths for UTF-8/UTF-16, empty/unterminated strings, suppleme
 and combining characters, length queries, and paging after pattern plus filter.
 `readonly/search.rs` checks defined-only string search and exact text searches
 in UTF-8, UTF-16LE/BE, and Shift_JIS, including overlaps and encoding errors.
+`readonly/constants.rs` checks Scalar occurrence search across signed/unsigned
+values and widths, exact 64-bit boundaries, displacements, overlays, address/data
+exclusion, CLI/batch query controls, and cancellation followed by a fresh monitor.
 `readonly/search_limits.rs` checks paging/counts for string, text, and byte
 searches (including byte regex) and cancellation of all raw search modes.
 `readonly/byte_regex.rs` checks native byte regex semantics, result lengths,

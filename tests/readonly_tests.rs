@@ -13,6 +13,8 @@ mod batch;
 mod byte_regex;
 #[path = "readonly/calls.rs"]
 mod calls;
+#[path = "readonly/constants.rs"]
+mod constants;
 #[path = "readonly/functions.rs"]
 mod functions;
 #[path = "readonly/program.rs"]

@@ -43,6 +43,9 @@ ghidra-cli string refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find bytes --regex '\x48\x8b.{4}' --project target
 ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
+ghidra-cli find constant 0x9e3779b9 --project target
+ghidra-cli find constant -1 --bits 32 --project target
+ghidra-cli find constant --min 0x20 --max 0x7e --project target
 ghidra-cli graph callers CreateProcessW --project target
 ghidra-cli xref to malloc --project target
 ghidra-cli xref to 0x401000 --project target
@@ -76,6 +79,11 @@ includes a BOM in the search bytes.
 native byte regular expressions, including undefined data. It matches raw bytes
 and does not enumerate every overlapping match; long matches, lookaround, and
 anchors can be affected by buffer boundaries.
+
+`find constant` searches scalar operands in existing instructions, including
+immediates and displacements. It does not search address operands or data, or
+combine constants built by several instructions. Use `find bytes` for encoded
+data and `xref` for address references.
 
 String names and external/import names resolve directly. For plain
 `graph callers/callees`, `--limit N` bounds traversal; filter, sort, count, or
