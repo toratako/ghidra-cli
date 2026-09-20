@@ -46,7 +46,7 @@ ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project targ
 ghidra-cli graph callers CreateProcessW --project target
 ghidra-cli xref to malloc --project target
 ghidra-cli xref to 0x401000 --project target
-ghidra-cli xref from 0x401000 --project target
+ghidra-cli xref from main --function --project target
 ghidra-cli graph calls --project target
 ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target

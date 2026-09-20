@@ -88,14 +88,6 @@ final class MemoryCommands {
                 instruction = listing.getInstructionContaining(addr);
             }
 
-            // If still null, try starting from containing function's entry point
-            if (instruction == null) {
-                Function func = session.program().getFunctionManager().getFunctionContaining(addr);
-                if (func != null) {
-                    instruction = listing.getInstructionAt(func.getEntryPoint());
-                }
-            }
-
             if (instruction == null) {
                 return errorResult("No instruction at address " + AddressCodec.format(addr) +
                     ". Address may be data or unanalyzed code.");

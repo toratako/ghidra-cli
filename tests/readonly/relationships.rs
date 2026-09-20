@@ -35,35 +35,43 @@ fn test_xref_to() {
 
 #[test]
 #[serial]
-fn test_xref_from() {
+fn test_xref_from_explicit_address_and_function_scope() {
     require_ghidra!();
     let harness = harness();
-
+    let client = harness.client().unwrap();
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let run = |target: &str, function: bool| -> serde_json::Value {
+        let mut command = ghidra(harness)
+            .args(["xref", "from", target, "--limit", "0"])
+            .with_project(test_project(), TEST_PROGRAM)
+            .json_format();
+        if function {
+            command = command.arg("--function");
+        }
+        let result = command.run();
+        result.assert_success();
+        result.json()
+    };
 
-    let result = ghidra(harness)
-        .arg("xref")
-        .arg("from")
-        .arg(&main_addr)
-        .with_project(test_project(), TEST_PROGRAM)
-        .json_format()
-        .run();
-
-    result.assert_success();
-
-    let xrefs: Vec<XRef> = result.json();
-    assert!(
-        !xrefs.is_empty(),
-        "main should have outgoing cross-references (calls other functions)"
-    );
-    // Every xref should originate FROM within main
-    for xref in &xrefs {
-        assert!(
-            xref.from_function
-                .as_deref()
-                .is_some_and(|f| f.contains("main")),
-            "xref from_function should be main, got: {:?}",
-            xref.from_function
+    let body = run(&main_addr, true);
+    let rows = body.as_array().unwrap();
+    let inside = rows
+        .iter()
+        .find_map(|row| row["from"].as_str().filter(|address| *address != main_addr))
+        .expect("main must reference something from an interior address");
+    // An interior selector explicitly selects the same entire body.
+    assert_eq!(run(inside, true), body);
+    // Without --function, even the entry selects only one source address.
+    for address in [main_addr.as_str(), inside] {
+        let expected: Vec<_> = rows
+            .iter()
+            .filter(|row| row["from"] == address)
+            .cloned()
+            .collect();
+        assert_eq!(run(address, false), serde_json::json!(expected));
+        assert_eq!(
+            client.xrefs_from(address.to_owned(), false).unwrap()["xrefs"],
+            serde_json::json!(expected)
         );
     }
 }

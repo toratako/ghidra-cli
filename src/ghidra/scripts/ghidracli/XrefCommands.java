@@ -15,6 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
+import static ghidracli.JsonProtocol.getArgBool;
 
 final class XrefCommands {
     private final ProgramSession session;
@@ -86,79 +87,48 @@ final class XrefCommands {
         return result;
     }
 
-    JsonObject handleXrefsFrom(JsonObject args) {
-        if (session.program() == null) {
-            return errorResult("No program loaded");
-        }
+    JsonObject handleXrefsFrom(JsonObject args) throws ghidra.util.exception.CancelledException {
+        if (session.program() == null) return errorResult("No program loaded");
 
-        String addrStr = getArgString(args, "address");
-        if (addrStr == null || addrStr.isEmpty()) {
-            return errorResult("No address provided");
-        }
-
-        Address addr = addressResolver.resolveAddress(addrStr);
-        if (addr == null) {
-            return errorResult(functionQueries.buildFunctionTargetHint(addrStr));
-        }
+        String target = getArgString(args, "address");
+        if (target == null || target.isEmpty()) return errorResult("No address provided");
 
         JsonArray xrefs = new JsonArray();
-        ReferenceManager refMgr = session.program().getReferenceManager();
-        FunctionManager fm = session.program().getFunctionManager();
-
-        // If address is a function entry point, scan the entire function body
-        Function func = fm.getFunctionAt(addr);
-        if (func != null) {
-            ghidra.program.model.address.AddressSetView body = func.getBody();
-            ghidra.program.model.address.AddressIterator addrIter = body.getAddresses(true);
-            while (addrIter.hasNext()) {
-                Address instrAddr = addrIter.next();
-                Reference[] refs = refMgr.getReferencesFrom(instrAddr);
-                for (Reference ref : refs) {
-                    Address toAddr = ref.getToAddress();
-                    Function toFunc = fm.getFunctionContaining(toAddr);
-
-                    JsonObject xrefData = new JsonObject();
-                    xrefData.addProperty("from", AddressCodec.format(instrAddr));
-                    xrefData.addProperty("to", AddressCodec.format(toAddr));
-                    xrefData.addProperty("ref_type", ref.getReferenceType().toString());
-                    xrefData.addProperty("from_function", func.getName());
-                    if (toFunc != null) {
-                        xrefData.addProperty("to_function", toFunc.getName());
-                    } else {
-                        xrefData.add("to_function", JsonNull.INSTANCE);
-                    }
-                    xrefs.add(xrefData);
-                }
+        if (getArgBool(args, "function", false)) {
+            Function function = functionQueries.findFunctionByNameOrAddress(target);
+            if (function == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+            ghidra.program.model.address.AddressIterator addresses = function.getBody().getAddresses(true);
+            while (addresses.hasNext()) {
+                session.monitor().checkCancelled();
+                appendReferencesFrom(addresses.next(), xrefs);
             }
         } else {
-            // Not a function entry point — just get refs from this single address
-            Reference[] refs = refMgr.getReferencesFrom(addr);
-            for (Reference ref : refs) {
-                Address toAddr = ref.getToAddress();
-                Function fromFunc = fm.getFunctionContaining(addr);
-                Function toFunc = fm.getFunctionContaining(toAddr);
-
-                JsonObject xrefData = new JsonObject();
-                xrefData.addProperty("from", AddressCodec.format(addr));
-                xrefData.addProperty("to", AddressCodec.format(toAddr));
-                xrefData.addProperty("ref_type", ref.getReferenceType().toString());
-                if (fromFunc != null) {
-                    xrefData.addProperty("from_function", fromFunc.getName());
-                } else {
-                    xrefData.add("from_function", JsonNull.INSTANCE);
-                }
-                if (toFunc != null) {
-                    xrefData.addProperty("to_function", toFunc.getName());
-                } else {
-                    xrefData.add("to_function", JsonNull.INSTANCE);
-                }
-                xrefs.add(xrefData);
-            }
+            Address address = addressResolver.resolveAddress(target);
+            if (address == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+            appendReferencesFrom(address, xrefs);
         }
 
         JsonObject result = new JsonObject();
         result.add("xrefs", xrefs);
         result.addProperty("count", xrefs.size());
         return result;
+    }
+
+    private void appendReferencesFrom(Address address, JsonArray xrefs)
+            throws ghidra.util.exception.CancelledException {
+        FunctionManager functions = session.program().getFunctionManager();
+        Function fromFunction = functions.getFunctionContaining(address);
+        for (Reference reference : session.program().getReferenceManager().getReferencesFrom(address)) {
+            session.monitor().checkCancelled();
+            Address destination = reference.getToAddress();
+            Function toFunction = functions.getFunctionContaining(destination);
+            JsonObject row = new JsonObject();
+            row.addProperty("from", AddressCodec.format(address));
+            row.addProperty("to", AddressCodec.format(destination));
+            row.addProperty("ref_type", reference.getReferenceType().toString());
+            row.addProperty("from_function", fromFunction == null ? null : fromFunction.getName());
+            row.addProperty("to_function", toFunction == null ? null : toFunction.getName());
+            xrefs.add(row);
+        }
     }
 }

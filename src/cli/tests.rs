@@ -206,7 +206,10 @@ fn targets_require_one_positional() {
                     (args.target, args.options.program, args.options.project)
                 }
                 Commands::Disasm(args) => (args.target, args.options.program, args.options.project),
-                Commands::XRef(XRefCommands::To(args) | XRefCommands::From(args)) => {
+                Commands::XRef(XRefCommands::To(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
+                Commands::XRef(XRefCommands::From(args)) => {
                     (args.target, args.options.program, args.options.project)
                 }
                 Commands::Graph(GraphCommands::Callers(args) | GraphCommands::Callees(args)) => {

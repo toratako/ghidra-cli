@@ -161,6 +161,15 @@ fn check_name_and_address_reads(client: &BridgeClient) {
             client.disasm(name, Some(1)).unwrap()["instructions"][0]["address"],
             address
         );
+        for function_scope in [false, true] {
+            assert_eq!(
+                client.xrefs_from(name.to_owned(), function_scope).unwrap(),
+                client
+                    .xrefs_from(address.to_owned(), function_scope)
+                    .unwrap(),
+                "xref from name/address equivalence: {name}, function={function_scope}"
+            );
+        }
         for command in ["graph_callers", "graph_callees"] {
             let by_name = client
                 .send_command(command, Some(json!({"function": name})))

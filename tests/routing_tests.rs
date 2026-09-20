@@ -234,7 +234,7 @@ impl RecordedBridge {
                         json!({key: rows, "count": rows.len(), "current_program_name": program})
                     }
                     "string_refs" => {
-                        let rows = if args["string"] == "absent" {
+                        let rows = if args["pattern"] == "absent" {
                             vec![]
                         } else {
                             vec![
@@ -242,7 +242,7 @@ impl RecordedBridge {
                                 json!({"from": "0x2000", "from_function": "helper", "string_value": "needle"}),
                             ]
                         };
-                        json!({"results": rows, "count": rows.len(), "pattern": args["string"]})
+                        json!({"results": rows, "count": rows.len(), "pattern": args["pattern"]})
                     }
                     "xrefs_to" | "xrefs_from" => json!({"xrefs": [], "count": 0}),
                     "define_code" => json!({"address": args["target"], "end": args["end"],
@@ -369,9 +369,15 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             "0x1000",
         ),
         (
+            vec!["xref", "from", "main", "--function", "--limit", "0"],
+            "xrefs_from",
+            "address",
+            "main",
+        ),
+        (
             vec!["string", "refs", "needle", "--limit", "0"],
             "string_refs",
-            "string",
+            "pattern",
             "needle",
         ),
         (
@@ -406,6 +412,12 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
         assert_eq!(standalone_request["args"][key], expected);
         if wire == "define_code" {
             assert_eq!(standalone_request["args"]["end"], "0x1010");
+        }
+        if wire == "xrefs_from" {
+            assert_eq!(
+                standalone_request["args"]["function"],
+                args.contains(&"--function")
+            );
         }
         bridge.requests.lock().unwrap().clear();
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();

@@ -189,12 +189,15 @@ impl BridgeClient {
 
     /// Get cross-references to all defined strings matching a pattern.
     pub fn string_refs(&self, pattern: String) -> Result<serde_json::Value> {
-        self.send_command("string_refs", Some(json!({"string": pattern})))
+        self.send_command("string_refs", Some(json!({"pattern": pattern})))
     }
 
-    /// Get cross-references from an address.
-    pub fn xrefs_from(&self, address: String) -> Result<serde_json::Value> {
-        self.send_command("xrefs_from", Some(json!({"address": address})))
+    /// Get cross-references from one address, or the whole containing function.
+    pub fn xrefs_from(&self, address: String, function: bool) -> Result<serde_json::Value> {
+        self.send_command(
+            "xrefs_from",
+            Some(json!({"address": address, "function": function})),
+        )
     }
 
     /// Import a binary. Unbounded read timeout: importing a large binary can

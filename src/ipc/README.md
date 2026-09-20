@@ -135,6 +135,10 @@ the program command or automatically upgrading the bridge. Explicit `program_sav
 uses the direct recovery path and remains available before restarting an older
 bridge with pending edits.
 
+`xrefs_from` reads references from the exact resolved `address`. With `function: true`,
+it resolves the containing function and reads its full body, including disjoint ranges.
+`string_refs` takes `pattern`, a case-insensitive substring of defined string values.
+
 `find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
 default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.
 Encoding errors fail rather than substituting replacement bytes. It returns

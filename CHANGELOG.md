@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Make `xref from TARGET` inspect one source address; `--function` explicitly
+  selects the whole containing function. Disassembly no longer rewinds from an
+  undefined address to the containing function's entry.
+- Clarify `string refs PATTERN` as case-insensitive substring search followed by
+  reference lookup; its bridge argument is `pattern`.
 - Rename setup's Java prerequisite bypass to `--skip-java-check`.
 
 - Make `tag get NAME` return tag details (`name`, `comment`, `use_count`). Use

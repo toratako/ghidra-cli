@@ -6,13 +6,15 @@ use serde::{Deserialize, Serialize};
 pub enum StringsCommands {
     /// List all strings
     List(QueryOptions),
-    /// Get references to a string
+    /// Find defined strings containing PATTERN (case-insensitive) and list their references
     Refs(StringRefsArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct StringRefsArgs {
-    pub string: String,
+    /// Case-insensitive substring of the decoded string value
+    #[arg(value_name = "PATTERN")]
+    pub pattern: String,
     #[command(flatten)]
     pub options: QueryOptions,
 }
@@ -21,8 +23,8 @@ pub struct StringRefsArgs {
 pub enum XRefCommands {
     /// Get cross-references to address
     To(XRefArgs),
-    /// Get cross-references from address
-    From(XRefArgs),
+    /// Get cross-references from one address, or an entire function with --function
+    From(XRefFromArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -30,6 +32,18 @@ pub struct XRefArgs {
     /// Exact symbol name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct XRefFromArgs {
+    /// Exact symbol name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Read references from the whole containing function, including disjoint body ranges
+    #[arg(long)]
+    pub function: bool,
     #[command(flatten)]
     pub options: QueryOptions,
 }

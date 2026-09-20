@@ -495,7 +495,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 byte[] bytes = new byte[0x100];
                 java.util.Arrays.fill(bytes, (byte) 0x90);
                 bytes[0] = 0x48; bytes[1] = (byte) 0x89; bytes[2] = (byte) 0xe5;
-                for (int offset : new int[]{3, 6, 0x34, 0x51, 0x66, 0x81, 0xa1}) {
+                for (int offset : new int[]{3, 6, 0x34, 0x51, 0x66, 0x81, 0xa1, 0xc1, 0xc5}) {
                     bytes[offset] = (byte) 0xc3;
                 }
                 // Jump across another function to a disjoint tail.
@@ -505,7 +505,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 program.getMemory().createInitializedBlock("code", start,
                     new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false).setExecute(true);
                 var offsets = new java.util.ArrayList<Integer>();
-                for (int offset : new int[]{0, 3, 4, 5, 6, 0x50, 0x51, 0x60, 0x65, 0x66, 0x80, 0x81, 0xa0}) {
+                for (int offset : new int[]{0, 3, 4, 5, 6, 0x50, 0x51, 0x60, 0x65, 0x66, 0x80, 0x81, 0xa0, 0xc0, 0xc4}) {
                     offsets.add(offset);
                 }
                 for (int offset = 0x20; offset <= 0x34; offset++) offsets.add(offset);
@@ -524,6 +524,10 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 fm.createFunction("split_case", start.add(0x60), splitBody, SourceType.USER_DEFINED);
                 fm.createFunction("gap_case", start.add(0x65), new AddressSet(start.add(0x65), start.add(0x66)), SourceType.USER_DEFINED);
                 fm.createFunction("empty_case", start.add(0xb0), new AddressSet(start.add(0xb0)), SourceType.USER_DEFINED);
+                fm.createFunction("undefined_gap_case", start.add(0xc0), new AddressSet(start.add(0xc0), start.add(0xc5)), SourceType.USER_DEFINED);
+                if (program.getListing().getInstructionContaining(start.add(0xc2)) != null) {
+                    throw new IllegalStateException("Fixture gap must remain undefined");
+                }
                 program.getSymbolTable().createLabel(start, "shared_target", SourceType.USER_DEFINED);
                 program.getSymbolTable().createLabel(start.add(0x20), "shared_target", SourceType.USER_DEFINED);
             } finally { program.endTransaction(tx, true); }
@@ -663,6 +667,23 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
             );
         }
         check_disasm_limits(harness, &client, &name);
+        // A function body can include undefined bytes between instructions.
+        // An address query there must not silently rewind to the function entry.
+        assert_eq!(
+            addresses(&client.function_disasm("0x10c2", None).unwrap()["instructions"]),
+            vec![0x10c0, 0x10c1, 0x10c4, 0x10c5]
+        );
+        let error = client.disasm("0x10c2", Some(1)).unwrap_err();
+        assert!(
+            error.to_string().contains("No instruction at address"),
+            "{error}"
+        );
+        ghidra(harness)
+            .args(["disassemble", "0x10c2", "--limit", "1"])
+            .with_project(test_project(), &name)
+            .run()
+            .assert_failure()
+            .assert_stderr_contains("No instruction at address");
         client.program_close().unwrap();
         assert!(client
             .function_disasm("short_case", None)

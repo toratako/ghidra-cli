@@ -127,7 +127,7 @@ final class SearchCommands {
     JsonObject handleStringRefs(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
-        String pattern = getArgString(args, "string");
+        String pattern = getArgString(args, "pattern");
         if (pattern == null || pattern.isEmpty()) return errorResult("String pattern required");
         String needle = pattern.toLowerCase(Locale.ROOT);
 

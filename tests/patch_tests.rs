@@ -490,7 +490,7 @@ public class CreateBoundedMipsFixture extends GhidraScript {
 "#, std::slice::from_ref(&name), &[], false).unwrap();
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
-        let references_before = client.xrefs_from("0x1000".into()).unwrap();
+        let references_before = client.xrefs_from("0x1000".into(), false).unwrap();
         for end in ["0x1003", "0x1005"] {
             assert!(client.define_code("0x1000", Some(end)).is_err());
             assert_eq!(
@@ -498,7 +498,7 @@ public class CreateBoundedMipsFixture extends GhidraScript {
                 0
             );
             assert_eq!(
-                client.xrefs_from("0x1000".into()).unwrap(),
+                client.xrefs_from("0x1000".into(), false).unwrap(),
                 references_before,
                 "rejected previews must not leave branch references"
             );
@@ -510,7 +510,7 @@ public class CreateBoundedMipsFixture extends GhidraScript {
             0
         );
         assert_eq!(
-            client.xrefs_from("0x1000".into()).unwrap(),
+            client.xrefs_from("0x1000".into(), false).unwrap(),
             references_before
         );
         let receipt = client.define_code("0x1000", Some("0x1007")).unwrap();

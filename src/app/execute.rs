@@ -141,7 +141,7 @@ pub(super) fn execute_via_bridge(
                 StringsCommands::List(_) => {
                     client.list_strings(list_limit, fetch.filter.clone(), fetch.offset)
                 }
-                StringsCommands::Refs(args) => client.string_refs(args.string.clone()),
+                StringsCommands::Refs(args) => client.string_refs(args.pattern.clone()),
             }
         }
         Commands::Memory(cmd) => {
@@ -162,7 +162,7 @@ pub(super) fn execute_via_bridge(
             use cli::XRefCommands;
             match cmd {
                 XRefCommands::To(args) => client.xrefs_to(args.target.clone()),
-                XRefCommands::From(args) => client.xrefs_from(args.target.clone()),
+                XRefCommands::From(args) => client.xrefs_from(args.target.clone(), args.function),
             }
         }
         Commands::Program(cmd) => {
