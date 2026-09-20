@@ -133,10 +133,12 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.project.clone(),
             cli::ProgramCommands::Close(args) => args.project.clone(),
             cli::ProgramCommands::Delete(args) => args.project.clone(),
-            cli::ProgramCommands::Info(args)
-            | cli::ProgramCommands::Stats(args)
-            | cli::ProgramCommands::Imports(args)
-            | cli::ProgramCommands::Exports(args) => args.project.clone(),
+            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
+                args.project.clone()
+            }
+            cli::ProgramCommands::Imports(args) | cli::ProgramCommands::Exports(args) => {
+                args.project.clone()
+            }
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
         },
@@ -251,10 +253,12 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Open(args) => args.program.clone(),
             cli::ProgramCommands::Close(args) => args.program.clone(),
             cli::ProgramCommands::Delete(args) => args.program.clone(),
-            cli::ProgramCommands::Info(args)
-            | cli::ProgramCommands::Stats(args)
-            | cli::ProgramCommands::Imports(args)
-            | cli::ProgramCommands::Exports(args) => args.program.clone(),
+            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
+                args.program.clone()
+            }
+            cli::ProgramCommands::Imports(args) | cli::ProgramCommands::Exports(args) => {
+                args.program.clone()
+            }
             cli::ProgramCommands::Export(args) => args.program.clone(),
             cli::ProgramCommands::Save(args) => args.program.clone(),
         },
@@ -268,11 +272,11 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
     match command {
         Commands::Decompile(args) => Some(args.options.clone()),
         Commands::Disasm(args) => Some(args.options.clone()),
+        Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
+            Some(opts.into())
+        }
         Commands::Program(
-            cli::ProgramCommands::Info(opts)
-            | cli::ProgramCommands::Stats(opts)
-            | cli::ProgramCommands::Imports(opts)
-            | cli::ProgramCommands::Exports(opts),
+            cli::ProgramCommands::Imports(opts) | cli::ProgramCommands::Exports(opts),
         ) => Some(opts.clone()),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
@@ -299,7 +303,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         },
         Commands::Memory(cmd) => match cmd {
             cli::MemoryCommands::Map(opts) => Some(opts.clone()),
-            cli::MemoryCommands::Read(args) => Some(args.options.clone()),
+            cli::MemoryCommands::Read(args) => Some((&args.options).into()),
             _ => None,
         },
         Commands::XRef(cmd) => match cmd {

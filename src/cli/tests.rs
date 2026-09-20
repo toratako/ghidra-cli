@@ -346,18 +346,108 @@ fn shared_format_help_lists_supported_choices() {
 }
 
 #[test]
+fn single_object_commands_reject_list_options() {
+    for command in [
+        ["memory", "read", "0x1000", "64"].as_slice(),
+        ["program", "info"].as_slice(),
+        ["program", "stats"].as_slice(),
+    ] {
+        for flags in [
+            ["--filter", "size>0"].as_slice(),
+            ["-f", "size>0"].as_slice(),
+            ["--count"].as_slice(),
+            ["--limit", "1"].as_slice(),
+            ["--offset", "1"].as_slice(),
+            ["--sort", "size"].as_slice(),
+        ] {
+            let error = Cli::try_parse_from(
+                ["ghidra-cli"]
+                    .into_iter()
+                    .chain(command.iter().copied())
+                    .chain(flags.iter().copied()),
+            )
+            .err()
+            .expect("single objects must reject list options");
+            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        }
+    }
+    for command in [
+        ["memory", "map"],
+        ["program", "imports"],
+        ["program", "exports"],
+    ] {
+        Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain([
+            "--filter",
+            "name~test",
+            "--count",
+            "--limit",
+            "1",
+            "--offset",
+            "1",
+            "--sort",
+            "name",
+        ]))
+        .unwrap();
+    }
+}
+
+#[test]
+fn program_export_requires_output_for_every_format() {
+    for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
+        let error = Cli::try_parse_from(["ghidra-cli", "program", "export", format])
+            .err()
+            .expect("export destination is required");
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        assert!(error.to_string().contains("--output <OUTPUT>"));
+        for flag in ["-o", "--output"] {
+            let cli = Cli::try_parse_from([
+                "ghidra-cli",
+                "program",
+                "export",
+                format,
+                flag,
+                "exported.file",
+            ])
+            .unwrap();
+            let Commands::Program(ProgramCommands::Export(args)) = cli.command else {
+                panic!("expected program export");
+            };
+            assert_eq!(args.output, "exported.file");
+        }
+    }
+}
+
+#[test]
 fn program_export_formats_accept_only_canonical_names() {
     for format in ["json", "cpp", "bin", "ascii"] {
         for spelling in [format.to_string(), format.to_uppercase()] {
-            let error = Cli::try_parse_from(["ghidra-cli", "program", "export", &spelling])
-                .err()
-                .expect("removed export formats must fail");
+            let error = Cli::try_parse_from([
+                "ghidra-cli",
+                "program",
+                "export",
+                &spelling,
+                "-o",
+                "exported.file",
+            ])
+            .err()
+            .expect("removed export formats must fail");
             assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
         }
     }
     for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
         for spelling in [format.to_string(), format.to_uppercase()] {
-            Cli::try_parse_from(["ghidra-cli", "program", "export", &spelling]).unwrap();
+            Cli::try_parse_from([
+                "ghidra-cli",
+                "program",
+                "export",
+                &spelling,
+                "-o",
+                "exported.file",
+            ])
+            .unwrap();
         }
     }
 }
@@ -376,7 +466,15 @@ fn unsupported_query_formats_do_not_remove_hex_program_export() {
         }
     }
 
-    let cli = Cli::try_parse_from(["ghidra-cli", "program", "export", "hex"]).unwrap();
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "program",
+        "export",
+        "hex",
+        "-o",
+        "exported.hex",
+    ])
+    .unwrap();
     let Commands::Program(ProgramCommands::Export(args)) = cli.command else {
         panic!("expected program export");
     };

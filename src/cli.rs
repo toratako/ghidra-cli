@@ -22,7 +22,7 @@ pub use function::*;
 pub use inspection::*;
 pub use management::*;
 pub use memory::*;
-pub use options::QueryOptions;
+pub use options::{ObjectOptions, QueryOptions};
 pub use output::OutputFormat;
 pub use project::*;
 pub use types::*;

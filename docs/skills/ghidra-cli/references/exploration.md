@@ -104,6 +104,12 @@ ghidra-cli memory map --project target
 ghidra-cli memory read 0x401000 64 --project target
 ```
 
+`memory read ADDRESS SIZE` requests `SIZE` bytes (decimal). It returns one result
+with `address`, the actual byte count in `size`, `hex`, and decoded `pointers`.
+Use `--fields hex` to select just the hex data. It accepts target and output
+options, but not `--filter`, `--sort`, `--offset`, `--limit`, or `--count`;
+these do not operate on the bytes or the nested pointer array.
+
 Use `memory write ADDRESS "HEX BYTES"` to edit bytes and
 `find bytes "HEX BYTES"` to search them.
 See [patching](low-level.md#patching) for edit behavior.

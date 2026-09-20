@@ -26,6 +26,11 @@ defaults. `project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work.
+`memory read`, `program info`, and `program stats` use `ObjectOptions` for target,
+field, and output selection. They reject filtering, sorting, pagination, and count
+flags during parsing. Convert these options to a projection-only `QueryOptions`
+for the shared output path; nested memory bytes and pointers are not result rows.
+`program export` requires `--output` during parsing for every export format.
 Function rename rejects symbol-only bulk flags (`--filter`, `--all`).
 Function and comment deletion accept only their target and receipt output options; filtering,
 sorting, pagination, and count flags are rejected before bridge work. Preflight

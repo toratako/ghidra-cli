@@ -28,9 +28,9 @@ pub enum ProgramCommands {
     /// Delete a program
     Delete(ProgramTargetArgs),
     /// Show program information
-    Info(super::options::QueryOptions),
+    Info(super::options::ObjectOptions),
     /// Show program statistics
-    Stats(super::options::QueryOptions),
+    Stats(super::options::ObjectOptions),
     /// List imported symbols and their libraries
     Imports(super::options::QueryOptions),
     /// List symbols marked as external entry points
@@ -62,7 +62,7 @@ pub struct ExportArgs {
     pub project: Option<String>,
     /// Output file
     #[arg(short, long)]
-    pub output: Option<String>,
+    pub output: String,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

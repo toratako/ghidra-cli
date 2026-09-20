@@ -189,18 +189,8 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::Imports(_) => client.list_imports(list_limit),
                 ProgramCommands::Exports(_) => client.list_exports(list_limit),
                 ProgramCommands::Export(args) => {
-                    let output = args
-                        .output
-                        .as_deref()
-                        .map(std::path::absolute)
-                        .transpose()?;
-                    client.program_export(
-                        &args.format,
-                        output
-                            .as_deref()
-                            .map(|path| path.to_string_lossy())
-                            .as_deref(),
-                    )
+                    let output = std::path::absolute(&args.output)?;
+                    client.program_export(&args.format, Some(&output.to_string_lossy()))
                 }
                 // Top-level save handles a stopped bridge without auto-start;
                 // inside a batch, the bridge is already available.

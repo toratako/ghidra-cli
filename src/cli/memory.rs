@@ -1,4 +1,4 @@
-use super::options::QueryOptions;
+use super::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub struct MemReadArgs {
     /// Number of bytes to read in decimal (e.g. 64)
     pub size: usize,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

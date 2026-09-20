@@ -313,6 +313,8 @@ mod tests {
             ["program", "imports"].as_slice(),
             ["function", "list"].as_slice(),
             ["program", "info"].as_slice(),
+            ["program", "stats"].as_slice(),
+            ["memory", "read", "0x1000", "64"].as_slice(),
         ] {
             for (flags, expected) in [
                 (vec!["--json"], OutputFormat::JsonCompact),

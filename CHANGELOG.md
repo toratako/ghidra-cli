@@ -7,11 +7,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Remove `--filter`, `--sort`, `--offset`, `--limit`, and `--count` from
+  `memory read`, `program info`, and `program stats`. These commands return a
+  single object and retain target selection, `--fields`, and output formats.
+  `memory read ADDRESS SIZE` still specifies the requested byte count with `SIZE`.
 - Remove the remaining `--target` options from function edits and queries,
   `decompile`, `disassemble`, `xref to/from`, `find calls`, and
   `graph callers/callees`. Pass one required positional `TARGET` instead.
   Supplying `--target` now fails during argument parsing instead of silently
   overriding a positional target, including in batch commands.
+
+### Fixed
+
+- Require `program export --output` during argument parsing for all export formats,
+  rejecting omitted destinations before connecting to Ghidra.
 
 ## [0.6.1] - 2026-09-21
 

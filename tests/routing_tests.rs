@@ -130,6 +130,13 @@ impl RecordedBridge {
                     "decompile" => {
                         json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
+                    "read_memory" => json!({
+                        "address": args["address"], "size": 8, "hex": "0000000001000000",
+                        "pointers": [
+                            {"offset": 0, "address": "0x1000", "value": "0x00000000"},
+                            {"offset": 4, "address": "0x1004", "value": "0x00000001"},
+                        ],
+                    }),
                     "graph_calls" => {
                         let mut graph = call_graph_fixture();
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
@@ -2814,7 +2821,7 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
 }
 
 #[test]
-fn deletion_rejects_query_flags_without_selecting_or_deleting() {
+fn single_objects_and_deletion_reject_list_flags_before_program_dispatch() {
     let bridge = RecordedBridge::new();
     let flags = [
         "--filter name=other",
@@ -2823,14 +2830,20 @@ fn deletion_rejects_query_flags_without_selecting_or_deleting() {
         "--limit 0",
         "--count",
     ];
-    let mut lines: Vec<_> = ["function delete main", "comment delete 0x1000"]
-        .into_iter()
-        .flat_map(|command| {
-            flags
-                .iter()
-                .map(move |flag| format!("{command} --program must-not-open {flag}"))
-        })
-        .collect();
+    let mut lines: Vec<_> = [
+        "function delete main",
+        "comment delete 0x1000",
+        "memory read 0x1000 8",
+        "program info",
+        "program stats",
+    ]
+    .into_iter()
+    .flat_map(|command| {
+        flags
+            .iter()
+            .map(move |flag| format!("{command} --program must-not-open {flag}"))
+    })
+    .collect();
     let rejected = lines.len();
     for line in &lines {
         let output = bridge
@@ -3339,5 +3352,45 @@ fn program_info_and_stats_support_projection_and_format_in_standalone_and_batch(
                 .count(),
             2
         );
+    }
+}
+
+#[test]
+fn memory_read_preserves_bytes_and_pointers_with_output_options() {
+    let bridge = RecordedBridge::new();
+    for fields in [None, Some("size,hex,pointers")] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec!["memory", "read", "0x1000", "8", "--program", "B", "--json"];
+            if let Some(fields) = fields {
+                args.extend(["--fields", fields, "--format", "json-compact"]);
+            }
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            // A plain batch line retains the object; standalone and projected results are rows.
+            let object = if batch && fields.is_none() {
+                &result
+            } else {
+                &result[0]
+            };
+            assert_eq!(object["size"], 8);
+            assert_eq!(object["hex"], "0000000001000000");
+            assert_eq!(object["pointers"].as_array().unwrap().len(), 2);
+            assert_eq!(object.get("address").is_some(), fields.is_none());
+            let requests = bridge.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{domain:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"]["program"], "B");
+            assert_eq!(domain[1]["command"], "read_memory");
+            assert_eq!(domain[1]["args"], json!({"address": "0x1000", "size": 8}));
+        }
     }
 }
