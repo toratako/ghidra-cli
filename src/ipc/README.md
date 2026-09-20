@@ -175,4 +175,4 @@ the committed `count` appear only on success.
 | `success` | `data`, or `{}` if absent |
 | `error` | Error with `message` and available structured detail |
 | `shutdown` | `{"status":"shutdown"}` |
-| Other | `data`, or `{}` if absent |
+| Other | Protocol error |

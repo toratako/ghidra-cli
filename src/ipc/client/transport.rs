@@ -313,7 +313,7 @@ impl BridgeClient {
                 }
             }
             "shutdown" => Ok(json!({"status": "shutdown"})),
-            _ => Ok(response.data.unwrap_or(json!({}))),
+            status => anyhow::bail!("Invalid bridge response status: '{}'", status),
         }
     }
 }
@@ -325,6 +325,63 @@ mod tests {
     use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
     use std::net::TcpListener;
     use std::time::Duration;
+
+    #[test]
+    fn response_status_controls_success_and_failure() {
+        for (status, data, expected) in [
+            (
+                "success",
+                Some(serde_json::json!({"count": 1})),
+                Some(serde_json::json!({"count": 1})),
+            ),
+            ("success", None, Some(serde_json::json!({}))),
+            (
+                "shutdown",
+                None,
+                Some(serde_json::json!({"status": "shutdown"})),
+            ),
+            ("error", None, None),
+            ("unexpected", Some(serde_json::json!({"count": 1})), None),
+            ("", None, None),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let client = BridgeClient::new(listener.local_addr().unwrap().port());
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut request = String::new();
+                BufReader::new(&stream).read_line(&mut request).unwrap();
+                let response = serde_json::json!({
+                    "status": status,
+                    "data": data,
+                    "message": "Request failed",
+                });
+                writeln!(stream, "{response}").unwrap();
+            });
+            let result = client.send_command_with_deadline(
+                "ping",
+                None,
+                Some(std::time::Instant::now() + Duration::from_secs(2)),
+            );
+            server.join().unwrap();
+            match expected {
+                Some(expected) => assert_eq!(result.unwrap(), expected),
+                None => {
+                    let message = result.unwrap_err().to_string();
+                    if status == "error" {
+                        assert_eq!(message, "Request failed");
+                    } else {
+                        assert_eq!(
+                            message,
+                            format!("Invalid bridge response status: '{status}'")
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn request_deadline_bounds_a_trickling_response() {
