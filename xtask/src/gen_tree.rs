@@ -10,8 +10,9 @@ const HEADER: &str = "\
 # ghidra-cli command tree
 
 Generated from `src/cli.rs` and `src/cli/*.rs` using Clap's `CommandFactory`.
-Includes all subcommands and automatically generated `help` commands.
-Command aliases are not supported; arguments and options are omitted.
+Automatically generated `help` commands, arguments, and options are omitted.
+Command aliases are not supported.
+For command details, run `ghidra-cli <command> --help`.
 
 Regenerate from the repository root with `cargo xtask gen-tree`.
 Run `cargo xtask gen-tree --check` to verify that this document is current.
@@ -51,7 +52,7 @@ pub(crate) fn run(workspace_root: &Path, check: bool) -> Result<()> {
 }
 
 fn render_document(mut command: Command) -> Result<String> {
-    // This expands automatic help commands recursively before introspection.
+    // Build the CLI before introspection; rendering omits automatic help branches.
     command.build();
 
     let mut document = String::from(HEADER);
@@ -74,7 +75,10 @@ fn append_subcommands(command: &Command, prefix: &str, output: &mut String) -> R
     );
 
     // Introspection retains declaration order, unlike sorting help output.
-    let mut subcommands = command.get_subcommands().peekable();
+    let mut subcommands = command
+        .get_subcommands()
+        .filter(|subcommand| subcommand.get_name() != "help")
+        .peekable();
     let mut count = 0;
     while let Some(subcommand) = subcommands.next() {
         let last = subcommands.peek().is_none();
@@ -99,7 +103,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renders_declaration_order_nested_help_and_count_without_arguments() {
+    fn renders_declaration_order_and_count_without_help_branches_or_arguments() {
         let command = Command::new("demo")
             .arg(Arg::new("ignored-option").long("ignored-option"))
             .subcommand(
@@ -113,21 +117,11 @@ mod tests {
 demo
 ├── zeta
 │   ├── second
-│   ├── first
-│   └── help
-│       ├── second
-│       ├── first
-│       └── help
-├── alpha
-└── help
-    ├── zeta
-    │   ├── second
-    │   └── first
-    ├── alpha
-    └── help
+│   └── first
+└── alpha
 ```
 
-14 command nodes (excluding the root), 0 aliases.
+4 command nodes (excluding the root), 0 aliases.
 ";
 
         assert_eq!(

@@ -24,11 +24,11 @@ implementation details. Ghidra suites require a working
 [Ghidra and JDK installation](../docs/runtime.md#installation).
 
 `gen-tree` writes [the command tree](../docs/tree.md) from the same Clap definitions
-as the CLI, including Clap's automatically generated help commands. The task
-resolves the workspace root independently of the caller's working directory and
-always writes `docs/tree.md` there. Regenerate it after changing command
-definitions. `--check` leaves the file unchanged and fails if it is missing or
-stale; it accepts CRLF line endings in Windows checkouts.
+as the CLI. Automatically generated `help` commands are omitted from the tree
+and its node count. The task resolves the workspace root independently of the
+caller's working directory and always writes `docs/tree.md` there. Regenerate it
+after changing command definitions. `--check` leaves the file unchanged and fails
+if it is missing or stale; it accepts CRLF line endings in Windows checkouts.
 
 ## Implementation and checks
 
