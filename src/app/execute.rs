@@ -329,9 +329,12 @@ pub(super) fn execute_via_bridge(
         Commands::Find(cmd) => {
             use cli::FindCommands;
             match cmd {
-                FindCommands::String(args) => {
-                    client.find_string_with_limit(&args.pattern, list_limit)
-                }
+                FindCommands::String(args) => client.find_string_page(
+                    &args.pattern,
+                    list_limit,
+                    fetch.filter.clone(),
+                    fetch.offset,
+                ),
                 FindCommands::Bytes(args) => {
                     if args.regex {
                         client.find_bytes_regex_with_limit(&args.hex, list_limit)

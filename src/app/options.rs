@@ -366,7 +366,8 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         Commands::Function(cli::FunctionCommands::List(_))
         | Commands::Symbol(cli::SymbolCommands::List(_))
         | Commands::Type(cli::TypeCommands::List(_)) => Paged("name"),
-        Commands::Strings(cli::StringsCommands::List(_)) => Paged("value"),
+        Commands::Strings(cli::StringsCommands::List(_))
+        | Commands::Find(cli::FindCommands::String(_)) => Paged("value"),
         Commands::Comment(cli::CommentCommands::List(_)) => Paged("text"),
         Commands::Program(cli::ProgramCommands::Imports(_) | cli::ProgramCommands::Exports(_)) => {
             Limit
@@ -379,8 +380,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             | cli::GraphCommands::Callees(_),
         )
         | Commands::Find(
-            cli::FindCommands::String(_)
-            | cli::FindCommands::Text(_)
+            cli::FindCommands::Text(_)
             | cli::FindCommands::Bytes(_)
             | cli::FindCommands::Instruction(_),
         ) => Limit,

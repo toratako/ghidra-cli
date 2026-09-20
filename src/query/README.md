@@ -20,14 +20,16 @@ the batch envelope; it does not truncate nested fields of a single object.
 | `symbol list` | `name` |
 | `type list` | `name` |
 | `string list` | `value` |
+| `find string PATTERN` | `value` (in addition to the positional pattern) |
 | `comment list` | `text` |
 
 Only a single `field~value` expression on the listed field is pushed down.
 The bridge receives the literal value, never the filter DSL. Java `ListQuery`
 applies locale-independent lowercase contains, then skips matching rows, then
 caps returned rows, before constructing their JSON. Function tag/untagged
-predicates also run before offset. Rows keep the handler's existing iterator
-order; comments at the same address but with different types are distinct rows.
+predicates and the `find string` pattern also run before offset. Rows keep the
+handler's existing iterator order; comments at the same address but with different
+types are distinct rows.
 
 Server paging is enabled only without Rust sort/count and with either no filter
 or the supported contains filter. Other filters, including `=`, `^`, `$`, regex,
@@ -59,6 +61,11 @@ options retains its original bridge envelope.
 
 `find bytes`, `find text`, and `find string` use this same limit contract,
 without a separate fixed result cap. `find string` visits defined strings only;
+its pattern and a pushed `value~...` filter are independent AND predicates.
+It shares `StringQueries` with `string list`, including row fields
+`address`, `value`, `char_length` (Unicode code points) and `byte_length`
+(occupied Ghidra data bytes, potentially including terminators/padding).
+The former `length` field is removed from both commands.
 `find text` and literal `find bytes` share exact-byte memory scanning, including
 overlapping matches and cancellation checks. `find bytes --regex` uses native
 Ghidra byte regex scanning with the same query plan; the regex is applied in
@@ -89,10 +96,14 @@ instruction creation, not response rows. Use `disassemble` for subsequent reads.
 - Planner tests compare pushed and full-fetch results across filters, sort,
   count, projection, limits and offsets. Routing tests cover actual wire arguments
   and standalone/batch equivalence. `tests/readonly/query.rs` checks all five
-  handlers against full rows, including Unicode samples under a
-  Turkish JVM locale, tag predicates, comment types, empty pages and numeric bounds.
+  list handlers and `find string` against full rows, including Unicode samples
+  under a Turkish JVM locale, tag predicates, comment types, empty pages and numeric bounds.
   These samples do not establish identical Unicode casing tables across every
   Rust/JDK release; repeat the cross-runtime checks when upgrading toolchains.
+- `tests/readonly/strings.rs` verifies identical list/search rows, code-point and
+  occupied-byte lengths for UTF-8/UTF-16 strings, and paging after both search
+  predicates. It covers empty values, supplementary/combining characters and
+  terminated/unterminated data, plus length filters, sorting and projection.
 - `tests/readonly/search_limits.rs` exercises searches with 160 matches, client
   default caps, complete counts/selection, batch output, and cancellation of an
   uncapped dense byte search followed by a fresh request.

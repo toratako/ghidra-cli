@@ -42,7 +42,7 @@ passing a function pointer as a parameter does not make the enclosing function a
 
 ```bash
 ghidra-cli function list --filter "name~crypt" --project target
-ghidra-cli string list --filter "length > 12" --limit 80 --project target
+ghidra-cli string list --filter "char_length > 12" --limit 80 --project target
 ghidra-cli find string "password" --project target
 ghidra-cli find text "Password" --project target
 ghidra-cli find text "Password" --encoding utf-16le --project target
@@ -69,6 +69,17 @@ to a node outside the returned page. Use `--limit 0` for an unlimited graph.
 `find string` searches only defined string values, using case-insensitive literal
 substring matching. It no longer falls back to raw memory when nothing matches;
 an empty result does not establish that the text is absent from the binary.
+`string list` and `find string` return `address`, `value`, `char_length`, and
+`byte_length`. `char_length` counts Unicode code points in the decoded value,
+not UTF-16 code units or displayed grapheme clusters (for example, an emoji may
+be one code point while a letter plus a combining accent is two). `byte_length`
+is the Ghidra data definition's occupied byte length, including terminators or
+padding when part of that definition; it is not a re-encoding of `value`.
+The ambiguous `length` field is removed: select `char_length` or `byte_length`
+explicitly in filters, sorting and field selection. Both commands support the
+shared query options. `find string ""` matches all defined string values;
+use `--limit 0` to return all rows. Its pattern and any `--filter` are both
+applied before paging.
 `string refs` uses the same literal, case-insensitive matching on actual string
 values, including embedded newlines, quotes and backslashes.
 

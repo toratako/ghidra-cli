@@ -23,6 +23,8 @@ mod relationships;
 mod search;
 #[path = "readonly/search_limits.rs"]
 mod search_limits;
+#[path = "readonly/strings.rs"]
+mod strings;
 
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 

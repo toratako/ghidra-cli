@@ -477,9 +477,20 @@ impl BridgeClient {
         pattern: &str,
         limit: Option<usize>,
     ) -> Result<serde_json::Value> {
+        self.find_string_page(pattern, limit, None, None)
+    }
+
+    /// Find defined strings, applying both contains predicates before offset/limit.
+    pub fn find_string_page(
+        &self,
+        pattern: &str,
+        limit: Option<usize>,
+        filter: Option<String>,
+        offset: Option<usize>,
+    ) -> Result<serde_json::Value> {
         self.send_command(
             "find_string",
-            Some(json!({"pattern": pattern, "limit": limit})),
+            Some(json!({"pattern": pattern, "limit": limit, "filter": filter, "offset": offset})),
         )
     }
 

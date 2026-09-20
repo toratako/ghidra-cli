@@ -50,16 +50,27 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
             result.json()
         };
         for (command, wire, key, field) in [
-            (["function", "list"], "list_functions", "functions", "name"),
-            (["symbol", "list"], "symbol_list", "symbols", "name"),
-            (["type", "list"], "type_list", "types", "name"),
-            (["comment", "list"], "comment_list", "comments", "text"),
-            (["string", "list"], "list_strings", "strings", "value"),
+            (
+                &["function", "list"][..],
+                "list_functions",
+                "functions",
+                "name",
+            ),
+            (&["symbol", "list"][..], "symbol_list", "symbols", "name"),
+            (&["type", "list"][..], "type_list", "types", "name"),
+            (&["comment", "list"][..], "comment_list", "comments", "text"),
+            (&["string", "list"][..], "list_strings", "strings", "value"),
+            (
+                &["find", "string", ""][..],
+                "find_string",
+                "results",
+                "value",
+            ),
         ] {
             let all = client.send_command(wire, Some(json!({"limit":0}))).unwrap();
             let rows = all[key].as_array().unwrap();
             assert!(rows.len() > 4, "{wire}: {all}");
-            assert_eq!(cli(&command, &[]), json!(&rows[..2]), "{command:?}");
+            assert_eq!(cli(command, &[]), json!(&rows[..2]), "{command:?}");
             // Both raw bridge pages and CLI pages must equal local slices.
             for (offset, limit) in [(0usize, 2usize), (1, 2), (2, 0), (10000, 1)] {
                 let expected: Vec<_> = rows
@@ -75,7 +86,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 assert_eq!(page["count"], expected.len());
                 assert_eq!(
                     cli(
-                        &command,
+                        command,
                         &[
                             "--offset",
                             &offset.to_string(),
@@ -106,20 +117,20 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 let expected: Vec<_> = matching.iter().skip(1).take(2).cloned().collect();
                 assert_eq!(server[key], json!(expected), "{wire}, {needle:?}");
                 assert_eq!(
-                    cli(&command, &["--filter", &filter, "--offset", "1"]),
+                    cli(command, &["--filter", &filter, "--offset", "1"]),
                     json!(expected)
                 );
                 assert_eq!(
-                    cli(&command, &["--filter", &filter, "--limit", "0"]),
+                    cli(command, &["--filter", &filter, "--limit", "0"]),
                     json!(matching)
                 );
                 assert_eq!(
-                    cli(&command, &["--filter", &filter, "--count"]),
+                    cli(command, &["--filter", &filter, "--count"]),
                     json!(matching.len())
                 );
                 assert_eq!(
                     cli(
-                        &command,
+                        command,
                         &["--filter", &filter, "--offset", "1", "--limit", "1", "--count"]
                     ),
                     json!(matching.len().saturating_sub(1).min(1))

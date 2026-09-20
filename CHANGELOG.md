@@ -5,6 +5,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Replace `length` in `string list` and `find string` rows with `char_length`
+  (Unicode code points in the decoded value) and `byte_length` (occupied Ghidra
+  data bytes, including terminators/padding when defined). Update filters,
+  sorting and field selections to use the explicit unit. Both commands now
+  share string scanning and row generation; their response envelopes are unchanged.
+- Apply `find string` paging in the bridge when the query permits it, after
+  matching both the search pattern and any supported `value~...` filter.
+  Sorting, counts and unsupported filters retain complete-input processing.
+
 ### Removed
 
 - Remove `--filter`, `--sort`, `--offset`, `--limit`, and `--count` from

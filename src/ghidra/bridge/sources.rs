@@ -93,6 +93,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/ListQuery.java"),
     ),
     (
+        "ghidracli/StringQueries.java",
+        include_str!("../scripts/ghidracli/StringQueries.java"),
+    ),
+    (
         "ghidracli/ListingCommands.java",
         include_str!("../scripts/ghidracli/ListingCommands.java"),
     ),

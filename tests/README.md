@@ -129,10 +129,13 @@ in standalone/batch results while preserving outgoing edges beyond the page.
 `readonly/relationships.rs` checks graph queries against the real bridge's nodes
 and edges.
 `readonly/query.rs` compares server-filtered pages with full rows for the five
-supported list handlers and query aliases, including Unicode under a Turkish
+supported list handlers and `find string`, including Unicode under a Turkish
 locale, function tags, multiple comment types, unlimited/empty pages and bounds
 beyond Java `int`. Planner and routing tests separately verify residual processing
 and standalone/batch equivalence.
+`readonly/strings.rs` checks shared list/search rows, Unicode code-point counts
+and occupied byte lengths for UTF-8/UTF-16, empty/unterminated strings, supplementary
+and combining characters, length queries, and paging after pattern plus filter.
 `readonly/search.rs` checks defined-only string search and exact text searches
 in UTF-8, UTF-16LE/BE, and Shift_JIS, including overlaps and encoding errors.
 `readonly/search_limits.rs` checks paging/counts for string, text, and byte

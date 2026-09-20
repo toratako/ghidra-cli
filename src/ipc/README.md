@@ -43,8 +43,8 @@ Request `command` is required; optional `args` is omitted when `None`.
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON.
 
-`list_functions`, `list_strings`, `symbol_list`, `type_list`, and `comment_list`
-accept literal `filter`, `offset`, and `limit` arguments. Filters are
+`list_functions`, `list_strings`, `symbol_list`, `type_list`, `comment_list`, and
+`find_string` accept literal `filter`, `offset`, and `limit` arguments. Filters are
 case-insensitive contains on their documented string field; the DSL stays in
 Rust. Offset counts matching rows before limit; missing/null/zero limit is
 unlimited and missing/null offset is zero. Numeric page arguments must be
@@ -53,6 +53,17 @@ to Java `int`. Responses retain their array and returned-row `count` envelope.
 See [query planning](../query/README.md) for when these arguments may be pushed.
 This change requires a matching CLI and Java bridge; it adds no old-bridge
 compatibility path.
+
+`find_string` also accepts `pattern`, a case-insensitive literal substring of
+the decoded string value. Missing/null/empty patterns match all defined strings
+(the CLI requires a positional pattern; pass `""` for all values). Both `pattern`
+and `filter` must match before offset/limit are applied. `list_strings` and
+`find_string` share row fields `address`, `value`, `char_length` (Unicode code
+points), and `byte_length` (Ghidra data's occupied bytes, including any defined
+terminators/padding). The former `length` field is removed. Their response
+array keys remain `strings` and `results`, respectively; `string_refs` is unchanged.
+`BridgeClient::find_string_page` exposes filter/offset/limit, while
+`find_string` and `find_string_with_limit` retain their existing defaults.
 
 `list_imports`, `list_exports`, `tag_list`, `tag_get`, `graph_calls`,
 `graph_callers`, `graph_callees`, and `find_instruction` accept `limit` only in

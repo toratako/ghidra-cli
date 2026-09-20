@@ -2,9 +2,6 @@ package ghidracli;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import ghidra.program.model.listing.Data;
-import ghidra.program.model.listing.DataIterator;
-import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.ExternalLocation;
@@ -14,13 +11,14 @@ import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getNonnegativeIntArg;
-import static ghidracli.JsonProtocol.getArgString;
 
 final class ListingCommands {
     private final ProgramSession session;
+    private final StringQueries stringQueries;
 
-    ListingCommands(ProgramSession session) {
+    ListingCommands(ProgramSession session, StringQueries stringQueries) {
         this.session = session;
+        this.stringQueries = stringQueries;
     }
 
     JsonObject handleListStrings(JsonObject args) throws ghidra.util.exception.CancelledException {
@@ -28,35 +26,7 @@ final class ListingCommands {
             return errorResult("No program loaded");
         }
 
-        ListQuery query = new ListQuery(session, args);
-
-        JsonArray strings = new JsonArray();
-        Listing listing = session.program().getListing();
-        DataIterator dataIter = listing.getDefinedData(true);
-
-        while (dataIter.hasNext()) {
-            if (query.isFull()) break;
-
-            Data data = dataIter.next();
-            if (data.hasStringValue()) {
-                try {
-                    String val = data.getValue().toString();
-
-                    if (!query.include(val)) {
-                        continue;
-                    }
-
-                    JsonObject strData = new JsonObject();
-                    strData.addProperty("address", AddressCodec.format(data.getAddress()));
-                    strData.addProperty("value", val);
-                    strData.addProperty("length", val.length());
-                    strings.add(strData);
-                    query.record();
-                } catch (Exception e) {
-                    // skip
-                }
-            }
-        }
+        JsonArray strings = stringQueries.list(args, null);
 
         JsonObject result = new JsonObject();
         result.add("strings", strings);

@@ -52,7 +52,8 @@ pub struct LocalVariable {
 pub struct StringData {
     pub address: String,
     pub value: String,
-    pub length: usize,
+    pub char_length: usize,
+    pub byte_length: usize,
     #[serde(default)]
     pub encoding: Option<String>,
     #[serde(default)]
@@ -331,8 +332,11 @@ impl Validate for StringData {
             ));
         }
 
-        if self.length == 0 && !self.value.is_empty() {
-            errors.push("String length is 0 but value is not empty".to_string());
+        if self.char_length != self.value.chars().count() {
+            errors.push("String char_length must count Unicode code points".to_string());
+        }
+        if self.byte_length == 0 {
+            errors.push("Defined string byte_length must be positive".to_string());
         }
 
         errors

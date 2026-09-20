@@ -38,11 +38,14 @@ final class SearchCommands {
     private final ProgramSession session;
     private final FunctionQueries functionQueries;
     private final AddressResolver addressResolver;
+    private final StringQueries stringQueries;
 
-    SearchCommands(ProgramSession session, FunctionQueries functionQueries, AddressResolver addressResolver) {
+    SearchCommands(ProgramSession session, FunctionQueries functionQueries, AddressResolver addressResolver,
+            StringQueries stringQueries) {
         this.session = session;
         this.functionQueries = functionQueries;
         this.addressResolver = addressResolver;
+        this.stringQueries = stringQueries;
     }
 
     JsonObject handleFindInstruction(JsonObject args) throws Exception {
@@ -82,34 +85,8 @@ final class SearchCommands {
         if (session.program() == null) return errorResult("No program loaded");
 
         String pattern = getArgString(args, "pattern");
-        if (pattern == null) pattern = "";
-
         try {
-            long limit = ListQuery.pageArgument(args, "limit");
-            JsonArray results = new JsonArray();
-
-            // Only defined string data participates; raw searches use find_text.
-            String needle = pattern.toLowerCase(Locale.ROOT);
-            Listing listing = session.program().getListing();
-            DataIterator dataIter = listing.getDefinedData(true);
-
-            while (dataIter.hasNext()) {
-                session.monitor().checkCancelled();
-                if (limit > 0 && results.size() >= limit) break;
-                Data data = dataIter.next();
-                if (data.hasStringValue()) {
-                    try {
-                        String val = data.getValue().toString();
-                        if (pattern.isEmpty() || val.toLowerCase(Locale.ROOT).contains(needle)) {
-                            JsonObject item = new JsonObject();
-                            item.addProperty("address", AddressCodec.format(data.getAddress()));
-                            item.addProperty("value", val);
-                            item.addProperty("length", data.getLength());
-                            results.add(item);
-                        }
-                    } catch (Exception e) { /* skip */ }
-                }
-            }
+            JsonArray results = stringQueries.list(args, pattern);
 
             JsonObject result = new JsonObject();
             result.add("results", results);

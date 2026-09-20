@@ -172,6 +172,26 @@ impl RecordedBridge {
                         let mut rows: Vec<_> = (0..160)
                             .map(|i| json!({"address": format!("0x{i:04x}")}))
                             .collect();
+                        if request["command"] == "find_string" {
+                            for (i, row) in rows.iter_mut().enumerate() {
+                                row["value"] = json!(format!("needle_{i:03}"));
+                                row["char_length"] = json!(10);
+                                row["byte_length"] = json!(11);
+                            }
+                            for field in ["pattern", "filter"] {
+                                if let Some(needle) = args[field].as_str() {
+                                    rows.retain(|row| {
+                                        row["value"]
+                                            .as_str()
+                                            .unwrap()
+                                            .to_lowercase()
+                                            .contains(&needle.to_lowercase())
+                                    });
+                                }
+                            }
+                            let offset = args["offset"].as_u64().unwrap_or(0) as usize;
+                            rows.drain(..offset.min(rows.len()));
+                        }
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
                             rows.truncate(limit as usize);
                         }
@@ -3091,8 +3111,128 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
                 let requests = bridge.requests.lock().unwrap();
                 let sent: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
                 assert_eq!(sent.len(), 1);
-                assert_eq!(sent[0]["args"]["limit"], fetch_limit, "{args:?}");
+                let server_page = wire == "find_string"
+                    && flags.contains(&"--offset")
+                    && !flags.contains(&"--count");
+                assert_eq!(
+                    sent[0]["args"]["limit"],
+                    if server_page {
+                        json!(2)
+                    } else {
+                        fetch_limit.clone()
+                    },
+                    "{args:?}"
+                );
+                assert_eq!(
+                    sent[0]["args"]["offset"],
+                    if server_page { json!(100) } else { Value::Null },
+                    "{args:?}"
+                );
             }
+        }
+    }
+}
+
+#[test]
+fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let rows = json!([
+        {"value":"needle_115", "char_length":10, "byte_length":11},
+        {"value":"needle_125", "char_length":10, "byte_length":11}
+    ]);
+    for (flags, expected, fetch_filter, fetch_offset, fetch_limit) in [
+        (
+            vec!["--filter", "value~'5'", "--offset", "1", "--limit", "2"],
+            rows.clone(),
+            json!("5"),
+            json!(1),
+            json!(2),
+        ),
+        (
+            vec![
+                "--filter",
+                "value~'5' AND byte_length>10",
+                "--offset",
+                "1",
+                "--limit",
+                "2",
+            ],
+            rows.clone(),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+        ),
+        (
+            vec![
+                "--filter",
+                "value~'5'",
+                "--sort=-value",
+                "--offset",
+                "12",
+                "--limit",
+                "2",
+            ],
+            json!([rows[1], rows[0]]),
+            json!("5"),
+            Value::Null,
+            Value::Null,
+        ),
+        (
+            vec![
+                "--filter",
+                "value~'5'",
+                "--offset",
+                "1",
+                "--limit",
+                "2",
+                "--count",
+            ],
+            json!(2),
+            json!("5"),
+            Value::Null,
+            Value::Null,
+        ),
+        (
+            vec!["--filter", "value~'5'", "--count"],
+            json!(15),
+            json!("5"),
+            Value::Null,
+            Value::Null,
+        ),
+    ] {
+        let args: Vec<_> = [
+            "find",
+            "string",
+            "NEEDLE_1",
+            "--fields",
+            "value,char_length,byte_length",
+        ]
+        .into_iter()
+        .chain(flags)
+        .collect();
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let actual = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(actual, expected, "{args:?}, batch={batch}");
+            let requests = bridge.requests.lock().unwrap();
+            let sent = requests
+                .iter()
+                .find(|r| r["command"] == "find_string")
+                .unwrap();
+            assert_eq!(
+                sent["args"],
+                json!({
+                    "pattern":"NEEDLE_1", "filter":fetch_filter,
+                    "offset":fetch_offset, "limit":fetch_limit,
+                }),
+                "{args:?}, batch={batch}"
+            );
         }
     }
 }
