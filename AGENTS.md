@@ -42,3 +42,20 @@ Path and lifecycle changes must follow the shared
 
 - Do NOT prune @CHANGELOG.md
 - Do not consider backward compatibility; instead, we are prioritizing aesthetic excellence in the CLI's design.
+
+### Skill documentation
+
+Add to `docs/skills` only when the text helps an RE agent choose an operation,
+interpret results, or recover from failure. Technical correctness, a recent
+feature change, or a regression test is not sufficient reason to add it.
+
+Assume a capable agent. Omit what examples, general knowledge, `--help`, or
+ordinary output already convey. Avoid inventories of unsupported options or
+return fields, assurances of expected behavior, obscure validation bounds, and
+comparisons with removed behavior. Explain fields and constraints when their
+meaning affects an RE decision.
+
+Keep useful command examples, non-obvious pitfalls, and concrete recovery steps.
+Keep shared explanations in one place. Apply owner deletions to similar cases;
+do not restore the same boilerplate under another command. Select for usefulness
+rather than a line-count target.
