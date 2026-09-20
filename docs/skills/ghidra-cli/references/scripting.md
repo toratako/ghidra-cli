@@ -9,14 +9,12 @@ ghidra-cli script run ./scripts/Inspect.java --expect ./out.jsonl:10 --project t
 ghidra-cli script run - --project target < ./scripts/Inspect.java
 ```
 
-Script paths resolve absolutely; results include arguments after `--` and captured
-stdout. Artifact hash/read failures return errors. Repeat `--expect PATH[:MIN_ROWS]`
-to reject missing/empty/short artifacts; `--allow-empty` permits expected empty files.
-Java source uses Ghidra's bundle/compile path. Use `script run PATH` or
-`script run -` with Java source on stdin.
+Script and `--expect` paths resolve from the CLI working directory.
+Repeat `--expect PATH[:MIN_ROWS]` to reject missing/empty/short artifacts;
+`--allow-empty` permits expected empty files.
 
-Stdin source must declare exactly one top-level public class that Ghidra can load
-as a script. The public class must extend `GhidraScript`. File scripts retain their parent
-directory as the source bundle, so supporting source files belong in that bundle.
+Stdin source must declare exactly one top-level public class extending
+`GhidraScript`. Keep supporting source files in the file script's parent
+directory, which Ghidra uses as its source bundle.
 
 Scripts follow the shared [save and failure behavior](../SKILL.md#results-edits-and-jobs).

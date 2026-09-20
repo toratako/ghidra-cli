@@ -12,33 +12,24 @@ ghidra-cli xref to main --project target
 ghidra-cli xref to malloc --project target
 ```
 
-`decompile` accepts a function name or address; `--with-vars` and `--with-params`
-include local-variable and parameter details; parameters are in declaration order.
-Function names must identify one
-function; ambiguous names return candidates. Use an address to select the
-intended function.
+Use `--with-vars` and `--with-params` for decompiler variable and parameter
+metadata; parameters are in declaration order. Ambiguous function names return
+candidates; use an address to select one.
 
-Explicit `--format c` prints the decompiled code without JSON escaping. Use JSON
-when you need the accompanying variable/parameter metadata. `--format asm` renders
-instruction rows; rows without the required code fields fall back to JSON. Neither
-option changes the default TTY/non-TTY behavior.
+`--format c` prints decompiled code without JSON escaping. Use JSON when you
+need the accompanying variable/parameter metadata.
 
-There is no native decompilation time limit by default; inspect long work with
-`job list` and request a stop with `job cancel`. See [job control](../SKILL.md#results-edits-and-jobs).
+Decompilation has no native time limit by default; use
+[job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 
 ## Search, strings, xrefs, and graphs
 
-`find calls TARGET` searches the entire selected program for calls to TARGET,
-including resolved thunks and import-pointer references. Rows contain `caller`,
-`caller_address`, `call_site`, `callee`, `callee_address`, `type`, and `via` (the
-referenced target or pointer/thunk address). Ordinary data references are excluded.
-It uses Ghidra's references, not decompiler text; unresolved register/function
-pointer calls may still be absent. Names that resolve to distinct functions are
-ambiguous; use an address to select one.
-`function calls TARGET` lists outgoing calls inside TARGET. Use `graph callers`
-or `graph callees` to traverse relationships at a chosen depth. `graph callers`
-uses the same thunk/import-pointer resolution and call-site checks as `find calls`;
-passing a function pointer as a parameter does not make the enclosing function a caller.
+`find calls TARGET` finds incoming calls across the program, resolving thunks
+and import pointers; `function calls TARGET` lists outgoing calls within TARGET.
+Use `graph callers` or `graph callees` to traverse relationships at a chosen depth.
+Call discovery uses Ghidra's references, so unresolved indirect calls may be
+absent. Passing a function pointer as data does not make a function a caller.
+`via` identifies the referenced target or pointer/thunk address.
 
 ```bash
 ghidra-cli function list --filter "name~crypt" --project target
@@ -60,50 +51,35 @@ ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target
 ```
 
-`graph calls` filters, sorts, and pages its function nodes using the shared
-query options; `--fields` projects node fields. `--count` returns the selected
-node count; other results retain `nodes`, `edges`, `node_count`, and `edge_count`.
-Edges include outgoing calls from selected nodes, so a destination ID may refer
-to a node outside the returned page. Use `--limit 0` for an unlimited graph.
+`graph calls` applies query controls to function nodes; `--count` counts selected
+nodes. Edges include outgoing calls from selected nodes, so a destination ID may
+refer to a node outside the returned page.
 
-`find string` searches only defined string values, using case-insensitive literal
-substring matching. It no longer falls back to raw memory when nothing matches;
-an empty result does not establish that the text is absent from the binary.
-`string list` and `find string` return `address`, `value`, `char_length`, and
-`byte_length`. `char_length` counts Unicode code points in the decoded value,
-not UTF-16 code units or displayed grapheme clusters (for example, an emoji may
-be one code point while a letter plus a combining accent is two). `byte_length`
-is the Ghidra data definition's occupied byte length, including terminators or
-padding when part of that definition; it is not a re-encoding of `value`.
-The ambiguous `length` field is removed: select `char_length` or `byte_length`
-explicitly in filters, sorting and field selection. Both commands support the
-shared query options. `find string ""` matches all defined string values;
-use `--limit 0` to return all rows. Its pattern and any `--filter` are both
-applied before paging.
-`string refs` uses the same literal, case-insensitive matching on actual string
-values, including embedded newlines, quotes and backslashes.
+`find string` and `string refs` use case-insensitive literal substring matching
+on defined string values. An empty result does not establish that the text is
+absent from memory. `find string ""` matches all defined string values.
+For `string list` and `find string`, `char_length` counts Unicode code points,
+not UTF-16 code units or displayed grapheme clusters. `byte_length` is the
+Ghidra data definition's occupied byte length, including any terminators or
+padding in that definition; it is not a re-encoding of `value`.
 
 `find text TEXT` searches the program's loaded memory regardless of string
-definitions. It encodes the non-empty literal TEXT using `--encoding` (default
-`utf-8`) and matches those exact bytes, including overlapping occurrences.
-Matching is case-sensitive; no regular expressions or character normalization
-are applied. Encodings use Java charset names and aliases, including `ascii`,
-`utf-8`, `utf-16le`, `utf-16be`, `shift_jis`, and `windows-31j` (CP932).
-Unknown encodings and text that cannot be represented in the encoding are errors.
-No NUL terminator is added. Use `utf-16le` or `utf-16be` for UTF-16 without a BOM;
-Java's `utf-16` encoding includes a BOM in the search bytes.
-Rows contain `address` (the match start), `byte_length`, and the canonical
-`encoding` name. Search does not create string definitions or infer surrounding
-string boundaries. `find bytes HEX` remains available for exact byte patterns.
+definitions. It encodes the literal TEXT using `--encoding` (default `utf-8`)
+and matches exact bytes, including overlapping occurrences. Matching is
+case-sensitive, without character normalization or an added NUL terminator;
+matches need not align with string boundaries. Encodings use Java charset names
+and aliases, such as `shift_jis` or `windows-31j` (CP932).
+Use `utf-16le` or `utf-16be` for UTF-16 without a BOM; Java's `utf-16` encoding
+includes a BOM in the search bytes.
 
 `find bytes --regex PATTERN` searches loaded, initialized memory with Ghidra's
-native byte regular expressions, including undefined data. No text decoding or
-`--encoding` is applied. It does not enumerate every overlapping match; long
-matches, lookaround, and anchors can be affected by buffer boundaries.
+native byte regular expressions, including undefined data. It matches raw bytes
+and does not enumerate every overlapping match; long matches, lookaround, and
+anchors can be affected by buffer boundaries.
 
-String names and external/import names resolve directly. For plain `graph
-callers/callees`, `--limit N` bounds traversal in the Java bridge; filter, sort,
-count, or offset may require a broader traversal.
+String names and external/import names resolve directly. For plain
+`graph callers/callees`, `--limit N` bounds traversal; filter, sort, count, or
+offset may require a broader traversal.
 For instruction-text matching and disassembly ranges, see
 [low-level analysis](low-level.md#disassembly-and-analysis-boundaries).
 
@@ -115,24 +91,15 @@ ghidra-cli memory map --project target
 ghidra-cli memory read 0x401000 64 --project target
 ```
 
-Use `memory write ADDRESS "HEX BYTES"` to edit bytes and
-`find bytes "HEX BYTES"` to search them.
-See [patching](low-level.md#patching) for edit behavior.
+For byte edits, see [patching](low-level.md#patching).
 
 ## Query controls
 
-Use `function list`, `string list`, and `memory map` for their respective lists,
-and `program imports` / `program exports` for external symbols and entry points.
-These commands share filtering, field selection, sorting, pagination, and counts.
-
-`--limit 0` returns all rows. Filters, sorting, pagination, and counts generally
-run in Rust after a full fetch; small limits may not bound underlying work.
-The default cap also applies with no query options or with only `--fields`.
-An explicit limit overrides it; `--count` ignores the default but honors an
-explicit offset/limit, returning the selected page's count. Byte, text, and string
-searches have no additional fixed result cap.
-Output precedence: explicit format, `--pretty`, `--json`, configured default,
-TTY detection.
+Query order is filter, sort, offset/limit, then count or field selection.
+The result cap defaults to `default_limit` (1000 unless configured), including
+with no query options or only `--fields`. `--limit 0` returns all rows.
+`--count` ignores the default cap but honors an explicit offset/limit, counting
+the selected page. Small limits may still require scanning or fetching all matches.
 
 ```bash
 ghidra-cli function list --count --project target

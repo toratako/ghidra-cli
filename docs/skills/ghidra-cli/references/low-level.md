@@ -15,34 +15,23 @@ ghidra-cli function create 0x401234 parse_entry --project target
 `disassemble` reads existing instructions from the selected start; `--end`
 sets an inclusive end address. It can continue beyond the starting function.
 Use `function disassemble` to restrict results to the entire function body,
-including disjoint ranges. Both use the shared filter, sort, offset, then limit
-order. `--limit N` returns at most N matching instructions; `--limit 0` is
-unlimited. Omitted limits use `default_limit` (1000 in the default configuration).
+including disjoint ranges. Both use the shared
+[query controls](exploration.md#query-controls).
 
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
 text, case-insensitively unless `--case-sensitive` is given. Either range
 bound can be omitted; a one-sided range stays in the supplied endpoint's address
 space. Use `find calls` for resolved call destinations.
 
-Explicit `--format asm` prints one instruction per line (address, bytes, mnemonic,
-operands). The default output format is unchanged.
+`--format asm` prints one instruction per line (address, bytes, mnemonic, operands).
 
 Use `define-code TARGET` when auto-analysis missed a known code location.
-TARGET is a required positional argument, not a `--target` option. It decodes the
-loaded bytes and saves instruction definitions in Ghidra without changing those
-bytes or executing the program. Ghidra follows statically known code flow; this
-is not a linear sweep of every byte. Without `--end`, there is no explicit range
-restriction. With `--end END`, only complete instructions and delay-slot groups
-inside the inclusive TARGET:END range are created; out-of-range branch targets
-are not defined. Endpoints accept exact names or explicit addresses and must be
-ascending in the same address space. Existing instructions/data are not overwritten;
-an instruction already at TARGET produces an unchanged receipt.
-
-The command returns only a receipt (`address`, `end`, `status`, `changed`,
-`already_defined`, `ok`, `landed`), never instruction rows. Status is `defined`,
-`unchanged`, or `failed`; failure to define an instruction at TARGET is an error.
-Use `disassemble` afterward to read instructions. There is no `--limit`, and
-`default_limit` does not affect code creation. Query flags are not accepted.
+It creates instruction definitions by following statically known code flow,
+rather than sweeping every byte. `--end END` confines complete instructions and
+delay-slot groups to the inclusive TARGET:END range; without it, code creation
+has no explicit range bound. Endpoints must share an address space. Existing
+instructions/data are not overwritten; use `clear` to replace incorrect definitions.
+The command returns a change receipt; use `disassemble` afterward to read instructions.
 
 If analysis ran through inline data or chose the wrong boundary:
 
@@ -77,9 +66,8 @@ ghidra-cli analyzer set "ASCII Strings" true --project target
 ghidra-cli analyze --project target --program target.bin
 ```
 
-`analyzer set` only changes the enabled option. Choose names from `analyzer list`
-and execute with `analyze`. This analyzes the entire program using its current
-settings, including programs that have already been analyzed.
+For analyzer settings and whole-program reanalysis, see
+[import and reanalysis](programs.md#import-and-reanalysis).
 
 ## Patching
 
@@ -87,10 +75,7 @@ settings, including programs that have already been analyzed.
 ghidra-cli memory write 0x401234 "90 90" --project target
 ```
 
-`memory write ADDRESS HEX` accepts non-empty, complete hex byte pairs,
-contiguous or quoted with spaces. Supply the intended instruction encoding for
-the target ISA. The entire range must be mapped and initialized. Writing clears
-existing code units in that range and restores any temporarily changed block
-write permissions. Use `define-code` to restore instruction definitions when needed.
+`memory write` requires mapped, initialized memory and clears existing code
+units in the written range. Use `define-code` to restore instruction definitions.
 
 Use [program export binary](programs.md#export) to write the edited binary.

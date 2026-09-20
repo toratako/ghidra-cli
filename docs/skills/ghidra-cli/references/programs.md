@@ -16,25 +16,19 @@ ghidra-cli program save --project target --program target.bin
 ghidra-cli bridge stop --project target
 ```
 
-`project delete NAME` stops its bridge and removes the `.gpr`/`.rep` artifacts.
-`program delete --program NAME` deletes a Program file only; data type archives
-and other project file types are rejected.
-`program list` and `program info` report the saved name and project
-file `path`. `program list` includes subfolders; `bridge status` uses the same recursive
-listing for `program_count`. Use `path` to distinguish same-named programs.
-Other program responses and artifact manifests use the saved
-name. `executable_path` identifies the original input file; Ghidra's internal
-Program name can differ and is not used as the CLI display name.
-`program stats` reports program statistics; `program info` reports the loaded program's metadata.
+`project delete NAME` stops its bridge and deletes the project;
+`program delete --program NAME` deletes only that program file.
+`program list` includes subfolders. Use the project-file `path` from `program list`
+or `program info` to distinguish same-named programs. Displayed program names
+are saved file names; `executable_path` identifies the original input file.
+Use `program stats` for aggregate counts.
 See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 
 ## Imported and exported symbols
 
-`program imports` lists external symbols with `name`, `address`, and `library`.
-`program exports` lists symbols Ghidra marks as external entry points, with
-`name` and `address`.
-Both accept the shared query options, for example:
+`program imports` lists external symbols and their libraries; `program exports`
+lists symbols Ghidra marks as external entry points.
 
 ```bash
 ghidra-cli program imports --filter 'library~libc' --fields name,address --limit 0
@@ -43,15 +37,13 @@ ghidra-cli program exports --sort name --limit 0
 
 ## Import and reanalysis
 
-Import waits for completion. Use `import --no-analyze` to omit analysis and
-`analyze --project target --program target.bin` to analyze or reanalyze the entire
-program using its current analyzer settings. `analyzer list` and `analyzer set`
-inspect or change those settings without running analysis.
+`analyze --project target --program target.bin` analyzes the entire program
+using its current options. `analyzer list` and `analyzer set` inspect or change
+those options without running analysis.
 `import INPUT --program NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
-name (Ghidra may add a suffix on collision). An explicit name
-must be a single file name and must not already exist. The import response reports
-the actual saved name. See [starting with a program](../SKILL.md#start-with-a-program)
+name (Ghidra may add a suffix on collision).
+See [starting with a program](../SKILL.md#start-with-a-program)
 for the ordinary import workflow and recovery when an import error reports a
 saved program.
 
@@ -74,9 +66,8 @@ see [disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-
 
 ## Export
 
-Supported formats are `xml`, `c`, `binary`, `gzf`, `asm`, `hex`, and `html`
-(case-insensitive). Use `c` for decompiled C and `asm` for the Ghidra text listing.
-Every format requires an output file via `--output PATH` (`-o PATH`).
+Use `c` for decompiled C, `asm` for an instruction listing, `binary` for edited
+bytes, and `gzf` for a Ghidra program archive.
 
 ```bash
 ghidra-cli program export c --project target -o ./target.c
@@ -84,11 +75,9 @@ ghidra-cli program export gzf --project target -o ./target.gzf
 ghidra-cli program export binary -o ./target.patched.bin --project target
 ```
 
-`program export gzf -o PATH` saves the program before packing, stages the archive
-beside its destination, and atomically replaces the destination only after a
-successful export. Failure or cancellation before publication preserves an
-existing destination; a filesystem without atomic replacement support returns
-an error.
+`gzf` saves the program before packing and atomically replaces the destination
+after successful export. Failure or cancellation before replacement preserves
+an existing destination; filesystems without atomic replacement support return an error.
 
 Import inputs and program export destinations resolve relative to the CLI's
 working directory, including when reusing a bridge started elsewhere or executing

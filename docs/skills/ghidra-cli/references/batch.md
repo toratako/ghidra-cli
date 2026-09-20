@@ -6,8 +6,7 @@ for persistence and retry decisions.
 
 ## Syntax
 
-A batch file has one subcommand per line, without `ghidra-cli`. Quote multiword
-arguments, for example:
+A batch file has one subcommand per line, without `ghidra-cli`. Quote multiword arguments, for example:
 
 ```text
 function set-signature main --signature "int main(int argc, char **argv)"
@@ -46,19 +45,7 @@ For import inputs and program export destinations, see
 
 ## Result structure
 
-In JSON output, `.[0]` is the batch report:
-
-| Field | Meaning |
-|---|---|
-| `commands_parsed` | Number of command lines, excluding blank lines and comments |
-| `commands_executed` | Number of attempted commands, including failures |
-| `failed` | Number of failed commands |
-| `not_executed` | Commands left after execution stopped |
-| `results` | Attempted commands in execution order |
-
-Each result has `line` (the one-based source line number) and `command`. Successful
-commands have `result`; failures have `error`, `exit_code`, and, when supplied by
-the command, `detail`.
-Nested batch reports appear within the containing command's result or error
-detail. A nonzero exit still leaves the report on stdout; stderr contains only
-the batch diagnostic and summary.
+In JSON output, `.[0].results` contains attempted commands in execution order.
+Each result's `line` is the one-based source line number. The report's
+`commands_executed` includes failed attempts. Nested batch reports appear within
+the containing command's result or error detail.

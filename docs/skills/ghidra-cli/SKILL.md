@@ -11,9 +11,7 @@ arguments. Read the references below only when their details are needed.
 Global `--project PROJECT --program PROGRAM` select the target. Each project
 reuses a JVM bridge; program operations are serialized while `bridge status`,
 `job list`, `job get`, and `job cancel` remain responsive.
-Global `--project`, `--program`, `--projects-dir`, `--json`, and `--pretty` may
-appear with subcommands. Command-level project/program options override globals
-and configured defaults.
+Command-level `--project`/`--program` options override globals and configured defaults.
 
 Use `0x`-prefixed addresses and retain any space/segment qualifiers.
 Name-or-address targets treat unprefixed values, including `FUN_...`, as exact names.
@@ -33,13 +31,10 @@ ghidra-cli import ./target.bin --project target --program target.bin
 ghidra-cli program info --project target --program target.bin
 ```
 
-Import creates the project as needed and starts the bridge automatically. A fresh
-import analyzes and commits before opening the persistent bridge.
-`--no-analyze` omits analysis; `analyze` explicitly reruns it, so it is not needed
-immediately after a normal import.
+Import creates the project and starts its bridge as needed, and runs analysis
+by default. Use `--no-analyze` to defer analysis.
 
-`program info` reports the loaded program's format, language, image base, and function
-count. If `main` is absent, use `function list` to choose a name or address.
+If `main` is absent, use `function list` to choose a name or address.
 Raw/headerless input needs explicit language and load parameters; see
 [raw import](references/programs.md#raw-import).
 On import, `--program NAME` sets the saved project file name; an existing
@@ -70,7 +65,8 @@ memory read 0x404000 32
 ghidra-cli batch ./queries.ghidra --project target --program target.bin --json
 ```
 
-An empty `find string` result does not prove the text is absent from memory.
+For text not yet defined as strings, use
+[memory text search](references/exploration.md#search-strings-xrefs-and-graphs).
 
 Quote multiword arguments; shell variables, command substitutions, and wildcards
 are not expanded. See [batch syntax and targeting](references/batch.md) for details.
@@ -78,14 +74,11 @@ are not expanded. See [batch syntax and targeting](references/batch.md) for deta
 ## Results, edits, and jobs
 
 Output defaults to human-readable on a terminal and compact JSON when piped.
-`--json` and `--pretty` explicitly select JSON, including for management and
-configuration commands. Use `--format ndjson` for newline-delimited JSON.
-`--fields` restricts query result fields. Results go to
-stdout. In JSON modes, errors on stderr have `status`, `message`, `exit_code`,
-and optional `detail` fields.
-
-Progress goes to stderr in text mode; JSON modes and `--quiet` suppress it.
-Explicit verbosity still enables diagnostic logs.
+`--json` and `--pretty` explicitly select JSON. Format precedence is `--format`,
+`--pretty`, `--json`, the configured format, then terminal detection.
+Use `--format ndjson` for newline-delimited JSON. Results go to stdout; errors
+and progress go to stderr. JSON modes include structured error detail and
+suppress progress.
 
 Edits are saved automatically before success is returned, including analysis,
 scripts, and each operation in a batch.
@@ -108,10 +101,9 @@ and error details.
 
 A socket timeout does not cancel the job. Inspect `job list` for active, queued,
 and recent jobs, or `job get ID` for one job, before retrying a mutation.
-`job get` requires an ID. `job cancel [ID]` requests cancellation, defaulting to
-the active job when the ID is omitted. Queued jobs are removed immediately;
-running jobs cancel cooperatively. A timeout is reported with exit 75, distinct
-from a command failure.
+`job cancel [ID]` defaults to the active job when the ID is omitted.
+Queued jobs are removed immediately; running jobs cancel cooperatively.
+A timeout is reported with exit 75, distinct from a command failure.
 
 ## Read details as needed
 
