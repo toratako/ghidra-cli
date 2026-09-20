@@ -41,3 +41,4 @@ Path and lifecycle changes must follow the shared
 ## Owner Notes (Do NOT edit this section by $agent-instruction-prune)
 
 - Do NOT prune @CHANGELOG.md
+- Do not consider backward compatibility; instead, we are prioritizing aesthetic excellence in the CLI's design.
