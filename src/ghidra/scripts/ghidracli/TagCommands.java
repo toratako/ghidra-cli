@@ -60,36 +60,12 @@ final class TagCommands {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
         if (name == null || name.isEmpty()) return errorResult("Tag name required");
-        int limit = getNonnegativeIntArg(args, "limit", 0);
 
         FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
         FunctionTag tag = tm.getFunctionTag(name);
         if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
 
-        JsonArray functions = new JsonArray();
-        if (tm.getUseCount(tag) > 0) {
-            // No public reverse index in Ghidra; linear scan like Ghidra's own
-            // Function Tags window. Non-external functions only (§7a policy).
-            FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
-            while (iter.hasNext()) {
-                if (limit > 0 && functions.size() >= limit) break;
-                Function func = iter.next();
-                if (func.getTags().contains(tag)) {
-                    JsonObject o = new JsonObject();
-                    o.addProperty("name", func.getName());
-                    o.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-                    functions.add(o);
-                }
-            }
-        }
-        // Envelope constraint: "target"/"count" are META_KEYS on the Rust side,
-        // so this unwraps to member-function rows. Do not add non-meta keys
-        // (comment/use_count live in tag_list).
-        JsonObject result = new JsonObject();
-        result.addProperty("target", name);
-        result.add("functions", functions);
-        result.addProperty("count", functions.size());
-        return result;
+        return TagSupport.tagToJson(tag, tm);
     }
 
     JsonObject handleTagCreate(JsonObject args) {
@@ -138,7 +114,7 @@ final class TagCommands {
 
             // Capture BOTH counts before delete: use_count is Ghidra's raw number
             // (may include external functions); functions_affected is the
-            // non-external membership consistent with what `tag get` shows.
+            // non-external membership consistent with `function list --tag`.
             int useCount = tm.getUseCount(tag);
             int functionsAffected = 0;
             if (useCount > 0) {

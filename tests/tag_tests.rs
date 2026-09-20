@@ -142,22 +142,47 @@ fn test_tag_add_dedupes_argv() {
 
 #[test]
 #[serial]
-fn test_tag_get_and_list_function() {
+fn test_tag_get_details_track_membership() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
+    assert_eq!(addrs.len(), 2);
     cleanup_tag(harness, "tt5_member");
 
-    tag_json(harness, &["tag", "add", &addr, "tt5_member"]);
+    tag_json(
+        harness,
+        &["tag", "create", "tt5_member", "--comment", "Review queue"],
+    );
+    let mut expected = serde_json::json!({
+        "name": "tt5_member", "comment": "Review queue", "use_count": 0
+    });
+    assert_eq!(
+        tag_json(harness, &["tag", "get", "tt5_member"]),
+        vec![expected.clone()]
+    );
 
-    // tag get unwraps to member-function rows
-    let members = tag_json(harness, &["tag", "get", "tt5_member"]);
-    assert_eq!(members.len(), 1);
-    assert_eq!(members[0]["address"], serde_json::json!(addr));
+    for addr in &addrs {
+        tag_json(harness, &["tag", "add", addr, "tt5_member"]);
+    }
+    expected["use_count"] = serde_json::json!(2);
+    assert_eq!(
+        harness.client().unwrap().tag_get("tt5_member").unwrap(),
+        expected
+    );
+    assert_eq!(
+        tag_json(harness, &["tag", "get", "tt5_member"]),
+        vec![expected.clone()]
+    );
 
-    // tag list --function shows the function's tags
-    let tags = tag_json(harness, &["tag", "list", "--function", &addr]);
-    assert!(tags.iter().any(|t| t["name"] == "tt5_member"));
+    let tags = tag_json(harness, &["tag", "list", "--function", &addrs[0]]);
+    assert!(tags.contains(&expected));
+
+    tag_json(harness, &["tag", "remove", &addrs[0], "tt5_member"]);
+    expected["use_count"] = serde_json::json!(1);
+    assert_eq!(
+        tag_json(harness, &["tag", "get", "tt5_member"]),
+        vec![expected]
+    );
 
     cleanup_tag(harness, "tt5_member");
 }
@@ -175,8 +200,23 @@ fn test_function_list_tag_filter_and_semantics() {
     tag_json(harness, &["tag", "add", &addrs[0], "tt6_both", "tt6_only1"]);
     tag_json(harness, &["tag", "add", &addrs[1], "tt6_both"]);
 
-    let rows = tag_json(harness, &["function", "list", "--tag", "tt6_both"]);
+    let rows = tag_json(
+        harness,
+        &[
+            "function",
+            "list",
+            "--tag",
+            "tt6_both",
+            "--fields",
+            "name,address",
+        ],
+    );
     assert_eq!(rows.len(), 2);
+    for (row, addr) in rows.iter().zip(&addrs) {
+        assert!(row["name"].is_string());
+        assert_eq!(row["address"], *addr);
+        assert_eq!(row.as_object().unwrap().len(), 2);
+    }
 
     // Multiple --tag = AND: only the function carrying BOTH matches.
     let rows = tag_json(
@@ -319,15 +359,13 @@ fn test_tag_set_comment_and_clear() {
         &["tag", "set-comment", "tt11_c", "first pass done"],
     );
 
-    let tags = tag_json(harness, &["tag", "list"]);
-    let row = tags.iter().find(|t| t["name"] == "tt11_c").unwrap();
-    assert_eq!(row["comment"], "first pass done");
+    let tags = tag_json(harness, &["tag", "get", "tt11_c"]);
+    assert_eq!(tags[0]["comment"], "first pass done");
 
     // Empty string clears
     tag_json(harness, &["tag", "set-comment", "tt11_c", ""]);
-    let tags = tag_json(harness, &["tag", "list"]);
-    let row = tags.iter().find(|t| t["name"] == "tt11_c").unwrap();
-    assert_eq!(row["comment"], "");
+    let tags = tag_json(harness, &["tag", "get", "tt11_c"]);
+    assert_eq!(tags[0]["comment"], "");
 
     cleanup_tag(harness, "tt11_c");
 }

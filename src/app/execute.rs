@@ -267,7 +267,7 @@ pub(super) fn execute_via_bridge(
             use cli::TagCommands;
             match cmd {
                 TagCommands::List(args) => client.tag_list(list_limit, args.function.as_deref()),
-                TagCommands::Get(args) => client.tag_get(&args.name, list_limit),
+                TagCommands::Get(args) => client.tag_get(&args.name),
                 TagCommands::Create(args) => client.send_command(
                     "tag_create",
                     Some(json!({"name": args.name, "comment": args.comment})),

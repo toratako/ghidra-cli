@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Make `tag get NAME` return tag details (`name`, `comment`, `use_count`). Use
+  `function list --tag NAME` for member functions. `tag get` retains target and
+  output options; filtering, sorting, pagination, and count options are removed.
 - Consolidate call queries under `graph callers` and `graph callees`; remove
   `find calls`, `function calls`, and their bridge/client adapters. All call
   graphs share instruction validation and thunk/typed-pointer resolution.

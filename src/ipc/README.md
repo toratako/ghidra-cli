@@ -63,7 +63,12 @@ respectively.
 `BridgeClient::find_string_page` exposes filter/offset/limit, while
 `find_string` and `find_string_with_limit` retain their existing defaults.
 
-`list_imports`, `list_exports`, `tag_list`, `tag_get`, `graph_calls`,
+`tag_get` accepts an exact, case-sensitive `name` and returns one tag object:
+`{name, comment, use_count}`. `use_count` is Ghidra's total usage, including
+external functions when present. Membership queries use `list_functions` with
+`tags`, which lists non-external functions.
+
+`list_imports`, `list_exports`, `tag_list`, `graph_calls`,
 `graph_callers`, `graph_callees`, and `find_instruction` accept `limit` only in
 `0..=2147483647`. Graph `depth` uses the same checked range and defaults to 1.
 Missing/null limits default to zero (unlimited); fractional, nonnumeric and

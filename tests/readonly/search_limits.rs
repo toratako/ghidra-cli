@@ -51,7 +51,6 @@ public class CompleteIntQueryLimitFixture extends GhidraScript {
             ("list_imports", json!({}), "imports"),
             ("list_exports", json!({}), "exports"),
             ("tag_list", json!({}), "tags"),
-            ("tag_get", json!({"name":"selected"}), "functions"),
             ("graph_calls", json!({}), "nodes"),
             ("find_instruction", json!({"pattern":"RET"}), "results"),
         ] {

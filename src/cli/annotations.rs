@@ -1,4 +1,4 @@
-use super::options::QueryOptions;
+use super::options::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -87,7 +87,7 @@ pub struct CreateSymbolArgs {
 pub enum TagCommands {
     /// List all function tags (or one function's tags with --function)
     List(TagListArgs),
-    /// Show the functions carrying a tag
+    /// Get function tag details
     Get(TagGetArgs),
     /// Create a function tag
     Create(TagCreateArgs),
@@ -117,7 +117,7 @@ pub struct TagGetArgs {
     /// Tag name (case-sensitive)
     pub name: String,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

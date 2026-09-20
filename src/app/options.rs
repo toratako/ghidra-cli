@@ -318,7 +318,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         },
         Commands::Tag(cmd) => match cmd {
             cli::TagCommands::List(args) => Some(args.options.clone()),
-            cli::TagCommands::Get(args) => Some(args.options.clone()),
+            cli::TagCommands::Get(args) => Some((&args.options).into()),
             _ => None,
         },
         Commands::Comment(cmd) => match cmd {
@@ -367,7 +367,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             Limit
         }
         Commands::Function(cli::FunctionCommands::Disasm(_))
-        | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
+        | Commands::Tag(cli::TagCommands::List(_))
         | Commands::Graph(
             cli::GraphCommands::Calls(_)
             | cli::GraphCommands::Callers(_)
@@ -391,7 +391,7 @@ pub(super) fn validate_query_bounds(
     let int_limit = matches!(
         command,
         Commands::Program(cli::ProgramCommands::Imports(_) | cli::ProgramCommands::Exports(_))
-            | Commands::Tag(cli::TagCommands::List(_) | cli::TagCommands::Get(_))
+            | Commands::Tag(cli::TagCommands::List(_))
             | Commands::Graph(_)
             | Commands::Find(cli::FindCommands::Instruction(_))
     );

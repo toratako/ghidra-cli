@@ -267,6 +267,9 @@ impl RecordedBridge {
                     "comment_delete" => {
                         json!({"status": "deleted", "address": args["address"]})
                     }
+                    "tag_get" => {
+                        json!({"name": args["name"], "comment": "Review queue", "use_count": 2})
+                    }
                     "list_functions" => {
                         let mut rows = vec![
                             json!({"name": "excluded", "size": 0}),
@@ -1643,7 +1646,6 @@ fn bounded_queries_reject_oversized_limits_before_bridge_work() {
         vec!["program", "imports"],
         vec!["program", "exports"],
         vec!["tag", "list"],
-        vec!["tag", "get", "interesting"],
         vec!["graph", "calls"],
         vec!["graph", "callers", "main"],
         vec!["graph", "callees", "main"],
@@ -3413,6 +3415,48 @@ fn program_info_and_stats_support_projection_and_format_in_standalone_and_batch(
                 .count(),
             2
         );
+    }
+}
+
+#[test]
+fn tag_get_preserves_details_and_projection_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_limit: 2147483648\n",
+    )
+    .unwrap();
+    for fields in [None, Some("comment,use_count")] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec!["tag", "get", "review", "--program", "B", "--json"];
+            let mut expected = json!({"name": "review", "comment": "Review queue", "use_count": 2});
+            if let Some(fields) = fields {
+                args.extend(["--fields", fields, "--format", "json-compact"]);
+                expected.as_object_mut().unwrap().remove("name");
+            }
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            if batch && fields.is_none() {
+                assert_eq!(result, expected);
+            } else {
+                assert_eq!(result, json!([expected]));
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{domain:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"]["program"], "B");
+            assert_eq!(domain[1]["command"], "tag_get");
+            assert_eq!(domain[1]["args"], json!({"name": "review"}));
+        }
     }
 }
 

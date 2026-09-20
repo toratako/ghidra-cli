@@ -330,9 +330,9 @@ impl BridgeClient {
         )
     }
 
-    /// Get the member functions of a tag.
-    pub fn tag_get(&self, name: &str, limit: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command("tag_get", Some(json!({"name": name, "limit": limit})))
+    /// Get a function tag's name, comment, and use count.
+    pub fn tag_get(&self, name: &str) -> Result<serde_json::Value> {
+        self.send_command("tag_get", Some(json!({"name": name})))
     }
 
     pub fn type_get(&self, name: &str) -> Result<serde_json::Value> {

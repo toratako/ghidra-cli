@@ -125,15 +125,17 @@ generated name.
 
 ```text
 ghidra-cli tag list                        # All tags (name, comment, use count)
-ghidra-cli tag get <name>                  # Functions carrying a tag
+ghidra-cli tag get <name>                  # Tag details
 ghidra-cli tag create <name> --comment "…" # Create a tag (comment optional)
 ghidra-cli tag add <func> <tag>...         # Attach tags (auto-creates missing ones)
 ghidra-cli tag remove <func> <tag>...      # Detach tags (--all clears every tag)
 ghidra-cli tag rename <old> <new>          # Rename everywhere it is used
 ghidra-cli tag set-comment <name> "…"      # Set/clear a tag's comment
 ghidra-cli tag delete <name>               # Delete tag, detaching from all functions
-ghidra-cli function list --tag <name>      # Filter by tag (repeatable = AND)
+ghidra-cli function list --tag <name>      # Functions carrying a tag (repeatable = AND)
 ghidra-cli function list --untagged        # Functions with no tags
 ```
 
 Tag names are case-sensitive; `--filter "tags ~ 'crypto'"` matches tag text.
+`use_count` can include external functions; `function list --tag` lists
+non-external functions.
