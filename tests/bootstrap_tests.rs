@@ -76,7 +76,7 @@ impl Drop for Project {
 }
 
 #[test]
-fn configured_startup_targets_ignore_removed_environment_defaults() {
+fn configured_startup_targets_apply_to_all_entry_points() {
     require_ghidra!();
     let project = Project::new();
     let raw = project.raw();
@@ -110,12 +110,7 @@ fn configured_startup_targets_ignore_removed_environment_defaults() {
             .args(&args)
             .arg("--json")
             .env("GHIDRA_CLI_CONFIG", &config)
-            .env_remove("GHIDRA_INSTALL_DIR")
-            .env(
-                "GHIDRA_DEFAULT_PROJECT",
-                project.root.path().join("missing-project"),
-            )
-            .env("GHIDRA_DEFAULT_PROGRAM", "missing-program");
+            .env_remove("GHIDRA_INSTALL_DIR");
         let output =
             common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
         assert!(
@@ -235,7 +230,6 @@ public class CheckProgramIdentity extends GhidraScript {
     project.assert_program_identity("raw-name");
     let receipt = project.ok(&["define-code", "0x8000", "--end", "0x8002"]);
     assert_eq!(receipt[0]["landed"], true);
-    assert!(receipt[0].get("instructions").is_none());
     let disassembly = project.ok(&["disassemble", "0x8000", "--limit", "2"]);
     assert_eq!(disassembly[0]["mnemonic"], "XOR");
     let duplicate = project.run(&args);
@@ -324,7 +318,7 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
 }
 
 #[test]
-fn analyze_reanalyzes_with_changed_settings_and_rejects_the_removed_wire_command() {
+fn analyze_reanalyzes_with_changed_settings() {
     require_ghidra!();
     let project = Project::new();
     let raw = project.raw();
@@ -344,12 +338,6 @@ fn analyze_reanalyzes_with_changed_settings_and_rejects_the_removed_wire_command
     let client = project.client();
     let strings = || project.ok(&["string", "list", "--limit", "0"]);
     assert_eq!(strings(), serde_json::json!([]));
-    let error = client
-        .send_command("analyze_run", None)
-        .expect_err("removed wire command must not run analysis");
-    assert!(error.to_string().contains("Unknown command: analyze_run"));
-    assert_eq!(strings(), serde_json::json!([]));
-
     project.ok(&["analyzer", "set", "ASCII Strings", "false"]);
     let first = project.ok(&["analyze"]);
     assert_eq!(first[0]["command"], "analyze");

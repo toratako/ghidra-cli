@@ -394,7 +394,7 @@ mod tests {
                 .unwrap();
             let mut request = String::new();
             BufReader::new(&stream).read_line(&mut request).unwrap();
-            assert!(request.contains("shutdown"));
+            assert!(request.contains("ping"));
             for _ in 0..30 {
                 if stream.write_all(b" ").is_err() {
                     break;
@@ -404,11 +404,7 @@ mod tests {
         });
         let started = std::time::Instant::now();
         let error = client
-            .send_command_with_deadline(
-                "shutdown",
-                None,
-                Some(started + Duration::from_millis(150)),
-            )
+            .send_command_with_deadline("ping", None, Some(started + Duration::from_millis(150)))
             .unwrap_err();
         assert!(
             error
@@ -427,17 +423,13 @@ mod tests {
         drop(listener);
         let started = std::time::Instant::now();
         assert!(client
-            .send_command_with_deadline(
-                "shutdown",
-                None,
-                Some(started + Duration::from_millis(100))
-            )
+            .send_command_with_deadline("ping", None, Some(started + Duration::from_millis(100)))
             .is_err());
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
-    fn shutdown_does_not_fall_back_to_an_unconfirmed_legacy_stop() {
+    fn shutdown_preserves_save_failure_without_resending() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let client = BridgeClient::new(listener.local_addr().unwrap().port());
         let server = std::thread::spawn(move || {
@@ -451,7 +443,7 @@ mod tests {
             assert_eq!(request["command"], "shutdown_wait");
             writeln!(
                 stream,
-                "{{\"status\":\"error\",\"message\":\"Unknown command: shutdown_wait\"}}"
+                "{{\"status\":\"error\",\"message\":\"Shutdown save failed\",\"detail\":{{\"save_failed\":true,\"saved\":false}}}}"
             )
             .unwrap();
             listener
@@ -459,8 +451,12 @@ mod tests {
         let error = client
             .shutdown_with_deadline(Some(std::time::Instant::now() + Duration::from_secs(2)))
             .unwrap_err();
-        assert!(error.to_string().contains("previous CLI"), "{error:#}");
-        assert!(format!("{error:#}").contains("Unknown command: shutdown_wait"));
+        let error = error
+            .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+            .expect("shutdown must preserve structured save failures");
+        assert_eq!(error.message, "Shutdown save failed");
+        assert_eq!(error.detail["save_failed"], true);
+        assert_eq!(error.detail["saved"], false);
         let listener = server.join().unwrap();
         listener.set_nonblocking(true).unwrap();
         assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);

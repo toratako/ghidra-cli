@@ -258,7 +258,6 @@ final class JobScheduler {
             case "bridge_info":
             case "job_status":
             case "job_cancel":
-            case "shutdown":
                 return true;
             default:
                 return false;
@@ -281,13 +280,6 @@ final class JobScheduler {
                     return errorResponse(result.get("error").getAsString());
                 }
                 return successResponse(result);
-            }
-            case "shutdown": {
-                beginShutdown();
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "shutdown");
-                response.addProperty("mode", "drain");
-                return response;
             }
             default:
                 return errorResponse("Unknown control command: " + command);

@@ -52,8 +52,7 @@ the same `ImportSupport` save/name boundary followed by TCP analysis. Explicit
 name collisions fail before loading; omitted names can use Ghidra's collision
 suffix. Import input paths are absolute without resolving symlinks, preserving
 the supplied file name as the default saved name in both routes.
-Always return the saved DomainFile name. An older running bridge must
-advertise `named_import` before receiving an import.
+Always return the saved DomainFile name.
 Loader option names are checked against the selected loader's default option
 arguments before import; unknown names fail with `import_status: not_started`.
 Ghidra's importer alone only logs and ignores those names.
@@ -75,8 +74,7 @@ the underlying operation or timeout classification.
 publishes by directory rename to
 `~/.config/ghidra-cli/bridge-sources/<content-hash>/`. Identical bundles are reused;
 content changes get new paths so concurrent projects/builds cannot mix revisions.
-Keep old bundles while JVMs may still use them. Startup no longer reads the old
-single-file `scripts/` directory.
+Keep old bundles while JVMs may still use them.
 
 Register every new Java file in that inventory. `doctor` compiles it in a
 temporary tree; unit tests check source coverage. Real Ghidra tests are required

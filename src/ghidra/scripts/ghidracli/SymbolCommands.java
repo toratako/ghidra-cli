@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Set;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
-import static ghidracli.JsonProtocol.getArgStringArray;
 
 final class SymbolCommands {
     private final ProgramSession session;
@@ -171,51 +170,24 @@ final class SymbolCommands {
     /** Revalidate the entire selection before mutating any selected symbol. */
     private List<Symbol> resolveScopedSymbols(SymbolTable table, String name, JsonObject args)
             throws CancelledException {
+        if (!args.has("targets") || !args.get("targets").isJsonArray()) {
+            throw new IllegalArgumentException("Symbol targets must be an array");
+        }
+        JsonArray targets = args.getAsJsonArray("targets");
+        if (targets.size() == 0) throw new IllegalArgumentException("Symbol targets cannot be empty");
         List<Symbol> selected = new ArrayList<>();
-        if (args.has("targets")) {
-            JsonArray targets = args.getAsJsonArray("targets");
-            if (targets.size() == 0) throw new IllegalArgumentException("Symbol targets cannot be empty");
-            Set<Long> ids = new HashSet<>();
-            for (JsonElement element : targets) {
-                JsonObject expected = element.getAsJsonObject();
-                long id = Long.parseLong(expected.get("id").getAsString());
-                Symbol symbol = table.getSymbol(id);
-                if (!ids.add(id) || symbol == null || !symbol.getName().equals(name)
-                        || !symbolToJson(symbol).equals(expected)) {
-                    throw new IllegalArgumentException("Stale or invalid symbol target: " + id);
-                }
-                selected.add(symbol);
+        Set<Long> ids = new HashSet<>();
+        for (JsonElement element : targets) {
+            JsonObject expected = element.getAsJsonObject();
+            long id = Long.parseLong(expected.get("id").getAsString());
+            Symbol symbol = table.getSymbol(id);
+            if (!ids.add(id) || symbol == null || !symbol.getName().equals(name)
+                    || !symbolToJson(symbol).equals(expected)) {
+                throw new IllegalArgumentException("Stale or invalid symbol target: " + id);
             }
-            return selected;
+            selected.add(symbol);
         }
-
-        // Legacy address-scoped requests must validate every requested address.
-        // Multiple symbols at one address require stable IDs to distinguish namespaces.
-        String[] addresses = getArgStringArray(args, "addresses");
-        List<Symbol> all = symbolsNamed(table, name);
-        if (addresses.length > 0) {
-            Set<Address> seen = new HashSet<>();
-            for (String value : addresses) {
-                Address address = new AddressResolver(session).parseAddress(value);
-                if (address == null) throw new IllegalArgumentException("Invalid address: " + value);
-                if (!seen.add(address)) continue;
-                Symbol match = null;
-                for (Symbol symbol : all) {
-                    if (!symbol.getAddress().equals(address)) continue;
-                    if (match != null) throw new IllegalArgumentException(
-                        "Ambiguous symbol at " + value + "; use stable symbol targets");
-                    match = symbol;
-                }
-                if (match == null) throw new IllegalArgumentException(
-                    "No symbol named '" + name + "' at address " + value);
-                selected.add(match);
-            }
-            return selected;
-        }
-        if (all.isEmpty()) throw new IllegalArgumentException("Symbol not found: " + name);
-        if (all.size() > 1) throw new IllegalArgumentException(
-            "'" + name + "' matches " + all.size() + " symbols; pass explicit address(es)");
-        return all;
+        return selected;
     }
 
     JsonObject handleSymbolDelete(JsonObject args) {

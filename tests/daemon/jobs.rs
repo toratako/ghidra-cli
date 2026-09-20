@@ -270,7 +270,7 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_shutdown_acknowledges_full_queue_before_draining() {
+fn test_shutdown_wait_drains_full_queue_before_reply() {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
@@ -340,10 +340,7 @@ public class HoldQueueForShutdown extends GhidraScript {
     }
     let overflow = control.stats().unwrap_err();
     assert!(overflow.to_string().contains("queue is full"));
-    // The active job cannot finish until after this response. A bounded timeout
-    // detects a blocked shutdown without depending on how quickly jobs execute.
-    let shutdown =
-        control.send_command_with_timeout("shutdown", None, Some(Duration::from_secs(5)));
+    // Shutdown must bypass the full queue, while its response waits for draining.
     let mut receipt = TcpStream::connect(("127.0.0.1", harness.port())).unwrap();
     writeln!(receipt, "{{\"command\":\"shutdown_wait\"}}").unwrap();
     receipt
@@ -355,7 +352,6 @@ public class HoldQueueForShutdown extends GhidraScript {
     let draining = control.status();
     std::fs::write(&release, b"release").unwrap();
     script.join().unwrap().unwrap();
-    shutdown.expect("shutdown must acknowledge before the active job is released");
     assert!(
         matches!(waiting, Err(ref error) if matches!(error.kind(),
         std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock)),

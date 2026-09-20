@@ -71,28 +71,14 @@ impl BridgeClient {
     /// Drain accepted jobs and confirm the final save before shutdown.
     #[allow(dead_code)] // Public library API; CLI shutdown uses a shared deadline.
     pub fn shutdown(&self) -> Result<()> {
-        self.send_command("shutdown_wait", None)
-            .map_err(Self::shutdown_error)?;
+        self.send_command("shutdown_wait", None)?;
         Ok(())
     }
 
     /// Shutdown using the lifecycle caller's remaining total time budget.
     pub fn shutdown_with_deadline(&self, deadline: Option<Instant>) -> Result<()> {
-        self.send_command_with_deadline("shutdown_wait", None, deadline)
-            .map_err(Self::shutdown_error)?;
+        self.send_command_with_deadline("shutdown_wait", None, deadline)?;
         Ok(())
-    }
-
-    fn shutdown_error(error: anyhow::Error) -> anyhow::Error {
-        if error.to_string() == "Unknown command: shutdown_wait"
-            && !error
-                .downcast_ref::<super::protocol::BridgeCommandError>()
-                .is_some_and(|error| error.detail["save_failed"] == true)
-        {
-            error.context("This bridge cannot confirm its final save. Save and stop it with the previous CLI before upgrading; the bridge has been left running")
-        } else {
-            error
-        }
     }
 
     /// Get bridge status.
@@ -317,31 +303,6 @@ impl BridgeClient {
         self.send_command(
             "symbol_rename",
             Some(json!({"old_name": old_name, "new_name": new_name, "targets": targets})),
-        )
-    }
-
-    /// `addresses` scopes the delete to exactly those symbols (by address);
-    /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
-    #[allow(dead_code)] // Retained public library adapter; CLI uses validated snapshots.
-    pub fn symbol_delete(&self, name: &str, addresses: &[String]) -> Result<serde_json::Value> {
-        self.send_command(
-            "symbol_delete",
-            Some(json!({"name": name, "addresses": addresses})),
-        )
-    }
-
-    /// `addresses` scopes the rename to exactly those symbols (by address);
-    /// see `resolve_symbol_addresses` in app/execute/symbols.rs for how callers compute it.
-    #[allow(dead_code)] // Retained public library adapter; CLI uses validated snapshots.
-    pub fn symbol_rename(
-        &self,
-        old_name: &str,
-        new_name: &str,
-        addresses: &[String],
-    ) -> Result<serde_json::Value> {
-        self.send_command(
-            "symbol_rename",
-            Some(json!({"old_name": old_name, "new_name": new_name, "addresses": addresses})),
         )
     }
 

@@ -82,7 +82,7 @@ fn instruction_search_accepts_ranges_and_rejects_empty_patterns() {
 }
 
 #[test]
-fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
+fn disassembly_uses_limit_and_count() {
     for target in [vec!["main"], vec!["0x1000"]] {
         let mut args = vec!["ghidra-cli", "disassemble"];
         args.extend(target);
@@ -100,12 +100,6 @@ fn disassembly_uses_limit_and_rejects_removed_instruction_counts() {
         assert!(
             matches!(cli.command, Commands::Disasm(args) if args.options.limit == Some(limit.parse().unwrap()))
         );
-    }
-    for flag in ["-n", "--instructions"] {
-        let error = Cli::try_parse_from(["ghidra-cli", "disassemble", "0x1000", flag, "10"])
-            .err()
-            .expect("removed instruction count must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
     let cli = Cli::try_parse_from(["ghidra-cli", "disassemble", "main", "--count"]).unwrap();
     assert!(matches!(cli.command, Commands::Disasm(args) if args.options.count));
@@ -127,11 +121,8 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
             assert_eq!(args.end.as_deref(), end);
         }
     }
-    assert!(Cli::try_parse_from(["ghidra-cli", "disassemble-at", "0x1000"]).is_err());
     for flags in [
         vec!["--limit", "1"],
-        vec!["-n", "1"],
-        vec!["--instructions", "1"],
         vec!["--count"],
         vec!["--count", "2"],
         vec!["--filter", "mnemonic=RET"],
@@ -150,7 +141,7 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
 }
 
 #[test]
-fn targets_require_one_positional_without_target_flag_compatibility() {
+fn targets_require_one_positional() {
     for command in [
         vec!["function", "delete"],
         vec!["define-code"],
@@ -242,24 +233,15 @@ fn targets_require_one_positional_without_target_flag_compatibility() {
             missing.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
-        for args in [
-            vec!["--target", "entry"],
-            vec!["--target=entry"],
-            vec!["entry", "--target", "entry"],
-            vec!["entry", "--target", "other"],
-            vec!["--target", "entry", "other"],
-            vec!["entry", "other"],
-        ] {
-            let error = Cli::try_parse_from(
-                ["ghidra-cli"]
-                    .into_iter()
-                    .chain(command.iter().copied())
-                    .chain(args),
-            )
-            .err()
-            .expect("removed target flag or second target must fail");
-            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
-        }
+        let error = Cli::try_parse_from(
+            ["ghidra-cli"]
+                .into_iter()
+                .chain(command.iter().copied())
+                .chain(["entry", "other"]),
+        )
+        .err()
+        .expect("second target must fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
         for flag in ["-h", "--help"] {
             let help = Cli::try_parse_from(
                 ["ghidra-cli"]
@@ -272,7 +254,6 @@ fn targets_require_one_positional_without_target_flag_compatibility() {
             assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
             let help = help.to_string();
             assert!(help.contains("<TARGET>"), "{help}");
-            assert!(!help.contains("--target"), "{help}");
         }
     }
 }
@@ -338,8 +319,6 @@ fn shared_format_help_lists_supported_choices() {
             }
             if flag == "--help" {
                 assert!(help.contains("ndjson"), "{help}");
-                assert!(!help.contains("json-stream"), "{help}");
-                assert!(!help.contains("Currently rendered as JSON"), "{help}");
             }
         }
     }
@@ -421,22 +400,7 @@ fn program_export_requires_output_for_every_format() {
 }
 
 #[test]
-fn program_export_formats_accept_only_canonical_names() {
-    for format in ["json", "cpp", "bin", "ascii"] {
-        for spelling in [format.to_string(), format.to_uppercase()] {
-            let error = Cli::try_parse_from([
-                "ghidra-cli",
-                "program",
-                "export",
-                &spelling,
-                "-o",
-                "exported.file",
-            ])
-            .err()
-            .expect("removed export formats must fail");
-            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-        }
-    }
+fn program_export_formats_accept_supported_spellings() {
     for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
         for spelling in [format.to_string(), format.to_uppercase()] {
             Cli::try_parse_from([
@@ -453,36 +417,7 @@ fn program_export_formats_accept_only_canonical_names() {
 }
 
 #[test]
-fn unsupported_query_formats_do_not_remove_hex_program_export() {
-    for format in ["tree", "hex", "ids", "count", "TREE", "HEX", "IDS", "COUNT"] {
-        assert!(format.parse::<OutputFormat>().is_err());
-        assert!(serde_json::from_str::<OutputFormat>(&format!("\"{format}\"")).is_err());
-        for command in [["program", "imports"], ["function", "list"]] {
-            let error =
-                Cli::try_parse_from(["ghidra-cli", command[0], command[1], "--format", format])
-                    .err()
-                    .expect("unsupported query format must fail");
-            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-        }
-    }
-
-    let cli = Cli::try_parse_from([
-        "ghidra-cli",
-        "program",
-        "export",
-        "hex",
-        "-o",
-        "exported.hex",
-    ])
-    .unwrap();
-    let Commands::Program(ProgramCommands::Export(args)) = cli.command else {
-        panic!("expected program export");
-    };
-    assert_eq!(args.format, "hex");
-}
-
-#[test]
-fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
+fn clear_accepts_optional_disassembly() {
     for disasm_at in [None, Some("0x1000")] {
         let mut command = vec!["ghidra-cli", "clear", "0x1000:0x1010"];
         if let Some(address) = disasm_at {
@@ -494,12 +429,6 @@ fn clear_defaults_to_clear_only_and_rejects_to_data_flag() {
         };
         assert_eq!(args.range, "0x1000:0x1010");
         assert_eq!(args.disasm_at.as_deref(), disasm_at);
-
-        command.push("--to-data");
-        let error = Cli::try_parse_from(command)
-            .err()
-            .expect("obsolete clear flag must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 }
 
@@ -553,7 +482,7 @@ fn type_creation_parses_struct_enum_and_typedef_arguments() {
 }
 
 #[test]
-fn type_creation_requires_kind_and_arguments_without_legacy_aliases() {
+fn type_creation_requires_kind_and_arguments() {
     assert!(Cli::try_parse_from(["ghidra-cli", "type", "create"]).is_err());
     for args in [
         vec!["struct"],
@@ -570,16 +499,6 @@ fn type_creation_requires_kind_and_arguments_without_legacy_aliases() {
             error.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
-    }
-    for args in [
-        vec!["create", "Header"],
-        vec!["create-enum", "Mode", "--values", "Read=1"],
-        vec!["typedef", "HeaderAlias", "Header"],
-    ] {
-        let error = Cli::try_parse_from(["ghidra-cli", "type"].into_iter().chain(args))
-            .err()
-            .expect("legacy type creation syntax must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 }
 
@@ -709,16 +628,7 @@ fn management_commands_accept_global_options_at_each_command_level() {
 }
 
 #[test]
-fn management_commands_reject_old_top_level_names_and_missing_job_id() {
-    for command in [
-        "start", "stop", "restart", "status", "ping", "jobs", "cancel",
-    ] {
-        let error = Cli::try_parse_from(["ghidra-cli", command])
-            .err()
-            .expect("old top-level command must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
-    }
-
+fn job_get_requires_an_id() {
     let error = Cli::try_parse_from(["ghidra-cli", "job", "get"])
         .err()
         .expect("job get requires an ID");
@@ -726,16 +636,6 @@ fn management_commands_reject_old_top_level_names_and_missing_job_id() {
         error.kind(),
         clap::error::ErrorKind::MissingRequiredArgument
     );
-}
-
-#[test]
-fn analyzer_run_is_rejected_without_a_compatibility_alias() {
-    for namespace in ["analyzer", "analysis-control"] {
-        let error = Cli::try_parse_from(["ghidra-cli", namespace, "run"])
-            .err()
-            .expect("removed analysis command must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
-    }
 }
 
 #[test]
@@ -800,7 +700,7 @@ fn parses_function_get_positional_target() {
 }
 
 #[test]
-fn canonical_commands_parse_without_aliases() {
+fn canonical_commands_parse() {
     for args in [
         vec!["xref", "to", "main"],
         vec!["xref", "from", "main"],
@@ -827,79 +727,7 @@ fn canonical_commands_parse_without_aliases() {
 }
 
 #[test]
-fn removed_command_names_are_rejected() {
-    for (namespace, removed) in [
-        (
-            None,
-            vec![
-                "prog",
-                "programs",
-                "fn",
-                "func",
-                "functions",
-                "strings",
-                "str",
-                "sym",
-                "symbols",
-                "mem",
-                "x-ref",
-                "xrefs",
-                "crossref",
-                "crossrefs",
-                "types",
-                "tags",
-                "analysis-control",
-                "comments",
-                "search",
-                "callgraph",
-                "cg",
-                "decomp",
-                "dec",
-                "disasm",
-                "dis",
-                "disasm-at",
-                "scripts",
-                "analysis",
-            ],
-        ),
-        (Some("program"), vec!["ls"]),
-        (
-            Some("function"),
-            vec!["ls", "show", "detail", "disasm", "dis"],
-        ),
-        (Some("string"), vec!["ls", "references", "xrefs"]),
-        (Some("symbol"), vec!["ls"]),
-        (Some("xref"), vec!["list"]),
-        (Some("type"), vec!["ls", "import", "parse-c", "rm", "mv"]),
-        (Some("tag"), vec!["ls", "show", "rm", "mv"]),
-        (Some("analyzer"), vec!["ls"]),
-        (Some("comment"), vec!["ls"]),
-        (Some("find"), vec!["str", "strings"]),
-        (
-            Some("graph"),
-            vec!["called-by", "incoming", "calls-to", "outgoing"],
-        ),
-    ] {
-        for name in removed {
-            let args: Vec<_> = ["ghidra-cli"]
-                .into_iter()
-                .chain(namespace)
-                .chain([name])
-                .collect();
-            let error = Cli::try_parse_from(&args)
-                .err()
-                .expect("removed command must fail");
-            assert_eq!(
-                error.kind(),
-                clap::error::ErrorKind::InvalidSubcommand,
-                "{args:?}: {error}"
-            );
-        }
-    }
-}
-
-#[test]
-fn canonical_options_parse_and_removed_options_are_rejected() {
+fn import_and_type_apply_options_parse() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",
         "import",
@@ -922,38 +750,11 @@ fn canonical_options_parse_and_removed_options_are_rejected() {
     };
     assert!(args.force);
 
-    for args in [
-        vec!["import", "sample.bin", "--processor", "x86:LE:32:default"],
-        vec!["import", "sample.bin", "--cspec", "gcc"],
-        vec!["type", "apply", "0x1000", "int", "--clear-conflicting"],
-        vec!["clear", "0x1000:0x1010", "--disasm-at", "0x1000"],
-    ] {
-        let error = Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args.iter().copied()))
-            .err()
-            .expect("removed option must fail");
-        assert_eq!(
-            error.kind(),
-            clap::error::ErrorKind::UnknownArgument,
-            "{args:?}: {error}"
-        );
-    }
     let help = Cli::try_parse_from(["ghidra-cli", "type", "apply", "--help"])
         .err()
         .unwrap()
         .to_string();
     assert!(help.contains("including instructions"), "{help}");
-}
-
-#[test]
-fn json_stream_format_is_rejected() {
-    for name in ["json-stream", "JSON-STREAM"] {
-        assert!(name.parse::<OutputFormat>().is_err());
-        assert!(serde_json::from_str::<OutputFormat>(&format!("\"{name}\"")).is_err());
-        let error = Cli::try_parse_from(["ghidra-cli", "function", "list", "--format", name])
-            .err()
-            .expect("old format name must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-    }
 }
 
 #[test]

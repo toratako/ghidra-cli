@@ -135,8 +135,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         )
     })?;
 
-    // Import and Quick produce their own result and don't need execute_via_bridge.
-    // Other commands (including Analyze) produce a result via execute_via_bridge.
+    // Import owns its workflow; other commands dispatch through the bridge.
     let result = match &cli.command {
         Commands::Import(args) => {
             import::run_import(cli, args, &project_path, &ghidra_install_dir)?
@@ -188,81 +187,38 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
                 client.open_program(requested_program)?;
             }
 
-            let execute = |client: &BridgeClient| {
-                if let Commands::Batch(args) = &cli.command {
-                    let content = std::fs::read_to_string(&args.script_file)
-                        .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
-                    let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
-                    batch::execute_batch(&content, on_error, |line| {
-                        let mut sub_cli = Cli::try_parse_from(
-                            std::iter::once("ghidra-cli".to_owned())
-                                .chain(batch::split_arguments(line)?),
-                        )?;
-                        // Unspecified targets retain the batch's project and current
-                        // selection. Explicit per-line targets use normal routing.
-                        if sub_cli.project.is_none() {
-                            sub_cli.project = Some(project_path.to_string_lossy().into_owned());
-                        }
-                        if sub_cli.projects_dir.is_none() {
-                            sub_cli.projects_dir = cli.projects_dir.clone();
-                        }
-                        if let Commands::Batch(nested) = &mut sub_cli.command {
-                            nested.on_error.get_or_insert(on_error);
-                        }
-                        sub_cli.quiet = true;
-                        let result = execute_bridge_command(&sub_cli)?;
-                        output::process_batch_result(result)
-                    })
-                } else {
-                    execute_via_bridge(
-                        client,
-                        &cli.command,
-                        output.quiet || output.json,
-                        &plan.fetch,
-                    )
-                }
-            };
-            let first_attempt = execute(&client);
-            // Restart on "Unknown command" (old bridge lacks the handler) OR on a
-            // stale list_functions response: an old bridge silently ignores the
-            // newer tags/untagged args and returns a successful, UNFILTERED list.
-            let needs_restart = match &first_attempt {
-                Ok(value) => stale_tags_response(&cli.command, value),
-                Err(err) => is_unknown_command_error(err),
-            };
-            match first_attempt {
-                Ok(value) if !needs_restart => value,
-                Err(err) if !needs_restart => return Err(err),
-                _ => {
-                    output.progress(
-                            "Bridge command not supported by running instance. Restarting bridge and retrying..."
-                        );
-
-                    // Running bridge may be from an older script; force restart to load
-                    // the embedded bridge matching this CLI version.
-                    let selected_path = if let Some(program) = &selected_program {
-                        Some(program.clone())
-                    } else {
-                        current_program_path(&client)?
-                    };
-                    let mode = match selected_path {
-                        Some(program_name) => BridgeStartMode::Process { program_name },
-                        None => BridgeStartMode::Project,
-                    };
-                    bridge::stop_bridge(&project_path)?;
-                    let port =
-                        bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
-                    let retry_client = BridgeClient::new(port);
-
-                    if let Some(requested_program) = &selected_program {
-                        retry_client.open_program(requested_program)?;
+            if let Commands::Batch(args) = &cli.command {
+                let content = std::fs::read_to_string(&args.script_file)
+                    .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
+                let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
+                batch::execute_batch(&content, on_error, |line| {
+                    let mut sub_cli = Cli::try_parse_from(
+                        std::iter::once("ghidra-cli".to_owned())
+                            .chain(batch::split_arguments(line)?),
+                    )?;
+                    // Unspecified targets retain the batch's project and current
+                    // selection. Explicit per-line targets use normal routing.
+                    if sub_cli.project.is_none() {
+                        sub_cli.project = Some(project_path.to_string_lossy().into_owned());
                     }
-
-                    // One restart per invocation: the retry result is accepted
-                    // (or its error propagated) without re-probing.
-                    execute(&retry_client)?
-                }
-            }
+                    if sub_cli.projects_dir.is_none() {
+                        sub_cli.projects_dir = cli.projects_dir.clone();
+                    }
+                    if let Commands::Batch(nested) = &mut sub_cli.command {
+                        nested.on_error.get_or_insert(on_error);
+                    }
+                    sub_cli.quiet = true;
+                    let result = execute_bridge_command(&sub_cli)?;
+                    output::process_batch_result(result)
+                })
+            } else {
+                execute_via_bridge(
+                    &client,
+                    &cli.command,
+                    output.quiet || output.json,
+                    &plan.fetch,
+                )
+            }?
         }
     };
 
@@ -270,57 +226,6 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         value: output::limit_response_rows(result, plan.fallback_limit),
         query: plan.post,
     })
-}
-
-fn current_program_path(client: &BridgeClient) -> anyhow::Result<Option<String>> {
-    let info = client.bridge_info()?;
-    if let Some(path) = info.get("current_program_path") {
-        return selected_path(path);
-    }
-    // Older auto-save bridges do not advertise the file path. Never use their
-    // internal Program name as a file identity, or fall back to config defaults.
-    let programs = client.list_programs()?;
-    if programs
-        .get("has_current_program")
-        .and_then(|v| v.as_bool())
-        == Some(false)
-    {
-        return Ok(None);
-    }
-    let current = programs
-        .get("programs")
-        .and_then(|v| v.as_array())
-        .and_then(|rows| {
-            rows.iter()
-                .find(|row| row.get("current").and_then(|v| v.as_bool()) == Some(true))
-        })
-        .and_then(|row| row.get("path"));
-    match current {
-        Some(path) if !path.is_null() => selected_path(path),
-        _ => anyhow::bail!(
-            "Could not determine the selected program file before restarting; bridge left running"
-        ),
-    }
-}
-
-fn selected_path(value: &serde_json::Value) -> anyhow::Result<Option<String>> {
-    match value {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::String(path) if !path.is_empty() => Ok(Some(path.clone())),
-        _ => anyhow::bail!("Invalid selected program path; bridge left running"),
-    }
-}
-
-fn is_unknown_command_error(err: &anyhow::Error) -> bool {
-    // Never replay an executed command whose save failed, even if a script's
-    // captured error happens to contain this compatibility message.
-    if err
-        .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
-        .is_some_and(|err| err.detail.get("save_failed").and_then(|v| v.as_bool()) == Some(true))
-    {
-        return false;
-    }
-    err.to_string().starts_with("Unknown command:")
 }
 
 /// Require the current editing contract before selecting or changing a program.
@@ -335,103 +240,4 @@ pub(super) fn connect_program_bridge(port: u16) -> anyhow::Result<BridgeClient> 
         "Running bridge does not support atomic edits and automatic saving; save pending changes with `ghidra-cli program save`, then run `ghidra-cli bridge restart` for this project. No program command was sent."
     );
     Ok(client)
-}
-
-/// Detects a stale bridge that ignored the `tags`/`untagged` args on
-/// `list_functions`: an old handler returns a successful but UNFILTERED
-/// response whose rows lack the `"tags"` key (the current row builder always
-/// emits it). Probes the raw bridge envelope, before `unwrap_bridge_response`
-/// and any client-side field projection, so nothing can strip the key first.
-///
-/// Empty row sets pass vacuously: an old bridge ignoring the args returns the
-/// FULL function list, which is only empty when the program has no functions —
-/// where filtered and unfiltered output coincide anyway. Without this rule,
-/// every legitimately empty result would trigger a bridge restart.
-fn stale_tags_response(command: &Commands, value: &serde_json::Value) -> bool {
-    let tag_filter_requested = matches!(
-        command,
-        Commands::Function(cli::FunctionCommands::List(args))
-            if !args.tags.is_empty() || args.untagged
-    );
-    if !tag_filter_requested {
-        return false;
-    }
-    value
-        .get("functions")
-        .and_then(|f| f.as_array())
-        .is_some_and(|rows| {
-            rows.iter()
-                .any(|row| row.is_object() && row.get("tags").is_none())
-        })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use std::io::{BufRead, BufReader, Write};
-
-    #[test]
-    fn restart_resolves_selected_file_path_and_refuses_unknown_identity() {
-        for (responses, expected) in [
-            (
-                vec![
-                    json!({"current_program_path": "/nested/actual-file", "program_name": "internal-name"}),
-                ],
-                Some(Some("/nested/actual-file")),
-            ),
-            (vec![json!({"current_program_path": null})], Some(None)),
-            (
-                vec![
-                    json!({"auto_save": true}),
-                    json!({"has_current_program": true, "programs": [{"name": "internal-name", "path": "/actual-file", "current": true}]}),
-                ],
-                Some(Some("/actual-file")),
-            ),
-            (
-                vec![
-                    json!({"auto_save": true}),
-                    json!({"has_current_program": false, "programs": []}),
-                ],
-                Some(None),
-            ),
-            (
-                vec![
-                    json!({"auto_save": true}),
-                    json!({"has_current_program": true, "current_program_name": "internal-name", "programs": []}),
-                ],
-                None,
-            ),
-            (vec![json!({"current_program_path": ""})], None),
-        ] {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            let port = listener.local_addr().unwrap().port();
-            let worker = std::thread::spawn(move || {
-                for (index, response) in responses.into_iter().enumerate() {
-                    let (mut stream, _) = listener.accept().unwrap();
-                    let mut line = String::new();
-                    BufReader::new(&stream).read_line(&mut line).unwrap();
-                    let request: serde_json::Value = serde_json::from_str(&line).unwrap();
-                    assert_eq!(
-                        request["command"],
-                        if index == 0 {
-                            "bridge_info"
-                        } else {
-                            "list_programs"
-                        }
-                    );
-                    writeln!(stream, "{}", json!({"status": "success", "data": response})).unwrap();
-                }
-            });
-            let actual = current_program_path(&BridgeClient::new(port));
-            worker.join().unwrap();
-            match expected {
-                Some(path) => assert_eq!(actual.unwrap().as_deref(), path),
-                None => assert!(actual
-                    .unwrap_err()
-                    .to_string()
-                    .contains("bridge left running")),
-            }
-        }
-    }
 }

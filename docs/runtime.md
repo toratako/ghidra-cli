@@ -196,30 +196,16 @@ The bridge never ends an unknown transaction to force recovery.
 ## Upgrading
 
 Before replacing the CLI, run `ghidra-cli bridge stop --project P` for each running
-project using the old CLI and the same project path used to start it. Releases
-with top-level bridge commands instead use `ghidra-cli stop --project P`. Old PID-file
-startup locks and new OS-backed lifecycle locks do not coordinate, so do not run
-old and new CLI versions concurrently for a project. Start
-bridges again after updating; old discovery keys are not preserved or migrated.
-The current CLI requires the `shutdown_wait` protocol to confirm a final save.
-It cannot safely stop an older bridge that only acknowledges shutdown acceptance;
-save and stop that bridge with the old CLI before replacing it.
-List-query filtering/paging also requires the CLI and Java bridge to match;
-there is no query feature negotiation or old-server fallback. A bridge left
-running during an update must be restarted before using the new CLI's queries.
+project. Stop waits for accepted jobs to finish and pending changes to save; resolve
+any save failure before updating. Start bridges again after updating so the CLI
+and running Java bridge use the same build. Do not run different CLI versions
+concurrently for the same project.
 
 Program dispatch requires `bridge_info.explicit_addresses: true`,
 `auto_save: true`, and `atomic_edits: true`. The CLI rejects a bridge missing a
-required capability before sending program commands or attempting compatibility
-recovery. It does not downgrade address or transaction semantics or automatically
-upgrade the bridge. Explicit `program save` bypasses this gate so pending edits
-can be saved in place before restart. After saving, use
-`ghidra-cli bridge restart --project P` for a running bridge that supports durable
-shutdown, or start a bridge you stopped before the upgrade.
-
-The new bridge uses explicit `0x` address components for inputs and outputs.
-Update stored command arguments that previously relied on bare hex or interpreting
-`FUN_...` as an address; those tokens now mean exact names.
+required capability before sending program commands. It does not restart or
+replay a failed command automatically. Explicit `program save` bypasses this
+gate so pending edits can be saved in place before an explicit bridge restart.
 
 ## Installation failures
 

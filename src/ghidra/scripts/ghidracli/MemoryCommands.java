@@ -101,7 +101,7 @@ final class MemoryCommands {
         }
 
         try {
-            long limit = disasmLimit(args);
+            long limit = ListQuery.pageArgument(args, "limit");
             // Use resolveAddress which handles 0x prefix and symbol lookup
             Address addr = addressResolver.resolveAddress(addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
@@ -169,13 +169,6 @@ final class MemoryCommands {
         result.add("instructions", instructions);
         result.addProperty("count", instructions.size());
         return result;
-    }
-
-    private long disasmLimit(JsonObject args) {
-        if (args != null && args.has("count")) {
-            throw new IllegalArgumentException("count is no longer supported; use limit");
-        }
-        return ListQuery.pageArgument(args, "limit");
     }
 
     private JsonArray instructionsFrom(Instruction instruction, long limit) throws Exception {

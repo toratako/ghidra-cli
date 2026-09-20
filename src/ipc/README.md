@@ -27,10 +27,9 @@ it must not fall back to an independent generic socket timeout. The lifecycle
 caller also budgets lock acquisition and process exit, preserves the typed
 timeout error, and retains live discovery on failure.
 `BridgeClient` sends `shutdown_wait`, advertised by `bridge_info.durable_shutdown`,
-to receive final save failures as errors. Legacy `shutdown` only acknowledges
-drain acceptance and cannot confirm saving; clients must not use it as a fallback.
-The new request waits outside the bounded program queue and leaves controls
-available. Save failure retains the JVM and reopens the queue for recovery.
+to receive final save failures as errors. The request waits outside the bounded
+program queue and leaves controls available. Save failure retains the JVM and
+reopens the queue for recovery.
 
 ## Wire format
 
@@ -51,8 +50,7 @@ unlimited and missing/null offset is zero. Numeric page arguments must be
 integers in `0..=9223372036854775807`; invalid values fail instead of narrowing
 to Java `int`. Responses retain their array and returned-row `count` envelope.
 See [query planning](../query/README.md) for when these arguments may be pushed.
-This change requires a matching CLI and Java bridge; it adds no old-bridge
-compatibility path.
+The CLI and running Java bridge must use the same build.
 
 `find_string` also accepts `pattern`, a case-insensitive literal substring of
 the decoded string value. Missing/null/empty patterns match all defined strings
@@ -60,8 +58,8 @@ the decoded string value. Missing/null/empty patterns match all defined strings
 and `filter` must match before offset/limit are applied. `list_strings` and
 `find_string` share row fields `address`, `value`, `char_length` (Unicode code
 points), and `byte_length` (Ghidra data's occupied bytes, including any defined
-terminators/padding). The former `length` field is removed. Their response
-array keys remain `strings` and `results`, respectively; `string_refs` is unchanged.
+terminators/padding). Their response array keys are `strings` and `results`,
+respectively.
 `BridgeClient::find_string_page` exposes filter/offset/limit, while
 `find_string` and `find_string_with_limit` retain their existing defaults.
 
@@ -74,9 +72,7 @@ including when filtering leaves the limit in Rust. Other long-based paging
 arguments retain their existing range.
 
 `disasm` uses the checked `limit` argument; missing/null/zero means unlimited.
-The CLI resolves `default_limit` before sending these requests. The old request
-argument `count` is rejected. Update the CLI and restart the bridge together:
-an older bridge would ignore `limit` and apply its old fixed instruction count.
+The CLI resolves `default_limit` before sending these requests.
 
 `define_code` accepts `target` and optional inclusive `end`, both exact names or
 explicit addresses. Bounds are validated before mutation. It follows native
@@ -85,11 +81,9 @@ requested range when `end` is given. It does not run auto-analysis. The
 receipt contains `address`, `end`, `status` (`defined`/`unchanged`/`failed`),
 `already_defined`, `changed`, `ok`, and `landed`, without instruction rows.
 No definition at the target is an error with the receipt retained in detail.
-The old `disasm_at` command is removed; `limit`, `count`, and other query
-arguments are rejected. The distinct wire name prevents an old bridge from
-silently ignoring bounds. The optional `clear_range.disasm_at` argument is
-unchanged and does not use this bounded operation. Clearing and its optional
-redisassembly are atomic together; a failed redisassembly receipt has
+Query arguments are rejected. The optional `clear_range.disasm_at` argument
+does not use this bounded operation. Clearing and its optional redisassembly are
+atomic together; a failed redisassembly receipt has
 `status: "failed"` in the error detail. Failure rolls back the clearing.
 
 `bridge_info.auto_save: true` advertises saving before successful program
@@ -130,8 +124,7 @@ Encoding errors fail rather than substituting replacement bytes. It returns
 `{"results":[{"address":"...","byte_length":4,"encoding":"UTF-8"}],"count":1}`.
 Matches are exact byte sequences in program memory, including overlaps; rows
 identify the match start without extracting surrounding text. `find_string`
-now searches defined strings only. Update the bridge with the CLI to remove
-the old implicit raw-memory fallback.
+searches defined strings only.
 
 `find_bytes_regex` accepts non-empty `pattern` (Java byte regex syntax) and the
 same checked `limit`. It returns
@@ -139,13 +132,12 @@ same checked `limit`. It returns
 The bridge invokes Ghidra's native memory search over loaded, initialized memory;
 it does not decode text. Invalid patterns and encountered zero-length matches
 fail. Native buffering and overlap semantics apply. Cancellation is checked
-after the native search, which otherwise returns partial results. The distinct
-wire command prevents older bridges from treating a regex as literal hex.
+after the native search, which otherwise returns partial results.
 
 `bridge_info.explicit_addresses: true` advertises strict address parsing and
 canonical address output. Before program dispatch, the CLI rejects a bridge
 without this capability and requests an explicit restart; it never downgrades
-address interpretation. This check precedes compatibility recovery.
+address interpretation.
 
 Address strings require `0x`/`0X` for every numeric colon component:
 `0x401000`, `overlay:0x1000`, or `ram:0x1234:0x0005`. Segmented output always
@@ -163,9 +155,10 @@ byte patterns retain their separate numeric formats.
 a registered space name, including for the default segmented space. Both
 endpoints must belong to the same space and form an ascending inclusive range.
 
-Symbol mutations resolve name snapshots through `symbol_get_by_name`.
-`symbol_get` accepts exact names or explicit addresses; neither operation
-performs legacy bare-hex or generated-name address inference.
+Symbol mutations require a non-empty `targets` array of snapshots resolved
+through `symbol_get_by_name`. Each snapshot includes a stable symbol ID and
+is revalidated before any mutation; stale or duplicate selections fail.
+`symbol_get` accepts exact names or explicit addresses.
 Failed multi-symbol deletion reports `attempted_deleted`, `failed`, and
 `not_attempted` in detail. These are attempted-work diagnostics; `deleted` and
 the committed `count` appear only on success.

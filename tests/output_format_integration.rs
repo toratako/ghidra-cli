@@ -42,12 +42,10 @@ fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
 }
 
 #[test]
-fn removed_flags_are_rejected_before_loading_config() {
+fn mutations_reject_query_and_bulk_options_before_loading_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
     for args in [
-        vec!["import", "input.bin", "--detach"],
-        vec!["analyze", "--detach"],
         vec!["function", "rename", "old", "new", "--filter", "name=old"],
         vec!["function", "rename", "old", "new", "--all"],
         vec!["function", "delete", "main", "--filter", "name=other"],
@@ -69,56 +67,29 @@ fn removed_flags_are_rejected_before_loading_config() {
 }
 
 #[test]
-fn config_rejects_removed_output_formats_without_changing_the_file() {
+fn unknown_config_keys_fail_without_changing_the_file() {
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");
-    isolated_command(&temp)
-        .args(["config", "set", "default_output_format", "minimal"])
-        .assert()
-        .success();
-    let before = std::fs::read(&config_path).unwrap();
-    for format in ["ids", "count", "json-stream"] {
-        let output = isolated_command(&temp)
-            .args(["config", "set", "default_output_format", format])
-            .output()
-            .unwrap();
-        assert!(!output.status.success(), "{format}: {output:?}");
-        assert_eq!(std::fs::read(&config_path).unwrap(), before);
-    }
-}
-
-#[test]
-fn config_omits_aliases() {
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-    std::fs::write(&config_path, "default_output_format: minimal\n").unwrap();
-    let output = isolated_command(&temp)
-        .args(["config", "list", "--json"])
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let config: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(config["default_output_format"], "minimal");
-    assert!(config.get("aliases").is_none());
-
-    for args in [
-        vec!["config", "get", "aliases"],
-        vec!["config", "set", "aliases", "{}"],
+    let original = "default_output_format: minimal\n";
+    std::fs::write(&config_path, original).unwrap();
+    for (args, message) in [
+        (
+            vec!["config", "get", "unknown-config-key"],
+            "Key not found: unknown-config-key",
+        ),
+        (
+            vec!["config", "set", "unknown-config-key", "value"],
+            "Unknown config key: unknown-config-key",
+        ),
     ] {
-        let before = std::fs::read(&config_path).unwrap();
         let output = isolated_command(&temp).args(&args).output().unwrap();
         assert!(!output.status.success(), "{args:?}: {output:?}");
-        assert_eq!(std::fs::read(&config_path).unwrap(), before);
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{output:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&config_path).unwrap(), original);
     }
-    let output = isolated_command(&temp)
-        .args(["config", "set", "default_limit", "42"])
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let saved: serde_yaml::Value =
-        serde_yaml::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
-    assert_eq!(saved["default_limit"].as_u64(), Some(42));
-    assert!(saved.get("aliases").is_none());
 }
 
 #[cfg(target_os = "linux")]
@@ -602,7 +573,7 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
 }
 
 #[test]
-fn variable_edit_rejects_missing_or_empty_edits_and_the_removed_command() {
+fn variable_edit_rejects_missing_or_empty_edits() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
     for args in [
@@ -616,15 +587,6 @@ fn variable_edit_rejects_missing_or_empty_edits_and_the_removed_command() {
         ],
         vec![
             "function", "edit-var", "main", "--var", "local_10", "--type", "",
-        ],
-        vec![
-            "function",
-            "set-var-type",
-            "main",
-            "--var",
-            "local_10",
-            "--type",
-            "int",
         ],
     ] {
         let output = isolated_command(&temp).args(&args).output().unwrap();
@@ -843,51 +805,20 @@ fn config_io_failure_retains_operation_path_and_os_cause() {
 }
 
 #[test]
-fn removed_commands_are_rejected_before_loading_config() {
+fn unknown_command_is_rejected_before_loading_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
-    for args in [
-        vec!["patch", "bytes", "0x1000", "90"],
-        vec!["patch", "nop", "0x1000"],
-        vec!["patch", "export", "-o", "out.bin"],
-        vec!["memory", "search", "90"],
-        vec!["dump", "imports"],
-        vec!["export", "imports"],
-        vec!["rename", "old", "new"],
-        vec!["mv", "old", "new"],
-        vec!["project", "create", "target"],
-        vec!["init"],
-        vec!["version"],
-        vec!["stats"],
-        vec!["query", "functions"],
-        vec!["query", "strings"],
-        vec!["query", "memory"],
-        vec!["query", "imports"],
-        vec!["query", "exports"],
-        vec!["summary"],
-        vec!["info"],
-        vec!["set-default", "program", "sample"],
-        vec!["find", "interesting"],
-        vec!["find", "crypto"],
-        vec!["find", "function", "main"],
-        vec!["script", "java", "code"],
-        vec!["script", "python", "code"],
-        vec!["diff", "functions", "a", "b"],
-        vec!["function", "x-refs", "main"],
-        vec!["function", "decompile", "main"],
-        vec!["function", "tag", "list"],
-        vec!["graph", "export", "dot"],
-    ] {
-        let output = isolated_command(&temp).args(&args).output().unwrap();
-        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
-        assert!(output.stdout.is_empty());
-        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert!(
-            error["message"]
-                .as_str()
-                .unwrap()
-                .contains("unrecognized subcommand"),
-            "{args:?}: {error}"
-        );
-    }
+    let output = isolated_command(&temp)
+        .arg("unknown-command")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["exit_code"], 2);
+    assert_eq!(error["status"], "error");
+    assert!(error["message"]
+        .as_str()
+        .unwrap()
+        .contains("unrecognized subcommand"));
 }

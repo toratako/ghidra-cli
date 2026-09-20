@@ -157,7 +157,6 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         assert_eq!(repeated["already_defined"], true);
         assert_eq!(repeated["changed"], false);
         assert_eq!(repeated["status"], "unchanged");
-        assert!(repeated.get("instructions").is_none());
 
         // An unmapped address is syntactically valid but cannot produce an instruction.
         let failed = ghidra(harness)
@@ -281,10 +280,6 @@ fn check_define_code_ranges(
             "{args}"
         );
     }
-    let error = client
-        .send_command("disasm_at", Some(json!({"address": "0x2000", "count": 1})))
-        .unwrap_err();
-    assert!(error.to_string().contains("Unknown command"), "{error}");
     assert_eq!(
         client.disasm_range("0x2000", "0x2014", None).unwrap()["count"],
         0,
@@ -301,7 +296,6 @@ fn check_define_code_ranges(
     assert_eq!(receipt["landed"], true);
     assert_eq!(receipt["changed"], true);
     assert_eq!(receipt["end"], "0x0000200b");
-    assert!(receipt.get("instructions").is_none());
     let all = client.disasm_range("0x2000", "0x2014", None).unwrap();
     assert_eq!(
         all["count"], 12,
@@ -323,7 +317,6 @@ fn check_define_code_ranges(
         .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
         .run();
     result.assert_success();
-    assert!(result.json::<Value>()[0].get("instructions").is_none());
     assert_eq!(
         client.disasm_range("0x2000", "0x2014", None).unwrap()["count"],
         21

@@ -41,7 +41,6 @@ fn defined_strings_share_lengths_and_page_after_both_predicates() {
             assert_eq!(row["value"], value, "{row}");
             assert_eq!(row["char_length"], value.chars().count(), "{row}");
             assert_eq!(row["byte_length"], byte_length, "{row}");
-            assert!(row.get("length").is_none(), "{row}");
         }
         // Pattern and filter are independent AND predicates, before offset/limit.
         // skip_A matches the filter but must not consume a matching-row offset.

@@ -550,13 +550,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_timeout_is_ignored_and_not_reserialized() {
-        let config: Config = serde_yaml::from_str("timeout: 1800\n").unwrap();
-        let serialized = serde_yaml::to_string(&config).unwrap();
-        assert!(!serialized.contains("timeout:"), "{serialized}");
-    }
-
-    #[test]
     fn default_project_dir_has_no_hidden_component() {
         let dir = Config::default_project_dir().expect("default project dir");
         assert!(

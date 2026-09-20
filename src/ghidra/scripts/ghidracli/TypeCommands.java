@@ -154,7 +154,6 @@ final class TypeCommands {
         if (session.program() == null) return errorResult("No program loaded");
 
         String typeName = getArgString(args, "definition");
-        if (typeName == null) typeName = getArgString(args, "name");
         if (typeName == null) return errorResult("Type name required");
 
         // This only ever creates an empty struct named `typeName` -- it does

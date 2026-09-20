@@ -29,12 +29,12 @@ via per-job monitors. Connection handlers enqueue without waiting on program
 futures; completed futures use a separate bounded response pool. Neither waiting
 clients nor socket writes may block controls or the program thread. Shutdown
 rejects new program jobs and drains accepted work, keeping controls available.
-`shutdown` acknowledges acceptance immediately; `shutdown_wait` completes only
-after the program thread saves and releases the session. On save failure it
-returns structured error detail and restores request acceptance with the same
-session/listener. Only successful completion closes the listener and returns
-to Ghidra. Shutdown signaling must remain responsive when the queue is full;
-control handlers must not block while trying to append a shutdown sentinel.
+`shutdown_wait` completes only after the program thread saves and releases the
+session. On save failure it returns structured error detail and restores request
+acceptance with the same session/listener. Only successful completion closes the
+listener and returns to Ghidra. Shutdown signaling must remain responsive when
+the queue is full; control handlers must not block while trying to append a shutdown
+sentinel.
 
 `ProgramSession` owns request transactions, saving, switching, and release; it
 reads the current Program, GhidraState, and monitor from the script. Handlers/helpers
@@ -261,11 +261,10 @@ memory gaps, unsigned bytes, zero-length errors, query limits and cancellation.
 `disasm` reads existing instructions from the resolved start, retaining its
 containing-instruction/function-entry fallback. It uses checked
 nonnegative-long `limit` bounds, with missing/null/zero meaning unlimited, and
-check cancellation while collecting instructions. The CLI applies its configured
-default; the handler has no fixed ten-instruction default. The obsolete `count`
-argument is rejected.
+checks cancellation while collecting instructions. The CLI applies its configured
+default.
 
-`define_code` replaces `disasm_at`. It returns a change receipt, never instruction
+`define_code` returns a change receipt, never instruction
 rows, and rejects query bounds such as `limit`. `target` and optional inclusive
 `end` resolve as exact names or explicit addresses in the same space. Existing
 instructions at the target are left unchanged. Auto-analysis is not run as part

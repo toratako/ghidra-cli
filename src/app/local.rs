@@ -39,12 +39,6 @@ pub(super) fn handle_config_command(
                         }
                         config.default_output_format = Some(value);
                     }
-                    "timeout" => return Err(GhidraError::ConfigError(
-                        "'timeout' has been removed because it no longer controlled bridge waits. \
-                     Use GHIDRA_CLI_READ_TIMEOUT for normal commands, GHIDRA_CLI_OP_TIMEOUT \
-                     for analyze/import, or config 'launch_timeout_secs' for bridge startup."
-                            .to_string(),
-                    )),
                     "ghidra_install_dir" => config.ghidra_install_dir = Some(PathBuf::from(value)),
                     "ghidra_project_dir" => config.ghidra_project_dir = Some(PathBuf::from(value)),
                     "java_home" => config.java_home = Some(PathBuf::from(value)),

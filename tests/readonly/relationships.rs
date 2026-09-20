@@ -74,22 +74,6 @@ fn test_xref_from() {
 
 #[test]
 #[serial]
-fn test_xref_list_wire_command_is_rejected() {
-    require_ghidra!();
-    let harness = harness();
-    let error = harness
-        .client()
-        .unwrap()
-        .send_command("xrefs_list", Some(serde_json::json!({"address": "main"})))
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("Unknown command: xrefs_list"),
-        "{error}"
-    );
-}
-
-#[test]
-#[serial]
 fn test_xref_to_external_import_resolves_thunk() {
     require_ghidra!();
     let harness = harness();

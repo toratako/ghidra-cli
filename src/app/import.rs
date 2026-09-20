@@ -169,28 +169,7 @@ fn run_import_steps(
     } else {
         progress.stage = "bridge.start";
         let client = if let Some(port) = running {
-            let client = super::connect_program_bridge(port)?;
-            if client.bridge_info()?["named_import"] == true {
-                client
-            } else {
-                // Check the capability before importing: never replay an import
-                // against a bridge that already saved under the wrong name.
-                let selected = super::current_program_path(&client)?;
-                bridge::stop_bridge(project_path)?;
-                let mode = selected.map_or(BridgeStartMode::Project, |program_name| {
-                    BridgeStartMode::Process { program_name }
-                });
-                let client = BridgeClient::new(bridge::ensure_bridge_running(
-                    project_path,
-                    ghidra_install_dir,
-                    mode,
-                )?);
-                anyhow::ensure!(
-                    client.bridge_info()?["named_import"] == true,
-                    "Bridge does not support named imports; no import was sent"
-                );
-                client
-            }
+            super::connect_program_bridge(port)?
         } else {
             BridgeClient::new(bridge::ensure_bridge_running(
                 project_path,

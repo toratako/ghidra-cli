@@ -768,10 +768,6 @@ fn check_disasm_limits(
             "{error}"
         );
     }
-    let error = client
-        .send_command("disasm", Some(json!({"address": "long_case", "count": 1})))
-        .unwrap_err();
-    assert!(error.to_string().contains("use limit"), "{error}");
 }
 
 #[test]

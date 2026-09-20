@@ -400,19 +400,37 @@ public class ScopedSymbolFixture extends GhidraScript {
             .len(),
         1
     );
+    let valid_targets = client.symbol_get(&name).unwrap()["symbols"]
+        .as_array()
+        .unwrap()
+        .clone();
+    for command in ["symbol_delete", "symbol_rename"] {
+        for targets in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!({})),
+            Some(serde_json::json!([])),
+            Some(serde_json::json!([valid_targets[0], valid_targets[0]])),
+        ] {
+            let mut args = serde_json::json!({
+                "name": name,
+                "old_name": name,
+                "new_name": "must_not_rename",
+            });
+            if let Some(targets) = targets {
+                args["targets"] = targets;
+            }
+            client.send_command(command, Some(args)).unwrap_err();
+            assert_eq!(
+                client.symbol_get(&name).unwrap()["symbols"],
+                serde_json::json!(valid_targets)
+            );
+        }
+    }
     // The still-valid member appears first: reject the stale second member before deleting either.
     let stale = vec![snapshot[1].clone(), snapshot[0].clone()];
     let error = client.symbol_delete_targets(&name, &stale).unwrap_err();
     assert!(error.to_string().contains("Stale"), "{error:#}");
-    assert_eq!(
-        client.symbol_get(&name).unwrap()["symbols"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
-    // Legacy addresses must also validate the entire set before mutation.
-    assert!(client.symbol_delete(&name, &addresses).is_err());
     assert_eq!(
         client.symbol_get(&name).unwrap()["symbols"]
             .as_array()
@@ -550,22 +568,6 @@ public class CreateDefaultThunkNames extends GhidraScript {
             .unwrap_err();
         assert!(error.to_string().contains("Stale"), "{error:#}");
         assert_eq!(client.symbol_get("0x1040").unwrap()["symbols"][0], other);
-
-        // Legacy address-scoped requests must also find default thunks by displayed name.
-        client
-            .symbol_rename(
-                "default_target",
-                "legacy_renamed_thunk",
-                &["0x1040".to_string()],
-            )
-            .unwrap();
-        assert_eq!(
-            client.symbol_get("legacy_renamed_thunk").unwrap()["symbols"][0]["id"],
-            other["id"]
-        );
-        let remaining = client.symbol_get("default_target").unwrap();
-        assert_eq!(remaining["symbols"].as_array().unwrap().len(), 1);
-        assert_eq!(remaining["symbols"][0]["source"], "USER_DEFINED");
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();

@@ -8,7 +8,7 @@ The library exposes that same definition to `xtask` for documentation generation
 
 | File | Responsibility |
 |------|----------------|
-| `mod.rs` | Command routing, early filter validation, bridge/program selection, and one-restart compatibility recovery |
+| `mod.rs` | Command routing, early filter validation, and bridge/program selection |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
@@ -35,16 +35,13 @@ Function rename rejects symbol-only bulk flags (`--filter`, `--all`).
 Function and comment deletion accept only their target and receipt output options; filtering,
 sorting, pagination, and count flags are rejected before bridge work.
 `connect_program_bridge(port)` requires `bridge_info.explicit_addresses: true`,
-`auto_save: true`, and `atomic_edits: true` before program dispatch and before
-compatibility recovery. Missing support fails with explicit restart guidance;
+`auto_save: true`, and `atomic_edits: true` before program dispatch.
+Missing support fails with explicit restart guidance;
 never downgrade address/transaction semantics or automatically upgrade for missing
 capabilities. `program save` uses the direct management path without this gate,
 preserving in-place recovery of pending edits before an explicit restart.
-Recovery for other compatibility
-failures retries at most once after dispatch. Compatibility restart captures the
-selected project file path (never the internal Program name or a default); if it
-cannot determine the selection, it leaves the bridge running. Stop errors prevent restart.
-Never replay commands after save failures.
+Dispatch each command once and propagate its result or error. Do not restart
+the bridge or replay a command after a response failure.
 Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request; failure detail describes
@@ -59,13 +56,13 @@ without opening it as a selection/startup program.
 import base addresses, and `clear START:END`; Ghidra validates the selected
 address space and numeric bounds. Every numeric colon component requires
 `0x`/`0X`. `clear` can inherit the start space for an unqualified end, requires
-complete segmented endpoints, and rejects ambiguous splits and legacy `::`.
+complete segmented endpoints, and rejects ambiguous splits.
 Fully qualify both endpoints to disambiguate a range, for example
 `ram:0x1234:0x0:ram:0x1234:0x8`; the delimiter remains a single colon.
 Name-or-address operations keep exact names such as `dead` and `FUN_...`; they
 never derive a numeric address from them. Offsets and byte patterns are separate.
-Commands taking `TARGET` require exactly one positional target and reject
-`--target`, including function edits and queries, decompilation, disassembly,
+Commands taking `TARGET` require exactly one positional target, including
+function edits and queries, decompilation, disassembly,
 xrefs, call searches, and caller/callee graphs.
 `define-code` also accepts an optional inclusive `--end`.
 It forwards a bounded mutation and returns only its receipt, without query options
@@ -83,9 +80,9 @@ rolls back its own edits while earlier completed commands remain saved. Ordinary
 errors follow `--on-error continue|stop` (default: continue); nested batches
 inherit the policy unless overridden. Transaction/save failures and timeouts
 always stop them, including failures at the end of nested batches.
-Preserve the timeout type for exit 75. Each line uses normal target resolution
-and recovery: omitted project inherits the batch project, omitted program keeps
-that project's selection, and query modifiers apply within each result.
+Preserve the timeout type for exit 75. Each line uses normal target resolution:
+omitted project inherits the batch project, omitted program keeps that project's
+selection, and query modifiers apply within each result.
 Target defaults come from config; CLI target selection does not read environment
 variables. Config `default_program` applies at bridge startup, while a running
 bridge retains its selected program unless explicitly overridden.

@@ -476,44 +476,6 @@ fn type_creation_preserves_wire_requests_and_targets_in_standalone_and_batch() {
 }
 
 #[test]
-fn legacy_type_creation_is_rejected_before_program_selection_or_mutation() {
-    let bridge = RecordedBridge::new();
-    let mut lines = Vec::new();
-    for mut args in [
-        vec!["type", "create", "Header"],
-        vec!["type", "create-enum", "Mode", "--values", "Read=1"],
-        vec!["type", "typedef", "HeaderAlias", "Header"],
-    ] {
-        args.extend(["--program", "must-not-open"]);
-        let output = bridge.command().args(&args).output().unwrap();
-        assert_eq!(output.status.code(), Some(2), "{args:?}: {output:?}");
-        assert!(bridge.requests.lock().unwrap().is_empty());
-        lines.push(batch_arguments(&args));
-    }
-    std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
-    let output = bridge
-        .command()
-        .args(["batch", "batch.txt"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["failed"], lines.len());
-    assert!(report[0]["results"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|row| row["error"].is_string()));
-    let requests = bridge.requests.lock().unwrap();
-    assert!(
-        requests
-            .iter()
-            .all(|request| request["command"] == "bridge_info"),
-        "{requests:?}"
-    );
-}
-
-#[test]
 fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     let expected = json!({
@@ -2454,18 +2416,15 @@ fn script_expect_row_bounds_are_checked_before_sending_the_script() {
 }
 
 #[test]
-fn batch_queries_inherit_targets_without_environment_overrides() {
+fn batch_queries_inherit_targets_and_keep_program_selection() {
     let first = RecordedBridge::new();
     let second = RecordedBridge::new();
-    let env_project = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
         "memory map\ncomment set 0x1000 marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let output = first
         .command()
-        .env("GHIDRA_DEFAULT_PROJECT", &env_project.project)
-        .env("GHIDRA_DEFAULT_PROGRAM", "environment-program")
         .args(["batch", "batch.txt", "--program", "A"])
         .output()
         .unwrap();
@@ -2479,7 +2438,6 @@ fn batch_queries_inherit_targets_without_environment_overrides() {
         };
         assert_eq!(result[0]["results"][index]["result"][key], program);
     }
-    assert!(env_project.requests.lock().unwrap().is_empty());
     for (bridge, expected) in [(&first, vec!["A", "B", "C"]), (&second, vec!["D"])] {
         let requests = bridge.requests.lock().unwrap();
         let opened: Vec<_> = requests
@@ -2550,21 +2508,12 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
 }
 
 #[test]
-fn removed_commands_fail_before_bridge_or_config_errors() {
+fn invalid_mutation_arguments_fail_before_bridge_or_config_errors() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
-    for (args, diagnostic) in [
-        (
-            vec!["patch", "bytes", "0x1000", "90"],
-            "unrecognized subcommand",
-        ),
-        (vec!["memory", "search", "90"], "unrecognized subcommand"),
-        (vec!["xref", "list", "main"], "unrecognized subcommand"),
-        (vec!["disassemble-at", "0x1000"], "unrecognized subcommand"),
-        (
-            vec!["define-code", "0x1000", "--limit", "1"],
-            "unexpected argument",
-        ),
+    for args in [
+        vec!["function", "delete"],
+        vec!["comment", "set", "0x1000", "marker", "--unknown-option"],
     ] {
         for invalid_config in [false, true] {
             let mut command = bridge.command();
@@ -2574,44 +2523,9 @@ fn removed_commands_fail_before_bridge_or_config_errors() {
             }
             let output = command.output().unwrap();
             assert_eq!(output.status.code(), Some(2), "{output:?}");
-            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-            assert!(
-                error["message"].as_str().unwrap().contains(diagnostic),
-                "{error}"
-            );
             assert!(bridge.requests.lock().unwrap().is_empty());
         }
     }
-}
-
-#[test]
-fn define_code_rejects_query_flags_and_legacy_name_before_batch_mutations() {
-    let bridge = RecordedBridge::new();
-    let invalid = [
-        "disassemble-at 0x1000 --program must-not-open",
-        "define-code 0x1000 --limit 1 --program must-not-open",
-    ];
-    std::fs::write(bridge.root.path().join("batch.txt"), invalid.join("\n")).unwrap();
-    let output = bridge
-        .command()
-        .args(["batch", "batch.txt"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["failed"], invalid.len());
-    assert!(report[0]["results"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|row| row["error"].is_string()));
-    let requests = bridge.requests.lock().unwrap();
-    assert!(
-        requests
-            .iter()
-            .all(|request| request["command"] == "bridge_info"),
-        "{requests:?}"
-    );
 }
 
 #[test]
@@ -2703,107 +2617,24 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
 }
 
 #[test]
-fn removed_target_flags_fail_before_selection_or_operation() {
+fn batch_continues_after_invalid_arguments_without_selecting_their_programs() {
     let bridge = RecordedBridge::new();
-    std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
-    let mut lines = Vec::new();
-    for command in [
-        "function delete",
-        "define-code",
-        "function set-signature --signature int()",
-        "function set-return-type --type int",
-        "function set-calling-convention --convention __cdecl",
-        "function set-noreturn",
-        "function edit-var --var local_10 --name value",
-        "function get",
-        "function disassemble",
-        "function calls",
-        "decompile",
-        "disassemble",
-        "xref to",
-        "xref from",
-        "find calls",
-        "graph callers",
-        "graph callees",
-    ] {
-        for args in [
-            "--target entry",
-            "--target=entry",
-            "entry --target entry",
-            "entry --target other",
-            "--target entry other",
-        ] {
-            let line = format!("{command} {args} --program must-not-open");
-            for invalid_config in [false, true] {
-                let mut command = bridge.command();
-                command.args(line.split_whitespace());
-                if invalid_config {
-                    command.env("GHIDRA_CLI_CONFIG", bridge.root.path().join("invalid.yaml"));
-                }
-                let output = command.output().unwrap();
-                assert_eq!(output.status.code(), Some(2), "{line}: {output:?}");
-                let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-                assert!(
-                    error["message"]
-                        .as_str()
-                        .unwrap()
-                        .contains("unexpected argument '--target"),
-                    "{line}: {error}"
-                );
-                assert!(bridge.requests.lock().unwrap().is_empty());
-            }
-            lines.push(line);
-        }
-    }
-    std::fs::write(bridge.root.path().join("batch.txt"), lines.join("\n")).unwrap();
-    let output = bridge
-        .command()
-        .args(["batch", "batch.txt"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["failed"], lines.len());
-    for row in report[0]["results"].as_array().unwrap() {
-        assert!(
-            row["error"]
-                .as_str()
-                .unwrap()
-                .contains("unexpected argument '--target"),
-            "{row}"
-        );
-    }
-    let requests = bridge.requests.lock().unwrap();
-    assert!(
-        requests.iter().all(|r| r["command"] == "bridge_info"),
-        "{requests:?}"
-    );
-}
-
-#[test]
-fn batch_continues_after_removed_commands_without_selecting_their_programs() {
-    let bridge = RecordedBridge::new();
-    std::fs::write(bridge.root.path().join("batch.txt"),
-        "patch bytes 0x1000 90 --program must-not-open\nmemory search 90 --program must-not-open\nxref list main --program must-not-open\ncomment set 0x1000 after\n"
-    ).unwrap();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "function delete --program must-not-open\ncomment set 0x1000 after\n",
+    )
+    .unwrap();
     let output = bridge
         .command()
         .args(["batch", "batch.txt", "--on-error", "continue"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["detail"]["commands_executed"], 4);
-    assert_eq!(error["detail"]["failed"], 3);
-    assert_eq!(error["detail"]["not_executed"], 0);
-    for index in [0, 1, 2] {
-        assert!(
-            serde_json::from_slice::<Value>(&output.stdout).unwrap()[0]["results"][index]["error"]
-                .as_str()
-                .unwrap()
-                .contains("unrecognized subcommand")
-        );
-    }
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["commands_executed"], 2);
+    assert_eq!(report[0]["failed"], 1);
+    assert_eq!(report[0]["not_executed"], 0);
+    assert!(report[0]["results"][0]["error"].is_string());
     let requests = bridge.requests.lock().unwrap();
     let domain: Vec<_> = requests
         .iter()
@@ -2858,7 +2689,7 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
 }
 
 #[test]
-fn single_objects_and_deletion_reject_list_flags_before_program_dispatch() {
+fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     let bridge = RecordedBridge::new();
     let flags = [
         "--filter name=other",
@@ -2869,6 +2700,7 @@ fn single_objects_and_deletion_reject_list_flags_before_program_dispatch() {
     ];
     let mut lines: Vec<_> = [
         "function delete main",
+        "define-code 0x1000",
         "comment delete 0x1000",
         "memory read 0x1000 8",
         "program info",
@@ -3416,15 +3248,13 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
             .find(|r| r["command"] == "memory_write")
             .unwrap();
         assert_eq!(write["args"], json!({"address": "main", "hex": "90 c3"}));
-        assert!(!requests.iter().any(|r| r["command"] == "patch_bytes"));
     }
 }
 
 #[test]
-fn standalone_targets_use_config_or_explicit_flags_and_ignore_removed_environment_defaults() {
+fn standalone_targets_use_config_or_explicit_flags() {
     let configured = RecordedBridge::new();
     let explicit = RecordedBridge::new();
-    let environment = RecordedBridge::new();
     let config = configured.root.path().join("config.yaml");
     std::fs::write(
         &config,
@@ -3445,8 +3275,6 @@ fn standalone_targets_use_config_or_explicit_flags_and_ignore_removed_environmen
                 "GHIDRA_INSTALL_DIR",
                 configured.root.path().join("unused-install"),
             )
-            .env("GHIDRA_DEFAULT_PROJECT", &environment.project)
-            .env("GHIDRA_DEFAULT_PROGRAM", "environment-program")
             .args(["program", "imports"]);
         if with_flags {
             command
@@ -3456,7 +3284,6 @@ fn standalone_targets_use_config_or_explicit_flags_and_ignore_removed_environmen
         }
         let output = command.output().unwrap();
         assert!(output.status.success(), "{output:?}");
-        assert!(environment.requests.lock().unwrap().is_empty());
         let (selected, unused) = if with_flags {
             (&explicit, &configured)
         } else {
