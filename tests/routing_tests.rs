@@ -293,15 +293,15 @@ impl RecordedBridge {
                         }
                         json!({"functions": rows, "count": rows.len()})
                     }
-                    "list_imports" | "list_exports" => {
+                    "symbol_externals" | "symbol_entry_points" => {
                         let mut rows = vec![json!({"name": "first"}), json!({"name": "second"})];
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {
                             rows.truncate(limit as usize);
                         }
-                        let key = if request["command"] == "list_imports" {
-                            "imports"
+                        let key = if request["command"] == "symbol_externals" {
+                            "externals"
                         } else {
-                            "exports"
+                            "entry_points"
                         };
                         json!({key: rows, "count": rows.len()})
                     }
@@ -1199,7 +1199,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     .unwrap();
     let output = bridge
         .command()
-        .args(["program", "imports"])
+        .args(["symbol", "externals"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -1207,7 +1207,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     for flags in [vec!["--json"], vec!["--pretty"], vec!["-o", "json-compact"]] {
         let output = bridge
             .command()
-            .args(["program", "imports"])
+            .args(["symbol", "externals"])
             .args(&flags)
             .output()
             .unwrap();
@@ -1224,7 +1224,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
     .unwrap();
     let output = bridge
         .command()
-        .args(["program", "imports"])
+        .args(["symbol", "externals"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -1655,8 +1655,8 @@ fn call_traversal_queries_share_rows_and_preserve_selection_before_limits() {
 fn bounded_queries_reject_oversized_limits_before_bridge_work() {
     let bridge = RecordedBridge::new();
     for args in [
-        vec!["program", "imports"],
-        vec!["program", "exports"],
+        vec!["symbol", "externals"],
+        vec!["symbol", "entry-points"],
         vec!["tag", "list"],
         vec!["graph", "calls"],
         vec!["graph", "callers", "main"],
@@ -2020,10 +2020,10 @@ fn batch_save_of_a_stopped_project_does_not_start_it() {
 }
 
 #[test]
-fn imports_and_exports_paginate_after_fetching_for_queries_and_batches() {
+fn external_symbols_and_entry_points_paginate_after_fetching_for_queries_and_batches() {
     let bridge = RecordedBridge::new();
-    let command = "program";
-    for kind in ["imports", "exports"] {
+    let command = "symbol";
+    for kind in ["externals", "entry-points"] {
         let args = [command, kind, "--offset", "1", "--limit", "1"];
         assert_eq!(bridge.run(&args), json!([{"name": "second"}]));
         std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
@@ -2126,7 +2126,7 @@ fn ndjson_contains_exactly_one_document_per_line() {
     for flags in [vec![], vec!["--format", "ndjson"]] {
         let output = bridge
             .command()
-            .args(["program", "imports", "--limit", "0"])
+            .args(["symbol", "externals", "--limit", "0"])
             .args(&flags)
             .output()
             .unwrap();
@@ -2976,7 +2976,7 @@ fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
 #[test]
 fn unsupported_list_offset_fetches_enough_rows() {
     let bridge = RecordedBridge::new();
-    for command in [vec!["program", "imports"], vec!["program", "exports"]] {
+    for command in [vec!["symbol", "externals"], vec!["symbol", "entry-points"]] {
         let args: Vec<_> = command
             .into_iter()
             .chain(["--offset", "1", "--limit", "1"])
@@ -2988,7 +2988,7 @@ fn unsupported_list_offset_fetches_enough_rows() {
         .lock()
         .unwrap()
         .iter()
-        .filter(|r| r["command"] == "list_imports" || r["command"] == "list_exports")
+        .filter(|r| r["command"] == "symbol_externals" || r["command"] == "symbol_entry_points")
     {
         assert!(list["args"]["limit"].is_null());
     }
@@ -3377,7 +3377,7 @@ fn standalone_targets_use_config_or_explicit_flags() {
                 "GHIDRA_INSTALL_DIR",
                 configured.root.path().join("unused-install"),
             )
-            .args(["program", "imports"]);
+            .args(["symbol", "externals"]);
         if with_flags {
             command
                 .arg("--project")
@@ -3393,7 +3393,7 @@ fn standalone_targets_use_config_or_explicit_flags() {
         };
         assert!(unused.requests.lock().unwrap().is_empty());
         let requests = selected.requests.lock().unwrap();
-        assert!(requests.iter().any(|r| r["command"] == "list_imports"));
+        assert!(requests.iter().any(|r| r["command"] == "symbol_externals"));
         let opened: Vec<_> = requests
             .iter()
             .filter(|r| r["command"] == "open_program")

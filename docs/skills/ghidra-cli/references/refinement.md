@@ -39,7 +39,7 @@ ghidra-cli comment set 0x401000 --text-file ./note.txt --project target
 ## Symbols
 
 ```bash
-ghidra-cli symbol create 0x404000 packet_header --project target
+ghidra-cli symbol create-label 0x404000 packet_header --project target
 ghidra-cli symbol rename packet_header message_header --project target
 ```
 

@@ -104,18 +104,21 @@ fn test_program_info_contains_expected_fields() {
 
 #[test]
 #[serial]
-fn test_program_imports_and_exports_match_bridge_rows() {
+fn test_symbol_externals_and_entry_points_match_bridge_rows() {
     require_ghidra!();
     let harness = harness();
     let client = harness.client().unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
-    for (kind, wire) in [("imports", "list_imports"), ("exports", "list_exports")] {
+    for (kind, wire, key) in [
+        ("externals", "symbol_externals", "externals"),
+        ("entry-points", "symbol_entry_points", "entry_points"),
+    ] {
         let all = client.send_command(wire, None).unwrap();
-        let rows = all[kind].as_array().unwrap();
+        let rows = all[key].as_array().unwrap();
         assert!(!rows.is_empty(), "fixture must contain {kind}: {all}");
         let run = |flags: &[&str]| -> serde_json::Value {
             let result = ghidra(harness)
-                .args(["program", kind])
+                .args(["symbol", kind])
                 .args(flags.iter().copied())
                 .with_project(test_project(), TEST_PROGRAM)
                 .json_format()
@@ -123,12 +126,12 @@ fn test_program_imports_and_exports_match_bridge_rows() {
             result.assert_success();
             result.json()
         };
-        assert_eq!(run(&["--limit", "0"]), all[kind]);
+        assert_eq!(run(&["--limit", "0"]), all[key]);
         assert_eq!(run(&["--count"]), serde_json::json!(rows.len()));
         for row in rows {
             assert!(row["name"].is_string(), "{row}");
             assert!(row["address"].is_string(), "{row}");
-            if kind == "imports" {
+            if kind == "externals" {
                 assert!(row["library"].is_string(), "{row}");
             }
         }

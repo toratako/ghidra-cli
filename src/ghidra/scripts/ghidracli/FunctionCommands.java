@@ -264,7 +264,7 @@ final class FunctionCommands {
             detail.addProperty("containing_function_size", owner.getBody().getNumAddresses());
             reasons.add("address is already inside existing function " + owner.getName()
                 + "@" + AddressCodec.format(owner.getEntryPoint()) + " (likely shared code reached by a tail jump, "
-                + "not a call) -- consider `symbol create` for a label instead of a new function");
+                + "not a call) -- consider `symbol create-label` for a label instead of a new function");
         }
 
         CodeUnit cu = listing.getCodeUnitContaining(addr);

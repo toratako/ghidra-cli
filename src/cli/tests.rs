@@ -271,7 +271,7 @@ fn output_formats_accept_supported_spellings() {
     ] {
         for spelling in [name.to_string(), name.to_uppercase()] {
             assert_eq!(spelling.parse::<OutputFormat>().unwrap(), expected);
-            for command in [["program", "imports"], ["function", "list"]] {
+            for command in [["symbol", "externals"], ["function", "list"]] {
                 for flag in ["-o", "--format"] {
                     let cli = Cli::try_parse_from([
                         "ghidra-cli",
@@ -282,7 +282,7 @@ fn output_formats_accept_supported_spellings() {
                     ])
                     .unwrap();
                     let format = match cli.command {
-                        Commands::Program(ProgramCommands::Imports(opts)) => opts.format,
+                        Commands::Symbol(SymbolCommands::Externals(opts)) => opts.format,
                         Commands::Function(FunctionCommands::List(args)) => args.options.format,
                         _ => panic!("unexpected command"),
                     };
@@ -296,7 +296,7 @@ fn output_formats_accept_supported_spellings() {
 #[test]
 fn shared_format_help_lists_supported_choices() {
     for command in [
-        ["program", "exports"].as_slice(),
+        ["symbol", "entry-points"].as_slice(),
         ["memory", "read"].as_slice(),
     ] {
         for flag in ["-h", "--help"] {
@@ -348,8 +348,8 @@ fn single_object_commands_reject_list_options() {
     }
     for command in [
         ["memory", "map"],
-        ["program", "imports"],
-        ["program", "exports"],
+        ["symbol", "externals"],
+        ["symbol", "entry-points"],
     ] {
         Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain([
             "--filter",

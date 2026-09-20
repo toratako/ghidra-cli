@@ -36,8 +36,12 @@ pub enum SymbolCommands {
     List(QueryOptions),
     /// Get symbol details
     Get(SymbolGetArgs),
-    /// Create symbol
-    Create(CreateSymbolArgs),
+    /// List Ghidra external symbols and their libraries
+    Externals(QueryOptions),
+    /// List symbols marked as external entry points in Ghidra
+    EntryPoints(QueryOptions),
+    /// Create a label at an address
+    CreateLabel(CreateLabelArgs),
     /// Delete symbol
     Delete(SymbolDeleteArgs),
     /// Rename symbol
@@ -73,7 +77,7 @@ pub struct SymbolDeleteArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct CreateSymbolArgs {
+pub struct CreateLabelArgs {
     /// Explicit address, e.g. 0x404000 or overlay:0x1000
     pub address: String,
     pub name: String,

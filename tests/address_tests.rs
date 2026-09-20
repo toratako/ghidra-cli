@@ -276,7 +276,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
                 json!({"address": address, "type_name": "int", "force": true}),
             ),
             (
-                "symbol_create",
+                "symbol_create_label",
                 json!({"address": address, "name": "wrong_symbol"}),
             ),
             ("read_memory", json!({"address": address, "size": 8})),

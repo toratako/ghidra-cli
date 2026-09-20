@@ -15,8 +15,10 @@ pub(super) fn execute(
         SymbolCommands::List(_) => {
             client.symbol_list(fetch.limit, fetch.filter.as_deref(), fetch.offset)
         }
+        SymbolCommands::Externals(_) => client.symbol_externals(fetch.limit),
+        SymbolCommands::EntryPoints(_) => client.symbol_entry_points(fetch.limit),
         SymbolCommands::Get(args) => client.symbol_get(&args.name),
-        SymbolCommands::Create(args) => client.symbol_create(&args.address, &args.name),
+        SymbolCommands::CreateLabel(args) => client.symbol_create_label(&args.address, &args.name),
         SymbolCommands::Delete(args) => {
             let targets = resolve_symbol_targets(
                 client,

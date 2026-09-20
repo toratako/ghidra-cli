@@ -48,8 +48,8 @@ public class CompleteIntQueryLimitFixture extends GhidraScript {
             )
             .unwrap();
         for (wire, args, key) in [
-            ("list_imports", json!({}), "imports"),
-            ("list_exports", json!({}), "exports"),
+            ("symbol_externals", json!({}), "externals"),
+            ("symbol_entry_points", json!({}), "entry_points"),
             ("tag_list", json!({}), "tags"),
             ("graph_calls", json!({}), "nodes"),
             ("find_instruction", json!({"pattern":"RET"}), "results"),

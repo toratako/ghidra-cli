@@ -25,14 +25,14 @@ Use `program stats` for aggregate counts.
 See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 
-## Imported and exported symbols
+## External symbols and entry points
 
-`program imports` lists external symbols and their libraries; `program exports`
+`symbol externals` lists external symbols and their libraries; `symbol entry-points`
 lists symbols Ghidra marks as external entry points.
 
 ```bash
-ghidra-cli program imports --filter 'library~libc' --fields name,address --limit 0
-ghidra-cli program exports --sort name --limit 0
+ghidra-cli symbol externals --filter 'library~libc' --fields name,address --limit 0
+ghidra-cli symbol entry-points --sort name --limit 0
 ```
 
 ## Import and reanalysis

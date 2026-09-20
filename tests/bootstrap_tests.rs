@@ -98,10 +98,10 @@ fn configured_startup_targets_apply_to_all_entry_points() {
     test_config.default_program = Some("configured-program".to_owned());
     std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
     let batch = project.root.path().join("batch.txt");
-    std::fs::write(&batch, "program imports\nprogram exports\n").unwrap();
+    std::fs::write(&batch, "symbol externals\nsymbol entry-points\n").unwrap();
     for args in [
         vec!["bridge", "start"],
-        vec!["program", "imports"],
+        vec!["symbol", "externals"],
         vec!["batch", batch.to_str().unwrap()],
     ] {
         project.ok(&["bridge", "stop"]);

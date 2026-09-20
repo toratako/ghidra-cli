@@ -12,6 +12,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   undefined address to the containing function's entry.
 - Require `comment delete` to select `--comment-type` or `--all`, preserving
   other comment types for a selective deletion.
+- Rename label creation to `symbol create-label`, external-symbol listing to
+  `symbol externals`, and external-entry-point listing to `symbol entry-points`.
+  Rename their bridge adapters and result collections to match.
 - Clarify `string refs PATTERN` as case-insensitive substring search followed by
   reference lookup; its bridge argument is `pattern`.
 - Rename setup's Java prerequisite bypass to `--skip-java-check`.

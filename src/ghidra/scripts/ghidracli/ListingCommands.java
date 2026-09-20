@@ -34,7 +34,7 @@ final class ListingCommands {
         return result;
     }
 
-    JsonObject handleListImports(JsonObject args) {
+    JsonObject handleSymbolExternals(JsonObject args) {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -61,12 +61,12 @@ final class ListingCommands {
         }
 
         JsonObject result = new JsonObject();
-        result.add("imports", imports);
+        result.add("externals", imports);
         result.addProperty("count", imports.size());
         return result;
     }
 
-    JsonObject handleListExports(JsonObject args) {
+    JsonObject handleSymbolEntryPoints(JsonObject args) {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -90,7 +90,7 @@ final class ListingCommands {
         }
 
         JsonObject result = new JsonObject();
-        result.add("exports", exports);
+        result.add("entry_points", exports);
         result.addProperty("count", exports.size());
         return result;
     }

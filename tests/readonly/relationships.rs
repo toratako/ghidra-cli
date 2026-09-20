@@ -83,9 +83,9 @@ fn test_xref_to_external_import_resolves_thunk() {
     let harness = harness();
     let client = harness.client().expect("bridge client");
 
-    let imports = client.list_imports(Some(100)).expect("list imports");
+    let imports = client.symbol_externals(Some(100)).expect("list imports");
     let imports = imports
-        .get("imports")
+        .get("externals")
         .and_then(|v| v.as_array())
         .expect("imports array");
 

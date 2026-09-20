@@ -68,7 +68,7 @@ respectively.
 external functions when present. Membership queries use `list_functions` with
 `tags`, which lists non-external functions.
 
-`list_imports`, `list_exports`, `tag_list`, `graph_calls`,
+`symbol_externals`, `symbol_entry_points`, `tag_list`, `graph_calls`,
 `graph_callers`, `graph_callees`, and `find_instruction` accept `limit` only in
 `0..=2147483647`. Graph `depth` uses the same checked range and defaults to 1.
 Missing/null limits default to zero (unlimited); fractional, nonnumeric and
@@ -140,6 +140,9 @@ it resolves the containing function and reads its full body, including disjoint 
 `string_refs` takes `pattern`, a case-insensitive substring of defined string values.
 `comment_delete` requires exactly one of `comment_type` (EOL/PRE/POST/PLATE,
 case-insensitive) or `all: true`. Invalid or missing scope fails before deletion.
+`symbol_externals` returns `externals` rows with name, address, and library;
+`symbol_entry_points` returns `entry_points` rows with name and address.
+Both describe Ghidra's symbol database. `symbol_create_label` creates a label.
 
 `find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
 default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.

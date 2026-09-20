@@ -63,8 +63,8 @@ final class CommandDispatcher {
             case "delete_function": return functionCommands.handleDeleteFunction(args);
             case "decompile":       return decompileCommands.handleDecompile(args);
             case "list_strings":    return listingCommands.handleListStrings(args);
-            case "list_imports":    return listingCommands.handleListImports(args);
-            case "list_exports":    return listingCommands.handleListExports(args);
+            case "symbol_externals":    return listingCommands.handleSymbolExternals(args);
+            case "symbol_entry_points":    return listingCommands.handleSymbolEntryPoints(args);
             case "memory_map":      return listingCommands.handleMemoryMap();
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
@@ -87,7 +87,7 @@ final class CommandDispatcher {
             case "symbol_list":     return symbolCommands.handleSymbolList(args);
             case "symbol_get":      return symbolCommands.handleSymbolGet(args);
             case "symbol_get_by_name": return symbolCommands.handleSymbolGetByName(args);
-            case "symbol_create":   return symbolCommands.handleSymbolCreate(args);
+            case "symbol_create_label":   return symbolCommands.handleSymbolCreateLabel(args);
             case "symbol_delete":   return symbolCommands.handleSymbolDelete(args);
             case "symbol_rename":   return symbolCommands.handleSymbolRename(args);
             // Type commands

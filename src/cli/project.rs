@@ -31,10 +31,6 @@ pub enum ProgramCommands {
     Info(super::options::ObjectOptions),
     /// Show program statistics
     Stats(super::options::ObjectOptions),
-    /// List imported symbols and their libraries
-    Imports(super::options::QueryOptions),
-    /// List symbols marked as external entry points
-    Exports(super::options::QueryOptions),
     /// Export program
     Export(ExportArgs),
     /// Retry saving pending changes without restarting the bridge.

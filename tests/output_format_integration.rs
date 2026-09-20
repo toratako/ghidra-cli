@@ -616,7 +616,7 @@ fn invalid_choices_list_valid_values_before_loading_config() {
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         for (args, choices) in [
             (
-                vec!["program", "imports", "--format", "potato"],
+                vec!["symbol", "externals", "--format", "potato"],
                 "json, json-compact, ndjson",
             ),
             (vec!["function", "list", "-o", "auto"], "csv, tsv, table"),

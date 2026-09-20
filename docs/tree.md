@@ -21,8 +21,6 @@ ghidra-cli
 │   ├── delete
 │   ├── info
 │   ├── stats
-│   ├── imports
-│   ├── exports
 │   ├── export
 │   └── save
 ├── function
@@ -43,7 +41,9 @@ ghidra-cli
 ├── symbol
 │   ├── list
 │   ├── get
-│   ├── create
+│   ├── externals
+│   ├── entry-points
+│   ├── create-label
 │   ├── delete
 │   └── rename
 ├── memory

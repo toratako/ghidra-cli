@@ -162,14 +162,14 @@ impl BridgeClient {
         )
     }
 
-    /// List imports.
-    pub fn list_imports(&self, limit: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command("list_imports", Some(json!({"limit": limit})))
+    /// List Ghidra external symbols.
+    pub fn symbol_externals(&self, limit: Option<usize>) -> Result<serde_json::Value> {
+        self.send_command("symbol_externals", Some(json!({"limit": limit})))
     }
 
-    /// List exports.
-    pub fn list_exports(&self, limit: Option<usize>) -> Result<serde_json::Value> {
-        self.send_command("list_exports", Some(json!({"limit": limit})))
+    /// List Ghidra external entry points.
+    pub fn symbol_entry_points(&self, limit: Option<usize>) -> Result<serde_json::Value> {
+        self.send_command("symbol_entry_points", Some(json!({"limit": limit})))
     }
 
     /// Get memory map.
@@ -278,9 +278,9 @@ impl BridgeClient {
         self.send_command("symbol_get_by_name", Some(json!({"name": name})))
     }
 
-    pub fn symbol_create(&self, address: &str, name: &str) -> Result<serde_json::Value> {
+    pub fn symbol_create_label(&self, address: &str, name: &str) -> Result<serde_json::Value> {
         self.send_command(
-            "symbol_create",
+            "symbol_create_label",
             Some(json!({"address": address, "name": name})),
         )
     }

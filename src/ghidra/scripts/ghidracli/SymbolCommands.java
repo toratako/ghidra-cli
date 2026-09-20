@@ -126,7 +126,7 @@ final class SymbolCommands {
         return matches;
     }
 
-    JsonObject handleSymbolCreate(JsonObject args) {
+    JsonObject handleSymbolCreateLabel(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressStr = getArgString(args, "address");

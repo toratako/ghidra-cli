@@ -89,8 +89,8 @@ fn response_array_key(obj: &serde_json::Map<String, serde_json::Value>) -> Optio
     const ARRAY_KEYS: &[&str] = &[
         "functions",
         "strings",
-        "imports",
-        "exports",
+        "externals",
+        "entry_points",
         "blocks",
         "xrefs",
         "results",
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn output_format_preserves_explicit_flag_precedence() {
         for command in [
-            ["program", "imports"].as_slice(),
+            ["symbol", "externals"].as_slice(),
             ["function", "list"].as_slice(),
             ["program", "info"].as_slice(),
             ["program", "stats"].as_slice(),

@@ -53,7 +53,7 @@ fn test_symbol_list() {
 
 #[test]
 #[serial]
-fn test_symbol_create_and_get() {
+fn test_symbol_create_label_and_get() {
     require_ghidra!();
     let harness = harness();
 
@@ -61,7 +61,7 @@ fn test_symbol_create_and_get() {
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
-        .arg("create")
+        .arg("create-label")
         .arg(&addr)
         .arg("test_symbol")
         .arg("--project")
@@ -99,7 +99,7 @@ fn test_symbol_rename() {
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
-        .arg("create")
+        .arg("create-label")
         .arg(addr)
         .arg(&old_name)
         .arg("--project")
@@ -168,7 +168,7 @@ fn test_hex_symbol_names_can_be_read_renamed_and_deleted() {
         ("0Xdead", "0Xbeef"),
     ] {
         ghidra(harness)
-            .args(["symbol", "create", &address, name])
+            .args(["symbol", "create-label", &address, name])
             .run()
             .assert_success();
         let snapshot = client.symbol_get_by_name(name).unwrap();
@@ -211,9 +211,9 @@ fn test_symbol_name_and_address_collisions_preserve_mutation_targets() {
     let address_symbols = client.symbol_get(&explicit_address).unwrap();
 
     // The name points to a different address than its hexadecimal spelling.
-    client.symbol_create(&addresses[0], hex_name).unwrap();
+    client.symbol_create_label(&addresses[0], hex_name).unwrap();
     client
-        .symbol_create(&addresses[0], &explicit_address)
+        .symbol_create_label(&addresses[0], &explicit_address)
         .unwrap();
     let named = client.symbol_get_by_name(hex_name).unwrap();
     assert_eq!(named["symbols"][0]["address"], addresses[0]);
@@ -622,7 +622,7 @@ public class CreateDynamicSymbol extends GhidraScript {
     assert_eq!(error["detail"]["failed"][0]["id"], dynamic["id"]);
     assert!(error["detail"].get("partial_changes_saved").is_none());
 
-    client.symbol_create("0x1020", name).unwrap();
+    client.symbol_create_label("0x1020", name).unwrap();
     let stored = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
     let matches = client.symbol_get_by_name(name).unwrap();
     assert_eq!(matches["symbols"].as_array().unwrap().len(), 2);
