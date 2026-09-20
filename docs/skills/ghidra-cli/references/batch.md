@@ -1,6 +1,6 @@
 # Batch
 
-See [batch basics](../SKILL.md#batch) for a query example,
+See [batch basics](../SKILL.md#basic-batch) for a query example,
 and [save and failure behavior](../SKILL.md#results-edits-and-jobs)
 for persistence and retry decisions.
 

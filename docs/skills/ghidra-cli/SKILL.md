@@ -47,19 +47,30 @@ explicit name is rejected. Use the returned `program` for later commands.
 If an import error reports `detail.import_status: "saved"`, do not re-import:
 the error retains the program, analysis status, and recovery command arguments.
 
-## Batch
+## Basic Batch
 
 Batch files contain one subcommand per line, without `ghidra-cli`.
-Example `queries.ghidra`:
 
 ```text
-decompile main --with-vars --with-params
+# List candidate functions.
+function list --fields name,address,size --limit 100
+# Find a literal substring in defined strings (case-insensitive).
+find string "password"
+# Read a function; use its address if the name is ambiguous.
+decompile main
+# List outgoing calls from this function.
 function calls main
+# Find references to a function name or data address.
+xref to 0x404000
+# Read 32 bytes.
+memory read 0x404000 32
 ```
 
 ```bash
 ghidra-cli batch ./queries.ghidra --project target --program target.bin --json
 ```
+
+An empty `find string` result does not prove the text is absent from memory.
 
 Quote multiword arguments; shell variables, command substitutions, and wildcards
 are not expanded. See [batch syntax and targeting](references/batch.md) for details.
@@ -100,7 +111,7 @@ from a command failure.
 
 | When                                                                       | Reference                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| Choose queries, follow references, inspect memory, or control result size  | [Exploration](references/exploration.md)         |
+| Check decompiler metadata, search modes, graphs, filters, or result limits | [Exploration](references/exploration.md)         |
 | Refine names, comments, variables, signatures, types, symbols, or tags     | [Refinement](references/refinement.md)           |
 | Inspect instructions or PCode, repair analysis boundaries, or patch code   | [Low-level analysis](references/low-level.md)    |
 | Run custom Java processing and validate its artifacts                      | [Scripting](references/scripting.md)             |
