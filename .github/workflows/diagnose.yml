@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        mode: [parallel-1, parallel-2]
+        mode: [fixed-parallel]
 
     steps:
       - uses: actions/checkout@v7
@@ -48,13 +48,16 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Record diagnostic baseline
         run: python .github/scripts/ghidra_diagnostics.py begin
 
       - name: Build
         run: cargo build --verbose
+
+      - name: Check setup regression tests
+        run: cargo test --bin ghidra-cli ghidra::setup::tests
 
       - name: Run xtask tests
         run: cargo test -p xtask --verbose
@@ -75,6 +78,9 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record installed language metadata
+        run: python .github/scripts/ghidra_diagnostics.py begin
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
