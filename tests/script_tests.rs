@@ -446,8 +446,9 @@ public final class PackagedAudit extends GhidraScript {
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    // Java println uses the host line separator; compare LF and CRLF alike.
     assert_eq!(
-        result[0]["stdout"],
+        result[0]["stdout"].as_str().unwrap().replace("\r\n", "\n"),
         "audit.packaged.PackagedAudit:file:arg with spaces\n"
     );
 
@@ -471,7 +472,7 @@ public final class PackagedAudit extends GhidraScript {
         )
         .unwrap();
     assert_eq!(
-        result["stdout"],
+        result["stdout"].as_str().unwrap().replace("\r\n", "\n"),
         "audit.packaged.PackagedAudit:child:child arg\n"
     );
 
@@ -497,7 +498,7 @@ public final class PackagedAudit extends GhidraScript {
     assert!(output.stderr.is_empty(), "{output:?}");
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(
-        result[0]["stdout"],
+        result[0]["stdout"].as_str().unwrap().replace("\r\n", "\n"),
         "audit.packaged.PackagedAudit:stdin:stdin arg\n"
     );
     assert_eq!(result[0]["script"], "PackagedAudit.java");
