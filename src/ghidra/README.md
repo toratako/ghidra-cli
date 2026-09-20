@@ -8,7 +8,7 @@
 | `bridge/diagnostics.rs` | Storage/loopback probes and disposable-project runtime check |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
-| `setup.rs` | Ghidra download, installation, Java version check |
+| `setup.rs` | Ghidra download, installation with archive file times preserved, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
 | `project.rs` | Project descriptor/data paths, persisted-data checks, and project-name enumeration |
 | `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
