@@ -1,11 +1,13 @@
 package ghidracli;
 
 import com.google.gson.JsonObject;
+import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraState;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.DomainObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.util.GhidraProgramUtilities;
 import ghidra.util.exception.CancelledException;
@@ -19,6 +21,7 @@ import java.util.concurrent.Callable;
 final class ProgramSession {
     private final ScriptAccess script;
     private final Object consumer = new Object();
+    private final DecompilerSession decompiler = new DecompilerSession();
     private ProgramTransaction requestTransaction;
     private boolean requestActive;
     private boolean atomicRequest;
@@ -56,6 +59,9 @@ final class ProgramSession {
     GhidraState state() { return script.state(); }
     TaskMonitor monitor() { return script.monitor(); }
     void setMonitor(TaskMonitor monitor) { script.setMonitor(monitor); }
+    DecompileResults decompile(Function function, int timeoutSecs) throws CancelledException {
+        return decompiler.decompile(program(), function, timeoutSecs, monitor());
+    }
     private ProgramTransaction transaction(String description) {
         return new ProgramTransaction(program(), description);
     }
@@ -257,6 +263,7 @@ final class ProgramSession {
             domObj.release(consumer);
             throw failure;
         }
+        decompiler.close();
         if (program() != null) program().release(consumer);
         setProgram((Program) domObj);
         if (requestActive) startRequestTransaction("ghidra-cli: open program");
@@ -264,6 +271,7 @@ final class ProgramSession {
 
     void closeProgram() throws Exception {
         save();
+        decompiler.close();
         if (program() != null) program().release(consumer);
         setProgram(null);
     }

@@ -116,6 +116,7 @@ another consumer or terminate its checkout.
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
+| `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
@@ -229,6 +230,17 @@ is hash-ordered. All native decompiler callers share checked `timeout_secs` with
 zero as unlimited and a 2,147,483-second ceiling to avoid Ghidra's millisecond
 conversion overflow. High p-code and variable edits use the same CLI budget as
 ordinary decompilation.
+
+`ProgramSession` owns one lazy `DecompilerSession`, shared by decompilation,
+high p-code and variable edits on the program thread. Each call reads the current
+Program and request monitor. Reuse requires the same Program object and modification
+number; any change, including saved edits or rollback, causes reopening on next use.
+Results are not retained. Ghidra flushes native function/symbol data after each
+decompilation; reopening also refreshes language and address-space initialization.
+Native decompilation failure or cancellation closes the interface. Switching/closing
+saves first, then synchronously closes the decompiler before releasing the Program;
+`dispose()` alone defers cleanup to Ghidra's disposer thread. A failed save retains
+the live session.
 
 `ImportSupport` owns the loader's detached programs until save/release. Bootstrap
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge

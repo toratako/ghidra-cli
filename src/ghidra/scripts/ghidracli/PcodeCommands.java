@@ -3,8 +3,6 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import ghidra.app.decompiler.DecompInterface;
-import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.Register;
@@ -73,31 +71,22 @@ final class PcodeCommands {
             JsonArray ops = new JsonArray();
             if (highPcode) {
                 int timeoutSecs = getDecompileTimeoutArg(args);
-                DecompInterface decomp = new DecompInterface();
-                decomp.setOptions(new DecompileOptions());
-                try {
-                    if (!decomp.openProgram(session.program())) {
-                        return errorResult("Decompilation failed: openProgram failed: " + decomp.getLastMessage());
-                    }
-                    DecompileResults results = decomp.decompileFunction(func, timeoutSecs, session.monitor());
-                    session.monitor().checkCancelled();
-                    if (!results.decompileCompleted()) {
-                        String reason = results.getErrorMessage();
-                        if (reason == null || reason.isEmpty()) reason = "unknown failure";
-                        return errorResult("Decompilation failed for " + func.getName() + ": " + reason);
-                    }
+                DecompileResults results = session.decompile(func, timeoutSecs);
+                session.monitor().checkCancelled();
+                if (!results.decompileCompleted()) {
+                    String reason = results.getErrorMessage();
+                    if (reason == null || reason.isEmpty()) reason = "unknown failure";
+                    return errorResult("Decompilation failed for " + func.getName() + ": " + reason);
+                }
 
-                    HighFunction highFunction = results.getHighFunction();
-                    if (highFunction == null) {
-                        return errorResult("Decompiler returned no HighFunction for " + func.getName());
-                    }
-                    Iterator<PcodeOpAST> it = highFunction.getPcodeOps();
-                    while (it.hasNext()) {
-                        session.monitor().checkCancelled();
-                        ops.add(pcodeOpToJson(it.next()));
-                    }
-                } finally {
-                    decomp.dispose();
+                HighFunction highFunction = results.getHighFunction();
+                if (highFunction == null) {
+                    return errorResult("Decompiler returned no HighFunction for " + func.getName());
+                }
+                Iterator<PcodeOpAST> it = highFunction.getPcodeOps();
+                while (it.hasNext()) {
+                    session.monitor().checkCancelled();
+                    ops.add(pcodeOpToJson(it.next()));
                 }
             } else {
                 InstructionIterator instructions =

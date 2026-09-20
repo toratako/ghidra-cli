@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Reuse the native decompiler across decompile, high P-code and variable edits
+  while the selected Program is unchanged. Reopen after Program changes and
+  release it on decompilation failure, cancellation, Program switch or close.
 - Make `xref from TARGET` inspect one source address; `--function` explicitly
   selects the whole containing function. Disassembly no longer rewinds from an
   undefined address to the containing function's entry.

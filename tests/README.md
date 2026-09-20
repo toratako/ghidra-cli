@@ -93,7 +93,11 @@ selection across the nested commands; output tests preserve successful stopped
 follow program switch/close, automatic saves are visible in a separate database
 object before shutdown, and failed mutations cannot erase earlier edits. Save
 failures retain the editing result and program for recovery; explicit save keeps
-the same JVM. `daemon/transaction.rs` checks rollback after a late exception,
+the same JVM. `daemon/decompiler.rs` exercises real native process reuse across
+decompile/high p-code/variable edits, invalidation after saved changes and rollback,
+native cancellation/timeout recovery, monitor isolation, and release on Program
+switch/close while preserving the session after save failure.
+`daemon/transaction.rs` checks rollback after a late exception,
 cancellation, or a native false result, first-save failure without implicit retry,
 preservation of pending edits across a later rollback, foreign transaction
 rejection, recovery after transaction-start failure, rejection of previews after

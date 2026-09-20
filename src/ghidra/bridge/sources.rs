@@ -61,6 +61,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/DecompileCommands.java"),
     ),
     (
+        "ghidracli/DecompilerSession.java",
+        include_str!("../scripts/ghidracli/DecompilerSession.java"),
+    ),
+    (
         "ghidracli/FunctionCommands.java",
         include_str!("../scripts/ghidracli/FunctionCommands.java"),
     ),
