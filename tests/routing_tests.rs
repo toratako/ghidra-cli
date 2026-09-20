@@ -444,7 +444,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
 }
 
 #[test]
-fn type_creation_preserves_wire_requests_and_targets_in_standalone_and_batch() {
+fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() {
     let outer = RecordedBridge::new();
     let selected = RecordedBridge::new();
     for (mut args, wire, expected) in [
@@ -452,6 +452,11 @@ fn type_creation_preserves_wire_requests_and_targets_in_standalone_and_batch() {
             vec!["type", "create", "struct", "Header"],
             "type_create",
             json!({"definition": "Header"}),
+        ),
+        (
+            vec!["type", "create", "union", "Payload"],
+            "type_create_union",
+            json!({"name": "Payload"}),
         ),
         (
             vec![
@@ -476,6 +481,45 @@ fn type_creation_preserves_wire_requests_and_targets_in_standalone_and_batch() {
             vec!["type", "create", "typedef", "HeaderPointer", "Header *"],
             "type_typedef",
             json!({"name": "HeaderPointer", "base_type": "Header *"}),
+        ),
+        (
+            vec![
+                "type",
+                "del-enum-member",
+                "/Recovered/Mode",
+                "--name",
+                "Read",
+            ],
+            "type_del_enum_member",
+            json!({"type_name": "/Recovered/Mode", "member_name": "Read"}),
+        ),
+        (
+            vec![
+                "type",
+                "set-field",
+                "/Recovered/Payload",
+                "--ordinal",
+                "1",
+                "--name",
+                "flags",
+                "--type",
+                "uint",
+                "--comment",
+                "",
+            ],
+            "type_set_field",
+            json!({"type_name": "/Recovered/Payload", "offset": null, "ordinal": 1,
+                "field_name": "flags", "field_type": "uint", "comment": "", "size": null}),
+        ),
+        (
+            vec!["type", "del-field", "/Recovered/Payload", "--ordinal", "0"],
+            "type_del_field",
+            json!({"type_name": "/Recovered/Payload", "field_name": null, "ordinal": 0}),
+        ),
+        (
+            vec!["type", "del-field", "/Recovered/Payload", "--name", "flags"],
+            "type_del_field",
+            json!({"type_name": "/Recovered/Payload", "field_name": "flags", "ordinal": null}),
         ),
     ] {
         args.extend([
@@ -1381,7 +1425,7 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         assert_eq!(
             edits[0]["args"],
             json!({
-                "type_name": "/Recovered/Manager", "offset": 28,
+                "type_name": "/Recovered/Manager", "offset": 28, "ordinal": null,
                 "field_name": name, "field_type": field_type, "comment": comment, "size": size,
             })
         );

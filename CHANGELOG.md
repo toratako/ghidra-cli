@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add `type create union` and union member addition, deletion, and editing through
+  `type add-field`, `type del-field`, and `type set-field --ordinal`.
+- Add `type del-enum-member TYPE --name MEMBER` to remove one named enum member.
+
 ### Changed
 
 - Reuse the native decompiler across decompile, high P-code and variable edits

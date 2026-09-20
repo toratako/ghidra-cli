@@ -76,6 +76,13 @@ overflowing values fail. The CLI validates these limits before bridge work,
 including when filtering leaves the limit in Rust. Other long-based paging
 arguments retain their existing range.
 
+`type_create_union` takes `name` and creates an empty union. `type_set_field`
+selects a struct field with `offset` or an existing union member with `ordinal`;
+exactly one selector is required. `type_del_field` takes `field_name` or a union
+`ordinal`. Ordinals are zero-based and are returned in union `type_get` components.
+`type_add_field` accepts both structs and unions. `type_del_enum_member` takes
+`type_name` and exact `member_name`, removing only that named member.
+
 `graph_callers` and `graph_callees` take `function`, `depth`, and `limit` and
 return `{target, calls, count}`. Each call has `caller`, nullable `caller_address`,
 `callee`, `callee_address`, `call_site`, `destination`, `via`, `type`, and `depth`. Function names

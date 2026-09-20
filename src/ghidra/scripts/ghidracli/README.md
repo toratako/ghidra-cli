@@ -117,7 +117,7 @@ another consumer or terminate its checkout.
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
-| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields` | Data types, C parsing/import, type-name resolution, validated offset edits |
+| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
@@ -204,6 +204,14 @@ expressions are not database identities. Alias fallback must match a registered
 type before resolving its stored path; a matching path alone can name an unrelated
 user type. Rename success requires the actual name
 to match the request, since immutable Ghidra types can ignore `setName()`.
+
+Union edits select existing members by ordinal, since their byte offsets overlap.
+`UnionFields` validates additions and replacements on detached copies. Type
+replacement applies the final union in one `replaceWith` call: a live delete then
+insert would notify parent types of an intermediate size and can damage their
+layouts. Preserve explicit component settings across replacement, retaining only
+supported settings on the changed member. Metadata-only edits modify the member
+directly. The shared request transaction owns rollback and persistence.
 
 Symbol name lookups retain Ghidra's indexed results and supplement them with
 matching displayed names from the symbol-list iterator, deduplicating by symbol

@@ -58,6 +58,7 @@ ghidra-cli
 │   ├── get
 │   ├── create
 │   │   ├── struct
+│   │   ├── union
 │   │   ├── enum
 │   │   └── typedef
 │   ├── apply
@@ -67,7 +68,8 @@ ghidra-cli
 │   ├── add-field
 │   ├── set-field
 │   ├── clear-field
-│   └── del-field
+│   ├── del-field
+│   └── del-enum-member
 ├── tag
 │   ├── list
 │   ├── get
@@ -126,4 +128,4 @@ ghidra-cli
 └── setup
 ```
 
-114 command nodes (excluding the root), 0 aliases.
+116 command nodes (excluding the root), 0 aliases.

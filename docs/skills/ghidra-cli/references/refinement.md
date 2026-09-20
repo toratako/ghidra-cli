@@ -55,6 +55,7 @@ ghidra-cli type create struct Header --project target
 ghidra-cli type add-field Header --name magic --type uint --project target
 ghidra-cli type del-field Header --name magic --project target
 ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
+ghidra-cli type del-enum-member Mode --name Unknown --project target
 ghidra-cli type create typedef HeaderAlias Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
@@ -91,6 +92,27 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type delete` selects a registered program type by name or full path.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
+
+`del-enum-member` selects an exact member name; other names with the same value
+remain available.
+
+### Recovering unions
+
+```bash
+ghidra-cli type create union Payload
+ghidra-cli type add-field Payload --name integer --type uint32_t
+ghidra-cli type add-field Payload --name bytes --type 'byte[8]'
+ghidra-cli type get Payload
+ghidra-cli type set-field Payload --ordinal 1 --type 'Header *' --name header
+ghidra-cli type set-field Payload --ordinal 1 --comment 'Used when tag == 2'
+ghidra-cli type del-field Payload --ordinal 0
+```
+
+Union members all overlap at offset zero. Use the zero-based `ordinal` from
+`type get` to edit a member, including an unnamed one. Deletion also accepts
+`--name`; removing a member renumbers later ordinals. The union's size follows
+its members and packing/alignment, so changing its largest member can change
+the layout of containing types.
 
 ### Growing recovered structures
 

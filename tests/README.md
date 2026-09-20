@@ -132,6 +132,9 @@ Type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
 Type tests also inspect saved component format/byte-order settings after metadata
 and layout edits.
+`types/unions.rs` covers ordinal selection, member replacement, packing/alignment,
+parent layouts and persisted component settings. `types/enums.rs` checks selective
+member deletion, equal-valued aliases, empty enums and rejected ambiguous targets.
 They cover explicit signed-char semantics on an unsigned-char ABI, rejected
 immutable renames, and deletion of registered arrays, pointers and aliased types
 after reopening, while preserving unrelated types that share an alias target's name.

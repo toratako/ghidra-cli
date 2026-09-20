@@ -461,6 +461,11 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
             "typedef",
         ),
         (
+            "UnionCollision",
+            vec!["create", "union", "UnionCollision"],
+            "union",
+        ),
+        (
             "StructCollision",
             vec!["create", "struct", "StructCollision"],
             "struct",

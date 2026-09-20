@@ -204,6 +204,9 @@ pub(super) fn execute_via_bridge(
                 TypeCommands::Get(args) => client.type_get(&args.name),
                 TypeCommands::Create(cmd) => match cmd {
                     TypeCreateCommands::Struct(args) => client.type_create(&args.name),
+                    TypeCreateCommands::Union(args) => {
+                        client.send_command("type_create_union", Some(json!({"name": args.name})))
+                    }
                     TypeCreateCommands::Enum(args) => client.send_command(
                         "type_create_enum",
                         Some(json!({
@@ -245,6 +248,7 @@ pub(super) fn execute_via_bridge(
                 TypeCommands::SetField(args) => client.send_command(
                     "type_set_field",
                     Some(json!({"type_name": args.type_name, "offset": args.offset,
+                        "ordinal": args.ordinal,
                         "field_name": args.name, "field_type": args.field_type,
                         "size": args.size, "comment": args.comment})),
                 ),
@@ -257,7 +261,12 @@ pub(super) fn execute_via_bridge(
                     Some(json!({
                         "type_name": args.type_name,
                         "field_name": args.name,
+                        "ordinal": args.ordinal,
                     })),
+                ),
+                TypeCommands::DelEnumMember(args) => client.send_command(
+                    "type_del_enum_member",
+                    Some(json!({"type_name": args.type_name, "member_name": args.name})),
                 ),
             }
         }

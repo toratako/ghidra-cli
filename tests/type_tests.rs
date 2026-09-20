@@ -22,6 +22,12 @@ mod fields;
 #[path = "types/resolution.rs"]
 mod resolution;
 
+#[path = "types/unions.rs"]
+mod unions;
+
+#[path = "types/enums.rs"]
+mod enums;
+
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
 fn harness() -> &'static DaemonTestHarness {

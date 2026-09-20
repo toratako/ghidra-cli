@@ -94,6 +94,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::Get(args) => args.options.project.clone(),
             cli::TypeCommands::Create(cmd) => match cmd {
                 cli::TypeCreateCommands::Struct(args) => args.project.clone(),
+                cli::TypeCreateCommands::Union(args) => args.project.clone(),
                 cli::TypeCreateCommands::Enum(args) => args.project.clone(),
                 cli::TypeCreateCommands::Typedef(args) => args.project.clone(),
             },
@@ -105,6 +106,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::SetField(args) => args.project.clone(),
             cli::TypeCommands::ClearField(args) => args.project.clone(),
             cli::TypeCommands::DelField(args) => args.project.clone(),
+            cli::TypeCommands::DelEnumMember(args) => args.project.clone(),
         },
         Commands::Tag(cmd) => match cmd {
             cli::TagCommands::List(args) => args.options.project.clone(),
@@ -211,6 +213,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::Get(args) => args.options.program.clone(),
             cli::TypeCommands::Create(cmd) => match cmd {
                 cli::TypeCreateCommands::Struct(args) => args.program.clone(),
+                cli::TypeCreateCommands::Union(args) => args.program.clone(),
                 cli::TypeCreateCommands::Enum(args) => args.program.clone(),
                 cli::TypeCreateCommands::Typedef(args) => args.program.clone(),
             },
@@ -222,6 +225,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::SetField(args) => args.program.clone(),
             cli::TypeCommands::ClearField(args) => args.program.clone(),
             cli::TypeCommands::DelField(args) => args.program.clone(),
+            cli::TypeCommands::DelEnumMember(args) => args.program.clone(),
         },
         Commands::Tag(cmd) => match cmd {
             cli::TagCommands::List(args) => args.options.program.clone(),

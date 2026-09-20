@@ -21,6 +21,7 @@ import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.TypeDef;
 import ghidra.program.model.data.TypedefDataType;
 import ghidra.program.model.data.Union;
+import ghidra.program.model.data.UnionDataType;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
@@ -60,7 +61,7 @@ final class TypeCommands {
             typeData.addProperty("name", dt.getName());
             typeData.addProperty("path", dt.getPathName());
             typeData.addProperty("category", dt.getCategoryPath().toString());
-            typeData.addProperty("size", dt.getLength());
+            typeData.addProperty("size", dt instanceof Union ? UnionFields.length((Union) dt) : dt.getLength());
             String kind;
             if (dt instanceof Structure) kind = "struct";
             else if (dt instanceof Union) kind = "union";
@@ -111,14 +112,11 @@ final class TypeCommands {
         } else if (dataType instanceof Union) {
             typeInfo.addProperty("kind", "union");
             Union union = (Union) dataType;
+            typeInfo.addProperty("size", UnionFields.length(union));
+            typeInfo.addProperty("packing_enabled", union.isPackingEnabled());
             JsonArray components = new JsonArray();
             for (DataTypeComponent comp : union.getComponents()) {
-                JsonObject compObj = new JsonObject();
-                compObj.addProperty("name", comp.getFieldName());
-                compObj.addProperty("type", comp.getDataType().getName());
-                compObj.addProperty("offset", comp.getOffset());
-                compObj.addProperty("size", comp.getLength());
-                components.add(compObj);
+                components.add(UnionFields.describe(comp));
             }
             typeInfo.add("components", components);
         } else if (dataType instanceof ghidra.program.model.data.Enum) {
@@ -267,6 +265,26 @@ final class TypeCommands {
         }
     }
 
+    JsonObject handleTypeCreateUnion(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String name = getArgString(args, "name");
+        if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_]*"))
+            return errorResult("Union name must be a bare identifier; use type import-c for C declarations");
+        try {
+            DataTypeManager dtm = session.program().getDataTypeManager();
+            DataType registered = dtm.addDataType(
+                new UnionDataType(ghidra.program.model.data.CategoryPath.ROOT, name, dtm), null);
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "created");
+            result.addProperty("name", registered.getName());
+            result.addProperty("path", registered.getPathName());
+            result.addProperty("kind", "union");
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to create union: " + e.getMessage(), e);
+        }
+    }
+
     private JsonObject typeApplyConflictError(Address addr, String typeName, Exception cause) {
         Listing listing = session.program().getListing();
         CodeUnit cu = listing.getCodeUnitContaining(addr);
@@ -412,6 +430,32 @@ final class TypeCommands {
         }
     }
 
+    JsonObject handleTypeDelEnumMember(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String typeName = getArgString(args, "type_name");
+        String name = getArgString(args, "member_name");
+        if (typeName == null || name == null) return errorResult("type_name and member_name required");
+        try {
+            DataType type = typeResolver.resolveRegisteredDataType(typeName);
+            if (!(type instanceof ghidra.program.model.data.Enum))
+                return errorResult(type == null ? "Type not found: " + typeName : "Type is not an enum: " + typeName);
+            ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) type;
+            if (!enumType.contains(name))
+                return errorResult("Enum member not found: " + name + " in " + typeName);
+            long value = enumType.getValue(name);
+            enumType.remove(name);
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "member_deleted");
+            result.addProperty("enum", enumType.getName());
+            result.addProperty("path", enumType.getPathName());
+            result.addProperty("member", name);
+            result.addProperty("value", value);
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to delete enum member: " + e.getMessage(), e);
+        }
+    }
+
     JsonObject handleTypeAddField(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "type_name");
@@ -423,11 +467,13 @@ final class TypeCommands {
         try {
             DataType structType = typeResolver.resolveDataType(typeName);
             if (structType == null) return errorResult("Type not found: " + typeName);
-            if (!(structType instanceof Structure))
-                return errorResult("Type is not a struct: " + typeName);
+            if (!(structType instanceof Structure) && !(structType instanceof Union))
+                return errorResult("Type is not a struct or union: " + typeName);
 
             DataType fieldDataType = typeResolver.resolveDataType(fieldTypeName);
             if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
+            if (structType instanceof Union)
+                return UnionFields.add((Union) structType, fieldName, fieldDataType, StructureFields.size(args));
 
             Structure struct = (Structure) structType;
             DataTypeUtilities.checkAncestry(struct, fieldDataType);
@@ -469,11 +515,25 @@ final class TypeCommands {
     JsonObject handleTypeSetField(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         try {
-            Structure struct = findStructure(args);
+            String targetName = getArgString(args, "type_name");
+            if (targetName == null || targetName.isBlank())
+                return errorResult("Struct or union name required");
+            DataType target = typeResolver.resolveDataType(targetName);
+            if (target == null) return errorResult("Type not found: " + targetName);
+            if (!(target instanceof Structure) && !(target instanceof Union))
+                return errorResult("Type is not a struct or union: " + targetName);
+            if (target instanceof Union && getArgString(args, "offset") != null)
+                return errorResult("Union members require --ordinal, not --offset");
+            if (target instanceof Structure && getArgString(args, "ordinal") != null)
+                return errorResult("Struct fields require --offset, not --ordinal");
             String typeName = getArgString(args, "field_type");
             DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
+            if (target instanceof Union)
+                return UnionFields.set((Union) target, UnionFields.ordinal(args),
+                    getArgString(args, "field_name"), type, comment, StructureFields.size(args));
+            Structure struct = (Structure) target;
             return StructureFields.set(struct, StructureFields.offset(args),
                 getArgString(args, "field_name"), type, comment, comment != null,
                 StructureFields.size(args)).apply(struct);
@@ -496,14 +556,21 @@ final class TypeCommands {
         if (session.program() == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "type_name");
         String fieldName = getArgString(args, "field_name");
-        if (typeName == null || fieldName == null)
-            return errorResult("type_name and field_name required");
+        boolean hasOrdinal = getArgString(args, "ordinal") != null;
+        if (typeName == null || (fieldName != null) == hasOrdinal)
+            return errorResult("type_name and exactly one of field_name or ordinal required");
 
         try {
             DataType structType = typeResolver.resolveDataType(typeName);
             if (structType == null) return errorResult("Type not found: " + typeName);
+            if (structType instanceof Union) {
+                Union union = (Union) structType;
+                return UnionFields.delete(union, hasOrdinal ? UnionFields.ordinal(args)
+                    : UnionFields.namedOrdinal(union, fieldName));
+            }
             if (!(structType instanceof Structure))
-                return errorResult("Type is not a struct: " + typeName);
+                return errorResult("Type is not a struct or union: " + typeName);
+            if (hasOrdinal) return errorResult("Struct field deletion requires --name");
 
             Structure struct = (Structure) structType;
             int ordinal = -1;

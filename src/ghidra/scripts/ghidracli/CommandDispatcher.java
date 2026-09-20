@@ -99,6 +99,8 @@ final class CommandDispatcher {
             case "type_delete":     return typeCommands.handleTypeDelete(args);
             case "type_rename":     return typeCommands.handleTypeRename(args);
             case "type_create_enum": return typeCommands.handleTypeCreateEnum(args);
+            case "type_create_union": return typeCommands.handleTypeCreateUnion(args);
+            case "type_del_enum_member": return typeCommands.handleTypeDelEnumMember(args);
             case "type_typedef":    return typeCommands.handleTypeTypedef(args);
             case "type_add_field":  return typeCommands.handleTypeAddField(args);
             case "type_set_field":  return typeCommands.handleTypeSetField(args);
