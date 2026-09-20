@@ -43,6 +43,14 @@ Path and lifecycle changes must follow the shared
 
 - Do NOT prune @CHANGELOG.md
 - Do not consider backward compatibility; instead, we are prioritizing aesthetic excellence in the CLI's design.
+- When replacing a contract, remove obsolete paths and their tests together.
+  Do not add legacy aliases, fallbacks, migration-only diagnostics, or tests
+  enumerating rejected spellings of removed commands, options, or fields.
+- Defensive code and tests must protect against a concrete failure under the
+  current contract, such as wrong-target edits, data loss, or invalid input reaching
+  a mutation. Test shared validation boundaries with representative inputs instead
+  of duplicating parser behavior. Supported platforms and Ghidra versions are part
+  of the current contract.
 
 ### Skill documentation
 
