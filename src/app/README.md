@@ -13,7 +13,7 @@ The library exposes that same definition to `xtask` for documentation generation
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
-| `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on save failures or timeouts |
+| `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on transaction/save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
 | `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
@@ -33,16 +33,24 @@ for the shared output path; nested memory bytes and pointers are not result rows
 `program export` requires `--output` during parsing for every export format.
 Function rename rejects symbol-only bulk flags (`--filter`, `--all`).
 Function and comment deletion accept only their target and receipt output options; filtering,
-sorting, pagination, and count flags are rejected before bridge work. Preflight
-requires `bridge_info.explicit_addresses: true` before program dispatch and
-before compatibility recovery. Missing support fails with restart guidance;
-never downgrade to inferred address parsing. Recovery for other compatibility
+sorting, pagination, and count flags are rejected before bridge work.
+`connect_program_bridge(port)` requires `bridge_info.explicit_addresses: true`,
+`auto_save: true`, and `atomic_edits: true` before program dispatch and before
+compatibility recovery. Missing support fails with explicit restart guidance;
+never downgrade address/transaction semantics or automatically upgrade for missing
+capabilities. `program save` uses the direct management path without this gate,
+preserving in-place recovery of pending edits before an explicit restart.
+Recovery for other compatibility
 failures retries at most once after dispatch. Compatibility restart captures the
 selected project file path (never the internal Program name or a default); if it
 cannot determine the selection, it leaves the bridge running. Stop errors prevent restart.
 Never replay commands after save failures.
 Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
+Multi-symbol deletion is one atomic bridge request; failure detail describes
+`attempted_deleted`, `failed`, and `not_attempted`, without a committed deletion
+count. Preserve `rolled_back`, `cancelled`, `transaction_failed`, and save-failure
+detail through error reporting.
 Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
@@ -69,9 +77,12 @@ cannot distinguish an unnamed segment from a numeric-looking registered space.
 Batch errors retain attempted results internally, including nested reports. The
 outer invocation prints the report to stdout using the same format as a successful
 batch, then reports summary diagnostics on stderr and exits nonzero. Stderr no
-longer contains `detail.results`. Ordinary
+longer contains `detail.results`. Commands run sequentially, with one transaction
+boundary per bridge request; a batch is never atomic. A failed ordinary request
+rolls back its own edits while earlier completed commands remain saved. Ordinary
 errors follow `--on-error continue|stop` (default: continue); nested batches
-inherit the policy unless overridden. Save failures/timeouts always stop them.
+inherit the policy unless overridden. Transaction/save failures and timeouts
+always stop them, including failures at the end of nested batches.
 Preserve the timeout type for exit 75. Each line uses normal target resolution
 and recovery: omitted project inherits the batch project, omitted program keeps
 that project's selection, and query modifiers apply within each result.
@@ -88,6 +99,8 @@ standalone and batch output cannot apply a server offset twice.
 Extract response envelopes before query processing. `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
-wait timeouts exit 75, setup verification/doctor failures exit 1.
+wait timeouts exit 75, setup verification/doctor failures exit 1. Human-readable
+errors state when changes were rolled back or partial changes were saved without
+requiring verbose mode; JSON errors retain the structured detail flags.
 
 Unit tests stay with their owning helpers; see [validation commands](../../tests/README.md).

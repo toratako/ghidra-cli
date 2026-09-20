@@ -53,9 +53,13 @@ ghidra-cli clear 0x401200:0x40121f --disassemble-at 0x401210 --project target
 
 Plain `clear START:END` clears overlapping code units and leaves the range
 undefined. Add `--disassemble-at ADDRESS` to disassemble at a new boundary after clearing.
+If redisassembly fails or the request is cancelled, clearing and any new
+instructions are rolled back together. A failed redisassembly receipt uses
+`status: "failed"`.
 This existing `clear` option is separate from `define-code`: its subsequent
 disassembly is not confined to the cleared range. To bound code creation, run
-plain `clear` followed by `define-code START --end END` instead.
+plain `clear` followed by `define-code START --end END` instead. Those are separate
+requests: a later `define-code` failure does not undo the successful `clear`.
 `clear` ranges stay within one space. `overlay:0x1000:0x1010` inherits the start
 space; segmented endpoints must be fully qualified, e.g.
 `ram:0x1234:0x0:ram:0x1234:0x8`. For numeric space names, use
@@ -92,7 +96,8 @@ contiguous or quoted with spaces. Supply the intended instruction encoding for
 the target ISA. The entire range must be mapped and initialized. Writing clears
 existing code units in that range and restores any temporarily changed block
 write permissions. Use `define-code` to restore instruction definitions when needed.
-Failed nested mutations can retain partial changes; see
+Failure or cancellation rolls back the bytes, cleared code units, and permission
+changes from that request; see
 [persistence semantics](../SKILL.md#results-edits-and-jobs).
 
 Use [program export binary](programs.md#export) to write the edited binary.

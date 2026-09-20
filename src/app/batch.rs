@@ -50,7 +50,7 @@ pub(super) fn split_arguments(line: &str) -> anyhow::Result<Vec<String>> {
     Ok(arguments)
 }
 
-/// Retain attempted results; save failures and timeouts always stop execution.
+/// Retain attempted results; transaction/save failures and timeouts always stop.
 pub(super) fn execute_batch(
     content: &str,
     on_error: BatchErrorPolicy,
@@ -66,6 +66,7 @@ pub(super) fn execute_batch(
     let mut results = Vec::new();
     let mut failed = 0;
     let mut save_failed = false;
+    let mut transaction_failed = false;
     let mut last_error = None;
     for (number, line) in &lines {
         let mut row = json!({"line": number, "command": line.trim()});
@@ -80,7 +81,12 @@ pub(super) fn execute_batch(
                     row["detail"] = error.detail.clone();
                     save_failed |=
                         error.detail.get("save_failed").and_then(|v| v.as_bool()) == Some(true);
-                    stop |= save_failed;
+                    transaction_failed |= error
+                        .detail
+                        .get("transaction_failed")
+                        .and_then(|v| v.as_bool())
+                        == Some(true);
+                    stop |= save_failed || transaction_failed;
                 }
                 row["exit_code"] = json!(if timeout { 75 } else { 1 });
                 last_error = Some(error);
@@ -102,6 +108,9 @@ pub(super) fn execute_batch(
     });
     if save_failed {
         detail["save_failed"] = json!(true);
+    }
+    if transaction_failed {
+        detail["transaction_failed"] = json!(true);
     }
     match last_error {
         Some(error) => {
@@ -185,33 +194,61 @@ mod tests {
     }
 
     #[test]
-    fn batch_stops_on_save_failure_including_at_end_of_nested_batch() {
-        for policy in [BatchErrorPolicy::Continue, BatchErrorPolicy::Stop] {
-            let mut calls = 0;
-            let error = execute_batch("nested\nmust-not-run", policy, |_| {
-                calls += 1;
-                execute_batch("edit", policy, |_| {
-                    Err(BridgeCommandError {
-                        message: "Auto-save failed".to_owned(),
-                        detail: serde_json::json!({
-                            "save_failed": true,
-                            "command_response": {"status": "success", "data": {"created": true}},
-                        }),
-                    }
-                    .into())
+    fn batch_stops_on_transaction_or_save_failure_including_at_end_of_nested_batch() {
+        for flag in ["save_failed", "transaction_failed"] {
+            for policy in [BatchErrorPolicy::Continue, BatchErrorPolicy::Stop] {
+                let mut calls = 0;
+                let error = execute_batch("nested\nmust-not-run", policy, |_| {
+                    calls += 1;
+                    execute_batch("edit", policy, |_| {
+                        Err(BridgeCommandError {
+                            message: "Request finalization failed".to_owned(),
+                            detail: serde_json::json!({
+                                flag: true,
+                                "command_response": {"status": "success", "data": {"created": true}},
+                            }),
+                        }
+                        .into())
+                    })
                 })
-            })
-            .unwrap_err();
-            let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
-            assert_eq!(calls, 1);
-            assert_eq!(detail["not_executed"], 1);
-            assert_eq!(detail["save_failed"], true);
-            assert_eq!(
-                detail["results"][0]["detail"]["results"][0]["detail"]["command_response"]["data"]
-                    ["created"],
-                true
-            );
+                .unwrap_err();
+                let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
+                assert_eq!(calls, 1);
+                assert_eq!(detail["not_executed"], 1);
+                assert_eq!(detail[flag], true);
+                assert_eq!(detail["results"][0]["detail"][flag], true);
+                assert_eq!(
+                    detail["results"][0]["detail"]["results"][0]["detail"]["command_response"]
+                        ["data"]["created"],
+                    true
+                );
+            }
         }
+    }
+
+    #[test]
+    fn batch_can_continue_after_completed_request_rollback() {
+        let mut calls = 0;
+        let error = execute_batch("failed-edit\nnext-edit", BatchErrorPolicy::Continue, |_| {
+            calls += 1;
+            if calls == 1 {
+                Err(BridgeCommandError {
+                    message: "Edit failed".to_owned(),
+                    detail: serde_json::json!({"rolled_back": true}),
+                }
+                .into())
+            } else {
+                Ok(serde_json::json!({"created": true}))
+            }
+        })
+        .unwrap_err();
+        let detail = &error.downcast_ref::<BridgeCommandError>().unwrap().detail;
+        assert_eq!(calls, 2);
+        assert_eq!(detail["not_executed"], 0);
+        assert_eq!(detail["results"][0]["detail"]["rolled_back"], true);
+        assert_eq!(detail["results"][1]["result"]["created"], true);
+        assert!(detail.get("save_failed").is_none());
+        assert!(detail.get("transaction_failed").is_none());
     }
 
     #[test]

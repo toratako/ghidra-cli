@@ -93,7 +93,14 @@ selection across the nested commands; output tests preserve successful stopped
 follow program switch/close, automatic saves are visible in a separate database
 object before shutdown, and failed mutations cannot erase earlier edits. Save
 failures retain the editing result and program for recovery; explicit save keeps
-the same JVM. Stop/restart/project deletion also preserve unsaved state on final
+the same JVM. `daemon/transaction.rs` checks rollback after a late exception,
+cancellation, or a native false result, first-save failure without implicit retry,
+preservation of pending edits across a later rollback, foreign transaction
+rejection, recovery after transaction-start failure, rejection of previews after
+request edits, and pending rollback after a leaked native child in previews or
+ordinary edits. These probes inject
+failures through test-owned Java wrappers, without production failure hooks.
+Stop/restart/project deletion also preserve unsaved state on final
 save failure; recovered edits survive shutdown and reopening. Project tests hold
 an external Ghidra owner to verify refusal and deletion after lock release.
 Bootstrap tests reject unknown loader options without saving a program.
@@ -108,8 +115,10 @@ Program-session tests compare live and saved flags independently
 of function count and check recursive status counts across restart and deletion.
 Real bridge tests cover OSGi loading of the whole source bundle.
 Script tests exercise JDK parsing of stdin declarations through that OSGi path.
-Symbol tests cover generated-label rejection and deletion failures retaining
-partial results through successful and failed saves; type tests verify that
+Symbol tests cover generated-label rejection, rollback of cascading multi-symbol
+deletions, and foreign transaction rejection without erasing the owner's edits.
+Patch tests verify that failed writes and clear/redisassembly requests restore
+bytes, listing definitions, and permissions. Type tests verify that
 explicit field sizes are either honored or rejected before layout changes.
 Type tests also inspect saved component format/byte-order settings after metadata
 and layout edits.
@@ -144,7 +153,8 @@ searches (including byte regex) and cancellation of all raw search modes.
 initialized memory boundaries, overlays, invalid/zero-length matches, and CLI/batch
 parity. CLI/routing tests also preserve regex escaping and query fetch limits.
 Batch coverage checks nonzero failure exits, preservation of per-command results
-and save errors, and stopping subsequent commands after a save failure or timeout.
+and save errors, and stopping subsequent commands after a transaction-boundary
+failure, save failure, or timeout, including through nested batches.
 Program deletion coverage includes the initial program, closed files with matching
 internal names, a stopped bridge, empty projects, batch deletion, and failures
 that must preserve other consumers or unsaved changes.

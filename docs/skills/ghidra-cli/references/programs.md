@@ -47,6 +47,9 @@ Import waits for completion. Use `import --no-analyze` to omit analysis and
 `analyze --project target --program target.bin` to analyze or reanalyze the entire
 program using its current analyzer settings. `analyzer list` and `analyzer set`
 inspect or change those settings without running analysis.
+Analysis and import can retain partial changes on failure or cancellation;
+`analyzer set` is an ordinary atomic edit. External project-file effects are not
+rolled back by request transactions.
 `import INPUT --program NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
 name (Ghidra may add a suffix on collision). An explicit name
@@ -77,6 +80,8 @@ see [disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-
 Supported formats are `xml`, `c`, `binary`, `gzf`, `asm`, `hex`, and `html`
 (case-insensitive). Use `c` for decompiled C and `asm` for the Ghidra text listing.
 Every format requires an output file via `--output PATH` (`-o PATH`).
+Exported files are outside Program transactions; a failed or cancelled exporter
+can leave partial output unless the format provides the publication guarantee below.
 
 ```bash
 ghidra-cli program export c --project target -o ./target.c

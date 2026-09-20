@@ -164,7 +164,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
             let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
                 // bridge_info is a responsive control request, including while
                 // analysis or another program job is running.
-                ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?
+                connect_program_bridge(port)?
             } else {
                 // Auto-start bridge - use specific program if available, otherwise project mode
                 let mode = if let Some(program) = startup_program.clone() {
@@ -323,69 +323,16 @@ fn is_unknown_command_error(err: &anyhow::Error) -> bool {
     err.to_string().starts_with("Unknown command:")
 }
 
-/// Upgrade a running pre-auto-save bridge before sending any editing command.
-pub(super) fn ensure_autosave_bridge(
-    port: u16,
-    project_path: &std::path::Path,
-    ghidra_install_dir: &std::path::Path,
-    output: Output,
-) -> anyhow::Result<BridgeClient> {
+/// Require the current editing contract before selecting or changing a program.
+pub(super) fn connect_program_bridge(port: u16) -> anyhow::Result<BridgeClient> {
     let client = BridgeClient::new(port);
     let info = client.bridge_info()?;
     anyhow::ensure!(info.get("explicit_addresses").and_then(|v| v.as_bool()) == Some(true),
-        "Running bridge does not support explicit 0x addresses; run `ghidra-cli bridge restart` for this project before retrying. No program command was sent.");
-    if info.get("auto_save").and_then(|v| v.as_bool()) == Some(true) {
-        return Ok(client);
-    }
-    output.progress("Updating the running bridge to enable automatic saving...");
-    // Old bridge_info reports the internal program name, which can differ from
-    // its project file path. Also flush an explicitly opened program: the old
-    // headless shutdown only guarantees saving the initially loaded program.
-    let checkpoint = client.script_run_source(
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.util.task.TaskMonitor;
-public class PrepareAutoSaveUpgrade extends GhidraScript {
-    public void run() throws Exception {
-        if (currentProgram == null) return;
-        end(true);
-        if (currentProgram.getCurrentTransactionInfo() == null && currentProgram.isChanged()) {
-            currentProgram.save("ghidra-cli bridge upgrade", TaskMonitor.DUMMY);
-        }
-        writer.println(currentProgram.getDomainFile().getPathname());
-    }
-}
-"#,
-        &[],
-        &[],
-        false,
-    )?;
-    let program = checkpoint
-        .get("stdout")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not determine the current program before upgrading; bridge left running."
-            )
-        })?
-        .trim();
-    let mode = if program.is_empty() {
-        BridgeStartMode::Project
-    } else {
-        BridgeStartMode::Process {
-            program_name: program.to_owned(),
-        }
-    };
-    bridge::stop_bridge(project_path)?;
-    let port = bridge::ensure_bridge_running(project_path, ghidra_install_dir, mode)?;
-    let client = BridgeClient::new(port);
+        "Running bridge does not support explicit 0x addresses; save pending changes with `ghidra-cli program save`, then run `ghidra-cli bridge restart` for this project. No program command was sent.");
     anyhow::ensure!(
-        client
-            .bridge_info()?
-            .get("auto_save")
-            .and_then(|v| v.as_bool())
-            == Some(true),
-        "The restarted bridge does not support automatic saving; no editing command was sent."
+        info.get("auto_save").and_then(|v| v.as_bool()) == Some(true)
+            && info.get("atomic_edits").and_then(|v| v.as_bool()) == Some(true),
+        "Running bridge does not support atomic edits and automatic saving; save pending changes with `ghidra-cli program save`, then run `ghidra-cli bridge restart` for this project. No program command was sent."
     );
     Ok(client)
 }

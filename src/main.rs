@@ -13,6 +13,7 @@ mod terminal;
 use app::{handle_management_command, run_command, run_setup};
 use clap::Parser;
 use cli::{Cli, Commands};
+use serde_json::Value;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -185,6 +186,13 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
     } else {
         let prefix = if timeout { "Timeout" } else { "Error" };
         let mut text = format!("{prefix}: {message}");
+        if let Some(detail) = detail {
+            if detail.get("rolled_back").and_then(Value::as_bool) == Some(true) {
+                text.push_str("\nChanges from this command were rolled back.");
+            } else if detail.get("partial_changes_saved").and_then(Value::as_bool) == Some(true) {
+                text.push_str("\nPartial changes were saved; inspect the program before retrying.");
+            }
+        }
         if verbose >= 2 {
             if let Some(detail) = detail {
                 text.push_str(&format!(
@@ -258,5 +266,43 @@ mod tests {
         let output = app::Output::new(&cli);
         let (_, text) = format_error(&anyhow::anyhow!("failed operation"), output, 0);
         assert_eq!(text, "Error: failed operation");
+    }
+
+    #[test]
+    fn human_errors_explain_edit_outcomes_without_verbose_details() {
+        let output = app::Output {
+            json: false,
+            pretty: false,
+            quiet: false,
+        };
+        for (detail, expected) in [
+            (
+                json!({"rolled_back": true}),
+                "Changes from this command were rolled back.",
+            ),
+            (
+                json!({"partial_changes_saved": true}),
+                "Partial changes were saved; inspect the program before retrying.",
+            ),
+        ] {
+            let error = anyhow::Error::new(ipc::protocol::BridgeCommandError {
+                message: "edit failed".into(),
+                detail: detail.clone(),
+            });
+            let (code, text) = format_error(&error, output, 0);
+            assert_eq!(code, 1);
+            assert_eq!(text, format!("Error: edit failed\n{expected}"));
+            let (_, json_text) = format_error(
+                &error,
+                app::Output {
+                    json: true,
+                    ..output
+                },
+                0,
+            );
+            let value: Value = serde_json::from_str(&json_text).unwrap();
+            assert_eq!(value["detail"], detail);
+            assert_eq!(value["message"], "edit failed");
+        }
     }
 }

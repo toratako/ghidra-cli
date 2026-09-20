@@ -169,8 +169,7 @@ fn run_import_steps(
     } else {
         progress.stage = "bridge.start";
         let client = if let Some(port) = running {
-            let client =
-                super::ensure_autosave_bridge(port, project_path, ghidra_install_dir, output)?;
+            let client = super::connect_program_bridge(port)?;
             if client.bridge_info()?["named_import"] == true {
                 client
             } else {

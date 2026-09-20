@@ -88,13 +88,41 @@ No definition at the target is an error with the receipt retained in detail.
 The old `disasm_at` command is removed; `limit`, `count`, and other query
 arguments are rejected. The distinct wire name prevents an old bridge from
 silently ignoring bounds. The optional `clear_range.disasm_at` argument is
-unchanged and does not use this bounded operation.
+unchanged and does not use this bounded operation. Clearing and its optional
+redisassembly are atomic together; a failed redisassembly receipt has
+`status: "failed"` in the error detail. Failure rolls back the clearing.
 
 `bridge_info.auto_save: true` advertises saving before successful program
 responses. `program_save` retries pending saves without restarting. A save failure
 returns `error` with `detail.save_failed: true`, `saved: false`, and the original
-`command_response`; do not replay the edit. Errors with retained, saved changes
-include `detail.partial_changes_saved: true`.
+`command_response`; do not replay the edit. The first save failure in a request
+is returned without an implicit retry, leaving pending edits for explicit save.
+
+Ordinary requests are atomic: error or cancellation rolls back all their Program
+changes and adds `detail.rolled_back: true`; cancellation also adds
+`detail.cancelled: true`. Earlier requests remain intact, including earlier lines
+in a batch. Rollback does not flush pending edits from an earlier save failure.
+The non-atomic exceptions are `analyze`, `script_run`, `import`, `program_export`,
+`open_program`, `program_close`, `program_save`, and `program_delete`. Errors from
+those requests can include `detail.partial_changes_saved: true` when retained
+Program changes were saved; external project/file effects are outside rollback.
+
+Transaction ownership failures use `detail.transaction_failed: true`, without
+claiming rollback. An ordinary request is rejected before execution if a foreign
+transaction is already active; that transaction and its edits remain untouched.
+If native code leaves a child open inside an atomic request, the bridge aborts
+its owned root entry and leaves rollback pending until the child's owner closes
+it. The response retains `command_response` for diagnosis, but reports neither
+`rolled_back` nor a save; those failed-request edits cannot be committed.
+The owning script must resolve the outstanding transaction; recovery scripts
+are still accepted.
+
+`bridge_info.atomic_edits: true` advertises this request rollback contract. The CLI
+requires it alongside `auto_save` and `explicit_addresses` before program dispatch;
+a missing capability fails with explicit bridge-restart guidance, without sending
+the program command or automatically upgrading the bridge. Explicit `program_save`
+uses the direct recovery path and remains available before restarting an older
+bridge with pending edits.
 
 `find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
 default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.
@@ -138,6 +166,9 @@ endpoints must belong to the same space and form an ascending inclusive range.
 Symbol mutations resolve name snapshots through `symbol_get_by_name`.
 `symbol_get` accepts exact names or explicit addresses; neither operation
 performs legacy bare-hex or generated-name address inference.
+Failed multi-symbol deletion reports `attempted_deleted`, `failed`, and
+`not_attempted` in detail. These are attempted-work diagnostics; `deleted` and
+the committed `count` appear only on success.
 
 | Response status | Client result |
 |---|---|

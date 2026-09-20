@@ -71,7 +71,8 @@ pub struct BatchArgs {
     pub script_file: String,
 
     /// Action after a command error (default: continue; nested batches inherit).
-    /// Save failures and timeouts always stop. Completed edits are not rolled back.
+    /// Transaction/save failures and timeouts always stop. Commands run sequentially;
+    /// a failed ordinary request rolls back its own edits, while earlier commands remain saved.
     #[arg(long, value_enum, value_name = "MODE")]
     pub on_error: Option<BatchErrorPolicy>,
 

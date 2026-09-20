@@ -103,7 +103,8 @@ pub struct ClearArgs {
     /// Ambiguous splits are rejected; qualify both endpoints to disambiguate.
     /// The legacy :: spelling is rejected.
     pub range: String,
-    /// Re-disassemble at an explicit 0x-prefixed address or exact symbol name after clearing
+    /// Re-disassemble at an explicit 0x-prefixed address or exact symbol name after clearing.
+    /// Failure or cancellation rolls back both clearing and redisassembly.
     #[arg(long = "disassemble-at")]
     pub disasm_at: Option<String>,
     #[arg(long)]

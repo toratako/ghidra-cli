@@ -149,9 +149,11 @@ the same JVM and program open. Resolve the cause, retry `program save`, then sto
 
 Program commands, including analysis, scripts, and each batch operation, save
 before reporting success. Switching/closing also saves first; failure keeps the
-program open. Before sending program commands to a bridge predating automatic
-saving, the CLI attempts a save and bridge upgrade. Older bridges without final
-save confirmation require the [manual upgrade procedure](#upgrading).
+program open. A running bridge without the required saving, address, or atomic-edit
+capabilities is rejected before program dispatch, with explicit restart guidance;
+the CLI does not automatically upgrade it. `program save` remains available for
+in-place recovery before restarting. Older bridges without final save confirmation
+require the [manual upgrade procedure](#upgrading).
 
 `program delete --program NAME` deletes the project file without selecting it.
 Deleting the current program saves and closes it first; deleting another file
@@ -159,16 +161,37 @@ preserves the current selection. Other consumers and checkouts can prevent
 deletion.
 
 Save errors carry `detail.save_failed: true`; program commands also retain the
-editing response in `detail.command_response`. Changes may remain in memory: keep the bridge running,
+editing response in `detail.command_response`. A save failure is returned without
+an implicit retry in that request. Changes may remain in memory: keep the bridge running,
 resolve the reported cause, and retry `program save` for the same project/program
 without restarting or repeating the edit.
 Saving a stopped bridge is a no-op. Auto-save covers the bridge's current program;
 scripts that open other programs own their saving and release. Scripts must close
 transactions they start.
 
-Failed/cancelled operations can retain partial changes; saves of those changes
-report `detail.partial_changes_saved: true`. Earlier successful requests are already
-committed and saved. Cancellation cannot interrupt saving, so completion may follow it.
+Ordinary program requests are atomic: failure or cancellation rolls back every
+change in that request, including clearing before redisassembly and multi-symbol
+deletion. Errors report `detail.rolled_back: true`, plus `detail.cancelled: true`
+when cancelled. Earlier completed requests remain intact. Batch commands run
+sequentially with these individual boundaries; a batch is not one transaction.
+A rolled-back request does not save pending edits from an earlier save failure.
+Transaction-boundary failures, save failures, and timeouts always stop a batch,
+including nested batches; completed rollbacks follow its `--on-error` policy.
+
+Analysis, scripts, imports, exports, and program open/close/save/delete are explicit
+exceptions. They can retain partial changes and external file/project effects;
+saved partial changes report `detail.partial_changes_saved: true`. Cancellation
+cannot interrupt saving after commit, so completion may follow it.
+
+`detail.transaction_failed: true` means the bridge could not establish or finish
+transaction ownership; it does not confirm rollback. An ordinary request is
+rejected before execution if another script left a transaction active, preserving
+that owner's transaction and edits. If native code instead leaves a child
+transaction open during an atomic request, the bridge marks its own root aborted;
+rollback remains pending until the child's owner closes it. Those request edits
+cannot be committed or saved. Keep the bridge running and resolve the outstanding
+transaction through its owner before retrying; recovery scripts remain available.
+The bridge never ends an unknown transaction to force recovery.
 
 ## Upgrading
 
@@ -185,14 +208,18 @@ List-query filtering/paging also requires the CLI and Java bridge to match;
 there is no query feature negotiation or old-server fallback. A bridge left
 running during an update must be restarted before using the new CLI's queries.
 
-Program requests also require `bridge_info.explicit_addresses: true`. The CLI
-rejects a bridge without this capability before dispatch or compatibility
-recovery, with instructions to restart; it does not downgrade to bare-address
-inference. After updating, use `ghidra-cli bridge restart --project P` for a
-running bridge that supports durable shutdown, or start a bridge you stopped
-before the upgrade. The new bridge uses explicit `0x` address components for
-inputs and outputs. Update stored command arguments that previously relied on
-bare hex or interpreting `FUN_...` as an address; those tokens now mean exact names.
+Program dispatch requires `bridge_info.explicit_addresses: true`,
+`auto_save: true`, and `atomic_edits: true`. The CLI rejects a bridge missing a
+required capability before sending program commands or attempting compatibility
+recovery. It does not downgrade address or transaction semantics or automatically
+upgrade the bridge. Explicit `program save` bypasses this gate so pending edits
+can be saved in place before restart. After saving, use
+`ghidra-cli bridge restart --project P` for a running bridge that supports durable
+shutdown, or start a bridge you stopped before the upgrade.
+
+The new bridge uses explicit `0x` address components for inputs and outputs.
+Update stored command arguments that previously relied on bare hex or interpreting
+`FUN_...` as an address; those tokens now mean exact names.
 
 ## Installation failures
 

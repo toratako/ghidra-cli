@@ -125,7 +125,6 @@ pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
 }
 
 pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> {
-    let output = Output::new(cli);
     let Commands::Program(cli::ProgramCommands::Save(args)) = &cli.command else {
         unreachable!("handle_program_save dispatched for a non-Save Program command");
     };
@@ -142,8 +141,9 @@ pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> 
             ),
         ));
     };
-    let ghidra_install_dir = config.get_ghidra_install_dir()?;
-    let client = super::ensure_autosave_bridge(port, &project_path, &ghidra_install_dir, output)?;
+    // Recovery must remain available before upgrading a bridge's capabilities.
+    // Never restart or replay an edit merely to retry a pending save.
+    let client = BridgeClient::new(port);
     if let Some(program) = program {
         client.open_program(&program)?;
     }

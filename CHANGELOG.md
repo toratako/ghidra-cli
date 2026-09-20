@@ -7,6 +7,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Ordinary single-program commands now commit only on success and roll back the
+  current request on failure or cancellation. This includes C type import,
+  function/variable edits, memory writes, clear plus disassembly, and multi-symbol
+  deletion. Earlier successful commands remain saved. Errors identify completed
+  rollback with `detail.rolled_back`; failed deletion receipts report
+  `attempted_deleted`, not committed deletions. Analysis, arbitrary scripts,
+  import/export, and program lifecycle operations retain separate partial-effect
+  semantics; `batch` remains a sequence of independently saved commands and stops
+  on transaction-boundary failures regardless of `--on-error`.
+- Require the running bridge to advertise `atomic_edits` before program command
+  dispatch. Unsupported bridges require explicit restart, without an automatic
+  upgrade script. `program save` remains available directly for recovery before
+  restart. Human-readable errors explain rollback and retained partial changes.
 - Replace `length` in `string list` and `find string` rows with `char_length`
   (Unicode code points in the decoded value) and `byte_length` (occupied Ghidra
   data bytes, including terminators/padding when defined). Update filters,
@@ -30,6 +43,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve the first save failure across every request lifecycle path, without
+  an implicit second save at request completion. Pending edits remain available
+  for `program save`; a failed later atomic edit does not save or discard them.
+- Keep previews from committing preceding request edits, restore request state
+  after transaction-start failure, and detect unclosed native transactions
+  without ending another owner's transaction or reporting an incomplete rollback
+  as successful.
+- Treat C parser lexical errors as failed imports so partially parsed definitions
+  are rolled back rather than leaving the request transaction open.
 - Require `program export --output` during argument parsing for all export formats,
   rejecting omitted destinations before connecting to Ghidra.
 

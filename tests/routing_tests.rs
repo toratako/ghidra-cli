@@ -57,7 +57,7 @@ struct RecordedBridge {
 impl RecordedBridge {
     fn new() -> Self {
         Self::with_info(
-            json!({"auto_save": true, "named_import": true, "explicit_addresses": true}),
+            json!({"auto_save": true, "atomic_edits": true, "named_import": true, "explicit_addresses": true}),
         )
     }
 
@@ -577,11 +577,14 @@ fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
 }
 
 #[test]
-fn explicit_address_capability_is_required_before_program_selection_or_edits() {
+fn editing_capabilities_are_required_before_program_selection_or_edits() {
     for info in [
         json!({"auto_save": true, "named_import": true}),
         json!({"auto_save": false, "named_import": true}),
         json!({"auto_save": true, "named_import": true, "explicit_addresses": false}),
+        json!({"auto_save": true, "named_import": true, "explicit_addresses": true}),
+        json!({"auto_save": true, "named_import": true, "explicit_addresses": true, "atomic_edits": false}),
+        json!({"auto_save": false, "named_import": true, "explicit_addresses": true, "atomic_edits": true}),
     ] {
         let bridge = RecordedBridge::with_info(info);
         std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
@@ -607,6 +610,20 @@ fn explicit_address_capability_is_required_before_program_selection_or_edits() {
             assert_eq!(requests[0]["command"], "bridge_info");
         }
     }
+}
+
+#[test]
+fn pending_save_recovery_does_not_require_atomic_edit_capability() {
+    let bridge = RecordedBridge::with_info(json!({"auto_save": true}));
+    let output = bridge.command().args(["program", "save"]).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let requests = bridge.requests.lock().unwrap();
+    assert_eq!(
+        requests.len(),
+        1,
+        "Save must not restart or replay: {requests:?}"
+    );
+    assert_eq!(requests[0]["command"], "program_save");
 }
 
 #[test]
