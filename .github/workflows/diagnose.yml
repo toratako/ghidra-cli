@@ -1,0 +1,100 @@
+name: Windows bootstrap diagnosis
+
+on:
+  push:
+    branches: [diagnose/windows-bootstrap]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache Ghidra installation and config
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.local/share/ghidra-cli
+            ~/.config/ghidra-cli
+            ~/Library/Application Support/ghidra-cli
+            ~/Library/Preferences/ghidra-cli
+            ~/AppData/Local/ghidra-cli
+            ~/AppData/Roaming/ghidra-cli
+          key: ghidra-${{ matrix.os }}-v5
+
+      - name: Record diagnostic baseline
+        run: python .github/scripts/ghidra_diagnostics.py begin
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run xtask tests
+        run: cargo test -p xtask --verbose
+
+      - name: Check generated command tree
+        run: cargo xtask gen-tree --check
+
+      - name: Setup Ghidra
+        run: |
+          DOCTOR_OUTPUT=$(cargo run -- doctor 2>&1 || true)
+          echo "$DOCTOR_OUTPUT"
+          if echo "$DOCTOR_OUTPUT" | grep -q "analyzeHeadless: OK"; then
+            echo "Ghidra already installed (cache hit), skipping setup"
+          else
+            echo "Ghidra not found, running setup..."
+            cargo run -- setup
+          fi
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Initialize the runner-local Ghidra cache before parallel JVM startup.
+      - name: Initialize and verify Ghidra runtime
+        run: cargo run -- doctor --runtime
+        timeout-minutes: 5
+
+      - name: Run all tests
+        run: cargo xtask test --no-fail-fast --verbose -- --nocapture
+        timeout-minutes: 80
+        env:
+          RUST_LOG: info
+
+      - name: Collect current-run diagnostics
+        if: always()
+        run: python .github/scripts/ghidra_diagnostics.py finish
+
+      - name: Upload current-run diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghidra-diagnostics-${{ matrix.os }}
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
