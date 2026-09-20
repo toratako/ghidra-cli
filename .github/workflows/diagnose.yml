@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        mode: [single, parallel]
+        mode: [parallel-1, parallel-2]
 
     steps:
       - uses: actions/checkout@v7
