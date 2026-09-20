@@ -47,7 +47,7 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          key: ghidra-${{ matrix.os }}-v5
+          key: ghidra-${{ matrix.os }}-v6
 
       - name: Record diagnostic baseline
         run: python .github/scripts/ghidra_diagnostics.py begin
@@ -74,6 +74,9 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record installed language metadata
+        run: python .github/scripts/ghidra_diagnostics.py begin
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
