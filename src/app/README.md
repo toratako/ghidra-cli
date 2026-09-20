@@ -32,7 +32,8 @@ flags during parsing. Convert these options to a projection-only `QueryOptions`
 for the shared output path; nested memory bytes and pointers are not result rows.
 `program export` requires `--output` during parsing for every export format.
 Function rename rejects symbol-only bulk flags (`--filter`, `--all`).
-Function and comment deletion accept only their target and receipt output options; filtering,
+Comment deletion requires exactly one of `--comment-type` and `--all`.
+Function and comment deletion accept target/scope and receipt output options; filtering,
 sorting, pagination, and count flags are rejected before bridge work.
 `connect_program_bridge(port)` requires `bridge_info.explicit_addresses: true`,
 `auto_save: true`, and `atomic_edits: true` before program dispatch.

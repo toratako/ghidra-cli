@@ -2757,7 +2757,14 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
     for (command, wire) in [
         (vec!["function", "delete", "main"], "delete_function"),
         (vec!["function", "delete", "0x1000"], "delete_function"),
-        (vec!["comment", "delete", "0x1000"], "comment_delete"),
+        (
+            vec!["comment", "delete", "0x1000", "--all"],
+            "comment_delete",
+        ),
+        (
+            vec!["comment", "delete", "0x1000", "--comment-type", "pre"],
+            "comment_delete",
+        ),
     ] {
         for batch in [false, true] {
             let bridge = RecordedBridge::new();
@@ -2789,7 +2796,11 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
             assert_eq!(domain[1]["command"], wire);
             assert_eq!(
                 domain[1]["args"],
-                json!({"address": command.last().unwrap()})
+                if wire == "comment_delete" {
+                    json!({"address": "0x1000", "comment_type": if command.contains(&"--all") { None } else { Some("pre") }, "all": command.contains(&"--all")})
+                } else {
+                    json!({"address": command.last().unwrap()})
+                }
             );
         }
     }
@@ -2808,7 +2819,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     let mut lines: Vec<_> = [
         "function delete main",
         "define-code 0x1000",
-        "comment delete 0x1000",
+        "comment delete 0x1000 --all",
         "memory read 0x1000 8",
         "program info",
         "program stats",

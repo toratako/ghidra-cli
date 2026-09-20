@@ -138,6 +138,8 @@ bridge with pending edits.
 `xrefs_from` reads references from the exact resolved `address`. With `function: true`,
 it resolves the containing function and reads its full body, including disjoint ranges.
 `string_refs` takes `pattern`, a case-insensitive substring of defined string values.
+`comment_delete` requires exactly one of `comment_type` (EOL/PRE/POST/PLATE,
+case-insensitive) or `all: true`. Invalid or missing scope fails before deletion.
 
 `find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
 default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.

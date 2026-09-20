@@ -270,7 +270,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
                 "comment_set",
                 json!({"address": address, "text": "wrong comment"}),
             ),
-            ("comment_delete", json!({"address": address})),
+            ("comment_delete", json!({"address": address, "all": true})),
             (
                 "type_apply",
                 json!({"address": address, "type_name": "int", "force": true}),

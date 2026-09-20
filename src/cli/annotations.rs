@@ -212,7 +212,7 @@ pub enum CommentCommands {
     Get(CommentGetArgs),
     /// Set comment
     Set(CommentSetArgs),
-    /// Delete all EOL, PRE, POST, and PLATE comments at an address
+    /// Delete one comment type at an address, or all supported types with --all
     Delete(CommentDeleteArgs),
 }
 
@@ -225,9 +225,16 @@ pub struct CommentGetArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("scope").required(true).args(["comment_type", "all"])))]
 pub struct CommentDeleteArgs {
     /// Explicit address, e.g. 0x401000 or overlay:0x1000
     pub address: String,
+    /// Comment type to delete
+    #[arg(long, value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
+    pub comment_type: Option<String>,
+    /// Delete all EOL, PRE, POST, and PLATE comments at this address
+    #[arg(long)]
+    pub all: bool,
     /// Target program
     #[arg(long)]
     pub program: Option<String>,
@@ -251,7 +258,7 @@ pub struct CommentSetArgs {
     /// ghidra-cli ever sees it, which can silently corrupt free-form prose.
     #[arg(required_unless_present_any = ["stdin", "text_file"])]
     pub text: Option<String>,
-    #[arg(long)]
+    #[arg(long, value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
     pub comment_type: Option<String>,
     /// Read comment text from stdin instead of the TEXT argument
     #[arg(long, conflicts_with_all = ["text", "text_file"])]

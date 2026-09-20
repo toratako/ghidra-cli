@@ -312,7 +312,9 @@ pub(super) fn execute_via_bridge(
                     let text = resolve_comment_text(args)?;
                     client.comment_set(&args.address, &text, args.comment_type.as_deref())
                 }
-                CommentCommands::Delete(args) => client.comment_delete(&args.address),
+                CommentCommands::Delete(args) => {
+                    client.comment_delete(&args.address, args.comment_type.as_deref(), args.all)
+                }
             }
         }
         Commands::Graph(cmd) => {

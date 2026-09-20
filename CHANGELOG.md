@@ -10,6 +10,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Make `xref from TARGET` inspect one source address; `--function` explicitly
   selects the whole containing function. Disassembly no longer rewinds from an
   undefined address to the containing function's entry.
+- Require `comment delete` to select `--comment-type` or `--all`, preserving
+  other comment types for a selective deletion.
 - Clarify `string refs PATTERN` as case-insensitive substring search followed by
   reference lookup; its bridge argument is `pattern`.
 - Rename setup's Java prerequisite bypass to `--skip-java-check`.

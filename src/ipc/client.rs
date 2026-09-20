@@ -399,8 +399,16 @@ impl BridgeClient {
         )
     }
 
-    pub fn comment_delete(&self, address: &str) -> Result<serde_json::Value> {
-        self.send_command("comment_delete", Some(json!({"address": address})))
+    pub fn comment_delete(
+        &self,
+        address: &str,
+        comment_type: Option<&str>,
+        all: bool,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "comment_delete",
+            Some(json!({"address": address, "comment_type": comment_type, "all": all})),
+        )
     }
 
     pub fn graph_calls(&self, limit: Option<usize>) -> Result<serde_json::Value> {

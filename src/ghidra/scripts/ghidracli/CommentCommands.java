@@ -8,10 +8,9 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Listing;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Locale;
 import static ghidracli.JsonProtocol.errorResult;
+import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgString;
 
 final class CommentCommands {
@@ -22,12 +21,13 @@ final class CommentCommands {
     }
 
     private int resolveCommentType(String typeStr) {
-        if (typeStr == null) return CodeUnit.EOL_COMMENT;
-        switch (typeStr.toUpperCase()) {
+        switch (typeStr.toUpperCase(Locale.ROOT)) {
+            case "EOL":   return CodeUnit.EOL_COMMENT;
             case "PRE":   return CodeUnit.PRE_COMMENT;
             case "POST":  return CodeUnit.POST_COMMENT;
             case "PLATE": return CodeUnit.PLATE_COMMENT;
-            default:      return CodeUnit.EOL_COMMENT;
+            default: throw new IllegalArgumentException("Invalid comment type: " + typeStr
+                + ". Must be one of: EOL, PRE, POST, PLATE");
         }
     }
 
@@ -134,11 +134,6 @@ final class CommentCommands {
             Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
-            Set<String> validTypes = new HashSet<>(Arrays.asList("EOL", "PRE", "POST", "PLATE"));
-            if (!validTypes.contains(commentTypeStr.toUpperCase())) {
-                return errorResult("Invalid comment type: " + commentTypeStr + ". Must be one of: EOL, PRE, POST, PLATE");
-            }
-
             int commentType = resolveCommentType(commentTypeStr);
             Listing listing = session.program().getListing();
 
@@ -157,18 +152,25 @@ final class CommentCommands {
         if (session.program() == null) return errorResult("No program loaded");
 
         String addressStr = getArgString(args, "address");
+        String commentTypeStr = getArgString(args, "comment_type");
+        boolean all = getArgBool(args, "all", false);
         if (addressStr == null) return errorResult("Address required");
+        if (all == (commentTypeStr != null)) {
+            return errorResult("Specify exactly one of comment_type or all");
+        }
 
         try {
+            int[] types = all
+                ? new int[] {CodeUnit.EOL_COMMENT, CodeUnit.PRE_COMMENT, CodeUnit.POST_COMMENT, CodeUnit.PLATE_COMMENT}
+                : new int[] {resolveCommentType(commentTypeStr)};
             Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();
 
-            listing.setComment(addr, CodeUnit.EOL_COMMENT, null);
-            listing.setComment(addr, CodeUnit.PRE_COMMENT, null);
-            listing.setComment(addr, CodeUnit.POST_COMMENT, null);
-            listing.setComment(addr, CodeUnit.PLATE_COMMENT, null);
+            for (int type : types) {
+                listing.setComment(addr, type, null);
+            }
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");

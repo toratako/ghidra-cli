@@ -120,6 +120,7 @@ fn test_comment_delete() {
         .arg("comment")
         .arg("delete")
         .arg(addr)
+        .arg("--all")
         .arg("--project")
         .arg(test_project())
         .arg("--program")
@@ -141,6 +142,93 @@ fn test_comment_delete() {
 
 #[test]
 #[serial]
+fn comment_delete_selected_type_preserves_other_comments() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    for kind in ["EOL", "PRE", "POST", "PLATE"] {
+        client
+            .comment_set(
+                &addr,
+                &format!("retain unless selected: {kind}"),
+                Some(kind),
+            )
+            .unwrap();
+    }
+    let before = client.comment_get(&addr).unwrap();
+    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .args([
+            "comment",
+            "delete",
+            &addr,
+            "--comment-type",
+            "pRe",
+            "--project",
+            test_project(),
+            "--program",
+            TEST_PROGRAM,
+        ])
+        .assert()
+        .success();
+    let expected: Vec<_> = before["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["type"] != "PRE")
+        .cloned()
+        .collect();
+    assert_eq!(
+        client.comment_get(&addr).unwrap()["comments"],
+        serde_json::json!(expected)
+    );
+    client.comment_delete(&addr, None, true).unwrap();
+}
+
+#[test]
+#[serial]
+fn comment_wire_rejects_invalid_scope_and_type_without_mutation() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    for kind in ["EOL", "PRE", "POST", "PLATE"] {
+        client
+            .comment_set(&addr, &format!("must remain: {kind}"), Some(kind))
+            .unwrap();
+    }
+    let before = client.comment_get(&addr).unwrap();
+    for (command, args, message) in [
+        (
+            "comment_delete",
+            serde_json::json!({"address": addr}),
+            "exactly one",
+        ),
+        (
+            "comment_delete",
+            serde_json::json!({"address": addr, "comment_type": "PRE", "all": true}),
+            "exactly one",
+        ),
+        (
+            "comment_delete",
+            serde_json::json!({"address": addr, "comment_type": "invalid", "all": false}),
+            "Invalid comment type",
+        ),
+        (
+            "comment_set",
+            serde_json::json!({"address": addr, "comment_type": "invalid", "text": "must not replace EOL"}),
+            "Invalid comment type",
+        ),
+    ] {
+        let error = client.send_command(command, Some(args)).unwrap_err();
+        assert!(error.to_string().contains(message), "{command}: {error}");
+        assert_eq!(client.comment_get(&addr).unwrap(), before, "{command}");
+    }
+    client.comment_delete(&addr, None, true).unwrap();
+}
+
+#[test]
+#[serial]
 fn comment_delete_applies_fields_and_format_to_receipt() {
     require_ghidra!();
     let harness = harness();
@@ -156,6 +244,7 @@ fn comment_delete_applies_fields_and_format_to_receipt() {
                 "comment",
                 "delete",
                 &addr,
+                "--all",
                 "--fields",
                 "status",
                 format_flag,
@@ -208,6 +297,7 @@ fn comment_delete_rejects_query_flags_without_mutating_comments() {
                 "comment",
                 "delete",
                 &addr,
+                "--all",
                 "--project",
                 test_project(),
                 "--program",
@@ -223,7 +313,7 @@ fn comment_delete_rejects_query_flags_without_mutating_comments() {
         );
         assert_eq!(client.comment_get(&addr).unwrap(), before, "{flag:?}");
     }
-    client.comment_delete(&addr).unwrap();
+    client.comment_delete(&addr, None, true).unwrap();
 }
 
 #[test]
@@ -404,7 +494,7 @@ public class CreateInteriorCommentFixture extends GhidraScript {
                 assert_eq!(listed["count"], 1, "{listed}");
                 assert_eq!(listed["comments"][0]["text"], text);
             }
-            client.comment_delete(address).unwrap();
+            client.comment_delete(address, None, true).unwrap();
             assert!(client.comment_get(address).unwrap()["comments"]
                 .as_array()
                 .unwrap()

@@ -25,7 +25,8 @@ database type undefined so the decompiler continues inferring it.
 ## Comments
 
 `comment list` includes comments on external functions and unmapped addresses.
-`comment delete ADDRESS` removes EOL, PRE, POST, and PLATE comments together.
+`comment delete ADDRESS --comment-type pre` removes one comment type.
+Use `--all` to remove EOL, PRE, POST, and PLATE comments together.
 
 Use stdin or a file to preserve comment text containing shell metacharacters:
 
