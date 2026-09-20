@@ -55,19 +55,12 @@ final class FunctionSignatureCommands {
                 return errorResult("Failed to parse signature: " + sigStr);
             }
 
-            ProgramTransaction transaction = session.transaction("Set function signature");
-            try {
-                ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
-                    func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
-                if (!cmd.applyTo(session.program(), session.monitor())) {
-                    String diagnostic = cmd.getStatusMsg();
-                    throw new IllegalStateException(diagnostic == null || diagnostic.isBlank()
-                        ? "Ghidra rejected the function signature" : diagnostic);
-                }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
+            ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
+                func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
+            if (!cmd.applyTo(session.program(), session.monitor())) {
+                String diagnostic = cmd.getStatusMsg();
+                throw new IllegalStateException(diagnostic == null || diagnostic.isBlank()
+                    ? "Ghidra rejected the function signature" : diagnostic);
             }
 
             String newSig = null;
@@ -101,14 +94,7 @@ final class FunctionSignatureCommands {
             if (returnType == null)
                 return errorResult("Return type not found: " + returnTypeName);
 
-            ProgramTransaction transaction = session.transaction("Set return type");
-            try {
-                func.setReturnType(returnType, SourceType.USER_DEFINED);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            func.setReturnType(returnType, SourceType.USER_DEFINED);
 
             String sig = null;
             try { sig = func.getPrototypeString(false, false); } catch (Exception e) {}
@@ -135,14 +121,7 @@ final class FunctionSignatureCommands {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
-            ProgramTransaction transaction = session.transaction("Set calling convention");
-            try {
-                func.setCallingConvention(convention);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            func.setCallingConvention(convention);
 
             String sig = null;
             try { sig = func.getPrototypeString(false, false); } catch (Exception e) {}
@@ -168,14 +147,7 @@ final class FunctionSignatureCommands {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
-            ProgramTransaction transaction = session.transaction("Set no-return");
-            try {
-                func.setNoReturn(value);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            func.setNoReturn(value);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "noreturn_set");
@@ -271,16 +243,9 @@ final class FunctionSignatureCommands {
 
                 JsonObject before = describeVariable(targetSym.getName(), targetSym.getDataType(), targetSym.getStorage().toString());
 
-                ProgramTransaction transaction = session.transaction("Edit variable");
-                try {
-                    // Null means no requested edit to that attribute. In particular,
-                    // do not pin a decompiler-inferred type during a rename.
-                    HighFunctionDBUtil.updateDBVariable(targetSym, newName, newType, SourceType.USER_DEFINED);
-                    transaction.end(true);
-                } catch (Exception e) {
-                    transaction.end(true);
-                    throw e;
-                }
+                // Null means no requested edit to that attribute. In particular,
+                // do not pin a decompiler-inferred type during a rename.
+                HighFunctionDBUtil.updateDBVariable(targetSym, newName, newType, SourceType.USER_DEFINED);
 
                 Variable updated = targetSym.isParameter() ? func.getParameter(targetSym.getCategoryIndex()) : null;
                 if (!targetSym.isParameter()) {

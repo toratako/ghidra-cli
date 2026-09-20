@@ -60,8 +60,7 @@ final class MemoryCommands {
             Memory memory = session.program().getMemory();
             Listing listing = session.program().getListing();
             Address endAddr = addr.addNoWrap(patchData.length - 1);
-            // Nested request transactions retain changes on failure. Validate the
-            // whole range before clearing any instructions or defined data.
+            // Validate the whole range before clearing any instructions or defined data.
             if (!memory.getAllInitializedAddressSet().contains(addr, endAddr)) {
                 return errorResult("Patch range must be fully mapped and initialized");
             }
@@ -74,19 +73,12 @@ final class MemoryCommands {
                 if (block.getEnd().compareTo(endAddr) >= 0) break;
                 cursor = block.getEnd().addNoWrap(1);
             }
-            ProgramTransaction transaction = session.transaction("Patch bytes");
-            boolean commit = false;
             try {
                 for (MemoryBlock block : readOnlyBlocks) block.setWrite(true);
                 listing.clearCodeUnits(addr, endAddr, false);
                 memory.setBytes(addr, patchData);
-                commit = true;
             } finally {
-                try {
-                    for (MemoryBlock block : readOnlyBlocks) block.setWrite(false);
-                } finally {
-                    transaction.end(commit);
-                }
+                for (MemoryBlock block : readOnlyBlocks) block.setWrite(false);
             }
 
             JsonObject result = new JsonObject();
@@ -249,20 +241,13 @@ final class MemoryCommands {
             boolean changed = false;
             AddressSet permitted = !alreadyPresent && end != null ? definitionStarts(addr, end) : null;
 
-            ProgramTransaction transaction = session.transaction("Define code");
-            try {
-                if (!alreadyPresent && (permitted == null || permitted.contains(addr))) {
-                    DisassembleCommand command = new DisassembleCommand(addr, permitted, true);
-                    command.enableCodeAnalysis(false);
-                    ok = command.applyTo(session.program(), session.monitor());
-                    changed = !command.getDisassembledAddressSet().isEmpty();
-                }
-                session.monitor().checkCancelled();
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            if (!alreadyPresent && (permitted == null || permitted.contains(addr))) {
+                DisassembleCommand command = new DisassembleCommand(addr, permitted, true);
+                command.enableCodeAnalysis(false);
+                ok = command.applyTo(session.program(), session.monitor());
+                changed = !command.getDisassembledAddressSet().isEmpty();
             }
+            session.monitor().checkCancelled();
 
             boolean landed = listing.getInstructionAt(addr) != null;
 
@@ -273,11 +258,12 @@ final class MemoryCommands {
             result.addProperty("changed", changed);
             result.addProperty("ok", ok);
             result.addProperty("landed", landed);
-            result.addProperty("status", landed ? (changed ? "defined" : "unchanged") : "failed");
+            result.addProperty("status", ok && landed ? (changed ? "defined" : "unchanged") : "failed");
 
-            if (!landed) {
+            if (!ok || !landed) {
                 result.addProperty("error", "Failed to define code at " + AddressCodec.format(addr)
-                    + ": no complete instruction was created within the requested range");
+                    + (landed ? ": Ghidra did not complete disassembly"
+                        : ": no complete instruction was created within the requested range"));
                 Function owner = session.program().getFunctionManager().getFunctionContaining(addr);
                 if (owner != null) {
                     result.addProperty("hint", "Address falls inside existing function "
@@ -369,34 +355,27 @@ final class MemoryCommands {
             }
 
             JsonObject result = new JsonObject();
-            ProgramTransaction transaction = session.transaction("Clear code units");
-            try {
-                session.clearListing(start, end);
-                result.addProperty("status", "cleared");
-                result.addProperty("start", AddressCodec.format(start));
-                result.addProperty("end", AddressCodec.format(end));
+            session.clearListing(start, end);
+            result.addProperty("status", "cleared");
+            result.addProperty("start", AddressCodec.format(start));
+            result.addProperty("end", AddressCodec.format(end));
 
-                if (disasmAt != null) {
-                    boolean ok = session.disassemble(disasmAt);
-                    boolean landed = session.program().getListing().getInstructionAt(disasmAt) != null;
-                    result.addProperty("disasm_at", AddressCodec.format(disasmAt));
-                    result.addProperty("ok", ok);
-                    result.addProperty("landed", landed);
-                    result.addProperty("status", (ok && landed) ? "cleared_and_disassembled" : "cleared_disasm_incomplete");
-                    if (!ok || !landed) {
-                        result.addProperty("error", "Cleared range, but disassembly at "
-                            + AddressCodec.format(disasmAt) + " did not complete");
-                    }
-                    if (!landed) {
-                        result.addProperty("hint", "clearEnd may need to extend further past disasm_at: "
-                            + "disassemble() can silently land no instruction if the new instruction's "
-                            + "tail bytes would still overlap a stale code unit outside the cleared range.");
-                    }
+            if (disasmAt != null) {
+                boolean ok = session.disassemble(disasmAt);
+                boolean landed = session.program().getListing().getInstructionAt(disasmAt) != null;
+                result.addProperty("disasm_at", AddressCodec.format(disasmAt));
+                result.addProperty("ok", ok);
+                result.addProperty("landed", landed);
+                result.addProperty("status", (ok && landed) ? "cleared_and_disassembled" : "failed");
+                if (!ok || !landed) {
+                    result.addProperty("error", "Failed to clear range and disassemble at "
+                        + AddressCodec.format(disasmAt) + ": disassembly did not complete");
                 }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+                if (!landed) {
+                    result.addProperty("hint", "clearEnd may need to extend further past disasm_at: "
+                        + "disassemble() can silently land no instruction if the new instruction's "
+                        + "tail bytes would still overlap a stale code unit outside the cleared range.");
+                }
             }
             return result;
         } catch (Exception e) {

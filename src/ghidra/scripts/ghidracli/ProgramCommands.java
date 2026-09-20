@@ -359,7 +359,7 @@ final class ProgramCommands {
             TaskMonitor mon = session.monitor();
             Object exported;
             if ("gzf".equalsIgnoreCase(exportFormat)) {
-                session.preparePackedExport();
+                session.save();
                 Path destination = new File(outputPath).toPath().toAbsolutePath();
                 // GzfExporter deletes its output before writing it. Keep that
                 // file in a private directory beside the destination, and only

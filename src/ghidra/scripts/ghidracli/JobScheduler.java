@@ -314,6 +314,7 @@ final class JobScheduler {
         result.addProperty("current_program_path", currentProgramPathSnapshot);
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
+        result.addProperty("atomic_edits", true);
         result.addProperty("explicit_addresses", true);
         result.addProperty("named_import", true);
         result.addProperty("durable_shutdown", true);

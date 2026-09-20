@@ -155,23 +155,29 @@ final class CommandDispatcher {
         }
     }
     JsonObject execute(String command, JsonObject args) {
-        JsonObject response;
         try {
             session.beginRequest(command);
-            response = executeCommand(command, args);
         } catch (Exception e) {
-            response = errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
+            return errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
         }
+        JsonObject response = executeCommand(command, args);
         try {
-            boolean saved = session.finishRequest();
-            if (saved && "error".equals(response.get("status").getAsString())) {
+            boolean successful = "success".equals(response.get("status").getAsString());
+            ProgramSession.RequestOutcome outcome = session.finishRequest(successful);
+            if (outcome.rolledBack() && successful) {
+                response = errorResponse(outcome.cancelled() ? "Command cancelled"
+                    : "Ghidra aborted the command transaction");
+            }
+            if ("error".equals(response.get("status").getAsString())) {
                 JsonObject detail = response.has("detail")
                     ? response.getAsJsonObject("detail") : new JsonObject();
-                detail.addProperty("partial_changes_saved", true);
-                response.add("detail", detail);
+                if (outcome.rolledBack()) detail.addProperty("rolled_back", true);
+                else if (outcome.saved()) detail.addProperty("partial_changes_saved", true);
+                if (outcome.cancelled()) detail.addProperty("cancelled", true);
+                if (detail.size() != 0) response.add("detail", detail);
             }
             return response;
-        } catch (Exception e) {
+        } catch (ProgramSession.SaveFailure e) {
             JsonObject detail = new JsonObject();
             detail.addProperty("saved", false);
             detail.addProperty("save_failed", true);
@@ -183,6 +189,12 @@ final class CommandDispatcher {
             return errorResponse("Auto-save failed: " + e.getMessage()
                 + ". Changes may remain in memory. Retry `ghidra-cli program save` for this project/program; "
                 + "do not repeat the editing command or stop the bridge before saving.", detail);
+        } catch (Exception e) {
+            JsonObject detail = JsonProtocol.errorDetail(e);
+            if (detail == null) detail = new JsonObject();
+            detail.addProperty("transaction_failed", true);
+            detail.add("command_response", response);
+            return errorResponse("Could not finish command transaction: " + e.getMessage(), detail);
         }
     }
 
@@ -190,11 +202,6 @@ final class CommandDispatcher {
         try {
             JsonObject result = dispatchCommand(command, args);
             if (result == null) {
-    /**
-     * Error response carrying structured detail (e.g. a conflicting code
-     * unit's type/range, or a containing function's name/entry/size) alongside
-     * the message, so callers can act on it without a follow-up round trip.
-     */
                 return errorResponse("Unknown command: " + command);
             }
 

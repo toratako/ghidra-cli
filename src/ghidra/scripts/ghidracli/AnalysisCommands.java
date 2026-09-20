@@ -58,14 +58,7 @@ final class AnalysisCommands {
                 return errorResult("Unknown analyzer: " + name);
             }
 
-            ProgramTransaction transaction = session.transaction("Set analyzer");
-            try {
-                analysisOptions.setBoolean(name, enabled);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            analysisOptions.setBoolean(name, enabled);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "set");

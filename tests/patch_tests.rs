@@ -59,7 +59,7 @@ fn test_memory_write_success() {
     );
 }
 
-/// Disassembly failures retain diagnostics, stop dependent edits, and save any clearing.
+/// Disassembly failures retain diagnostics, stop dependent edits, and roll back clearing.
 #[test]
 #[serial]
 fn test_define_code_ranges_receipts_failures_and_persistence() {
@@ -177,6 +177,8 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         assert!(detail["ok"].is_boolean());
         assert_eq!(detail["landed"], false);
         assert_eq!(detail["status"], "failed");
+        assert_eq!(detail["rolled_back"], true);
+        assert!(detail.get("partial_changes_saved").is_none());
 
         let batch = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
@@ -218,11 +220,20 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         assert_eq!(clear_detail["disasm_at"], failed_address);
         assert!(clear_detail["ok"].is_boolean());
         assert_eq!(clear_detail["landed"], false);
-        assert_eq!(clear_detail["status"], "cleared_disasm_incomplete");
-        assert_eq!(clear_detail["partial_changes_saved"], true);
+        assert_eq!(clear_detail["status"], "failed");
+        assert_eq!(clear_detail["rolled_back"], true);
+        assert!(clear_detail.get("partial_changes_saved").is_none());
         assert!(clear_detail["hint"].is_string());
 
-        // A failed redisassembly still durably saves the successful clear operation.
+        // Both the current listing and the saved program keep the earlier instruction.
+        let restored = client
+            .send_command(
+                "disasm_range",
+                Some(serde_json::json!({"start":"0x1000","end":"0x1000"})),
+            )
+            .unwrap();
+        assert_eq!(restored["count"], 1);
+        assert_eq!(restored["instructions"][0]["bytes"], "c3");
         client.open_program(TEST_PROGRAM).unwrap();
         client.open_program(&name).unwrap();
         let listing = client
@@ -231,7 +242,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
                 Some(serde_json::json!({"start":"0x1000","end":"0x1000"})),
             )
             .unwrap();
-        assert_eq!(listing["count"], 0);
+        assert_eq!(listing, restored);
         let recovered = client
             .send_command(
                 "clear_range",
@@ -751,7 +762,7 @@ fn test_patch_output_format_structure() {
 
 #[test]
 #[serial]
-fn test_patch_range_validation_preserves_listing_and_permissions() {
+fn test_patch_failures_restore_bytes_listing_and_permissions() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let name = format!("patch-range-{}", uuid::Uuid::new_v4());
@@ -772,7 +783,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             int tx = program.startTransaction("patch range fixture");
             try {
                 var space = program.getAddressFactory().getDefaultAddressSpace();
-                for (long offset : new long[] {0x1000, 0x2000, 0x3000, 0x3002}) {
+                for (long offset : new long[] {0x1000, 0x2000, 0x3000, 0x3002, 0x4000, 0x4002}) {
                     var block = program.getMemory().createInitializedBlock("code" + offset,
                         space.getAddress(offset), 2, (byte) 0x90, monitor, false);
                     block.setExecute(true);
@@ -780,6 +791,12 @@ public class CreatePatchRangeFixture extends GhidraScript {
                 }
                 program.getMemory().createUninitializedBlock("uninitialized",
                     space.getAddress(0x2002), 2, false);
+                program.getMemory().setByte(space.getAddress(0x4001), (byte) 0xc3);
+                program.getMemory().setByte(space.getAddress(0x4003), (byte) 0xc3);
+                var alias = program.getMemory().createByteMappedBlock("alias",
+                    space.getAddress(0x5000), space.getAddress(0x4002), 2, false);
+                alias.setExecute(true);
+                alias.setWrite(false);
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder()
                 .createFile(getScriptArgs()[0], program, monitor);
@@ -813,6 +830,55 @@ public class CreatePatchRangeFixture extends GhidraScript {
             assert_eq!(after["instructions"], instructions["instructions"]);
             assert_eq!(client.send_command("memory_map", None).unwrap(), map);
         }
+
+        // The alias retains instructions outside the patch's cleared range.
+        // Ghidra writes the first block, then rejects the second block because
+        // its mapped alias still has instructions. Rollback must undo both the
+        // earlier byte write and listing clear, and leave permissions intact.
+        for address in ["0x4000", "0x4002", "0x5000"] {
+            assert_eq!(client.define_code(address, None).unwrap()["landed"], true);
+        }
+        let instructions = client
+            .send_command(
+                "disasm_range",
+                Some(serde_json::json!({"start":"0x4000","end":"0x5001"})),
+            )
+            .unwrap();
+        let map = client.send_command("memory_map", None).unwrap();
+        let error = client.memory_write("0x4000", "11223344").unwrap_err();
+        let error = error
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert!(
+            error.message.contains("conflicts with instruction"),
+            "{error}"
+        );
+        assert_eq!(error.detail["rolled_back"], true);
+        assert!(error.detail.get("partial_changes_saved").is_none());
+        for reopen in [false, true] {
+            if reopen {
+                client.open_program(TEST_PROGRAM).unwrap();
+                client.open_program(&name).unwrap();
+            }
+            let bytes = client
+                .send_command(
+                    "read_memory",
+                    Some(serde_json::json!({"address":"0x4000","size":4})),
+                )
+                .unwrap();
+            assert_eq!(bytes["hex"], "90c390c3");
+            assert_eq!(
+                client
+                    .send_command(
+                        "disasm_range",
+                        Some(serde_json::json!({"start":"0x4000","end":"0x5001"})),
+                    )
+                    .unwrap(),
+                instructions
+            );
+            assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+        }
+
         let map = client.send_command("memory_map", None).unwrap();
         client.memory_write("0x3000", "11223344").unwrap();
         let bytes = client

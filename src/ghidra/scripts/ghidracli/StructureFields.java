@@ -201,26 +201,22 @@ final class StructureFields {
             result.add("after", next == null ? JsonNull.INSTANCE : next);
         }
 
-        JsonObject apply(Structure original, ProgramSession session) throws Exception {
+        JsonObject apply(Structure original) throws Exception {
             if (changed) {
-                ProgramTransaction transaction = session.transaction("Edit structure field");
-                try {
-                    // Rebuilding the structure deletes every component's settings.
-                    // Apply only the validated edit so unrelated components retain
-                    // their records, settings, and inherited defaults.
-                    if (metadataOnly) {
-                        before.setFieldName(after.getFieldName());
-                        before.setComment(after.getComment());
-                    } else if (after == null) {
-                        original.clearComponent(before.getOrdinal());
-                    } else {
-                        int growth = length(staged) - length(original);
-                        if (growth > 0) original.growStructure(growth);
-                        original.replaceAtOffset(offset, after.getDataType(), after.getLength(),
-                            after.getFieldName(), after.getComment());
-                    }
+                // Rebuilding the structure deletes every component's settings.
+                // Apply only the validated edit so unrelated components retain
+                // their records, settings, and inherited defaults.
+                if (metadataOnly) {
+                    before.setFieldName(after.getFieldName());
+                    before.setComment(after.getComment());
+                } else if (after == null) {
+                    original.clearComponent(before.getOrdinal());
+                } else {
+                    int growth = length(staged) - length(original);
+                    if (growth > 0) original.growStructure(growth);
+                    original.replaceAtOffset(offset, after.getDataType(), after.getLength(),
+                        after.getFieldName(), after.getComment());
                 }
-                finally { transaction.end(true); }
             }
             return result;
         }

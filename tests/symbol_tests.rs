@@ -613,7 +613,10 @@ public class CreateDynamicSymbol extends GhidraScript {
         .as_str()
         .unwrap()
         .contains("Dynamic symbols"));
-    assert_eq!(error["detail"]["count"], 0);
+    assert!(error["detail"].get("count").is_none());
+    assert!(error["detail"].get("deleted").is_none());
+    assert_eq!(error["detail"]["attempted_deleted"], serde_json::json!([]));
+    assert_eq!(error["detail"]["rolled_back"], true);
     assert_eq!(error["detail"]["failed"][0]["id"], dynamic["id"]);
     assert!(error["detail"].get("partial_changes_saved").is_none());
 
@@ -629,8 +632,10 @@ public class CreateDynamicSymbol extends GhidraScript {
     let error = error
         .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
         .unwrap();
-    assert_eq!(error.detail["count"], 0);
-    assert_eq!(error.detail["deleted"], serde_json::json!([]));
+    assert!(error.detail.get("count").is_none());
+    assert!(error.detail.get("deleted").is_none());
+    assert_eq!(error.detail["attempted_deleted"], serde_json::json!([]));
+    assert_eq!(error.detail["rolled_back"], true);
     assert_eq!(error.detail["failed"][0]["id"], dynamic["id"]);
     assert_eq!(error.detail["not_attempted"], serde_json::json!([stored]));
     assert!(error.detail.get("partial_changes_saved").is_none());
@@ -643,7 +648,7 @@ public class CreateDynamicSymbol extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_symbol_delete_preserves_partial_results_and_save_failures() {
+fn test_symbol_delete_rolls_back_cascading_deletions_and_rejects_foreign_transactions() {
     require_ghidra!();
     let client = harness().client().unwrap();
     for prevent_save in [false, true] {
@@ -731,28 +736,41 @@ public class ReleaseSymbolDeletionSave extends GhidraScript {
         let error = error
             .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
             .unwrap();
-        let detail = if prevent_save {
-            assert_eq!(error.detail["save_failed"], true);
-            assert_eq!(error.detail["saved"], false);
-            assert_eq!(error.detail["command_response"]["status"], "error");
-            &error.detail["command_response"]["detail"]
+        if prevent_save {
+            // This request cannot own an atomic transaction while a script's
+            // transaction remains open. Reject it without attempting deletion.
+            assert_eq!(error.detail["transaction_failed"], true);
+            assert!(error.detail.get("rolled_back").is_none());
+            assert!(error.detail.get("save_failed").is_none());
+            assert!(error.detail.get("attempted_deleted").is_none());
         } else {
-            assert_eq!(error.detail["partial_changes_saved"], true);
-            &error.detail
-        };
-        assert_eq!(detail["count"], 1);
-        assert_eq!(detail["deleted"], serde_json::json!([parent]));
-        assert_eq!(detail["failed"][0]["id"], child["id"]);
+            assert_eq!(error.detail["rolled_back"], true);
+            assert!(error.detail.get("count").is_none());
+            assert!(error.detail.get("deleted").is_none());
+            assert_eq!(
+                error.detail["attempted_deleted"],
+                serde_json::json!([parent])
+            );
+            assert_eq!(error.detail["failed"][0]["id"], child["id"]);
+            assert_eq!(
+                error.detail["failed"][0]["reason"],
+                "Ghidra refused to delete symbol"
+            );
+            assert_eq!(
+                error.detail["not_attempted"],
+                serde_json::json!([unaffected])
+            );
+        }
+        assert!(error.detail.get("partial_changes_saved").is_none());
         assert_eq!(
-            detail["failed"][0]["reason"],
-            "Ghidra refused to delete symbol"
+            client.symbol_get_by_name(name).unwrap()["symbols"],
+            serde_json::json!(selected)
         );
-        assert_eq!(detail["not_attempted"], serde_json::json!([unaffected]));
         client.program_close().unwrap();
         client.open_program(&program).unwrap();
         assert_eq!(
             client.symbol_get_by_name(name).unwrap()["symbols"],
-            serde_json::json!([unaffected])
+            serde_json::json!(selected)
         );
         let deleted = client
             .symbol_delete_targets(name, std::slice::from_ref(unaffected))

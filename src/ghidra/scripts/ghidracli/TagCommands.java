@@ -113,15 +113,7 @@ final class TagCommands {
             String err = TagSupport.validateTagName(name);
             if (err != null) return errorResult(err);
 
-            ProgramTransaction transaction = session.transaction("Create function tag");
-            FunctionTag tag;
-            try {
-                tag = tm.createFunctionTag(name, comment == null ? "" : comment);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            FunctionTag tag = tm.createFunctionTag(name, comment == null ? "" : comment);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
@@ -156,14 +148,7 @@ final class TagCommands {
                 }
             }
 
-            ProgramTransaction transaction = session.transaction("Delete function tag");
-            try {
-                tag.delete();                 // global: detaches from ALL functions
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            tag.delete();                 // global: detaches from ALL functions
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");
@@ -194,14 +179,7 @@ final class TagCommands {
             if (err != null) return errorResult(err);
 
             int useCount = tm.getUseCount(tag);
-            ProgramTransaction transaction = session.transaction("Rename function tag");
-            try {
-                tag.setName(newName);         // global rename; functions store the id
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            tag.setName(newName);         // global rename; functions store the id
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "renamed");
@@ -225,14 +203,7 @@ final class TagCommands {
             FunctionTag tag = tm.getFunctionTag(name);
             if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
 
-            ProgramTransaction transaction = session.transaction("Set function tag comment");
-            try {
-                tag.setComment(comment == null ? "" : comment);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
-            }
+            tag.setComment(comment == null ? "" : comment);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "comment_set");
@@ -273,18 +244,15 @@ final class TagCommands {
                 return errorResult("Tags do not exist (--no-create): " + String.join(", ", toCreate));
 
             JsonArray added = new JsonArray(), created = new JsonArray(), already = new JsonArray();
-            ProgramTransaction transaction = session.transaction("Add function tags");
-            try {
-                for (String name : tagNames) {
-                    if (current.contains(name)) { already.add(name); continue; }
-                    func.addTag(name);   // auto-creates; returns true unconditionally
-                    added.add(name);
-                    if (toCreate.contains(name)) created.add(name);
+            for (String name : tagNames) {
+                session.monitor().checkCancelled();
+                if (current.contains(name)) { already.add(name); continue; }
+                if (!func.addTag(name)) {
+                    return errorResult("Failed to add tag '" + name + "' to function "
+                        + func.getName());
                 }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
+                added.add(name);
+                if (toCreate.contains(name)) created.add(name);
             }
 
             JsonObject result = new JsonObject();
@@ -323,20 +291,14 @@ final class TagCommands {
                 : new LinkedHashSet<>(Arrays.asList(rawTags));
 
             JsonArray removed = new JsonArray(), notPresent = new JsonArray();
-            ProgramTransaction transaction = session.transaction("Remove function tags");
-            try {
-                for (String name : tagNames) {
-                    if (current.contains(name)) {
-                        func.removeTag(name);   // void; silent — membership pre-checked
-                        removed.add(name);
-                    } else {
-                        notPresent.add(name);
-                    }
+            for (String name : tagNames) {
+                session.monitor().checkCancelled();
+                if (current.contains(name)) {
+                    func.removeTag(name);   // void; silent — membership pre-checked
+                    removed.add(name);
+                } else {
+                    notPresent.add(name);
                 }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
             }
 
             JsonObject result = new JsonObject();

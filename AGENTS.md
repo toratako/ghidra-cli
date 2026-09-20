@@ -24,9 +24,10 @@ a document or meet a shared length target. Omit generic advice and repetition.
 - Register new Java sources in `src/ghidra/bridge/sources.rs` for both startup and
   doctor. See [bridge lifecycle and paths](src/ghidra/README.md).
 - Program operations run on the original GhidraScript thread. Handlers retain
-  `ProgramSession`, never a cached Program/monitor, and mutate through
-  `session.transaction()`. End each request transaction and save before replying;
-  never hide save failures. See [Java ownership and nested-transaction
+  `ProgramSession`, never a cached Program/monitor. `ProgramSession` owns request
+  transactions and saving; ordinary handlers never start/end transactions or save.
+  Roll back failed/cancelled ordinary requests and never hide save failures.
+  See [Java ownership and transaction
   boundaries](src/ghidra/scripts/ghidracli/README.md).
 
 See [CLI routing](src/app/README.md) and [wire protocol](src/ipc/README.md) for

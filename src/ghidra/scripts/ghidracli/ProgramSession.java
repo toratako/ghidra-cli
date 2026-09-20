@@ -1,5 +1,6 @@
 package ghidracli;
 
+import com.google.gson.JsonObject;
 import ghidra.app.script.GhidraState;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
@@ -20,7 +21,17 @@ final class ProgramSession {
     private final Object consumer = new Object();
     private ProgramTransaction requestTransaction;
     private boolean requestActive;
-    private Exception exportSaveFailure;
+    private boolean atomicRequest;
+    private long requestModification;
+    private SaveFailure saveFailure;
+    private JsonProtocol.CommandException requestFailure;
+
+    record RequestOutcome(boolean saved, boolean rolledBack, boolean cancelled) {}
+
+    /** Saving failed after transaction completion; edits must not be replayed. */
+    static final class SaveFailure extends Exception {
+        SaveFailure(Exception cause) { super(cause.getMessage(), cause); }
+    }
 
     ProgramSession(ScriptAccess script) {
         this.script = script;
@@ -45,7 +56,7 @@ final class ProgramSession {
     GhidraState state() { return script.state(); }
     TaskMonitor monitor() { return script.monitor(); }
     void setMonitor(TaskMonitor monitor) { script.setMonitor(monitor); }
-    ProgramTransaction transaction(String description) {
+    private ProgramTransaction transaction(String description) {
         return new ProgramTransaction(program(), description);
     }
     boolean disassemble(Address address) throws Exception { return script.disassemble(address); }
@@ -58,14 +69,7 @@ final class ProgramSession {
         // Preserve an earlier completed analysis flag, but never create one for
         // the cancelled first run.
         monitor().checkCancelled();
-        ProgramTransaction transaction = transaction("Record completed analysis");
-        try {
-            GhidraProgramUtilities.markProgramAnalyzed(program());
-            transaction.end(true);
-        } catch (RuntimeException failure) {
-            transaction.end(false);
-            throw failure;
-        }
+        GhidraProgramUtilities.markProgramAnalyzed(program());
     }
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
 
@@ -92,84 +96,139 @@ final class ProgramSession {
     }
 
     void beginRequest(String command) {
-        exportSaveFailure = null;
+        if (requestActive) throw transactionFailure("A program request is already active");
+        // Atomic by default, including future ordinary commands. These explicit
+        // exceptions have analysis, arbitrary-script, project or filesystem effects.
+        boolean atomic = switch (command == null ? "" : command) {
+            case "analyze", "script_run", "import", "program_export",
+                 "open_program", "program_close", "program_save", "program_delete" -> false;
+            default -> true;
+        };
+        if (atomic && program() != null && program().getCurrentTransactionInfo() != null) {
+            throw transactionFailure("Cannot start an atomic command while another transaction is active. "
+                + "Close the transaction through its owning script, then retry; it has not been ended or modified.");
+        }
+        saveFailure = null;
+        requestFailure = null;
+        atomicRequest = atomic;
         requestActive = true;
-        if (program() != null) requestTransaction = transaction("ghidra-cli: " + command);
-    }
-
-    private void endRequestTransaction() {
-        if (requestTransaction != null) {
-            requestTransaction.end(true);
-            requestTransaction = null;
-        }
-    }
-
-    /**
-     * Run a program-only preview in its own rollback transaction. The caller must
-     * not hold a handler transaction or switch programs. Commit our known request
-     * transaction first so rolling back the preview cannot erase earlier edits.
-     * Return detached values, never listing objects invalidated by rollback.
-     */
-    <T> T preview(String description, Callable<T> operation) throws Exception {
-        var info = program().getCurrentTransactionInfo();
-        if (!requestActive || requestTransaction == null || info == null
-                || info.getOpenSubTransactions().size() != 1) {
-            throw new IllegalStateException("Preview requires the sole owned request transaction");
-        }
-        String requestDescription = info.getDescription();
-        endRequestTransaction();
-        if (program().getCurrentTransactionInfo() != null) {
-            throw new IllegalStateException("Preview cannot roll back a nested transaction");
-        }
-        ProgramTransaction preview = transaction(description);
         try {
-            return operation.call();
-        } finally {
-            try {
-                preview.end(false);
-            } finally {
-                requestTransaction = transaction(requestDescription);
+            startRequestTransaction("ghidra-cli: " + command);
+        } catch (RuntimeException failure) {
+            requestActive = false;
+            atomicRequest = false;
+            throw transactionFailure("Could not start command transaction: " + failure.getMessage());
+        }
+    }
+
+    private void startRequestTransaction(String description) {
+        if (program() != null) {
+            requestTransaction = transaction(description);
+            requestModification = program().getModificationNumber();
+        }
+    }
+
+    private void endRequestTransaction(boolean commit) {
+        if (requestTransaction != null) {
+            requestTransaction.end(commit);
+            requestTransaction = null;
+            if (!commit && program().getCurrentTransactionInfo() != null) {
+                requestFailure = transactionFailure("Rollback is pending an unclosed transaction. "
+                    + "Keep the bridge running and close that transaction through its owning script. "
+                    + "The command's changes must not be saved or replayed.");
+                throw requestFailure;
             }
         }
     }
 
-    boolean finishRequest() throws Exception {
-        requestActive = false;
-        if (exportSaveFailure != null) {
-            Exception failure = exportSaveFailure;
-            exportSaveFailure = null;
-            throw failure;
-        }
-        return save();
+    private static JsonProtocol.CommandException transactionFailure(String message) {
+        JsonObject detail = new JsonObject();
+        detail.addProperty("transaction_failed", true);
+        return new JsonProtocol.CommandException(message, detail);
     }
 
-    /** Packed export requires a saved program with no active transaction. */
-    void preparePackedExport() throws Exception {
+    /**
+     * Run a program-only preview in its own rollback transaction. The caller must
+     * not have changed this request's Program or switch programs. End only the
+     * untouched request transaction; never commit preceding edits to allow a preview.
+     * Return detached values, never listing objects invalidated by rollback.
+     */
+    <T> T preview(String description, Callable<T> operation) throws Exception {
+        var info = program().getCurrentTransactionInfo();
+        if (!requestActive || !atomicRequest || requestTransaction == null
+                || !requestTransaction.isSoleOwner() || info == null) {
+            throw new IllegalStateException("Preview requires the sole owned request transaction");
+        }
+        if (program().getModificationNumber() != requestModification) {
+            throw new IllegalStateException("Preview must run before any changes in the request");
+        }
+        String requestDescription = info.getDescription();
+        endRequestTransaction(false);
+        // Keep ownership visible to request cleanup if the native preview leaks
+        // an additional transaction and cannot be rolled back immediately.
+        requestTransaction = transaction(description);
         try {
-            save();
-        } catch (Exception failure) {
-            // Preserve the first save failure for the dispatcher's save_failed
-            // response instead of implicitly retrying it at request completion.
-            exportSaveFailure = failure;
-            throw failure;
+            return operation.call();
+        } finally {
+            endRequestTransaction(false);
+            startRequestTransaction(requestDescription);
+        }
+    }
+
+    RequestOutcome finishRequest(boolean successful) throws Exception {
+        try {
+            if (requestFailure != null) throw requestFailure;
+            boolean cancelled = atomicRequest && monitor().isCancelled();
+            boolean rolledBack = false;
+            if (requestTransaction != null) {
+                if (atomicRequest && !requestTransaction.isSoleOwner()) {
+                    // Mark only our owned root for rollback. Never commit a
+                    // failed atomic edit simply because native code leaked a child.
+                    endRequestTransaction(false);
+                    throw transactionFailure("The command left another transaction active; "
+                        + "rollback and saving could not complete. Keep the bridge running and close "
+                        + "that transaction through its owner before retrying program save.");
+                }
+                rolledBack = atomicRequest
+                    && (!successful || cancelled || requestTransaction.isAborted());
+                endRequestTransaction(!rolledBack);
+            }
+            if (saveFailure != null) throw saveFailure;
+            // A rejected edit must not save unrelated, pending edits from an
+            // earlier save failure. They remain available for explicit recovery.
+            return new RequestOutcome(!rolledBack && save(), rolledBack, cancelled);
+        } finally {
+            requestActive = false;
+            atomicRequest = false;
         }
     }
 
     /** Flush committed changes before acknowledging a request or releasing a program. */
     boolean save() throws Exception {
-        endRequestTransaction();
-        if (program() == null) return false;
-        if (program().getCurrentTransactionInfo() != null) {
-            throw new IllegalStateException("Program still has an active transaction");
+        if (requestActive && requestFailure != null) throw requestFailure;
+        if (requestActive && saveFailure != null) throw saveFailure;
+        if (requestActive && atomicRequest && requestTransaction != null) {
+            throw transactionFailure("Cannot save before an atomic request has finished");
         }
-        if (!program().isChanged()) return false;
-        // A cancelled command can retain partial edits. Cancellation must not
-        // interrupt their durable save after the request transaction has ended.
-        program().save("ghidra-cli auto-save", TaskMonitor.DUMMY);
-        if (program().isChanged()) {
-            throw new IllegalStateException("Program still has unsaved changes");
+        try {
+            endRequestTransaction(true);
+            if (program() == null) return false;
+            if (program().getCurrentTransactionInfo() != null) {
+                throw new IllegalStateException("Program still has an active transaction");
+            }
+            if (!program().isChanged()) return false;
+            // Cancellation never interrupts durable saving after a commit.
+            program().save("ghidra-cli auto-save", TaskMonitor.DUMMY);
+            if (program().isChanged()) {
+                throw new IllegalStateException("Program still has unsaved changes");
+            }
+            return true;
+        } catch (Exception failure) {
+            SaveFailure error = failure instanceof SaveFailure
+                ? (SaveFailure) failure : new SaveFailure(failure);
+            if (requestActive) saveFailure = error;
+            throw error;
         }
-        return true;
     }
 
     boolean isCurrent(DomainFile domainFile) {
@@ -200,7 +259,7 @@ final class ProgramSession {
         }
         if (program() != null) program().release(consumer);
         setProgram((Program) domObj);
-        if (requestActive) requestTransaction = transaction("ghidra-cli: open program");
+        if (requestActive) startRequestTransaction("ghidra-cli: open program");
     }
 
     void closeProgram() throws Exception {

@@ -170,16 +170,8 @@ final class TypeCommands {
 
         try {
             DataTypeManager dtm = session.program().getDataTypeManager();
-            DataType registered;
-            ProgramTransaction transaction = session.transaction("Create type");
-            try {
-                StructureDataType newStruct = new StructureDataType(typeName, 0);
-                registered = dtm.addDataType(newStruct, null);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            StructureDataType newStruct = new StructureDataType(typeName, 0);
+            DataType registered = dtm.addDataType(newStruct, null);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
@@ -241,20 +233,14 @@ final class TypeCommands {
                 : null;
 
             Listing listing = session.program().getListing();
-            ProgramTransaction transaction = session.transaction("Apply type");
             try {
                 if (force) {
                     listing.clearCodeUnits(addr, clearEnd, false);
                 }
                 listing.createData(addr, dataType, length);
-                transaction.end(true);
             } catch (ghidra.program.model.util.CodeUnitInsertionException e) {
-                transaction.end(true);
-    /** Surface the conflicting code unit's own type/length/range instead of just "Conflicting data exists". */
+                // Surface the conflicting code unit's own type/length/range.
                 return typeApplyConflictError(addr, typeName, e);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
             }
 
             JsonObject result = new JsonObject();
@@ -324,16 +310,9 @@ final class TypeCommands {
 
             String fullPath = dataType.getPathName();
             DataTypeManager dtm = session.program().getDataTypeManager();
-            ProgramTransaction transaction = session.transaction("Delete type");
-            try {
-                boolean removed = dtm.remove(dataType, session.monitor());
-                transaction.end(true);
-                if (!removed) {
-                    return errorResult("Failed to remove type: " + typeName + " (may be in use or built-in)");
-                }
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            boolean removed = dtm.remove(dataType, session.monitor());
+            if (!removed) {
+                return errorResult("Failed to remove type: " + typeName + " (may be in use or built-in)");
             }
 
             JsonObject result = new JsonObject();
@@ -357,16 +336,9 @@ final class TypeCommands {
             DataType dataType = typeResolver.resolveDataType(oldName);
             if (dataType == null) return errorResult("Type not found: " + oldName);
 
-            ProgramTransaction transaction = session.transaction("Rename type");
-            try {
-                dataType.setName(newName);
-                if (!newName.equals(dataType.getName()))
-                    throw new IllegalArgumentException("Type cannot be renamed: " + oldName);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            dataType.setName(newName);
+            if (!newName.equals(dataType.getName()))
+                throw new IllegalArgumentException("Type cannot be renamed: " + oldName);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "renamed");
@@ -391,25 +363,17 @@ final class TypeCommands {
 
         try {
             DataTypeManager dtm = session.program().getDataTypeManager();
-            DataType registered;
-            ProgramTransaction transaction = session.transaction("Create enum");
-            try {
-                EnumDataType enumDt = new EnumDataType(name, size);
-                String[] pairs = valuesStr.split(",");
-                for (String pair : pairs) {
-                    String[] kv = pair.trim().split("=", 2);
-                    if (kv.length != 2)
-                        throw new IllegalArgumentException("Invalid KEY=VALUE pair: " + pair.trim());
-                    String key = kv[0].trim();
-                    long value = Long.decode(kv[1].trim());
-                    enumDt.add(key, value);
-                }
-                registered = dtm.addDataType(enumDt, null);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            EnumDataType enumDt = new EnumDataType(name, size);
+            String[] pairs = valuesStr.split(",");
+            for (String pair : pairs) {
+                String[] kv = pair.trim().split("=", 2);
+                if (kv.length != 2)
+                    throw new IllegalArgumentException("Invalid KEY=VALUE pair: " + pair.trim());
+                String key = kv[0].trim();
+                long value = Long.decode(kv[1].trim());
+                enumDt.add(key, value);
             }
+            DataType registered = dtm.addDataType(enumDt, null);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
@@ -434,16 +398,8 @@ final class TypeCommands {
             if (baseType == null) return errorResult("Base type not found: " + baseTypeName);
 
             DataTypeManager dtm = session.program().getDataTypeManager();
-            DataType registered;
-            ProgramTransaction transaction = session.transaction("Create typedef");
-            try {
-                TypedefDataType td = new TypedefDataType(name, baseType);
-                registered = dtm.addDataType(td, null);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            TypedefDataType td = new TypedefDataType(name, baseType);
+            DataType registered = dtm.addDataType(td, null);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
@@ -478,7 +434,7 @@ final class TypeCommands {
             if (getArgString(args, "offset") != null) {
                 Integer size = getArgString(args, "size") == null ? null : getArgInt(args, "size", 0);
                 StructureFields.set(struct, StructureFields.offset(args), fieldName,
-                    fieldDataType, null, false, size).apply(struct, session);
+                    fieldDataType, null, false, size).apply(struct);
             } else {
                 DataTypeUtilities.checkAncestry(struct, fieldDataType);
                 Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
@@ -492,14 +448,9 @@ final class TypeCommands {
                 } else {
                     staged.add(fieldDataType, fieldName, null);
                 }
-                ProgramTransaction transaction = session.transaction("Add field to struct");
-                try {
-                    // Preserve existing components and their per-field default settings.
-                    if (size != null) struct.add(fieldDataType, size, fieldName, null);
-                    else struct.add(fieldDataType, fieldName, null);
-                } finally {
-                    transaction.end(true);
-                }
+                // Preserve existing components and their per-field default settings.
+                if (size != null) struct.add(fieldDataType, size, fieldName, null);
+                else struct.add(fieldDataType, fieldName, null);
             }
 
             JsonObject result = new JsonObject();
@@ -531,7 +482,7 @@ final class TypeCommands {
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
             return StructureFields.set(struct, StructureFields.offset(args),
-                getArgString(args, "field_name"), type, comment, comment != null, null).apply(struct, session);
+                getArgString(args, "field_name"), type, comment, comment != null, null).apply(struct);
         } catch (Exception e) {
             return errorResult("Failed to set field: " + e.getMessage(), e);
         }
@@ -541,7 +492,7 @@ final class TypeCommands {
         if (session.program() == null) return errorResult("No program loaded");
         try {
             Structure struct = findStructure(args);
-            return StructureFields.clear(struct, StructureFields.offset(args)).apply(struct, session);
+            return StructureFields.clear(struct, StructureFields.offset(args)).apply(struct);
         } catch (Exception e) {
             return errorResult("Failed to clear field: " + e.getMessage(), e);
         }
@@ -571,14 +522,7 @@ final class TypeCommands {
             if (ordinal < 0)
                 return errorResult("Field not found: " + fieldName + " in " + typeName);
 
-            ProgramTransaction transaction = session.transaction("Delete field from struct");
-            try {
-                struct.delete(ordinal);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            struct.delete(ordinal);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "field_deleted");

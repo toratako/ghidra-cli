@@ -56,26 +56,48 @@ The entry script calls its inherited `end(true)` before serving requests to end
 the transaction created by `GhidraScript.executeNormal()`. Never end an unknown
 transaction ID or leave the script's transaction ID tied to a switched program.
 `CommandDispatcher` wraps every program request, including analysis/scripts, in
-a `ProgramSession` transaction, ends it, and saves changes before replying.
-Unchanged databases are not written; no mutating-command list is maintained.
+a `ProgramSession` request boundary. Ordinary requests are atomic by default,
+including future commands: failure, cancellation, or a native transaction abort
+rolls back the whole request. Successful requests end their transaction and save
+before replying. Earlier requests remain intact; unchanged databases are not
+written. Ordinary handlers never start/end transactions or save. They report
+native false returns and cancellation as failures so the shared boundary can
+roll back compound edits such as clearing before redisassembly.
 
-Handler mutations must use `session.transaction()`. `ProgramTransaction` retains
-its Program and nesting state: nested aborts would erase other changes in the
-request, so nested handlers retain partial changes; standalone transactions honor
-commit/rollback. Earlier requests are already committed and saved. Failed requests
-flush retained changes and report `partial_changes_saved` in error detail.
+The explicit non-atomic exceptions are `analyze`, `script_run`, `import`,
+`program_export`, `open_program`, `program_close`, `program_save`, and
+`program_delete`. Their analysis, arbitrary script, project, or filesystem effects
+can outlive failure or cancellation. Retained Program changes are saved through
+the session boundary and reported as `partial_changes_saved` on errors when saved;
+external effects are not rolled back. A batch has one boundary per request, never
+one transaction covering every command.
 
-Bounded code definition uses `ProgramSession.preview()` before opening its handler
-transaction. It requires the sole owned request transaction, commits that known
-transaction, runs a program-only preview in a separate transaction that is always
-rolled back, then restores the request transaction. It must never run within a
-handler transaction or switch programs. This is not a nested rollback: earlier
-edits remain committed, preview edits cannot be saved, and the real operation
-still ends and saves through the normal request boundary.
+Atomic failures report `detail.rolled_back: true`, plus `cancelled: true` when
+applicable. `ProgramTransaction` retains its Program and verifies ownership:
+an ordinary request cannot start inside a pre-existing foreign transaction; that
+transaction and its edits remain untouched. If native code leaves a child open
+inside the known atomic root, end only the owned root entry with `commit: false`
+to mark it aborted. Rollback completes when the remaining entries are closed by
+their owners; the failed request's edits cannot subsequently be committed.
+Until cleanup completes, report `transaction_failed` without `rolled_back` and
+do not save. Recovery scripts remain available. Never end an unknown transaction ID.
 
-Saving uses a non-cancelled monitor after the transaction ends, even on cancelled
-requests. Save errors fail the response, retain the command response in error
-detail, and keep the program available for in-place `program_save` retries.
+Bounded code definition uses `ProgramSession.preview()` before any mutations in
+the atomic request. Preview verifies the sole owned transaction and unchanged
+Program modification number, ends that untouched transaction without committing,
+runs a program-only preview in a separate transaction that is always rolled back,
+then restores the request transaction after completed rollback. A leaked preview
+child instead fails the request through the same pending-rollback ownership path.
+Preview must not switch programs or return live listing objects invalidated by
+rollback; return detached values. A preview
+after an edit is rejected so earlier edits in the same request cannot be committed
+as a side effect of preview setup.
+
+Saving uses a non-cancelled monitor after commit. Atomic rollback does not save
+pending edits retained from an earlier save failure. Save errors fail the response,
+retain `command_response` with `save_failed: true`, and keep the program available
+for in-place `program_save` retries. The first save failure in a request is retained
+without an implicit retry during request completion.
 Switching/closing save before releasing the session's consumer; failed save/open
 keeps the previous program. Shutdown drains, saves, and releases on the script
 thread. Startup omits `-process`, so `ProgramSession` also owns the initial program.
@@ -128,7 +150,7 @@ offsets, and user-script stdout keep their native representation.
 
 `StructureFields` stages offset edits on a detached structure copy, validates
 field boundaries and conflicts, then applies only the target component edit in a
-session transaction. Never replace the whole structure with the staged copy:
+request-owned transaction. Never replace the whole structure with the staged copy:
 Ghidra discards component settings when rebuilding it. Metadata-only edits update
 the original component, preserving its settings; layout edits leave other
 components' settings intact.
@@ -145,8 +167,8 @@ requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
 `ProgramCommands` references `Exporter` directly so OSGi imports the exporter
 package even though concrete exporter names are selected dynamically.
-GZF packing first ends the request transaction and saves through
-`ProgramSession.preparePackedExport()`. It writes to private sibling staging and
+GZF packing first ends the non-atomic request transaction and saves through
+`ProgramSession.save()`. It writes to private sibling staging and
 atomically replaces the destination after successful packing and a cancellation
 check; never let GzfExporter delete the user's previous destination directly.
 
@@ -168,6 +190,10 @@ matching displayed names from the symbol-list iterator, deduplicating by symbol
 ID. The iterator includes default thunks and dynamic labels that the name index
 can omit, but excludes namespaces and variables, so it cannot replace the index.
 Preserve cancellation and complete ambiguity/snapshot checks for mutations.
+Multi-symbol deletion rolls back all deletions when any member fails. Failure
+detail uses `attempted_deleted`, `failed`, and `not_attempted`; reserve `deleted`
+and `count` for successful receipts so rolled-back attempts are not reported as
+committed deletions.
 Comment listing scans all comment addresses, including external and unmapped
 addresses, while retaining the four supported comment types and query ordering.
 
@@ -250,7 +276,9 @@ native command, excludes starts whose complete instruction/delay-slot group
 crosses the byte bounds, and repeats until safe before the real run. Ghidra's
 plain restricted address set only bounds instruction starts, so it alone is not
 sufficient. Never replace this with per-instruction decoding, which loses flow
-context such as Thumb IT. `clear_range` keeps its existing optional redisassembly.
+context such as Thumb IT. `clear_range` keeps its optional redisassembly; clearing
+and redisassembly share the atomic request. A failed redisassembly receipt has
+`status: "failed"` and never claims that the clearing remains applied.
 
 `function_disasm` resolves a function through `FunctionQueries` and reads existing
 instructions from its complete `getBody()` address set, including disjoint ranges.
@@ -262,4 +290,6 @@ usual query limits and requests all rows before client-side selection when neede
 
 `bridge/sources.rs` tests source inventory/publication; `daemon_tests` exercises
 runtime loading, control responsiveness, cancellation isolation, program switching,
-and edits surviving failed mutations and restart. See [test commands](../../../../tests/README.md).
+request rollback after late failures/cancellation, save recovery, foreign
+transaction rejection, and edits surviving failed requests and restart.
+See [test commands](../../../../tests/README.md).

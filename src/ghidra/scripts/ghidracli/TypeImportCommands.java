@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.util.cparser.C.CParser;
 import ghidra.app.util.cparser.C.ParseException;
+import ghidra.app.util.cparser.C.TokenMgrError;
 import ghidra.program.model.data.Category;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataType;
@@ -41,72 +42,64 @@ final class TypeImportCommands {
                 processedCode += ";";
             }
 
-            ProgramTransaction transaction = session.transaction("Import C types");
-            try {
-                CParser parser = new CParser(dtm, true,
-                    new DataTypeManager[] { dtm });
-                parser.parse(processedCode);
-                String parseMessages = parser.getParseMessages();
+            CParser parser = new CParser(dtm, true,
+                new DataTypeManager[] { dtm });
+            parser.parse(processedCode);
+            String parseMessages = parser.getParseMessages();
 
-                Set<String> definedNames = new HashSet<>();
-                definedNames.addAll(parser.getComposites().keySet());
-                definedNames.addAll(parser.getEnums().keySet());
-                definedNames.addAll(parser.getTypes().keySet());
-                definedNames.addAll(parser.getFunctions().keySet());
+            Set<String> definedNames = new HashSet<>();
+            definedNames.addAll(parser.getComposites().keySet());
+            definedNames.addAll(parser.getEnums().keySet());
+            definedNames.addAll(parser.getTypes().keySet());
+            definedNames.addAll(parser.getFunctions().keySet());
 
-                Set<DataType> parsedTypes = new HashSet<>();
-                parsedTypes.addAll(parser.getComposites().values());
-                parsedTypes.addAll(parser.getEnums().values());
-                parsedTypes.addAll(parser.getTypes().values());
-                parsedTypes.addAll(parser.getFunctions().values());
+            Set<DataType> parsedTypes = new HashSet<>();
+            parsedTypes.addAll(parser.getComposites().values());
+            parsedTypes.addAll(parser.getEnums().values());
+            parsedTypes.addAll(parser.getTypes().values());
+            parsedTypes.addAll(parser.getFunctions().values());
 
-                CategoryPath lookupPath = CategoryPath.ROOT;
-                if (categoryPath != null) {
-                    String normalizedPath = categoryPath.startsWith("/")
-                        ? categoryPath : "/" + categoryPath;
-                    CategoryPath targetPath = new CategoryPath(normalizedPath);
-                    Category targetCat = dtm.createCategory(targetPath);
+            CategoryPath lookupPath = CategoryPath.ROOT;
+            if (categoryPath != null) {
+                String normalizedPath = categoryPath.startsWith("/")
+                    ? categoryPath : "/" + categoryPath;
+                CategoryPath targetPath = new CategoryPath(normalizedPath);
+                Category targetCat = dtm.createCategory(targetPath);
 
-                    for (DataType dt : parsedTypes) {
-                        if (!isUserFacingDataType(dt)) continue;
-                        if (dt.getCategoryPath().equals(targetPath)) continue;
-                        targetCat.moveDataType(dt, DataTypeConflictHandler.REPLACE_HANDLER);
-                    }
-                    lookupPath = targetPath;
+                for (DataType dt : parsedTypes) {
+                    if (!isUserFacingDataType(dt)) continue;
+                    if (dt.getCategoryPath().equals(targetPath)) continue;
+                    targetCat.moveDataType(dt, DataTypeConflictHandler.REPLACE_HANDLER);
                 }
-
-                transaction.end(true);
-
-                JsonArray typesArray = new JsonArray();
-                for (String name : definedNames) {
-                    DataType best = findBestParsedDataType(name, parsedTypes, lookupPath);
-                    if (best == null) {
-                        best = findBestDataType(dtm, name, lookupPath);
-                    }
-                    if (best != null) {
-                        JsonObject typeInfo = new JsonObject();
-                        typeInfo.addProperty("name", best.getName());
-                        typeInfo.addProperty("path", best.getPathName());
-                        typeInfo.addProperty("size", best.getLength());
-                        typeInfo.addProperty("category",
-                            best.getCategoryPath().toString());
-                        typesArray.add(typeInfo);
-                    }
-                }
-
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "imported");
-                response.add("types", typesArray);
-                if (parseMessages != null && !parseMessages.trim().isEmpty()) {
-                    response.addProperty("messages", parseMessages.trim());
-                }
-                return response;
-            } catch (Exception e) {
-                transaction.end(false);
-                throw e;
+                lookupPath = targetPath;
             }
-        } catch (ParseException pe) {
-            return errorResult("C parse error: " + pe.getMessage());
+
+            JsonArray typesArray = new JsonArray();
+            for (String name : definedNames) {
+                DataType best = findBestParsedDataType(name, parsedTypes, lookupPath);
+                if (best == null) {
+                    best = findBestDataType(dtm, name, lookupPath);
+                }
+                if (best != null) {
+                    JsonObject typeInfo = new JsonObject();
+                    typeInfo.addProperty("name", best.getName());
+                    typeInfo.addProperty("path", best.getPathName());
+                    typeInfo.addProperty("size", best.getLength());
+                    typeInfo.addProperty("category",
+                        best.getCategoryPath().toString());
+                    typesArray.add(typeInfo);
+                }
+            }
+
+            JsonObject response = new JsonObject();
+            response.addProperty("status", "imported");
+            response.add("types", typesArray);
+            if (parseMessages != null && !parseMessages.trim().isEmpty()) {
+                response.addProperty("messages", parseMessages.trim());
+            }
+            return response;
+        } catch (ParseException | TokenMgrError failure) {
+            return errorResult("C parse error: " + failure.getMessage());
         } catch (Exception e) {
             return errorResult("Failed to import C types: " + e.getMessage());
         }

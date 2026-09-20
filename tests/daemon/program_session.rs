@@ -170,6 +170,12 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
         error.to_string().contains("fully mapped and initialized"),
         "{error}"
     );
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert_eq!(detail["rolled_back"], true);
+    assert!(detail.get("partial_changes_saved").is_none());
     assert_saved_comment(&client, address, &text);
     drop(harness);
 
@@ -424,7 +430,16 @@ public class EditThenFailAutoSave extends GhidraScript {
         .unwrap();
     assert!(error.message.contains("intentional failure after editing"));
     assert_eq!(error.detail["partial_changes_saved"], true);
+    assert!(error.detail.get("rolled_back").is_none());
     assert_saved_comment(&client, address, &text);
+    drop(harness);
+    let restarted = start_daemon();
+    let comments = restarted.client().unwrap().comment_get(address).unwrap();
+    assert!(comments["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|comment| comment["text"] == text));
 }
 
 #[test]

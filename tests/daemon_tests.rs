@@ -15,6 +15,8 @@ mod lifecycle;
 mod output;
 #[path = "daemon/program_session.rs"]
 mod program_session;
+#[path = "daemon/transaction.rs"]
+mod transaction;
 
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 

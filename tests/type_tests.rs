@@ -436,7 +436,7 @@ public class CreateVariableTestProgram extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_function_set_signature_reports_application_failure() {
+fn test_function_set_signature_rolls_back_native_application_failure() {
     require_ghidra!();
     let harness = harness();
     let client = harness.client().unwrap();
@@ -490,12 +490,17 @@ public class CreateSignatureTestProgram extends GhidraScript {
         .as_str()
         .unwrap()
         .contains("int argument"));
+    let before = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "signature_target"})),
+        )
+        .unwrap();
 
     // This is valid C syntax, but applying the parameter conflicts with a label
-    // in the function's namespace. Ghidra reports false without throwing.
-    let invalid = set_signature("int signature_target(int collision)");
-    // Restore the suite's selection even when the regression assertion fails.
-    client.open_program(TEST_PROGRAM).unwrap();
+    // in the function's namespace. Ghidra changes the return type before checking
+    // that conflict, then reports false without throwing.
+    let invalid = set_signature("void signature_target(int collision)");
     invalid.assert_failure();
     let error: serde_json::Value = serde_json::from_str(&invalid.stderr).unwrap();
     assert_eq!(error["status"], "error");
@@ -506,6 +511,24 @@ public class CreateSignatureTestProgram extends GhidraScript {
             .contains("Failed to set signature: Parameter name conflict"),
         "{error}"
     );
+    assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+    assert!(error["detail"].get("partial_changes_saved").is_none());
+    let after = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "signature_target"})),
+        )
+        .unwrap();
+    assert_eq!(after, before);
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    let saved = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "signature_target"})),
+        )
+        .unwrap();
+    assert_eq!(saved, before);
 
     let repaired = set_signature("void signature_target(int recovered)");
     repaired.assert_success();

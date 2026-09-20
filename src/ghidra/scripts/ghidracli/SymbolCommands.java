@@ -140,15 +140,8 @@ final class SymbolCommands {
             Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
-            ProgramTransaction transaction = session.transaction("Create symbol");
-            try {
-                SymbolTable symbolTable = session.program().getSymbolTable();
-                symbolTable.createLabel(addr, name, SourceType.USER_DEFINED);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            SymbolTable symbolTable = session.program().getSymbolTable();
+            symbolTable.createLabel(addr, name, SourceType.USER_DEFINED);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");
@@ -175,7 +168,7 @@ final class SymbolCommands {
         return result;
     }
 
-    /** Revalidate the entire selection before opening a mutation transaction. */
+    /** Revalidate the entire selection before mutating any selected symbol. */
     private List<Symbol> resolveScopedSymbols(SymbolTable table, String name, JsonObject args)
             throws CancelledException {
         List<Symbol> selected = new ArrayList<>();
@@ -253,22 +246,18 @@ final class SymbolCommands {
                 throw deletionFailure(name, deleted, failed, notAttempted);
             notAttempted = new JsonArray();
 
-            ProgramTransaction transaction = session.transaction("Delete symbol");
-            try {
-                for (int i = 0; i < toDelete.size(); i++) {
-                    try {
-                        if (!toDelete.get(i).delete())
-                            throw new IllegalStateException("Ghidra refused to delete symbol");
-                        deleted.add(selected.get(i));
-                    } catch (Exception e) {
-                        failed.add(deletionFailureTarget(selected.get(i),
-                            e.getMessage() == null ? e.toString() : e.getMessage()));
-                        for (int j = i + 1; j < selected.size(); j++) notAttempted.add(selected.get(j));
-                        throw deletionFailure(name, deleted, failed, notAttempted);
-                    }
+            for (int i = 0; i < toDelete.size(); i++) {
+                try {
+                    session.monitor().checkCancelled();
+                    if (!toDelete.get(i).delete())
+                        throw new IllegalStateException("Ghidra refused to delete symbol");
+                    deleted.add(selected.get(i));
+                } catch (Exception e) {
+                    failed.add(deletionFailureTarget(selected.get(i),
+                        e.getMessage() == null ? e.toString() : e.getMessage()));
+                    for (int j = i + 1; j < selected.size(); j++) notAttempted.add(selected.get(j));
+                    throw deletionFailure(name, deleted, failed, notAttempted);
                 }
-            } finally {
-                transaction.end(true);
             }
 
             JsonObject result = new JsonObject();
@@ -292,8 +281,7 @@ final class SymbolCommands {
             JsonArray failed, JsonArray notAttempted) {
         JsonObject detail = new JsonObject();
         detail.addProperty("name", name);
-        detail.addProperty("count", deleted.size());
-        detail.add("deleted", deleted);
+        detail.add("attempted_deleted", deleted);
         detail.add("failed", failed);
         detail.add("not_attempted", notAttempted);
         String reason = failed.get(0).getAsJsonObject().get("reason").getAsString();
@@ -313,18 +301,12 @@ final class SymbolCommands {
             List<Symbol> toRename = resolveScopedSymbols(symbolTable, oldName, args);
 
             JsonArray renamed = new JsonArray();
-            ProgramTransaction transaction = session.transaction("Rename symbol");
-            try {
-                for (Symbol s : toRename) {
-                    JsonObject entry = new JsonObject();
-                    entry.addProperty("address", AddressCodec.format(s.getAddress()));
-                    s.setName(newName, SourceType.USER_DEFINED);
-                    renamed.add(entry);
-                }
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            for (Symbol s : toRename) {
+                session.monitor().checkCancelled();
+                JsonObject entry = new JsonObject();
+                entry.addProperty("address", AddressCodec.format(s.getAddress()));
+                s.setName(newName, SourceType.USER_DEFINED);
+                renamed.add(entry);
             }
 
             JsonObject result = new JsonObject();

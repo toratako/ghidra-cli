@@ -134,22 +134,15 @@ final class FunctionCommands {
                 }
             }
 
-            ProgramTransaction transaction = session.transaction("Rename function");
-            try {
-                String oldName = func.getName();
-                func.setName(newName, SourceType.USER_DEFINED);
-                transaction.end(true);
+            String oldName = func.getName();
+            func.setName(newName, SourceType.USER_DEFINED);
 
-                JsonObject result = new JsonObject();
-                result.addProperty("status", "renamed");
-                result.addProperty("old_name", oldName);
-                result.addProperty("new_name", newName);
-                result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-                return result;
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "renamed");
+            result.addProperty("old_name", oldName);
+            result.addProperty("new_name", newName);
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
+            return result;
         } catch (Exception e) {
             return errorResult("Failed to rename function: " + e.getMessage());
         }
@@ -185,64 +178,51 @@ final class FunctionCommands {
             Listing listing = session.program().getListing();
             boolean autoDisassembled = false;
 
-            ProgramTransaction transaction = session.transaction("Create function");
-            try {
-                // The most common reason createFunction rejects an address: no
-                // instruction has been disassembled there yet (static auto-analysis
-                // never reached it, e.g. a computed-jump table target). Disassemble
-                // first rather than making the caller do it via a separate command.
-                if (listing.getInstructionAt(addr) == null) {
-                    autoDisassembled = session.disassemble(addr);
-                }
-
-                Function created;
-                try {
-                    // FunctionManager.createFunction(..., body=null, ...) does not compute a
-                    // body by following flow from the entry point -- for many perfectly valid
-                    // entry points (notably ARM/Thumb vtable targets never reached by static
-                    // auto-analysis) it deterministically rejects the address with "Function
-                    // body must contain the entrypoint". CreateFunctionCmd is what
-                    // GhidraScript.createFunction()/the UI's "Create Function" action use: it
-                    // follows flow from the entry point to compute a correct body first.
-                    ghidra.app.cmd.function.CreateFunctionCmd cmd =
-                        new ghidra.app.cmd.function.CreateFunctionCmd(
-                            functionName, addr, null, SourceType.USER_DEFINED);
-                    boolean ok = cmd.applyTo(session.program(), session.monitor());
-                    if (!ok) {
-                        transaction.end(true);
-    /**
-     * fm.createFunction returning null carries no reason from Ghidra itself.
-     * Check the likely causes ourselves (no instruction landed, address already
-     * inside another function's body from a shared-code tail jump, boundary not
-     * on a code unit start) so the error distinguishes them instead of
-     * collapsing to one generic message.
-     */
-                        return diagnoseCreateFunctionFailure(addr, autoDisassembled, cmd.getStatusMsg());
-                    }
-                    created = fm.getFunctionAt(addr);
-                } catch (Exception e) {
-                    // CreateFunctionCmd rejects some addresses by throwing rather than
-                    // returning false -- run it through the same diagnosis either way instead
-                    // of losing the detail to the generic catch below.
-                    transaction.end(true);
-                    return diagnoseCreateFunctionFailure(addr, autoDisassembled, e.getMessage());
-                }
-                if (created == null) {
-                    transaction.end(true);
-                    return diagnoseCreateFunctionFailure(addr, autoDisassembled, null);
-                }
-                transaction.end(true);
-
-                JsonObject result = new JsonObject();
-                result.addProperty("status", "created");
-                result.addProperty("name", created.getName());
-                result.addProperty("address", AddressCodec.format(created.getEntryPoint()));
-                if (autoDisassembled) result.addProperty("auto_disassembled", true);
-                return result;
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            // The most common reason createFunction rejects an address: no
+            // instruction has been disassembled there yet (static auto-analysis
+            // never reached it, e.g. a computed-jump table target). Disassemble
+            // first rather than making the caller do it via a separate command.
+            if (listing.getInstructionAt(addr) == null) {
+                autoDisassembled = session.disassemble(addr);
+                session.monitor().checkCancelled();
             }
+
+            Function created;
+            try {
+                // FunctionManager.createFunction(..., body=null, ...) does not compute a
+                // body by following flow from the entry point -- for many perfectly valid
+                // entry points (notably ARM/Thumb vtable targets never reached by static
+                // auto-analysis) it deterministically rejects the address with "Function
+                // body must contain the entrypoint". CreateFunctionCmd is what
+                // GhidraScript.createFunction()/the UI's "Create Function" action use: it
+                // follows flow from the entry point to compute a correct body first.
+                ghidra.app.cmd.function.CreateFunctionCmd cmd =
+                    new ghidra.app.cmd.function.CreateFunctionCmd(
+                        functionName, addr, null, SourceType.USER_DEFINED);
+                boolean ok = cmd.applyTo(session.program(), session.monitor());
+                session.monitor().checkCancelled();
+                if (!ok) {
+                    // Check likely causes (no instruction landed, a shared-code tail
+                    // jump, or a code-unit boundary) to retain useful failure detail.
+                    return diagnoseCreateFunctionFailure(addr, autoDisassembled, cmd.getStatusMsg());
+                }
+                created = fm.getFunctionAt(addr);
+            } catch (Exception e) {
+                // CreateFunctionCmd rejects some addresses by throwing rather than
+                // returning false -- run it through the same diagnosis either way instead
+                // of losing the detail to the generic catch below.
+                return diagnoseCreateFunctionFailure(addr, autoDisassembled, e.getMessage());
+            }
+            if (created == null) {
+                return diagnoseCreateFunctionFailure(addr, autoDisassembled, null);
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "created");
+            result.addProperty("name", created.getName());
+            result.addProperty("address", AddressCodec.format(created.getEntryPoint()));
+            if (autoDisassembled) result.addProperty("auto_disassembled", true);
+            return result;
         } catch (Exception e) {
             return errorResult("Failed to create function: " + e.getMessage());
         }
@@ -328,13 +308,8 @@ final class FunctionCommands {
 
             Address entry = func.getEntryPoint();
             String name = func.getName();
-            ProgramTransaction transaction = session.transaction("Delete function");
-            try {
-                fm.removeFunction(entry);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
+            if (!fm.removeFunction(entry)) {
+                return errorResult("Failed to delete function at " + AddressCodec.format(entry));
             }
 
             JsonObject result = new JsonObject();

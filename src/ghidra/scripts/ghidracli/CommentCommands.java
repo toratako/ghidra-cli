@@ -142,14 +142,7 @@ final class CommentCommands {
             int commentType = resolveCommentType(commentTypeStr);
             Listing listing = session.program().getListing();
 
-            ProgramTransaction transaction = session.transaction("Set comment");
-            try {
-                listing.setComment(addr, commentType, text);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            listing.setComment(addr, commentType, text);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "set");
@@ -172,17 +165,10 @@ final class CommentCommands {
 
             Listing listing = session.program().getListing();
 
-            ProgramTransaction transaction = session.transaction("Delete comments");
-            try {
-                listing.setComment(addr, CodeUnit.EOL_COMMENT, null);
-                listing.setComment(addr, CodeUnit.PRE_COMMENT, null);
-                listing.setComment(addr, CodeUnit.POST_COMMENT, null);
-                listing.setComment(addr, CodeUnit.PLATE_COMMENT, null);
-                transaction.end(true);
-            } catch (Exception e) {
-                transaction.end(true);
-                throw e;
-            }
+            listing.setComment(addr, CodeUnit.EOL_COMMENT, null);
+            listing.setComment(addr, CodeUnit.PRE_COMMENT, null);
+            listing.setComment(addr, CodeUnit.POST_COMMENT, null);
+            listing.setComment(addr, CodeUnit.PLATE_COMMENT, null);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");

@@ -167,12 +167,22 @@ fn test_active_script_cancel_does_not_cancel_next_job() {
     let harness = start_daemon();
     let client = harness.client().unwrap();
     let worker = harness.client().unwrap();
+    let function = client
+        .send_command(
+            "get_function",
+            Some(serde_json::json!({"address": "add_numbers"})),
+        )
+        .unwrap();
+    let address = function["address"].as_str().unwrap().to_owned();
+    let marker = format!("cancelled-script-edit-{}", uuid::Uuid::new_v4());
+    let script_args = vec![address.clone(), marker.clone()];
     let script = std::thread::spawn(move || {
         worker.script_run_source(
             r#"
 import ghidra.app.script.GhidraScript;
 public class WaitForBridgeCancel extends GhidraScript {
     public void run() throws Exception {
+        setEOLComment(toAddr(getScriptArgs()[0]), getScriptArgs()[1]);
         monitor.setMessage("waiting-for-bridge-cancel");
         long deadline = System.currentTimeMillis() + 30000;
         while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) {
@@ -183,7 +193,7 @@ public class WaitForBridgeCancel extends GhidraScript {
     }
 }
 "#,
-            &[],
+            &script_args,
             &[],
             false,
         )
@@ -205,12 +215,14 @@ public class WaitForBridgeCancel extends GhidraScript {
     };
     let cancelled = job_command(&["cancel"]);
     assert_eq!(cancelled["job_id"], id);
-    assert!(script
-        .join()
+    let error = script.join().unwrap().unwrap_err();
+    assert!(error.to_string().contains("Script cancelled"));
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
         .unwrap()
-        .unwrap_err()
-        .to_string()
-        .contains("Script cancelled"));
+        .detail;
+    assert_eq!(detail["partial_changes_saved"], true);
+    assert!(detail.get("rolled_back").is_none());
     assert_eq!(
         job_command(&["get", &id.to_string()])["job"]["state"],
         "cancelled"
@@ -246,6 +258,14 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
     let unchanged = client.job_status(Some(finished_id)).unwrap();
     assert_eq!(unchanged["job"]["state"], "complete");
     assert_eq!(unchanged["job"]["cancel_requested"], false);
+    drop(harness);
+    let restarted = start_daemon();
+    let comments = restarted.client().unwrap().comment_get(&address).unwrap();
+    assert!(comments["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|comment| comment["text"] == marker));
 }
 
 #[test]
