@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-21
+
 ### Added
 
 - `find bytes --regex PATTERN` searches memory with Ghidra's native byte regex
@@ -15,9 +17,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   text regardless of string definitions. UTF-8 is the default; results include
   match addresses, byte lengths, and encoding names. Unrepresentable text is
   rejected, and searches support shared query options and cancellation.
+- `define-code TARGET [--end END]` defines instructions by following code flow,
+  optionally restricted to an inclusive range in one address space. Only complete
+  instructions and delay-slot groups inside the range are created; existing code
+  and data are preserved. It saves changes and returns a receipt; use `disassemble`
+  to read the resulting instructions.
+- Generated [command tree](docs/tree.md), with `cargo xtask gen-tree` to update it
+  and `cargo xtask gen-tree --check` to detect stale documentation in CI.
 
 ### Fixed
 
+- Resolve native program exporter classes through Ghidra's exporter class loader,
+  fixing class-loading failures in the bridge's OSGi bundle.
 - Refuse `program delete` for non-Program files, preserving project data type archives.
 - Return decompiler parameters in declaration order. Apply the configured native
   decompiler timeout to high p-code and variable edits as well as `decompile`;
@@ -51,8 +62,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The former `type create NAME`, `type create-enum`, and `type typedef` forms
   are no longer accepted; creation behavior and `type import-c` are unchanged.
 - Rename `x-ref` to `xref`, `strings` to `string`, `disasm` (including
-  `function disasm`) to `disassemble`, and `disasm-at`/`--disasm-at` to
-  `disassemble-at`/`--disassemble-at`. The `string` namespace retains `list` and
+  `function disasm`) to `disassemble`, and `clear --disasm-at` to
+  `clear --disassemble-at`. The `string` namespace retains `list` and
   `refs`. Use `ndjson` instead of `json-stream` for `--format` and configured
   output formats. Previous spellings are no longer accepted.
 - Remove all command aliases. Use the canonical command names shown in help.
@@ -66,6 +77,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   segmented output always includes the space name to avoid ambiguous parsing.
   `clear START:END` requires explicit endpoints and rejects the legacy `::`
   spelling; offsets, counts, and raw byte patterns retain their numeric rules.
+- Address comparisons and membership tests in query filters also require explicit
+  address literals. Validation runs before row evaluation, preserves address spaces
+  and segments, and compares full 64-bit values without losing precision.
+- `disassemble` uses the shared `--limit` after filtering, sorting, and offset,
+  replacing `--instructions` and the implicit ten-instruction cap. Omitted limits
+  use `default_limit`; `--limit 0` is unlimited. The bridge `disasm` request and
+  `BridgeClient::disasm` use `limit` with zero or omission meaning unlimited.
+- Move the test runner into the non-published `xtask` workspace package. Use
+  `cargo xtask test` to share a temporary fixture across test suites; root Cargo
+  commands still select `ghidra-cli` by default.
 - Require `bridge_info.explicit_addresses: true` before program dispatch.
   Running bridges from older releases must be restarted; the CLI refuses the
   request without an address compatibility downgrade. Save and stop bridges
@@ -85,6 +106,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- Replace the top-level `disasm-at` command (briefly renamed `disassemble-at`)
+  with `define-code`. The `disasm_at` bridge command and `BridgeClient::disasm_at`
+  are replaced by `define_code`; query flags and instruction-row output are no
+  longer supported. The separate `clear --disassemble-at` option remains available.
+- Remove `--target` from `function delete` and code definition; use a positional
+  target with `function delete TARGET` or `define-code TARGET`.
+- Remove `--filter`, `--sort`, `--offset`, `--limit`, and `--count` from
+  `comment delete`. It still deletes EOL, PRE, POST, and PLATE comments at the
+  supplied address and supports receipt field selection and output formatting.
+- Remove obsolete Rust query APIs (`DataType`, `Query::new`, and the query builder
+  methods) and client adapters for removed commands, including patching, diffing,
+  legacy searches, inline scripts, graph export, and function tags.
 - Remove the `program export` format aliases `cpp`, `bin`, and `ascii` from
   both the CLI and bridge. Use `c`, `binary`, and `asm`, respectively; format
   names remain case-insensitive and exported content is unchanged.
@@ -770,7 +803,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/toratako/ghidra-cli/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/toratako/ghidra-cli/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/toratako/ghidra-cli/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/toratako/ghidra-cli/compare/10019ba1f3b54c9edcca8ec644a30e16fb7b7c79...v0.3.0
