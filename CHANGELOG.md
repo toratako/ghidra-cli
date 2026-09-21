@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `batch --from-line N` to resume an edited source file without replaying
+  earlier commands, with structured recovery guidance for rolled-back failures,
+  uncertain outcomes, and pending saves. Lost or malformed bridge responses now
+  stop batches even under `--on-error continue`.
+
 - Add `function get --with-signature` for Program-defined return/parameter types,
   storage, automatic arguments, indirect types, and thunk signature provenance.
 - Add `function set-stack-purge TARGET --bytes N | --unknown` and expose

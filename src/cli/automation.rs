@@ -41,11 +41,15 @@ pub enum BatchErrorPolicy {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct BatchArgs {
-    /// Command file; syntax in all lines and nested batches is checked before execution
+    /// Command file; selected lines and nested batches are checked before execution
     pub script_file: String,
 
+    /// Start at this one-based source line, including blank lines and comments in the count
+    #[arg(long, value_name = "N")]
+    pub from_line: Option<std::num::NonZeroUsize>,
+
     /// Action after a runtime command error (default: continue; nested batches inherit).
-    /// Transaction/save failures and timeouts always stop. Commands run sequentially;
+    /// Transaction/save failures, timeouts, and lost responses always stop. Commands run sequentially;
     /// a failed ordinary request rolls back its own edits, while earlier commands remain saved.
     #[arg(long, value_enum, value_name = "MODE")]
     pub on_error: Option<BatchErrorPolicy>,

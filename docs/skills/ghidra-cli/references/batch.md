@@ -17,7 +17,7 @@ literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backti
 Variables, command substitutions, and wildcards are never expanded. Empty lines
 and lines starting with `#` are ignored.
 
-All lines and nested batch files are checked before execution.
+Selected lines and their nested batch files are checked before execution.
 Validation failures execute no commands.
 Function/type existence and other Program-dependent checks
 occur during execution; nested batches inherit `--on-error` unless overridden.
@@ -36,6 +36,18 @@ comment set 0x401000 "Parses the packet header"
 ghidra-cli batch ./edits.ghidra --on-error stop --project target --program target.bin
 ```
 
+## Resuming
+
+After a stopped command has rolled back, fix its line in the original file and
+start there, including that line:
+
+```bash
+ghidra-cli batch ./edits.ghidra --from-line 45 --on-error stop --project target --program target.bin
+```
+
+`--from-line` counts source lines, including comments and blank lines. Earlier
+lines are neither validated nor executed.
+
 ## Target selection and query controls
 
 Per-line `--project`/`--program` override the batch project/current selection;
@@ -50,5 +62,6 @@ For import inputs and program export destinations, see
 
 In JSON output, `.[0].results` contains attempted commands in execution order.
 Each result's `line` is the one-based source line number. The report's
-`commands_executed` includes failed attempts. Nested batch reports appear within
+`commands_executed` includes failed attempts; counts cover the selected range.
+Nested batch reports identify their source file and appear within
 the containing command's result or error detail.

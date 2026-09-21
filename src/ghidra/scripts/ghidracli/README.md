@@ -73,7 +73,9 @@ external effects are not rolled back. A batch has one boundary per request, neve
 one transaction covering every command.
 
 Atomic failures report `detail.rolled_back: true`, plus `cancelled: true` when
-applicable. `ProgramTransaction` retains its Program and verifies ownership:
+applicable. Rolled-back errors include the selected DomainFile path as `program`,
+captured on the program lane so recovery cannot select a different program from
+a later control snapshot. `ProgramTransaction` retains its Program and verifies ownership:
 an ordinary request cannot start inside a pre-existing foreign transaction; that
 transaction and its edits remain untouched. If native code leaves a child open
 inside the known atomic root, end only the owned root entry with `commit: false`

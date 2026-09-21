@@ -91,13 +91,15 @@ with the same project/program; edits may remain in memory. Do not repeat the edi
 running and close any outstanding transaction through its owning script before
 saving or retrying.
 
-`batch` validates all lines and nested files before executing any commands;
+`batch` validates selected lines and nested files before executing any commands;
 validation errors identify the source file and line. It exits nonzero if any
 command fails; its report remains on stdout.
 Commands run sequentially; later failures do not undo completed edits.
 `--on-error continue` (default) continues after ordinary errors, including completed
 rollbacks; use `--on-error stop` for dependent edits. Transaction-boundary failures,
-save failures, and timeouts always stop the batch. Do not replay successful edits.
+save failures, timeouts, and unknown command outcomes always stop the batch.
+For a rolled-back failure with unexecuted following commands, fix the original
+file and use `--from-line N` to start at the failed source line.
 See [batch results](references/batch.md#result-structure) for per-command results
 and error details.
 

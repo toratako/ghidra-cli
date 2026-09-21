@@ -157,3 +157,75 @@ fn unrepresentable_qualifiers_fail_without_changing_saved_signature() {
     set_signature(&program, "void lookup(char *text)").assert_success();
     client.open_program(TEST_PROGRAM).unwrap();
 }
+
+#[test]
+#[serial]
+fn batch_resumes_corrected_signature_at_line_45_without_repeating_saved_edits() {
+    require_ghidra!();
+    let program = create_program(64);
+    let before = function();
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("refine.ghidra");
+    let mut lines = vec!["type create struct Progress".to_owned()];
+    for index in 1..44 {
+        lines.push(format!(
+            "type field append Progress --type int --name step_{index}"
+        ));
+    }
+    lines.push(
+        "function set-signature 0x1000 --signature 'void lookup(const char *text)'".to_owned(),
+    );
+    lines.push("type field append Progress --type int --name tail".to_owned());
+    std::fs::write(&file, lines.join("\n")).unwrap();
+    let failed = ghidra(harness())
+        .args(["batch", file.to_str().unwrap(), "--on-error", "stop"])
+        .with_project(test_project(), &program)
+        .arg("--json")
+        .run();
+    failed.assert_failure();
+    let report: Value = failed.json();
+    assert_eq!(report[0]["commands_executed"], 45);
+    assert_eq!(report[0]["not_executed"], 1);
+    assert_eq!(report[0]["results"][44]["detail"]["rolled_back"], true);
+    assert!(report[0]["results"][44]["error"]
+        .as_str()
+        .unwrap()
+        .contains("const"));
+    assert_eq!(report[0]["recovery"]["action"], "resume_from_line");
+    assert_eq!(report[0]["recovery"]["line"], 45);
+    assert_eq!(report[0]["recovery"]["program"], format!("/{program}"));
+    let client = harness().client().unwrap();
+    // Check saved state, then change the selection before following the hint.
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    assert_eq!(function(), before);
+    let progress: Value = type_command(&program, &["get", "Progress"]).json();
+    assert_eq!(progress[0]["components"].as_array().unwrap().len(), 43);
+    client.open_program(TEST_PROGRAM).unwrap();
+    lines[44] = "function set-signature 0x1000 --signature 'void lookup(char *text)'".to_owned();
+    std::fs::write(&file, lines.join("\n")).unwrap();
+    let argv: Vec<String> = serde_json::from_value(report[0]["recovery"]["argv"].clone()).unwrap();
+    let resumed = common::GhidraCommand::new()
+        .arg("--json")
+        .args(argv.into_iter().skip(1))
+        .run();
+    resumed.assert_success();
+    let report: Value = resumed.json();
+    assert_eq!(report[0]["commands_executed"], 2);
+    assert_eq!(report[0]["results"][0]["line"], 45);
+    client.program_close().unwrap();
+    let progress: Value = type_command(&program, &["get", "Progress"]).json();
+    assert_eq!(progress[0]["components"].as_array().unwrap().len(), 44);
+    assert_eq!(progress[0]["components"][43]["name"], "tail");
+    let signature = client
+        .send_command(
+            "get_function",
+            Some(json!({
+                "address": "0x1000", "with_signature": true,
+            })),
+        )
+        .unwrap();
+    assert_eq!(signature["signature_details"]["return"]["type"], "void");
+    assert_eq!(signature["signature_details"]["params"][0]["name"], "text");
+    client.open_program(TEST_PROGRAM).unwrap();
+}

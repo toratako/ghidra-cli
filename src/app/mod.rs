@@ -54,6 +54,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         let prepared = if let Commands::Batch(args) = &cli.command {
             Some(batch::prepare(
                 std::path::Path::new(&args.script_file),
+                args.from_line.map(|line| line.get()),
                 |sub_cli| {
                     anyhow::ensure!(
                         requires_bridge(&sub_cli.command),
@@ -71,7 +72,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
         } else {
             None
         };
-        execute_bridge_command(&cli, prepared.as_ref())
+        execute_bridge_command(&cli, prepared.as_ref(), false)
     })();
     match result {
         Ok(result) => output::print_result(&cli, result),
@@ -152,14 +153,8 @@ fn parse_command_query(command: &Commands) -> anyhow::Result<CommandQuery> {
 fn execute_bridge_command(
     cli: &Cli,
     prepared_batch: Option<&batch::PreparedBatch>,
+    batch_line: bool,
 ) -> anyhow::Result<CommandResult> {
-    if matches!(
-        cli.command,
-        Commands::Program(cli::ProgramCommands::Save(_))
-    ) {
-        return management::program_save_result(cli)
-            .map(|(value, _)| CommandResult { value, query: None });
-    }
     let output = Output::new(cli);
     let query = parse_command_query(&cli.command)?;
     let config = load_config(&cli.projects_dir)?;
@@ -172,6 +167,21 @@ fn execute_bridge_command(
         extract_project_from_command(&cli.command).or_else(|| cli.project.clone());
     let project_path = resolve_project_path(&project_from_cmd, &config)?;
 
+    if matches!(
+        cli.command,
+        Commands::Program(cli::ProgramCommands::Save(_))
+    ) {
+        return management::program_save_result(cli)
+            .map(|(value, _)| CommandResult { value, query: None })
+            .map_err(|error| {
+                if batch_line {
+                    batch::in_project(error, &project_path)
+                } else {
+                    error
+                }
+            });
+    }
+
     let ghidra_install_dir = config.get_ghidra_install_dir().map_err(|_| {
         anyhow::anyhow!(
             "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
@@ -179,87 +189,105 @@ fn execute_bridge_command(
     })?;
 
     // Import owns its workflow; other commands dispatch through the bridge.
-    let result = match &cli.command {
-        Commands::Program(cli::ProgramCommands::Import(args)) => {
-            import::run_import(cli, args, &project_path, &ghidra_install_dir)?
-        }
-
-        _ => {
-            // A deletion target is a project file, not a program to select.
-            let deleting_program = matches!(
-                &cli.command,
-                Commands::Program(cli::ProgramCommands::Delete(_))
-            );
-            let selected_program = if deleting_program {
-                None
-            } else {
-                extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
-            };
-            let startup_program = if deleting_program {
-                None
-            } else {
-                selected_program
-                    .clone()
-                    .or_else(|| config.default_program.clone())
-            };
-            // For all bridge commands (including analysis run), ensure bridge is running
-            let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
-                // bridge_info is a responsive control request, including while
-                // analysis or another program job is running.
-                connect_program_bridge(port)?
-            } else {
-                // Auto-start bridge - use specific program if available, otherwise project mode
-                let mode = if let Some(program) = startup_program.clone() {
-                    BridgeStartMode::Process {
-                        program_name: program,
-                    }
-                } else {
-                    BridgeStartMode::Project
-                };
-
-                output.progress("Starting Ghidra bridge...");
-                let port = bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
-                output.progress("Bridge ready.");
-                BridgeClient::new(port)
-            };
-
-            // Let the bridge compare project files. Internal Program names can
-            // be identical across different files, so program_info is not an
-            // identity check. Opening the selected file again is a no-op.
-            if let Some(requested_program) = &selected_program {
-                client.open_program(requested_program)?;
+    let result = (|| -> anyhow::Result<serde_json::Value> {
+        match &cli.command {
+            Commands::Program(cli::ProgramCommands::Import(args)) => {
+                import::run_import(cli, args, &project_path, &ghidra_install_dir)
             }
 
-            if let Commands::Batch(args) = &cli.command {
-                let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
-                let prepared = prepared_batch.expect("batch input was validated before execution");
-                batch::execute_batch(prepared, on_error, |line| {
-                    let mut sub_cli = line.cli.clone();
-                    // Unspecified targets retain the batch's project and current
-                    // selection. Explicit per-line targets use normal routing.
-                    if sub_cli.project.is_none() {
-                        sub_cli.project = Some(project_path.to_string_lossy().into_owned());
-                    }
-                    if sub_cli.projects_dir.is_none() {
-                        sub_cli.projects_dir = cli.projects_dir.clone();
-                    }
-                    if let Commands::Batch(nested) = &mut sub_cli.command {
-                        nested.on_error.get_or_insert(on_error);
-                    }
-                    sub_cli.quiet = true;
-                    let result = execute_bridge_command(&sub_cli, line.nested.as_ref())?;
-                    output::process_batch_result(result)
-                })
-            } else {
-                execute_via_bridge(
-                    &client,
+            _ => {
+                // A deletion target is a project file, not a program to select.
+                let deleting_program = matches!(
                     &cli.command,
-                    output.quiet || output.json,
-                    &plan.fetch,
-                )
-            }?
+                    Commands::Program(cli::ProgramCommands::Delete(_))
+                );
+                let selected_program = if deleting_program {
+                    None
+                } else {
+                    extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
+                };
+                let startup_program = if deleting_program {
+                    None
+                } else {
+                    selected_program
+                        .clone()
+                        .or_else(|| config.default_program.clone())
+                };
+                // For all bridge commands (including analysis run), ensure bridge is running
+                let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
+                    // bridge_info is a responsive control request, including while
+                    // analysis or another program job is running.
+                    connect_program_bridge(port)?
+                } else {
+                    // Auto-start bridge - use specific program if available, otherwise project mode
+                    let mode = if let Some(program) = startup_program.clone() {
+                        BridgeStartMode::Process {
+                            program_name: program,
+                        }
+                    } else {
+                        BridgeStartMode::Project
+                    };
+
+                    output.progress("Starting Ghidra bridge...");
+                    let port =
+                        bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
+                    output.progress("Bridge ready.");
+                    BridgeClient::new(port)
+                };
+
+                // Let the bridge compare project files. Internal Program names can
+                // be identical across different files, so program_info is not an
+                // identity check. Opening the selected file again is a no-op.
+                if let Some(requested_program) = &selected_program {
+                    client.open_program(requested_program)?;
+                }
+
+                if let Commands::Batch(args) = &cli.command {
+                    let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
+                    let prepared =
+                        prepared_batch.expect("batch input was validated before execution");
+                    batch::execute_batch(prepared, on_error, |line| {
+                        let mut sub_cli = line.cli.clone();
+                        // Unspecified targets retain the batch's project and current
+                        // selection. Explicit per-line targets use normal routing.
+                        if sub_cli.project.is_none() {
+                            sub_cli.project = Some(project_path.to_string_lossy().into_owned());
+                        }
+                        if sub_cli.projects_dir.is_none() {
+                            sub_cli.projects_dir = cli.projects_dir.clone();
+                        }
+                        if let Commands::Batch(nested) = &mut sub_cli.command {
+                            nested.on_error.get_or_insert(on_error);
+                        }
+                        sub_cli.quiet = true;
+                        let result = execute_bridge_command(&sub_cli, line.nested.as_ref(), true)?;
+                        output::process_batch_result(result)
+                    })
+                    .map_err(|error| {
+                        if !batch_line {
+                            batch::add_recovery(error, prepared, cli, &project_path)
+                        } else {
+                            error
+                        }
+                    })
+                } else {
+                    execute_via_bridge(
+                        &client,
+                        &cli.command,
+                        output.quiet || output.json,
+                        &plan.fetch,
+                    )
+                }
+            }
         }
-    };
+    })()
+    .map_err(|error| {
+        if batch_line {
+            batch::in_project(error, &project_path)
+        } else {
+            error
+        }
+    })?;
 
     Ok(CommandResult {
         value: output::limit_response_rows(result, plan.fallback_limit),

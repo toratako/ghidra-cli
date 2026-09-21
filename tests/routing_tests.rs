@@ -10,6 +10,9 @@ use std::sync::{Arc, Mutex};
 #[path = "routing/rollout.rs"]
 mod rollout;
 
+#[path = "routing/batch.rs"]
+mod batch;
+
 fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
@@ -151,12 +154,22 @@ impl RecordedBridge {
                 }
                 captured.lock().unwrap().push(request.clone());
                 let args = &request["args"];
-                if args["text"] == "test-save-failure" {
+                if args["text"] == "test-save-failure"
+                    || (request["command"] == "program_save"
+                        && bridge_info["test_save_failure"] == true)
+                {
                     writeln!(connection, "{}", json!({"status": "error", "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
                     continue;
                 }
                 if args["text"] == "test-timeout" {
                     std::thread::sleep(std::time::Duration::from_secs(2));
+                    continue;
+                }
+                if args["text"] == "test-lost-response" {
+                    continue;
+                }
+                if args["text"] == "test-rollback" {
+                    writeln!(connection, "{}", json!({"status": "error", "message": "Edit rejected", "detail": {"rolled_back": true, "program": program}})).unwrap();
                     continue;
                 }
                 let data = match request["command"].as_str().unwrap() {
@@ -3595,6 +3608,20 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
         let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(diagnostic["detail"].get("results").is_none());
         assert_eq!(diagnostic["exit_code"], code);
+        let recovery = &report[0]["recovery"];
+        assert_eq!(recovery["action"], "inspect_state");
+        assert_eq!(recovery["file"], "nested.txt");
+        assert_eq!(recovery["line"], 1);
+        let argv: Vec<String> = serde_json::from_value(recovery["argv"].clone()).unwrap();
+        assert_eq!(
+            &argv[1..3],
+            if code == 75 {
+                ["job", "list"]
+            } else {
+                ["program", "save"]
+            }
+        );
+        assert!(!argv.iter().any(|arg| arg == "--from-line"));
         assert!(!bridge
             .requests
             .lock()

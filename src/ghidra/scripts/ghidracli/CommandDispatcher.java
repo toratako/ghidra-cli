@@ -191,6 +191,10 @@ final class CommandDispatcher {
                 if (outcome.rolledBack()) detail.addProperty("rolled_back", true);
                 else if (outcome.saved()) detail.addProperty("partial_changes_saved", true);
                 if (outcome.cancelled()) detail.addProperty("cancelled", true);
+                // Capture identity on the program lane. A later bridge_info
+                // query could observe another client's program selection.
+                if (outcome.rolledBack() && session.program() != null)
+                    detail.addProperty("program", session.programPath());
                 if (detail.size() != 0) response.add("detail", detail);
             }
             return response;

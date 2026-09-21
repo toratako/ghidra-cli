@@ -1,11 +1,17 @@
+mod recovery;
+
+pub(super) use recovery::{add_recovery, in_project};
+
 use crate::cli::{BatchErrorPolicy, Cli, Commands};
-use crate::ipc::protocol::{BridgeCommandError, BridgeTimeoutError};
+use crate::ipc::protocol::{BridgeCommandError, BridgeOutcomeUnknownError, BridgeTimeoutError};
 use clap::Parser;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
 /// Parsed commands and nested files are retained until execution finishes.
 pub(super) struct PreparedBatch {
+    file: PathBuf,
+    from_line: usize,
     lines: Vec<PreparedLine>,
     commands_parsed: usize,
 }
@@ -26,10 +32,18 @@ struct SourceLine<'a> {
 /// Validate the whole tree before starting a bridge or executing any command.
 pub(super) fn prepare(
     file: &Path,
+    from_line: Option<usize>,
     validate: impl Fn(&Cli) -> anyhow::Result<()>,
 ) -> anyhow::Result<PreparedBatch> {
     let mut errors = Vec::new();
-    let batch = read_batch(file, None, &mut Vec::new(), &mut errors, &validate);
+    let batch = read_batch(
+        file,
+        from_line,
+        None,
+        &mut Vec::new(),
+        &mut errors,
+        &validate,
+    );
     if !errors.is_empty() {
         let count = batch.as_ref().map_or(0, |batch| batch.commands_parsed);
         let diagnostics = errors
@@ -48,10 +62,13 @@ pub(super) fn prepare(
             .join("\n");
         return Err(BridgeCommandError {
             message: format!(
-                "Batch validation failed: {} error(s); no commands executed.\n{diagnostics}",
+                "Batch validation failed: {} error(s); no commands executed.\n{diagnostics}\n\
+                 Fix the validation errors, then rerun the same batch range.",
                 errors.len()
             ),
             detail: json!({
+                "file": file,
+                "from_line": from_line.unwrap_or(1),
                 "validation_failed": true,
                 "commands_parsed": count,
                 "commands_executed": 0,
@@ -59,6 +76,12 @@ pub(super) fn prepare(
                 "not_executed": count,
                 "results": [],
                 "validation_errors": errors,
+                "recovery": {
+                    "action": "fix_input",
+                    "file": file,
+                    "from_line": from_line.unwrap_or(1),
+                    "message": "Fix the validation errors, then rerun the same batch range; no commands were executed.",
+                },
             }),
         }
         .into());
@@ -68,6 +91,7 @@ pub(super) fn prepare(
 
 fn read_batch(
     file: &Path,
+    from_line: Option<usize>,
     source: Option<&SourceLine<'_>>,
     active: &mut Vec<PathBuf>,
     errors: &mut Vec<serde_json::Value>,
@@ -102,9 +126,18 @@ fn read_batch(
         }
     };
     active.push(canonical);
+    if let Some(start) = from_line {
+        let count = content.lines().count();
+        if start == 0 || start > count {
+            errors.push(json!({
+                "file": file, "line": start,
+                "error": format!("Starting line {start} is outside this file ({count} source lines)"),
+            }));
+        }
+    }
     let mut lines = Vec::new();
     let mut commands_parsed = 0;
-    for (number, text) in command_lines(&content) {
+    for (number, text) in command_lines(&content).filter(|(n, _)| *n >= from_line.unwrap_or(1)) {
         commands_parsed += 1;
         let parsed = split_arguments(text).and_then(|arguments| {
             Cli::try_parse_from(std::iter::once("ghidra-cli".to_owned()).chain(arguments))
@@ -122,6 +155,7 @@ fn read_batch(
                 let nested = if let Commands::Batch(args) = &cli.command {
                     read_batch(
                         Path::new(&args.script_file),
+                        args.from_line.map(|line| line.get()),
                         Some(&source),
                         active,
                         errors,
@@ -147,6 +181,8 @@ fn read_batch(
     }
     active.pop();
     Some(PreparedBatch {
+        file: file.to_owned(),
+        from_line: from_line.unwrap_or(1),
         lines,
         commands_parsed,
     })
@@ -209,7 +245,7 @@ pub(super) fn split_arguments(line: &str) -> anyhow::Result<Vec<String>> {
     Ok(arguments)
 }
 
-/// Retain attempted results; transaction/save failures and timeouts always stop.
+/// Retain attempted results; transaction/save failures and unknown outcomes stop.
 pub(super) fn execute_batch(
     batch: &PreparedBatch,
     on_error: BatchErrorPolicy,
@@ -220,6 +256,7 @@ pub(super) fn execute_batch(
     let mut failed = 0;
     let mut save_failed = false;
     let mut transaction_failed = false;
+    let mut outcome_unknown = false;
     let mut last_error = None;
     for line in lines {
         let mut row = json!({"line": line.number, "command": line.text.trim()});
@@ -228,8 +265,13 @@ pub(super) fn execute_batch(
             Err(error) => {
                 failed += 1;
                 row["error"] = json!(error.to_string());
+                if let Some(target) = error.downcast_ref::<recovery::CommandTarget>() {
+                    row["project"] = json!(target.project);
+                }
                 let timeout = error.downcast_ref::<BridgeTimeoutError>().is_some();
-                let mut stop = timeout || on_error == BatchErrorPolicy::Stop;
+                let unknown = error.downcast_ref::<BridgeOutcomeUnknownError>().is_some();
+                outcome_unknown |= timeout || unknown;
+                let mut stop = timeout || unknown || on_error == BatchErrorPolicy::Stop;
                 if let Some(error) = error.downcast_ref::<BridgeCommandError>() {
                     row["detail"] = error.detail.clone();
                     save_failed |=
@@ -240,6 +282,12 @@ pub(super) fn execute_batch(
                         .and_then(|v| v.as_bool())
                         == Some(true);
                     stop |= save_failed || transaction_failed;
+                }
+                if timeout || unknown {
+                    if !row["detail"].is_object() {
+                        row["detail"] = json!({});
+                    }
+                    row["detail"]["outcome_unknown"] = json!(true);
                 }
                 row["exit_code"] = json!(if timeout { 75 } else { 1 });
                 last_error = Some(error);
@@ -253,6 +301,8 @@ pub(super) fn execute_batch(
     }
     let not_executed = lines.len() - results.len();
     let mut detail = json!({
+        "file": batch.file,
+        "from_line": batch.from_line,
         "commands_parsed": lines.len(),
         "commands_executed": results.len(),
         "failed": failed,
@@ -264,6 +314,9 @@ pub(super) fn execute_batch(
     }
     if transaction_failed {
         detail["transaction_failed"] = json!(true);
+    }
+    if outcome_unknown {
+        detail["outcome_unknown"] = json!(true);
     }
     match last_error {
         Some(error) => {
@@ -297,6 +350,8 @@ mod tests {
             })
             .collect();
         let batch = PreparedBatch {
+            file: PathBuf::from("test.ghidra"),
+            from_line: 1,
             commands_parsed: lines.len(),
             lines,
         };
@@ -338,7 +393,7 @@ mod tests {
         let child_argument = serde_json::to_string(&child).unwrap();
         std::fs::write(&outer, format!("batch {child_argument}\nprogram stats\n")).unwrap();
         std::fs::write(&child, "program info\n").unwrap();
-        let prepared = prepare(&outer, |_| Ok(())).unwrap();
+        let prepared = prepare(&outer, None, |_| Ok(())).unwrap();
 
         // Replacing either source after preflight must not change what executes.
         std::fs::write(&outer, "comment set 0x1000 changed\n").unwrap();

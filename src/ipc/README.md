@@ -22,7 +22,9 @@ in the shared decompiler adapter because it is a Ghidra parameter, not a socket 
 Their `timeout_secs` argument defaults to zero (unbounded); numeric integers
 through 2,147,483 seconds are accepted. Reject larger
 values before Ghidra's signed-int seconds-to-milliseconds conversion can overflow.
-EOF without a reply is an error; read timeouts exit 75 without cancelling the job.
+EOF, I/O failures after sending begins, malformed replies, and invalid response
+statuses have a typed unknown outcome and must stop batches without replay.
+Read timeouts exit 75 without cancelling the job; other unknown outcomes exit 1.
 Shutdown uses the caller's remaining total deadline for connect, write, and read;
 it must not fall back to an independent generic socket timeout. The lifecycle
 caller also budgets lock acquisition and process exit, preserves the typed

@@ -114,6 +114,11 @@ hold an external Ghidra owner and retry after lock release. Batch tests verify
 that save/transaction failures and timeouts stop later commands, including nested
 batches.
 
+Batch restart coverage lives in `tests/routing/batch.rs` (selected ranges,
+target preservation, nested/continued execution, and lost replies) and
+`tests/types/signatures.rs` (44 saved edits followed by a rejected signature,
+correction at line 45, and persisted results without replay).
+
 `common::test_project()` gives each test executable a fresh project. Read-only
 suites reuse a bridge to amortize JVM startup; lifecycle/mutation suites may
 create and drop harnesses. Follow the owning suite's pattern and use `#[serial]`
