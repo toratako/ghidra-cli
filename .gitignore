@@ -23,3 +23,5 @@ target
 # Locally compiled test fixtures
 /tests/fixtures/sample_binary
 /tests/fixtures/sample_binary.exe
+
+/docs/local/
