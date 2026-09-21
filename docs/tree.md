@@ -74,7 +74,9 @@ ghidra-cli
 │   │   ├── set
 │   │   ├── clear
 │   │   └── delete
-│   └── del-enum-member
+│   └── enum
+│       └── member
+│           └── delete
 ├── tag
 │   ├── list
 │   ├── get
@@ -138,4 +140,4 @@ ghidra-cli
 └── setup
 ```
 
-126 command nodes (excluding the root), 0 aliases.
+128 command nodes (excluding the root), 0 aliases.

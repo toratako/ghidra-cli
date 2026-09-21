@@ -430,7 +430,7 @@ final class TypeCommands {
         }
     }
 
-    JsonObject handleTypeDelEnumMember(JsonObject args) {
+    JsonObject handleTypeEnumMemberDelete(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "type_name");
         String name = getArgString(args, "member_name");

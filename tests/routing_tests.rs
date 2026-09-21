@@ -574,12 +574,14 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
         (
             vec![
                 "type",
-                "del-enum-member",
+                "enum",
+                "member",
+                "delete",
                 "/Recovered/Mode",
                 "--name",
                 "Read",
             ],
-            "type_del_enum_member",
+            "type_enum_member_delete",
             json!({"type_name": "/Recovered/Mode", "member_name": "Read"}),
         ),
         (

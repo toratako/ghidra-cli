@@ -22,8 +22,9 @@ pub enum TypeCommands {
     /// Edit struct and union fields
     #[command(subcommand)]
     Field(TypeFieldCommands),
-    /// Remove one enum member by exact name
-    DelEnumMember(TypeDelEnumMemberArgs),
+    /// Edit enum definitions
+    #[command(subcommand)]
+    Enum(TypeEnumCommands),
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -36,6 +37,19 @@ pub enum TypeFieldCommands {
     Clear(TypeFieldClearArgs),
     /// Delete a field; shifts later struct fields or renumbers union members
     Delete(TypeFieldDeleteArgs),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeEnumCommands {
+    /// Edit named enum members
+    #[command(subcommand)]
+    Member(TypeEnumMemberCommands),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeEnumMemberCommands {
+    /// Remove one enum member by exact name
+    Delete(TypeEnumMemberDeleteArgs),
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -196,7 +210,7 @@ pub struct TypeFieldDeleteArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct TypeDelEnumMemberArgs {
+pub struct TypeEnumMemberDeleteArgs {
     /// Enum name or full type path
     pub type_name: String,
     /// Exact member name to remove

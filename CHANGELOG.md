@@ -25,14 +25,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Setting values saves without running analysis.
 - Add `type create union` and union member addition, deletion, and editing through
   `type field append`, `type field delete`, and `type field set --ordinal`.
-- Add `type del-enum-member TYPE --name MEMBER` to remove one named enum member.
+- Add `type enum member delete TYPE --name MEMBER` to remove one named enum member.
 - Add `find constant VALUE` and inclusive `--min`/`--max` searches over numeric
   instruction operands, with optional bit-width and address bounds.
 
 ### Changed
 
-- Group field operations under `type field append/set/clear/delete`. Select
-  existing fields with
+- Group field operations under `type field append/set/clear/delete` and enum
+  member deletion under `type enum member delete`. Select existing fields with
   `--field NAME`, struct `--offset`, or union `--ordinal`; `--name` sets a field's
   new name. Struct deletion now accepts an exact starting offset, including for
   unnamed fields. Named struct bit-field and zero-length field deletion remains

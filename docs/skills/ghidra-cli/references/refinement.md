@@ -56,7 +56,7 @@ ghidra-cli type create struct Header --project target
 ghidra-cli type field append Header --name magic --type uint --project target
 ghidra-cli type field delete Header --field magic --project target
 ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
-ghidra-cli type del-enum-member Mode --name Unknown --project target
+ghidra-cli type enum member delete Mode --name Unknown --project target
 ghidra-cli type create typedef HeaderAlias Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
@@ -94,7 +94,7 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
-`del-enum-member` selects an exact member name; other names with the same value
+`enum member delete` selects an exact member name; other names with the same value
 remain available.
 
 ### Recovering unions

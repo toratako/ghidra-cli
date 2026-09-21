@@ -115,6 +115,9 @@ defined field exists on that side of the edit. Status is `appended`, `created`,
 `updated`, `cleared`, `deleted`, or `unchanged`; `changed` is false only for
 `unchanged`. Clearing already-undefined space returns two null snapshots.
 
+`type_enum_member_delete` takes `type_name` and exact `member_name`; other enum
+names with the same value are preserved.
+
 `bookmark_list` and `bookmark_get` return `{bookmarks, count}` with `address`,
 `type`, `category`, and `comment`. Get takes an explicit `address` and retains
 all types/categories there, including external and unmapped addresses.

@@ -284,10 +284,12 @@ pub(super) fn execute_via_bridge(
                         })),
                     ),
                 },
-                TypeCommands::DelEnumMember(args) => client.send_command(
-                    "type_del_enum_member",
-                    Some(json!({"type_name": args.type_name, "member_name": args.name})),
-                ),
+                TypeCommands::Enum(cli::TypeEnumCommands::Member(cmd)) => match cmd {
+                    cli::TypeEnumMemberCommands::Delete(args) => client.send_command(
+                        "type_enum_member_delete",
+                        Some(json!({"type_name": args.type_name, "member_name": args.name})),
+                    ),
+                },
             }
         }
         Commands::Tag(cmd) => {
