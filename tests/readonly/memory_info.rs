@@ -110,7 +110,8 @@ fn memory_info_classifies_listing_and_preserves_object_and_address_space_boundar
             unmapped,
             json!({
                 "address": "0x00009000", "kind": "unmapped", "instruction": null,
-                "data": null, "function": null, "memory": null
+                "data": null, "function": null, "memory": null,
+                "file_mapping": {"state": "unmapped", "reason": "No memory block at address"}
             })
         );
         let overlay = info("info_overlay:0x1002");

@@ -137,7 +137,16 @@ has its name/entry address; nullable `memory` has block name, permissions,
 inclusive bounds, and `initialized`. Undefined listing state and uninitialized
 memory are independent. `initialized` is the native block flag; byte/bit-mapped
 blocks report false even when their backing bytes are readable. This query does
-not decode data values.
+not decode data values. `file_mapping.state` is `mapped`, `unmapped`, or
+`unsupported`. A mapped location includes `filename`, original `file_offset`,
+and relative `file_bytes_offset`; other states include a reason.
+
+`read_memory` accepts `source: "memory" | "original"` (default `memory`) and
+echoes the selected source with `address`, `size`, and `hex`. Current-memory
+reads retain pointer candidates. Original reads require preserved FileBytes
+for the complete requested range and return source `mappings` instead of pointer
+candidates. Each mapping includes its address/end/size and file provenance.
+Indirect bit/byte mappings are explicitly unsupported; host files are not read.
 
 Function detail (`get_function`) includes inclusive `body_ranges` without
 adding them to function lists. Xref rows include native `operand_index`,

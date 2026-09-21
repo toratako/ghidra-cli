@@ -343,15 +343,18 @@ final class MemoryCommands {
     }
 
     JsonObject handleReadMemory(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
         String addrStr = getArgString(args, "address");
         if (addrStr == null) return errorResult("Address required");
 
-        int size = 200;
-        if (args != null && args.has("size")) {
-            size = args.get("size").getAsInt();
-        }
-
         try {
+            int size = JsonProtocol.getNonnegativeIntArg(args, "size", 200);
+            String source = getArgString(args, "source");
+            if (source == null) source = "memory";
+            if (!source.equals("memory") && !source.equals("original")) {
+                return errorResult("source must be memory or original");
+            }
+            session.monitor().checkCancelled();
             ghidra.program.model.mem.Memory mem = session.program().getMemory();
 
             Address baseAddr = addressResolver.resolveAddress(addrStr);
@@ -361,12 +364,24 @@ final class MemoryCommands {
 
             // Read bytes
             byte[] bytes = new byte[size];
-            int bytesRead = mem.getBytes(baseAddr, bytes);
+            JsonArray mappings = source.equals("original")
+                ? MemorySources.readOriginal(session, baseAddr, bytes) : null;
+            int bytesRead = mappings == null ? mem.getBytes(baseAddr, bytes) : size;
 
             // Build hex string
             StringBuilder hexStr = new StringBuilder();
             for (int i = 0; i < bytesRead; i++) {
                 hexStr.append(String.format("%02x", bytes[i] & 0xFF));
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("address", AddressCodec.format(baseAddr));
+            result.addProperty("source", source);
+            result.addProperty("size", bytesRead);
+            result.addProperty("hex", hexStr.toString());
+            if (mappings != null) {
+                result.add("mappings", mappings);
+                return result;
             }
 
             int pointerSize = session.program().getDefaultPointerSize();
@@ -400,10 +415,6 @@ final class MemoryCommands {
                 pointers.add(ptrObj);
             }
 
-            JsonObject result = new JsonObject();
-            result.addProperty("address", AddressCodec.format(baseAddr));
-            result.addProperty("size", bytesRead);
-            result.addProperty("hex", hexStr.toString());
             result.add("pointers", pointers);
             return result;
         } catch (Exception e) {

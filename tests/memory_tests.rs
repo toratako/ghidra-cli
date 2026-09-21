@@ -1,4 +1,4 @@
-//! Pointer interpretation against small, unanalyzed raw programs.
+//! Pointer interpretation and preserved file bytes against small, unanalyzed raw programs.
 
 use ghidra_cli::ghidra::bridge::{import_oneshot, OneShotImportOptions};
 use ghidra_cli::ipc::client::BridgeClient;
@@ -140,7 +140,8 @@ public class CreatePointerTargets extends GhidraScript {
     output.assert_success();
     let output: Value = output.json();
     let result = &output[0];
-    assert_eq!(result.as_object().expect("memory result").len(), 4);
+    assert_eq!(result.as_object().expect("memory result").len(), 5);
+    assert_eq!(result["source"], "memory");
     assert_eq!(parse_address(&result["address"]), 0x1000);
     assert_eq!(result["size"], bytes.len());
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -287,4 +288,156 @@ fn parse_address(value: &Value) -> u64 {
         .strip_prefix("0x")
         .expect("explicit address prefix");
     u64::from_str_radix(digits, 16).expect("valid address")
+}
+
+#[test]
+#[serial]
+fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
+    require_ghidra!();
+    let directory = tempfile::Builder::new()
+        .prefix("ghidra-memory-sources-")
+        .tempdir()
+        .unwrap();
+    let project = directory.path().join("project");
+    let binary = directory.path().join("original.bin");
+    std::fs::write(&binary, [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]).unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_install_dir()
+        .unwrap();
+    let program = import_oneshot(
+        &project,
+        &binary,
+        &installation,
+        &OneShotImportOptions {
+            language: Some("x86:LE:32:default".to_owned()),
+            loader: Some("BinaryLoader".to_owned()),
+            loader_options: vec![("baseAddr".to_owned(), "0x1000".to_owned())],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    let client = harness.client().unwrap();
+    client
+        .script_run_source(
+            include_str!("fixtures/memory_sources/CreateMemorySources.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    client.memory_write("0x1000", "deadbeef").unwrap();
+    client
+        .memory_write("original_overlay:0x1000", "aabbccdd")
+        .unwrap();
+    // The stored original bytes must not depend on reopening the host input file.
+    std::fs::remove_file(&binary).unwrap();
+
+    check_memory_sources(&client);
+    let output = common::ghidra(&harness)
+        .args(["memory", "read", "0x1000", "8", "--source", "original"])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_eq!(
+        output.json::<Value>(),
+        json!([read_original(&client, "0x1000", 8)])
+    );
+    let output = common::ghidra(&harness)
+        .args(["memory", "read", "0x1000", "8", "--source", "memory"])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_eq!(
+        output.json::<Value>(),
+        json!([read_memory(&client, "0x1000", 8)])
+    );
+
+    drop(harness);
+    let reopened = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    check_memory_sources(&reopened.client().unwrap());
+}
+
+fn read_original(client: &BridgeClient, address: &str, size: usize) -> Value {
+    client
+        .send_command(
+            "read_memory",
+            Some(json!({"address": address, "size": size, "source": "original"})),
+        )
+        .unwrap()
+}
+
+fn check_memory_sources(client: &BridgeClient) {
+    let original = read_original(client, "0x1000", 8);
+    assert_eq!(original["source"], "original");
+    assert_eq!(original["hex"], "1011121314151617");
+    assert_eq!(original["size"], 8);
+    assert!(original.get("pointers").is_none(), "{original}");
+    assert_eq!(original["mappings"][0]["file_offset"], 0);
+    assert_eq!(read_memory(client, "0x1000", 8)["hex"], "deadbeef14151617");
+    assert_eq!(
+        read_memory(client, "original_overlay:0x1000", 4)["hex"],
+        "aabbccdd"
+    );
+    let overlay = read_original(client, "original_overlay:0x1000", 4);
+    assert_eq!(overlay["hex"], "74757677");
+    assert_eq!(
+        overlay["mappings"][0]["address"],
+        "original_overlay:0x00001000"
+    );
+    assert_eq!(overlay["mappings"][0]["file_offset"], 0x504);
+
+    // A joined block can have noncontiguous file offsets, followed by another file.
+    let spanning = read_original(client, "0x2002", 8);
+    assert_eq!(spanning["hex"], "4546494a4b4c7172");
+    assert_eq!(spanning["size"], 8);
+    assert_eq!(
+        spanning["mappings"],
+        json!([
+            {"state": "mapped", "filename": "archive-member", "file_offset": 0x205,
+             "file_bytes_offset": 5, "address": "0x00002002", "end": "0x00002003", "size": 2},
+            {"state": "mapped", "filename": "archive-member", "file_offset": 0x209,
+             "file_bytes_offset": 9, "address": "0x00002004", "end": "0x00002007", "size": 4},
+            {"state": "mapped", "filename": "second-input", "file_offset": 0x501,
+             "file_bytes_offset": 1, "address": "0x00002008", "end": "0x00002009", "size": 2}
+        ])
+    );
+    let mapped = client.memory_info("0x2002").unwrap();
+    assert_eq!(
+        mapped["file_mapping"],
+        json!({"state": "mapped", "filename": "archive-member",
+               "file_offset": 0x205, "file_bytes_offset": 5})
+    );
+    for (address, state, reason) in [
+        ("0x3000", "unmapped", "No preserved file bytes"),
+        ("0x4000", "unmapped", "No preserved file bytes"),
+        ("0x9000", "unmapped", "No memory block at address"),
+        ("0x5000", "unsupported", "Indirect bit/byte memory mapping"),
+        ("0x6000", "unsupported", "Indirect bit/byte memory mapping"),
+    ] {
+        assert_eq!(
+            client.memory_info(address).unwrap()["file_mapping"],
+            json!({"state": state, "reason": reason})
+        );
+        let error = client
+            .send_command(
+                "read_memory",
+                Some(json!({"address": address, "size": 1, "source": "original"})),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(reason), "{address}: {error}");
+    }
+    // Fail the complete original request, even after a valid prefix, rather than
+    // returning a truncated range or filling the remainder from current memory.
+    let error = client
+        .send_command(
+            "read_memory",
+            Some(json!({"address": "0x200a", "size": 4, "source": "original"})),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("0x0000200c"), "{error}");
+    assert_eq!(read_original(client, "0x200a", 2)["hex"], "7374");
 }

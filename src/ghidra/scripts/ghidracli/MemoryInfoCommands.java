@@ -73,6 +73,7 @@ final class MemoryInfoCommands {
             memoryInfo.addProperty("initialized", block.isInitialized());
         }
         result.add("memory", memoryInfo == null ? JsonNull.INSTANCE : memoryInfo);
+        result.add("file_mapping", MemorySources.describe(session, address));
         session.monitor().checkCancelled();
         return result;
     }

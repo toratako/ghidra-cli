@@ -1,5 +1,5 @@
 use super::{ObjectOptions, QueryOptions};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -29,8 +29,18 @@ pub struct MemReadArgs {
     pub address: String,
     /// Number of bytes to read in decimal (e.g. 64)
     pub size: usize,
+    /// Read current memory or preserved imported bytes; original requires a file mapping for the whole range
+    #[arg(long, value_enum, default_value = "memory")]
+    pub source: MemorySource,
     #[command(flatten)]
     pub options: ObjectOptions,
+}
+
+#[derive(ValueEnum, Clone, Copy, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum MemorySource {
+    Memory,
+    Original,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -110,7 +110,14 @@ ghidra-cli symbol list --limit 100 --project target
 ghidra-cli memory map --project target
 ghidra-cli memory info 0x401003 --project target
 ghidra-cli memory read 0x401000 64 --project target
+ghidra-cli memory read 0x401000 64 --source original --project target
 ```
+
+`memory info` reports file provenance. `memory read --source original` reads
+preserved import bytes, useful when relocations or patches changed current
+memory. It does not reopen the executable on disk, and fails if the requested
+range lacks a supported file mapping. The returned mappings identify each
+source span; original bytes are not decoded as current-memory pointer targets.
 
 For byte edits, see [patching](low-level.md#patching).
 

@@ -7,6 +7,9 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+#[path = "routing/rollout.rs"]
+mod rollout;
+
 fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
@@ -4186,7 +4189,10 @@ fn memory_read_preserves_bytes_and_pointers_with_output_options() {
             assert_eq!(domain[0]["command"], "open_program");
             assert_eq!(domain[0]["args"]["program"], "B");
             assert_eq!(domain[1]["command"], "read_memory");
-            assert_eq!(domain[1]["args"], json!({"address": "0x1000", "size": 8}));
+            assert_eq!(
+                domain[1]["args"],
+                json!({"address": "0x1000", "size": 8, "source": "memory"})
+            );
         }
     }
 }

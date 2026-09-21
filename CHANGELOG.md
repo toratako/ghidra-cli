@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `memory read --source original` for preserved import bytes and file
+  provenance in `memory info`; current-memory reads remain the default.
+
 - Add `bookmark list/get` for analysis diagnostics and user notes, and
   `memory info TARGET` for listing state and containing object boundaries.
 - Add `program list-relocations` with native relocation evidence and

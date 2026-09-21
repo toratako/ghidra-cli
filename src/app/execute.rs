@@ -194,6 +194,7 @@ pub(super) fn execute_via_bridge(
                     Some(json!({
                         "address": args.address,
                         "size": args.size,
+                        "source": args.source,
                     })),
                 ),
             }

@@ -119,6 +119,7 @@ another consumer or terminate its checkout.
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
+| `MemoryInfoCommands`, `MemorySources` | Listing classification and preserved FileBytes provenance/reads |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
@@ -185,6 +186,11 @@ primary status and suppress automatic additions on that operand. Never call
 blocks or their mapped source ranges are rejected until all affected views can be
 validated together. The shared request boundary rolls back write/reference failures
 and cancellation; this helper owns no transactions or saves.
+
+`MemorySources` resolves direct FileBytes sources, adding the FileBytes origin
+only for original-file provenance; reads use the relative FileBytes offset.
+It rejects indirect bit/byte mappings instead of assuming a 1:1 correspondence.
+Original reads must map the complete requested range and never consult host files.
 
 Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs
