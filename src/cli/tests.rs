@@ -658,11 +658,19 @@ fn analysis_option_set_preserves_typed_input_for_bridge_validation() {
 
 #[test]
 fn parses_decompile_positional_target() {
-    let cli = Cli::try_parse_from(["ghidra-cli", "decompile", "FUN_00401000"])
-        .expect("decompile positional target should parse");
-    match cli.command {
-        Commands::Decompile(args) => assert_eq!(args.target, "FUN_00401000"),
-        _ => panic!("expected decompile command"),
+    for with_jump_tables in [false, true] {
+        let mut argv = vec!["ghidra-cli", "decompile", "FUN_00401000"];
+        if with_jump_tables {
+            argv.push("--with-jump-tables");
+        }
+        let cli = Cli::try_parse_from(argv).expect("decompile positional target should parse");
+        match cli.command {
+            Commands::Decompile(args) => {
+                assert_eq!(args.target, "FUN_00401000");
+                assert_eq!(args.with_jump_tables, with_jump_tables);
+            }
+            _ => panic!("expected decompile command"),
+        }
     }
 }
 

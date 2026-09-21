@@ -64,9 +64,12 @@ pub(super) fn execute_via_bridge(
                 "data": result
             }))
         }
-        Commands::Decompile(args) => {
-            client.decompile(args.target.clone(), args.with_vars, args.with_params)
-        }
+        Commands::Decompile(args) => client.decompile(
+            args.target.clone(),
+            args.with_vars,
+            args.with_params,
+            args.with_jump_tables,
+        ),
         Commands::Function(cmd) => {
             use cli::FunctionCommands;
             match cmd {

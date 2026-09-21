@@ -129,6 +129,7 @@ impl BridgeClient {
         address: String,
         with_vars: bool,
         with_params: bool,
+        with_jump_tables: bool,
     ) -> Result<serde_json::Value> {
         self.send_decompile_command(
             "decompile",
@@ -136,6 +137,7 @@ impl BridgeClient {
                 "address": address,
                 "with_vars": with_vars,
                 "with_params": with_params,
+                "with_jump_tables": with_jump_tables,
             }),
         )
     }

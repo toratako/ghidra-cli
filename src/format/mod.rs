@@ -227,8 +227,52 @@ fn format_function_attributes(map: &serde_json::Map<String, JsonValue>, result: 
     }
 }
 
-/// Append diagnostics and the variable details requested by the caller.
+/// Append decompiler diagnostics and requested analysis details.
 fn format_decompile_details(map: &serde_json::Map<String, JsonValue>, result: &mut String) {
+    if let Some(count) = map.get("basic_block_count") {
+        let count = count
+            .as_u64()
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "unavailable".to_string());
+        result.push_str(&format!("\nBasic blocks (decompiler): {count}\n"));
+    }
+    if let Some(tables) = map.get("jump_tables") {
+        match tables.as_array() {
+            None => result.push_str("\nJump tables: unavailable\n"),
+            Some(tables) if tables.is_empty() => {
+                result.push_str("\nJump tables: none recovered\n");
+            }
+            Some(tables) => {
+                result.push_str("\nJump tables:\n");
+                for table in tables {
+                    let address = table
+                        .get("switch_address")
+                        .and_then(JsonValue::as_str)
+                        .unwrap_or("?");
+                    result.push_str(&format!("  Switch at {address}:\n"));
+                    if let Some(cases) = table.get("cases").and_then(JsonValue::as_array) {
+                        for case in cases {
+                            let address = case
+                                .get("address")
+                                .and_then(JsonValue::as_str)
+                                .unwrap_or("?");
+                            let label = if case.get("is_default").and_then(JsonValue::as_bool)
+                                == Some(true)
+                            {
+                                "default".to_string()
+                            } else {
+                                case.get("label")
+                                    .and_then(JsonValue::as_i64)
+                                    .map(|label| format!("case {label}"))
+                                    .unwrap_or_else(|| "label unavailable".to_string())
+                            };
+                            result.push_str(&format!("    {label} -> {address}\n"));
+                        }
+                    }
+                }
+            }
+        }
+    }
     if let Some(warnings) = map
         .get("warnings")
         .and_then(JsonValue::as_array)
@@ -585,6 +629,57 @@ mod tests {
             );
         }
         assert_eq!(auto_detect_format(false), OutputFormat::JsonCompact);
+    }
+
+    #[test]
+    fn human_decompile_formats_preserve_case_destinations_and_default_meaning() {
+        let code = "int choose(int value) { return value; }\n";
+        let response = json!({
+            "code": code,
+            "basic_block_count": 5,
+            "jump_tables": [{"switch_address": "0x1007", "cases": [
+                {"address": "0x1040", "label": 0, "is_default": false},
+                {"address": "0x1040", "label": 2, "is_default": false},
+                {"address": "0x1050", "label": -1, "is_default": false},
+                {"address": "0x1060", "label": -1160664095_i64, "is_default": true},
+                {"address": "0x1070", "label": null, "is_default": false}
+            ]}]
+        });
+        for format in [OutputFormat::Compact, OutputFormat::Full] {
+            let output = DefaultFormatter
+                .format(std::slice::from_ref(&response), format)
+                .unwrap();
+            assert!(output.contains(code));
+            assert!(output.contains("Basic blocks (decompiler): 5\n"));
+            assert!(output.contains(concat!(
+                "Jump tables:\n  Switch at 0x1007:\n",
+                "    case 0 -> 0x1040\n",
+                "    case 2 -> 0x1040\n",
+                "    case -1 -> 0x1050\n",
+                "    default -> 0x1060\n",
+                "    label unavailable -> 0x1070\n"
+            )));
+            assert!(!output.contains("-1160664095"));
+            for (tables, expected) in [
+                (json!([]), "none recovered"),
+                (JsonValue::Null, "unavailable"),
+            ] {
+                let row = json!({"code": code, "basic_block_count": null, "jump_tables": tables});
+                let output = DefaultFormatter.format(&[row], format).unwrap();
+                assert!(output.contains("Basic blocks (decompiler): unavailable\n"));
+                assert!(output.contains(&format!("Jump tables: {expected}\n")));
+            }
+            let output = DefaultFormatter
+                .format(&[json!({"code": code, "basic_block_count": 1})], format)
+                .unwrap();
+            assert!(!output.contains("Jump tables:"));
+        }
+        assert_eq!(
+            DefaultFormatter
+                .format(&[response], OutputFormat::C)
+                .unwrap(),
+            code
+        );
     }
 
     #[test]

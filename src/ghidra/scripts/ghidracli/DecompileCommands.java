@@ -4,7 +4,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.pcode.JumpTable;
+import ghidra.util.exception.CancelledException;
 import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
@@ -54,12 +58,21 @@ final class DecompileCommands {
             }
             result.addProperty("code", code);
             result.add("warnings", DecompileWarnings.collect(results));
+            HighFunction highFunc = results.getHighFunction();
+            if (highFunc == null) {
+                result.add("basic_block_count", JsonNull.INSTANCE);
+            } else {
+                result.addProperty("basic_block_count", highFunc.getBasicBlocks().size());
+            }
+
+            if (getArgBool(args, "with_jump_tables", false)) {
+                result.add("jump_tables", highFunc == null ? JsonNull.INSTANCE : jumpTables(highFunc));
+            }
 
             boolean withVars = getArgBool(args, "with_vars", false);
             boolean withParams = getArgBool(args, "with_params", false);
 
             if (withVars || withParams) {
-                ghidra.program.model.pcode.HighFunction highFunc = results.getHighFunction();
                 if (highFunc != null) {
                     ghidra.program.model.pcode.LocalSymbolMap lsm = highFunc.getLocalSymbolMap();
 
@@ -118,5 +131,32 @@ final class DecompileCommands {
             error.add("detail", functionQueries.functionContext(func));
             return error;
         }
+    }
+
+    private JsonArray jumpTables(HighFunction highFunction) throws CancelledException {
+        JsonArray tables = new JsonArray();
+        for (JumpTable table : highFunction.getJumpTables()) {
+            session.monitor().checkCancelled();
+            JsonObject entry = new JsonObject();
+            entry.addProperty("switch_address", AddressCodec.format(table.getSwitchAddress()));
+            Address[] destinations = table.getCases();
+            Integer[] labels = table.getLabelValues();
+            JsonArray cases = new JsonArray();
+            for (int i = 0; i < destinations.length; i++) {
+                session.monitor().checkCancelled();
+                JsonObject target = new JsonObject();
+                target.addProperty("address", AddressCodec.format(destinations[i]));
+                Integer label = i < labels.length ? labels[i] : null;
+                target.addProperty("label", label);
+                // Match DecompilerSwitchAnalysisCmd: the sentinel or the first
+                // destination beyond the labels denotes the default guard case.
+                target.addProperty("is_default", i == labels.length
+                    || (label != null && label == 0xbad1abe1));
+                cases.add(target);
+            }
+            entry.add("cases", cases);
+            tables.add(entry);
+        }
+        return tables;
     }
 }

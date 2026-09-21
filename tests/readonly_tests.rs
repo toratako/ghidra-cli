@@ -19,6 +19,8 @@ mod calls;
 mod constants;
 #[path = "readonly/decompile.rs"]
 mod decompile;
+#[path = "readonly/decompile_details.rs"]
+mod decompile_details;
 #[path = "readonly/function_details.rs"]
 mod function_details;
 #[path = "readonly/functions.rs"]

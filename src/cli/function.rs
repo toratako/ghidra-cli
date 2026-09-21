@@ -187,6 +187,9 @@ pub struct DecompileArgs {
     /// Include parameter details (name, type, storage)
     #[arg(long)]
     pub with_params: bool,
+    /// Include recovered switch jump tables
+    #[arg(long)]
+    pub with_jump_tables: bool,
     #[command(flatten)]
     pub options: QueryOptions,
 }

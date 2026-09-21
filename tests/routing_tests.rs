@@ -207,7 +207,14 @@ impl RecordedBridge {
                         })
                     }
                     "decompile" => {
-                        json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
+                        let mut result = json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n", "basic_block_count": 3});
+                        if args["with_jump_tables"] == true {
+                            result["jump_tables"] = json!([
+                                {"switch_address": "0x1010", "cases": [{"label": 0, "address": "0x1020", "is_default": false}, {"label": 1, "address": "0x1030", "is_default": false}]},
+                                {"switch_address": "0x1040", "cases": [{"label": 2, "address": "0x1050", "is_default": false}]},
+                            ]);
+                        }
+                        result
                     }
                     "memory_info" => json!({
                         "address": "0x1000", "kind": "instruction",
@@ -4235,6 +4242,45 @@ fn api_reads_honor_project_overrides_in_standalone_and_batch() {
             assert!(requests
                 .iter()
                 .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        }
+    }
+}
+
+#[test]
+fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
+    let bridge = RecordedBridge::new();
+    for with_jump_tables in [false, true] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec!["decompile", "main"];
+            if with_jump_tables {
+                args.push("--with-jump-tables");
+            }
+            let result = if batch {
+                std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
+                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)[0].clone()
+            };
+            assert_eq!(result["basic_block_count"], 3);
+            assert_eq!(result.get("jump_tables").is_some(), with_jump_tables);
+            if with_jump_tables {
+                assert_eq!(result["jump_tables"].as_array().unwrap().len(), 2);
+                assert_eq!(
+                    result["jump_tables"][0]["cases"].as_array().unwrap().len(),
+                    2
+                );
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let decompile: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "decompile")
+                .collect();
+            assert_eq!(decompile.len(), 1);
+            assert_eq!(
+                decompile[0]["args"],
+                json!({"address": "main", "with_vars": false, "with_params": false, "with_jump_tables": with_jump_tables, "timeout_secs": 0})
+            );
         }
     }
 }
