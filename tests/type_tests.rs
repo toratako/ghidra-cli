@@ -31,6 +31,9 @@ mod signatures;
 #[path = "types/return_types.rs"]
 mod return_types;
 
+#[path = "types/calling_conventions.rs"]
+mod calling_conventions;
+
 #[path = "types/unions.rs"]
 mod unions;
 

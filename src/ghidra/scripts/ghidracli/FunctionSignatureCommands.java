@@ -149,7 +149,9 @@ final class FunctionSignatureCommands {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
-            func.setCallingConvention(convention);
+            FunctionReturnType.requireCallingConvention(session.program(), convention);
+            Function effective = func.isThunk() ? func.getThunkedFunction(true) : func;
+            effective.setCallingConvention(convention);
 
             String sig = null;
             try { sig = func.getPrototypeString(false, false); } catch (Exception e) {}
@@ -157,8 +159,13 @@ final class FunctionSignatureCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "calling_convention_set");
             result.addProperty("function", func.getName());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.addProperty("calling_convention", convention);
             if (sig != null) result.addProperty("signature", sig);
+            if (!effective.equals(func)) {
+                result.addProperty("effective_function", effective.getName());
+                result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+            }
             return result;
         } catch (Exception e) {
             return errorResult("Failed to set calling convention: " + e.getMessage());

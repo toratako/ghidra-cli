@@ -128,6 +128,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Preserve inferred parameters when setting a function's return type, keeping
   their types inferable where the calling convention permits and rejecting
   conflicts instead of silently renaming existing symbols.
+- Reject calling convention names unsupported by the selected program's compiler
+  specification before changing the function.
 
 - Fix the macOS doctor loopback check by restoring blocking mode on the accepted
   socket, and restore macOS ARM64 CI with native Ghidra tools and portable fixtures.

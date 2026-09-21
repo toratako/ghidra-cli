@@ -160,7 +160,7 @@ pub struct SetCallingConventionArgs {
     /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
-    /// Calling convention name (e.g., "__cdecl", "__stdcall", "__fastcall")
+    /// Supported name from `function list-calling-conventions`
     #[arg(long)]
     pub convention: String,
     #[arg(long)]

@@ -99,7 +99,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [readonly/bookmarks.rs](readonly/bookmarks.rs), [readonly/memory_info.rs](readonly/memory_info.rs), [readonly/program_metadata.rs](readonly/program_metadata.rs) | Bookmark preservation, address classification, relocation evidence, and original executable hashes |
 | [daemon/analysis.rs](daemon/analysis.rs) | Native option types/defaults/choices, settings-only edits versus full reanalysis, rollback and reopen persistence |
 | [patch/memory_write.rs](patch/memory_write.rs) | Preserved component settings and instructions, pointer references across widths/byte orders, string storage, shared memory, overlays and delay slots |
-| [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion; return edits preserving inferred/explicit parameters and ABI storage |
+| [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion; return edits preserving inferred/explicit parameters and ABI storage, compiler-specific calling convention validation |
 | [readonly/calls.rs](readonly/calls.rs), [readonly/relationships.rs](readonly/relationships.rs) | Call resolution through thunks/pointers, undefined endpoints and reference evidence; real graph nodes/edges |
 | [readonly/query.rs](readonly/query.rs) | Server pages versus full rows, Unicode/Turkish locale, tags/comments, bounds beyond Java `int` |
 | [readonly/strings.rs](readonly/strings.rs), [readonly/search.rs](readonly/search.rs) | Code-point versus occupied-byte lengths, defined strings versus encoded text, overlaps and encoding errors |
