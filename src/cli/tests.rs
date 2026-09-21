@@ -199,9 +199,12 @@ fn targets_require_one_positional() {
                 Commands::Function(FunctionCommands::EditVar(args)) => {
                     (args.target, args.program, args.project)
                 }
-                Commands::Function(
-                    FunctionCommands::Get(args) | FunctionCommands::Disasm(args),
-                ) => (args.target, args.options.program, args.options.project),
+                Commands::Function(FunctionCommands::Get(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
+                Commands::Function(FunctionCommands::Disasm(args)) => {
+                    (args.target, args.options.program, args.options.project)
+                }
                 Commands::Decompile(args) => {
                     (args.target, args.options.program, args.options.project)
                 }
@@ -676,14 +679,28 @@ fn parses_decompile_positional_target() {
 
 #[test]
 fn parses_function_get_positional_target() {
-    let cli = Cli::try_parse_from(["ghidra-cli", "function", "get", "main"])
-        .expect("function get positional target should parse");
-    match cli.command {
-        Commands::Function(FunctionCommands::Get(args)) => {
-            assert_eq!(args.target, "main");
+    for with_signature in [false, true] {
+        let mut argv = vec!["ghidra-cli", "function", "get", "main"];
+        if with_signature {
+            argv.push("--with-signature");
         }
-        _ => panic!("expected function get command"),
+        let cli = Cli::try_parse_from(argv).expect("function get positional target should parse");
+        match cli.command {
+            Commands::Function(FunctionCommands::Get(args)) => {
+                assert_eq!(args.target, "main");
+                assert_eq!(args.with_signature, with_signature);
+            }
+            _ => panic!("expected function get command"),
+        }
     }
+    assert!(Cli::try_parse_from([
+        "ghidra-cli",
+        "function",
+        "disassemble",
+        "main",
+        "--with-signature"
+    ])
+    .is_err());
 }
 
 #[test]

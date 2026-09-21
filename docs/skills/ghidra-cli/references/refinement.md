@@ -14,10 +14,15 @@ ghidra-cli function set-return-type abort_path --type void --project target
 ghidra-cli function list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
+ghidra-cli function get parse_header --with-signature --project target
 ghidra-cli function set-noreturn abort_path --project target
 ```
 
 `function rename` uses `--address` to disambiguate duplicate names.
+
+Use `function get --with-signature` to inspect the current Program definition
+and its argument/return storage, including hidden arguments and
+indirect returns.
 
 `function edit-var` selects a local variable or parameter by exact name;
 ambiguous names return candidates. `before` describes the decompiler's variable,

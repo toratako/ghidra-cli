@@ -5,6 +5,8 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashSet;
 
+mod signature;
+
 pub trait Formatter {
     fn format<T: Serialize>(&self, data: &[T], format: OutputFormat) -> Result<String>;
 }
@@ -360,6 +362,10 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 }
 
                 // General object: render primary fields in a compact line
+                if map.len() == 1 && map.contains_key("signature_details") {
+                    signature::format_details(&map["signature_details"], &mut result);
+                    continue;
+                }
                 let address = map.get("address").and_then(|v| v.as_str());
                 let name = map.get("name").and_then(|v| v.as_str());
                 let size = map.get("size").and_then(|v| v.as_u64());
@@ -396,6 +402,7 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 if parts.is_empty() {
                     let kv: Vec<String> = map
                         .iter()
+                        .filter(|(k, _)| k.as_str() != "signature_details")
                         .map(|(k, v)| format!("{}={}", k, format_json_value(v)))
                         .collect();
                     result.push_str(&kv.join("  "));
@@ -418,6 +425,7 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                                 | "operands"
                                 | "code"
                                 | "signature"
+                                | "signature_details"
                         )
                     })
                     .filter_map(|(k, v)| {
@@ -436,6 +444,9 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 }
 
                 result.push('\n');
+                if let Some(details) = map.get("signature_details") {
+                    signature::format_details(details, &mut result);
+                }
             }
             _ => {
                 result.push_str(&format_json_value(item));
@@ -489,6 +500,10 @@ fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
                 let max_key = map.keys().map(|k| k.len()).max().unwrap_or(0);
 
                 for (key, val) in map {
+                    if key == "signature_details" {
+                        signature::format_details(val, &mut result);
+                        continue;
+                    }
                     let formatted = format_json_value(val);
                     result.push_str(&format!(
                         "{:width$}  {}\n",

@@ -170,7 +170,23 @@ metadata owner when different from the requested function.
 a claim of complete exported coverage; XML includes its `.bytes` companion.
 
 Function detail (`get_function`) includes inclusive `body_ranges` without
-adding them to function lists. Xref rows include native `operand_index`,
+adding them to function lists. Optional `with_signature: true` adds
+`signature_details: {storage_mode, source, variadic, return, params}` from the
+current Program's Function API, without decompilation. Storage mode is `dynamic`
+or `custom`; source is the native signature SourceType, not a confidence rating.
+Return/parameter records have effective `type`, `type_path`, byte `size`, native
+display-string `storage`, and `forced_indirect`. Indirect records also have
+`formal_type` and `formal_type_path`. Parameters include zero-based `ordinal`,
+`name`, and nullable `auto_parameter` (native AutoParameterType name), in signature
+order including auto-parameters. Native `<VOID>`, `<UNASSIGNED>`, and `<BAD>`
+storage remain distinct. Dynamic storage and auto-parameters are computed from
+the Program definition and compiler specification, not decompiler inference.
+Custom storage does not retain auto-parameter classification. A thunk's details
+include `effective_function` and `effective_address` for its ultimate metadata
+owner; the parameter view still comes from the selected function so native
+thunk-specific `this` types are retained. Without the flag the field is omitted.
+
+Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming
 deduplication includes the operand so distinct references stay selectable.
 `program_info` adds nullable `executable_md5` and `executable_sha256` from

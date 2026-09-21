@@ -95,7 +95,11 @@ final class FunctionCommands {
         if (func == null) {
             return errorResult(functionQueries.buildFunctionTargetHint(target));
         }
-        return functionQueries.functionDetailToJson(func);
+        JsonObject result = functionQueries.functionDetailToJson(func);
+        if (getArgBool(args, "with_signature", false)) {
+            result.add("signature_details", functionQueries.signatureDetailsToJson(func));
+        }
+        return result;
     }
 
     JsonObject handleListCallingConventions() throws ghidra.util.exception.CancelledException {

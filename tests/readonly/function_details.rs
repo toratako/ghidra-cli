@@ -141,3 +141,177 @@ fn calling_convention_discovery_follows_selected_compiler_and_accepts_listed_nam
         std::panic::resume_unwind(panic);
     }
 }
+
+fn signature_details(program: &str, target: &str) -> Value {
+    command(program, &["function", "get", target, "--with-signature"])[0].clone()
+}
+
+fn signature_program_state() -> String {
+    let result = harness().client().unwrap().script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class ReadSignatureProgramState extends GhidraScript {
+    public void run() {
+        println("program-state=" + currentProgram.getModificationNumber() + ":" + currentProgram.isChanged());
+    }
+}
+"#, &[], &[], false).unwrap();
+    result["stdout"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("program-state="))
+        .unwrap()
+        .to_owned()
+}
+
+#[test]
+#[serial]
+fn signature_details_read_program_types_storage_and_thunk_provenance_without_edits() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for compiler in ["gcc", "windows"] {
+        let program = format!("signature-details-{compiler}-{}", uuid::Uuid::new_v4());
+        client
+            .script_run_source(
+                include_str!("CreateSignatureDetailsFixture.java"),
+                &[program.clone(), compiler.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(&program).unwrap();
+        let checked = std::panic::catch_unwind(|| {
+            let before = signature_program_state();
+            let plain = signature_details(&program, "plain");
+            let details = &plain["signature_details"];
+            assert_eq!(details["storage_mode"], "dynamic");
+            assert_eq!(details["source"], "USER_DEFINED");
+            assert_eq!(details["variadic"], true);
+            assert_eq!(
+                details["return"],
+                json!({
+                    "type":"int", "type_path":"/int", "size":4,
+                    "storage":"EAX:4", "forced_indirect":false
+                })
+            );
+            assert_eq!(details["params"].as_array().unwrap().len(), 2);
+            for (ordinal, name) in ["first", "second"].into_iter().enumerate() {
+                let param = &details["params"][ordinal];
+                assert_eq!(param["ordinal"], ordinal);
+                assert_eq!(param["name"], name);
+                assert_eq!(param["auto_parameter"], Value::Null);
+                assert_eq!(
+                    param["storage"],
+                    format!("Stack[0x{:x}]:4", 4 + ordinal * 4)
+                );
+            }
+            let mut summary = plain.clone();
+            summary.as_object_mut().unwrap().remove("signature_details");
+            assert_eq!(command(&program, &["function", "get", "plain"])[0], summary);
+            assert_eq!(plain["stack_purge"]["bytes"], 4);
+
+            let indirect = signature_details(&program, "indirect");
+            let details = &indirect["signature_details"];
+            assert_eq!(details["source"], "IMPORTED");
+            assert_eq!(details["return"]["forced_indirect"], true);
+            assert_eq!(details["return"]["formal_type"], "Result");
+            assert_eq!(details["return"]["formal_type_path"], "/Recovered/Result");
+            assert_eq!(details["return"]["type"], "Result *");
+            assert_eq!(details["return"]["size"], 4);
+            assert_eq!(details["params"][0]["auto_parameter"], "RETURN_STORAGE_PTR");
+            assert_eq!(details["params"][1]["name"], "value");
+            assert_eq!(details["params"][1]["ordinal"], 1);
+
+            let method = signature_details(&program, "method");
+            assert_eq!(method["signature_details"]["return"]["storage"], "<VOID>");
+            assert_eq!(
+                method["signature_details"]["params"][0]["auto_parameter"],
+                "THIS"
+            );
+            let thunk = signature_details(&program, "method_thunk");
+            let details = &thunk["signature_details"];
+            assert_eq!(details["effective_function"], "method");
+            assert_eq!(details["effective_address"], method["address"]);
+            assert_eq!(details["params"][0]["type"], "Wrapper *");
+
+            let thunk = signature_details(&program, "plain_thunk");
+            let mut details = thunk["signature_details"].clone();
+            let obj = details.as_object_mut().unwrap();
+            assert_eq!(obj.remove("effective_function").unwrap(), "plain");
+            assert_eq!(obj.remove("effective_address").unwrap(), plain["address"]);
+            assert_eq!(details, plain["signature_details"]);
+
+            let custom = signature_details(&program, "custom");
+            let details = &custom["signature_details"];
+            assert_eq!(details["storage_mode"], "custom");
+            assert_eq!(details["return"]["storage"], "EDX:4,EAX:4");
+            assert_eq!(details["return"]["size"], 8);
+            assert_eq!(details["params"][0]["storage"], "EAX:4");
+            assert_eq!(details["params"][1]["storage"], "Stack[0x4]:4");
+            assert_eq!(
+                signature_details(&program, "unassigned")["signature_details"]["return"]["storage"],
+                "<UNASSIGNED>"
+            );
+
+            let unknown = signature_details(&program, "unknown");
+            assert_eq!(unknown["signature_details"]["source"], "DEFAULT");
+            assert_eq!(unknown["signature_details"]["params"], json!([]));
+            let external = signature_details(&program, "outside");
+            assert_eq!(external["is_external"], true);
+            assert_eq!(external["signature_details"]["return"]["type"], "void");
+
+            let listed = command(&program, &["function", "list", "--limit", "0"]);
+            assert!(listed
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row.get("signature_details").is_none()));
+            assert_eq!(
+                command(
+                    &program,
+                    &[
+                        "function",
+                        "get",
+                        "custom",
+                        "--with-signature",
+                        "--fields",
+                        "name,signature_details"
+                    ]
+                ),
+                json!([{"name":"custom", "signature_details":custom["signature_details"]}])
+            );
+            for format in ["compact", "full"] {
+                let result = ghidra(harness())
+                    .args([
+                        "function",
+                        "get",
+                        "indirect",
+                        "--with-signature",
+                        "--format",
+                        format,
+                    ])
+                    .with_project(test_project(), &program)
+                    .run();
+                result
+                    .assert_success()
+                    .assert_stdout_contains("Program signature:")
+                    .assert_stdout_contains("indirect from /Recovered/Result")
+                    .assert_stdout_contains("auto=RETURN_STORAGE_PTR");
+            }
+            assert_eq!(
+                signature_program_state(),
+                before,
+                "Inspection changed the Program"
+            );
+            client.open_program(TEST_PROGRAM).unwrap();
+            client.open_program(&program).unwrap();
+            assert_eq!(signature_details(&program, "plain"), plain);
+            assert_eq!(signature_details(&program, "custom"), custom);
+        });
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&program).unwrap();
+        if let Err(panic) = checked {
+            std::panic::resume_unwind(panic);
+        }
+    }
+}

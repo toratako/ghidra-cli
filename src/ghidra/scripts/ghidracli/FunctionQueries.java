@@ -4,9 +4,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.Parameter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -91,6 +93,50 @@ final class FunctionQueries {
             ranges.add(row);
         }
         result.add("body_ranges", ranges);
+        return result;
+    }
+
+    JsonObject signatureDetailsToJson(Function func) throws ghidra.util.exception.CancelledException {
+        JsonObject result = new JsonObject();
+        result.addProperty("storage_mode", func.hasCustomVariableStorage() ? "custom" : "dynamic");
+        result.addProperty("source", func.getSignatureSource().name());
+        result.addProperty("variadic", func.hasVarArgs());
+        result.add("return", parameterTypeToJson(func.getReturn()));
+        JsonArray params = new JsonArray();
+        // Function APIs include convention-generated parameters in signature order.
+        // Read through the selected function: thunks can specialize the 'this' type.
+        for (Parameter param : func.getParameters()) {
+            session.monitor().checkCancelled();
+            JsonObject row = parameterTypeToJson(param);
+            row.addProperty("ordinal", param.getOrdinal());
+            row.addProperty("name", param.getName());
+            row.addProperty("auto_parameter", param.getAutoParameterType() == null
+                ? null : param.getAutoParameterType().name());
+            params.add(row);
+        }
+        result.add("params", params);
+        if (func.isThunk()) {
+            Function effective = func.getThunkedFunction(true);
+            result.addProperty("effective_function", effective.getName());
+            result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+        }
+        return result;
+    }
+
+    private JsonObject parameterTypeToJson(Parameter param) {
+        DataType type = param.getDataType();
+        JsonObject result = new JsonObject();
+        result.addProperty("type", type.getName());
+        result.addProperty("type_path", type.getPathName());
+        result.addProperty("size", type.getLength());
+        // Preserve native <VOID>, <UNASSIGNED>, and <BAD> storage, not an empty location.
+        result.addProperty("storage", param.getVariableStorage().toString());
+        result.addProperty("forced_indirect", param.isForcedIndirect());
+        if (param.isForcedIndirect()) {
+            DataType formal = param.getFormalDataType();
+            result.addProperty("formal_type", formal.getName());
+            result.addProperty("formal_type_path", formal.getPathName());
+        }
         return result;
     }
 

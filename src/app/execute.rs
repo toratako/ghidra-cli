@@ -115,7 +115,10 @@ pub(super) fn execute_via_bridge(
                     fetch.offset,
                 ),
                 FunctionCommands::Get(args) => {
-                    client.send_command("get_function", Some(json!({"address": args.target})))
+                    client.send_command("get_function", Some(json!({
+                        "address": args.target,
+                        "with_signature": args.with_signature,
+                    })))
                 }
                 FunctionCommands::ListCallingConventions(_) => {
                     client.function_list_calling_conventions()

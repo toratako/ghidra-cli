@@ -13,7 +13,7 @@ pub enum FunctionCommands {
     /// List existing instructions in the function body, including disjoint ranges.
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(name = "disassemble")]
-    Disasm(FunctionGetArgs),
+    Disasm(FunctionDisasmArgs),
     /// Rename function
     Rename(FunctionRenameArgs),
     /// Create function
@@ -78,6 +78,18 @@ pub struct FunctionListArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct FunctionGetArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Include Program-defined parameter/return types and storage without decompiling
+    #[arg(long)]
+    pub with_signature: bool,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionDisasmArgs {
     /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,

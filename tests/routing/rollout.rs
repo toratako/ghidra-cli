@@ -5,6 +5,16 @@ use serde_json::{json, Value};
 fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
     for (args, command, expected) in [
         (
+            vec!["function", "get", "callee", "--with-signature"],
+            "get_function",
+            json!({"address":"callee", "with_signature":true}),
+        ),
+        (
+            vec!["function", "get", "callee"],
+            "get_function",
+            json!({"address":"callee", "with_signature":false}),
+        ),
+        (
             vec!["function", "set-stack-purge", "callee", "--bytes", "-4"],
             "function_set_stack_purge",
             json!({"target":"callee", "bytes":-4, "unknown":false}),
