@@ -8,6 +8,7 @@
 | `bridge/diagnostics.rs` | Storage/loopback probes and disposable-project runtime check |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
+| `installation.rs` | Installation resolution, shared file validation, diagnostics, and cited package layouts |
 | `setup.rs` | Ghidra download, installation with archive file times preserved, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
 | `project.rs` | Project descriptor/data paths, persisted-data checks, and project-name enumeration |
@@ -16,6 +17,27 @@
 
 Persistent startup and one-shot imports share launcher/JDK selection but own
 their process and stream lifetimes separately.
+
+## Installation selection
+
+`installation::resolve` selects a validated installation with its canonical path,
+version, and source. Config lookup delegates to it; doctor resolves once and uses
+that same installation for compilation and its runtime probe. Setup publication
+and launcher lookup share `installation::inspect` to reject incomplete trees.
+Validation checks the platform launcher, `Ghidra/application.properties`,
+`Utility.jar`, and `LaunchSupport.jar`; it accepts distro release names such as
+`DEV` and `NIX`. JVM/native compatibility remains doctor's responsibility.
+
+`package_roots` and `Platform::commands` cite the upstream package definitions
+and prefix documentation beside their paths. Windows entries cite the previous
+CLI implementation: they are retained heuristics, not vendor default paths.
+Add a layout only with evidence for the actual installed distribution root.
+The runtime selection policy is documented in [runtime configuration](../../docs/runtime.md#project-configuration).
+
+Tests in `installation/tests.rs` inject environment values, PATH, and search
+roots, using temporary distributions instead of host installations. CLI tests
+cover diagnostics and overrides; `bootstrap_tests` validates real PATH discovery,
+JVM startup, and disposable-project cleanup on the native CI platforms.
 
 ## Startup and import
 

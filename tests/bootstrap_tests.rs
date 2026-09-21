@@ -654,15 +654,29 @@ fn unsupported_loader_options_never_save_a_program() {
 }
 
 #[test]
-fn doctor_runtime_checks_real_jvm_and_removes_disposable_project() {
+fn doctor_runtime_discovers_path_installation_and_removes_disposable_project() {
     require_ghidra!();
     let root = tempfile::Builder::new()
         .prefix("doctor tests ")
         .tempdir()
         .unwrap();
+    let settings = tempfile::tempdir().unwrap();
+    let mut config = ghidra_cli::config::Config::load().unwrap();
+    let install = config.get_ghidra_install_dir().unwrap();
+    config.ghidra_install_dir = None;
+    let config_path = settings.path().join("config.yaml");
+    let saved = serde_yaml::to_string(&config).unwrap();
+    std::fs::write(&config_path, &saved).unwrap();
+    let mut path = vec![install.join("support")];
+    path.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
     let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
     command
         .args(["doctor", "--runtime", "--json"])
+        .env_remove("GHIDRA_INSTALL_DIR")
+        .env("GHIDRA_CLI_CONFIG", &config_path)
+        .env("PATH", std::env::join_paths(path).unwrap())
         .env("GHIDRA_PROJECT_DIR", root.path());
     let output = common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
     assert!(
@@ -671,6 +685,12 @@ fn doctor_runtime_checks_real_jvm_and_removes_disposable_project() {
         String::from_utf8_lossy(&output.stderr)
     );
     let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["installation"]["path"], serde_json::json!(install));
+    assert!(result["installation"]["source"]
+        .as_str()
+        .unwrap()
+        .starts_with("PATH "));
+    assert_eq!(std::fs::read_to_string(config_path).unwrap(), saved);
     assert_eq!(result["runtime"]["status"], "success", "{result}");
     assert_eq!(result["loopback"]["ok"], true);
     assert!(Path::new(

@@ -121,18 +121,5 @@ pub(super) fn bridge_failure_hint(output: &str) -> String {
 
 /// Find the analyzeHeadless script.
 pub fn find_headless_script(ghidra_install_dir: &Path) -> Result<PathBuf> {
-    let support_dir = ghidra_install_dir.join("support");
-
-    #[cfg(unix)]
-    let script_name = "analyzeHeadless";
-    #[cfg(windows)]
-    let script_name = "analyzeHeadless.bat";
-
-    let script_path = support_dir.join(script_name);
-
-    if script_path.exists() {
-        Ok(script_path)
-    } else {
-        anyhow::bail!("analyzeHeadless not found at: {}", support_dir.display())
-    }
+    Ok(crate::ghidra::installation::inspect(ghidra_install_dir)?.launcher())
 }

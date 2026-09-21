@@ -93,30 +93,32 @@ pub(super) fn handle_doctor(
 
     // Check Ghidra installation
     write!(report, "Checking Ghidra installation... ")?;
-    match config.get_ghidra_install_dir() {
-        Ok(dir) => {
+    let (installation, install_dir) = match ghidra::installation::resolve(&config) {
+        Ok(installation) => {
             writeln!(report, "OK")?;
-            writeln!(report, "  Location: {}", dir.display())?;
-
-            match ghidra::bridge::find_headless_script(&dir) {
-                Ok(_) => writeln!(report, "  analyzeHeadless: OK")?,
-                Err(error) => {
-                    failures.push(format!("{error:#}"));
-                    writeln!(report, "  analyzeHeadless: NOT FOUND ({error})")?;
-                }
-            }
+            writeln!(report, "  Location: {}", installation.path.display())?;
+            writeln!(report, "  Source: {}", installation.source)?;
+            writeln!(report, "  Version: {}", installation.version)?;
+            writeln!(report, "  analyzeHeadless: OK")?;
+            let mut detail = serde_json::to_value(&installation)?;
+            detail["ok"] = json!(true);
+            (detail, Some(installation.path))
         }
         Err(e) => {
             failures.push(e.to_string());
             writeln!(report, "FAILED")?;
             writeln!(report, "  Error: {}", e)?;
+            let message = e.to_string();
+            (
+                json!({"ok": false, "message": message, "detail": crate::error::diagnostic_detail(&e.into())}),
+                None,
+            )
         }
-    }
+    };
 
     // Check Java
     // Check Java — must be a full JDK (Ghidra compiles scripts at runtime).
     use ghidra::java::JavaStatus;
-    let install_dir = config.get_ghidra_install_dir().ok();
     let min = install_dir
         .as_deref()
         .map(ghidra::java::ghidra_min_java)
@@ -232,7 +234,10 @@ pub(super) fn handle_doctor(
         )?;
         json!({"status": "not_checked", "reason": "prerequisite_failure"})
     } else {
-        match ghidra::bridge::diagnostics::runtime_check(&config) {
+        match ghidra::bridge::diagnostics::runtime_check(
+            &config,
+            install_dir.as_deref().expect("validated installation"),
+        ) {
             Ok(paths) => {
                 writeln!(report, "\nGhidra runtime: OK (start, ping, shutdown)")?;
                 writeln!(
@@ -267,7 +272,7 @@ pub(super) fn handle_doctor(
     )?;
 
     writeln!(report, "\nDone!")?;
-    output.result(&json!({"name": "Ghidra CLI Doctor", "ok": failures.is_empty(), "failures": failures, "storage": storage, "loopback": loopback, "runtime": runtime_check, "report": report}), report.trim_end())?;
+    output.result(&json!({"name": "Ghidra CLI Doctor", "ok": failures.is_empty(), "installation": installation, "failures": failures, "storage": storage, "loopback": loopback, "runtime": runtime_check, "report": report}), report.trim_end())?;
     anyhow::ensure!(
         failures.is_empty(),
         "Doctor found problems: {}",

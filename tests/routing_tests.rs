@@ -13,6 +13,9 @@ mod rollout;
 #[path = "routing/batch.rs"]
 mod batch;
 
+#[path = "support/installation.rs"]
+mod installation_fixture;
+
 fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
@@ -123,6 +126,7 @@ impl RecordedBridge {
             .prefix("routing tests' ")
             .tempdir_in(dunce::canonicalize(std::env::temp_dir()).unwrap())
             .unwrap();
+        installation_fixture::write(&root.path().join("unused-install"));
         // Match CLI normalization before hashing the discovery path on Windows.
         let project = std::path::absolute(root.path().join("projects/project")).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

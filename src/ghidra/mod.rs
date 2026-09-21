@@ -1,10 +1,11 @@
 pub mod bridge;
+pub mod installation;
 pub mod java;
 pub(crate) mod project;
 pub mod setup;
 
 use crate::config::Config;
-use crate::error::{GhidraError, Result};
+use crate::error::Result;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -31,7 +32,7 @@ impl GhidraClient {
 
     #[allow(dead_code)] // Doctor resolves the launcher without creating project directories.
     pub fn verify_installation(&self) -> Result<()> {
-        bridge::find_headless_script(&self.install_dir).map_err(|_| GhidraError::GhidraNotFound)?;
+        installation::inspect(&self.install_dir)?;
         Ok(())
     }
 
@@ -45,23 +46,5 @@ impl GhidraClient {
 
     pub fn delete_project(&self, name: &str) -> anyhow::Result<bool> {
         bridge::delete_project(&self.get_project_path(name), &self.install_dir)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ghidra_client_creation() {
-        // This will fail if GHIDRA_INSTALL_DIR is not set, which is expected
-        let config = Config::default();
-        let result = GhidraClient::new(config);
-
-        // We can't test this properly without a Ghidra installation
-        // Just verify the error is what we expect
-        if let Err(e) = result {
-            assert!(matches!(e, GhidraError::GhidraNotFound));
-        }
     }
 }

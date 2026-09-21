@@ -121,8 +121,7 @@ pub fn loopback_check() -> Result<()> {
     Ok(())
 }
 
-pub fn runtime_check(config: &Config) -> Result<Value> {
-    let install = config.get_ghidra_install_dir()?;
+pub fn runtime_check(config: &Config, install: &Path) -> Result<Value> {
     let directory = config.get_project_dir()?;
     let work = tempfile::Builder::new()
         .prefix("ghidra-cli-doctor-")
@@ -131,11 +130,11 @@ pub fn runtime_check(config: &Config) -> Result<Value> {
     let project: PathBuf = work.path().join("doctor");
     let receipt = import::run_bootstrap(
         &project,
-        &install,
+        install,
         &json!({"create_project": true}),
         Some(config.get_launch_timeout()),
     )?;
-    let port = super::ensure_bridge_running(&project, &install, BridgeStartMode::Project)?;
+    let port = super::ensure_bridge_running(&project, install, BridgeStartMode::Project)?;
     let ping = BridgeClient::new(port).ping();
     if let Err(error) = super::stop_bridge(&project) {
         let retained = work.keep();

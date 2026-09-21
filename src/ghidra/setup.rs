@@ -337,6 +337,22 @@ mod tests {
         };
         archive.start_file(name, zip::write::SimpleFileOptions::default())?;
         archive.write_all(b"launcher")?;
+        if valid {
+            for (name, content) in [
+                (
+                    "Ghidra/application.properties",
+                    "application.version=12.1.3\n",
+                ),
+                ("Ghidra/Framework/Utility/lib/Utility.jar", "runtime"),
+                ("support/LaunchSupport.jar", "launcher runtime"),
+            ] {
+                archive.start_file(
+                    format!("ghidra_test/{name}"),
+                    zip::write::SimpleFileOptions::default(),
+                )?;
+                archive.write_all(content.as_bytes())?;
+            }
+        }
         archive.finish()?;
         Ok(())
     }

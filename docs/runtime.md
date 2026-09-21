@@ -43,8 +43,23 @@ it is set. Reusing the old directory does not repair its file times.
 Project directory precedence is `--projects-dir DIR`, `GHIDRA_PROJECT_DIR`, config
 `ghidra_project_dir`, then the default, for project management, doctor, and bridge
 commands. The flag does not change the environment or saved configuration.
-`GHIDRA_INSTALL_DIR` overrides the configured installation
-for both doctor and execution.
+Ghidra selection is `GHIDRA_INSTALL_DIR`, config `ghidra_install_dir`, then
+automatic detection. Explicit paths are validated; an empty or invalid override
+fails instead of selecting another installation. Doctor reports the effective
+path, source, and version. `config get/list` shows saved settings only.
+
+Detection checks absolute PATH entries in order, resolving Ghidra launcher
+symlinks and Homebrew's package layout without executing wrappers. If PATH does
+not identify an installation, it checks the known Arch, Kali/Pentoo, Void,
+Homebrew, and MacPorts layouts, or the existing Windows search locations.
+Homebrew's `HOMEBREW_PREFIX` is also recognized. Nix installations are found
+through their PATH symlinks. Multiple distinct installations at the same priority
+are an error: select one with `config set ghidra_install_dir PATH` (or fix an
+existing environment override). Detection does not choose the newest version or
+save its result. Arbitrary ZIP extraction locations require PATH or an explicit
+setting; the filesystem and setup's installation directory are not searched.
+See the [installation implementation and layout sources](../src/ghidra/README.md#installation-selection).
+
 Set a persistent JDK with `ghidra-cli config set java_home /opt/jdk-21`.
 JDK selection precedence is `--java-home`, `GHIDRA_CLI_JAVA_HOME`, config
 `java_home`, then automatic detection. Flag and environment overrides do not

@@ -17,6 +17,7 @@ pub mod ipc;
 #[path = "ghidra"]
 pub mod ghidra {
     pub mod bridge;
+    pub mod installation;
     pub mod java;
     #[allow(dead_code)] // Local CLI project listing/data checks are not library entry points.
     pub(crate) mod project;

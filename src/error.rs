@@ -2,8 +2,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GhidraError {
-    #[error("Ghidra installation not found. Set GHIDRA_INSTALL_DIR or run 'ghidra-cli setup'")]
-    GhidraNotFound,
+    #[error(transparent)]
+    Installation(Box<crate::ghidra::installation::DetectionError>),
 
     #[error("Failed to parse filter: {0}")]
     FilterParseError(String),
@@ -111,6 +111,9 @@ pub(crate) fn diagnostic_detail(error: &anyhow::Error) -> serde_json::Value {
         detail["outcome_unknown"] = serde_json::json!(true);
     }
     for cause in error.chain() {
+        if let Some(GhidraError::Installation(error)) = cause.downcast_ref::<GhidraError>() {
+            detail["installation"] = serde_json::json!(error);
+        }
         if let Some(GhidraError::PathIo {
             stage,
             path,
@@ -118,7 +121,7 @@ pub(crate) fn diagnostic_detail(error: &anyhow::Error) -> serde_json::Value {
         }) = cause.downcast_ref::<GhidraError>()
         {
             detail["stage"] = serde_json::json!(stage);
-            detail["path"] = serde_json::json!(path);
+            detail["path"] = serde_json::json!(path.to_string_lossy());
             detail["cause"] = serde_json::json!(source.to_string());
             // Libraries such as tempfile retain ErrorKind but can hide the
             // native code. Report the kind independently; never parse Display.

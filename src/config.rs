@@ -179,25 +179,7 @@ impl Config {
     }
 
     pub fn get_ghidra_install_dir(&self) -> Result<PathBuf> {
-        // Check environment variable first
-        if let Ok(dir) = std::env::var("GHIDRA_INSTALL_DIR") {
-            return Ok(PathBuf::from(dir));
-        }
-
-        // Check config
-        if let Some(dir) = &self.ghidra_install_dir {
-            return Ok(dir.clone());
-        }
-
-        // Try to auto-detect on Windows
-        #[cfg(target_os = "windows")]
-        {
-            if let Some(dir) = Self::detect_ghidra_windows() {
-                return Ok(dir);
-            }
-        }
-
-        Err(GhidraError::GhidraNotFound)
+        crate::ghidra::installation::resolve(self).map(|installation| installation.path)
     }
 
     pub fn get_project_dir(&self) -> Result<PathBuf> {
@@ -240,51 +222,6 @@ impl Config {
             GhidraError::ConfigError("Could not determine home directory".to_string())
         })?;
         Ok(home.join("ghidra-cli-projects"))
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn detect_ghidra_windows() -> Option<PathBuf> {
-        // Helper function to check if a path is a valid Ghidra installation
-        let is_valid_ghidra =
-            |path: &PathBuf| -> bool { path.join("support").join("analyzeHeadless.bat").exists() };
-
-        // Check common installation paths
-        let mut common_paths = vec![
-            PathBuf::from("C:\\Program Files\\Ghidra"),
-            PathBuf::from("C:\\Program Files (x86)\\Ghidra"),
-            PathBuf::from("C:\\ghidra"),
-        ];
-
-        // Add user's home directory paths
-        if let Some(home) = dirs::home_dir() {
-            common_paths.push(home.join("ghidra"));
-        }
-
-        for path in common_paths {
-            if !path.exists() {
-                continue;
-            }
-
-            // First check if the path itself is a Ghidra installation
-            if is_valid_ghidra(&path) {
-                return Some(path);
-            }
-
-            // Look for ghidra_* subdirectories
-            if let Ok(entries) = fs::read_dir(&path) {
-                for entry in entries.flatten() {
-                    let entry_path = entry.path();
-                    if entry_path.is_dir() {
-                        let name = entry_path.file_name()?.to_str()?;
-                        if name.starts_with("ghidra_") && is_valid_ghidra(&entry_path) {
-                            return Some(entry_path);
-                        }
-                    }
-                }
-            }
-        }
-
-        None
     }
 
     /// Explicit JDK home override: `GHIDRA_CLI_JAVA_HOME` env (set from the

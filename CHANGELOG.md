@@ -5,7 +5,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Detect Ghidra through PATH and known Linux/macOS package layouts when no
+  installation is configured. Report the selected path, source, and version in
+  doctor, and report ambiguous installations with their candidate paths.
+
 ### Changed
+
+- Validate explicit Ghidra paths and reject empty installation overrides without
+  falling back. Share installation validation with setup and preserve detection
+  diagnostics through command dispatch.
 
 - Group instruction definition and range clearing under `listing define-code`
   and `listing undefine START --end END`. Undefine requires an inclusive end

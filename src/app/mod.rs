@@ -182,11 +182,7 @@ fn execute_bridge_command(
             });
     }
 
-    let ghidra_install_dir = config.get_ghidra_install_dir().map_err(|_| {
-        anyhow::anyhow!(
-            "Ghidra installation directory not configured. Run 'ghidra-cli setup' first."
-        )
-    })?;
+    let ghidra_install_dir = config.get_ghidra_install_dir()?;
 
     // Import owns its workflow; other commands dispatch through the bridge.
     let result = (|| -> anyhow::Result<serde_json::Value> {

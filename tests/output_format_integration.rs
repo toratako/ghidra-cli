@@ -1,5 +1,8 @@
 //! CLI output format tests that do not require Ghidra or a JDK installation.
 
+#[path = "support/installation.rs"]
+mod installation_fixture;
+
 #[test]
 fn test_format_detection_tty() {
     // Test that --help shows both --json and --pretty flags
@@ -191,6 +194,7 @@ fn configured_json_default_and_explicit_flags_choose_presentation() {
 #[test]
 fn project_management_honors_directory_override_and_lists_real_project_names() {
     let temp = tempfile::tempdir().unwrap();
+    installation_fixture::write(&temp.path().join("unused-install"));
     let configured = temp.path().join("configured");
     let environment = temp.path().join("environment");
     let requested = temp.path().join("requested space's");
@@ -293,6 +297,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
 #[test]
 fn project_info_resolves_positional_global_and_configured_targets() {
     let temp = tempfile::tempdir().unwrap();
+    installation_fixture::write(&temp.path().join("unused-install"));
     let directory = temp.path().join("projects");
     for name in ["configured", "global", "positional"] {
         std::fs::create_dir_all(directory.join(format!("{name}.rep"))).unwrap();
@@ -462,6 +467,7 @@ fn launch_resolves_installation_from_environment_before_config() {
             .unwrap();
         assert!(!output.status.success(), "{output:?}");
         let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["detail"]["installation"]["status"], "invalid");
         assert!(
             error["message"]
                 .as_str()
@@ -477,6 +483,55 @@ fn launch_resolves_installation_from_environment_before_config() {
             "{error}"
         );
     }
+}
+
+#[test]
+fn doctor_reports_path_selection_without_persisting_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("Ghidra space's");
+    installation_fixture::write(&install);
+    let output = isolated_command(&temp)
+        .env_remove("GHIDRA_INSTALL_DIR")
+        .env("PATH", install.join("support"))
+        .env("GHIDRA_CLI_JAVA_HOME", temp.path().join("missing-jdk"))
+        .args(["--json", "doctor"])
+        .output()
+        .unwrap();
+    // This fixture proves selection only; it has no executable Ghidra or JDK.
+    assert!(!output.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["installation"]["ok"], true);
+    assert_eq!(
+        result["installation"]["path"],
+        serde_json::json!(dunce::canonicalize(&install).unwrap())
+    );
+    assert_eq!(result["installation"]["version"], "12.1.3");
+    assert!(result["installation"]["source"]
+        .as_str()
+        .unwrap()
+        .starts_with("PATH "));
+    assert!(!temp.path().join("config.yaml").exists());
+}
+
+#[test]
+fn empty_installation_override_is_an_error_even_with_valid_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("installed");
+    installation_fixture::write(&install);
+    let config_path = temp.path().join("config.yaml");
+    let config = serde_json::to_vec(&serde_json::json!({"ghidra_install_dir": install})).unwrap();
+    std::fs::write(&config_path, &config).unwrap();
+    let output = isolated_command(&temp)
+        .env("GHIDRA_INSTALL_DIR", "")
+        .args(["bridge", "start", "--project", "missing"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["detail"]["installation"]["status"], "invalid");
+    assert!(error["message"].as_str().unwrap().contains("path is empty"));
+    assert_eq!(std::fs::read(config_path).unwrap(), config);
+    assert!(!temp.path().join("projects").exists());
 }
 
 #[test]
