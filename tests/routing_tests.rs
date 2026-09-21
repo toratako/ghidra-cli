@@ -111,9 +111,11 @@ impl RecordedBridge {
     }
 
     fn with_info(bridge_info: Value) -> Self {
+        // Match the physical working directory seen by subprocesses on macOS,
+        // where the temporary directory can be reached through /var or /private/var.
         let root = tempfile::Builder::new()
             .prefix("routing tests' ")
-            .tempdir()
+            .tempdir_in(dunce::canonicalize(std::env::temp_dir()).unwrap())
             .unwrap();
         // Match CLI normalization before hashing the discovery path on Windows.
         let project = std::path::absolute(root.path().join("projects/project")).unwrap();
