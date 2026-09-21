@@ -262,7 +262,7 @@ fn set_field_preserves_attributes_and_offsets_while_shrinking_and_growing() {
     assert_eq!(extended["after"]["name"], "tail");
     assert_eq!(extended["after"]["comment"], "tail comment");
 
-    let anonymous = success(set(&name, "0", &["--type", "uint32_t"]));
+    let anonymous = success(set(&name, "0", &["--type", "dword"]));
     assert_eq!(anonymous["status"], "created");
     assert_eq!(anonymous["after"].get("name"), Some(&Value::Null));
     assert!(!anonymous["after"]["display_name"]
