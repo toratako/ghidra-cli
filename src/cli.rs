@@ -163,9 +163,6 @@ pub enum Commands {
         runtime: bool,
     },
 
-    /// Import a binary into a project
-    Import(ImportArgs),
-
     /// Bridge lifecycle and health
     #[command(subcommand)]
     Bridge(BridgeCommands),

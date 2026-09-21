@@ -42,7 +42,7 @@ using its saved settings. To configure the first analysis, import with
 `--no-analyze`, change the options, then run analysis:
 
 ```bash
-ghidra-cli import ./target.bin --project target --no-analyze
+ghidra-cli program import ./target.bin --project target --no-analyze
 ghidra-cli analysis option list --project target --filter 'name~"ASCII Strings"'
 ghidra-cli analysis option get "ASCII Strings.Minimum String Length" --project target
 ghidra-cli analysis option set "ASCII Strings.Minimum String Length" LEN_10 --project target
@@ -53,7 +53,7 @@ Use the option's exact `name`; for enums, select a constant from `choices`.
 Analyzer enablement is a boolean option, e.g. `analysis option set "ASCII Strings" false`.
 Setting an option saves it to the Program without running analysis.
 
-`import INPUT --program NAME` saves under that project file name; omitting it
+`program import INPUT --name NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
 name (Ghidra may add a suffix on collision).
 See [starting with a program](../SKILL.md#start-with-a-program)
@@ -66,7 +66,7 @@ Choose raw input's ISA, endianness, and load address from target evidence;
 plausible disassembly alone does not validate them.
 
 ```bash
-ghidra-cli import ./firmware.bin --project firmware \
+ghidra-cli program import ./firmware.bin --project firmware \
   --language x86:LE:32:default --base-address 0x8000 \
   --block-name ROM --no-analyze
 ```

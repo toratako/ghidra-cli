@@ -27,7 +27,7 @@ running the CLI.
 For a new executable or library:
 
 ```bash
-ghidra-cli import ./target.bin --project target --program target.bin
+ghidra-cli program import ./target.bin --project target --name target.bin
 ghidra-cli program info --project target --program target.bin
 ```
 
@@ -37,7 +37,7 @@ by default. Use `--no-analyze` to defer analysis.
 If `main` is absent, use `function list` to choose a name or address.
 Raw/headerless input needs explicit language and load parameters; see
 [raw import](references/programs.md#raw-import).
-On import, `--program NAME` sets the saved project file name; an existing
+On import, `--name NAME` sets the saved project file name; an existing
 explicit name is rejected. Use the returned `program` for later commands.
 If an import error reports `detail.import_status: "saved"`, do not re-import:
 the error retains the program, analysis status, and recovery command arguments.

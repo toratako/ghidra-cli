@@ -123,12 +123,11 @@ fn run_import_steps(
     // CLI's CWD without replacing a symlink's input name with its target name.
     let binary_path = std::path::absolute(binary_path)?;
     let binary_path = dunce::simplified(&binary_path).to_path_buf();
-    let (mut options, explicit_loader) = build_oneshot_import_options(args)?;
-    options.program = args.program.clone().or_else(|| cli.program.clone());
+    let (options, explicit_loader) = build_oneshot_import_options(args)?;
     if let Some(name) = &options.program {
         anyhow::ensure!(
             !name.trim().is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']),
-            "--program must be a single non-empty file name"
+            "--name must be a single non-empty file name"
         );
     }
     let running = bridge::is_bridge_running(project_path);
@@ -206,7 +205,7 @@ fn run_import_steps(
         json!({"status": "success", "program": name, "function_count": info.get("function_count"), "durable": true})
     };
     Ok(
-        json!({"command": "import", "program": name, "status": "success", "data": {"analyze": analyze}}),
+        json!({"command": "program import", "program": name, "status": "success", "data": {"analyze": analyze}}),
     )
 }
 
@@ -290,7 +289,7 @@ fn build_oneshot_import_options(
     Ok((
         bridge::OneShotImportOptions {
             analyze: !args.no_analyze,
-            program: args.program.clone(),
+            program: args.name.clone(),
             loader,
             language: args.language.clone(),
             compiler_spec: args.compiler_spec.clone(),

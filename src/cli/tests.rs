@@ -709,17 +709,21 @@ fn canonical_commands_parse() {
 fn import_and_type_apply_options_parse() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",
+        "program",
         "import",
         "sample.bin",
+        "--name",
+        "saved.bin",
         "--language",
         "x86:LE:32:default",
         "--compiler-spec",
         "gcc",
     ])
     .unwrap();
-    let Commands::Import(args) = cli.command else {
-        panic!("expected import")
+    let Commands::Program(ProgramCommands::Import(args)) = cli.command else {
+        panic!("expected program import")
     };
+    assert_eq!(args.name.as_deref(), Some("saved.bin"));
     assert_eq!(args.language.as_deref(), Some("x86:LE:32:default"));
     assert_eq!(args.compiler_spec.as_deref(), Some("gcc"));
     let cli =

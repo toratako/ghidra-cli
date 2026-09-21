@@ -137,7 +137,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
 
     // Import owns its workflow; other commands dispatch through the bridge.
     let result = match &cli.command {
-        Commands::Import(args) => {
+        Commands::Program(cli::ProgramCommands::Import(args)) => {
             import::run_import(cli, args, &project_path, &ghidra_install_dir)?
         }
 

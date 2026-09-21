@@ -167,6 +167,9 @@ pub(super) fn execute_via_bridge(
         Commands::Program(cmd) => {
             use cli::ProgramCommands;
             match cmd {
+                ProgramCommands::Import(_) => {
+                    unreachable!("program import is dispatched before bridge execution")
+                }
                 ProgramCommands::List(_) => client.list_programs(),
                 ProgramCommands::Open(args) => {
                     let program = args.program.as_ref().ok_or_else(|| {

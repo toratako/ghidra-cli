@@ -45,7 +45,7 @@ public final class ImportSupport {
         }
         if (!binary.isFile()) throw new IllegalArgumentException("Binary file not found: " + binary);
         if (requested != null && project.getProjectData().getRootFolder().getFile(name) != null) {
-            throw new IllegalArgumentException("Program already exists: " + name + "; choose another --program name");
+            throw new IllegalArgumentException("Program already exists: " + name + "; choose another --name");
         }
         String loader = getArgString(args, "loader");
         String language = getArgString(args, "language");
@@ -90,7 +90,7 @@ public final class ImportSupport {
                 Program program = loaded.getPrimaryDomainObject();
                 // This detached program belongs to the importer, not the live
                 // ProgramSession. Close its owned transaction before saving it.
-                ProgramTransaction transaction = new ProgramTransaction(program, "ghidra-cli import analysis");
+                ProgramTransaction transaction = new ProgramTransaction(program, "ghidra-cli program import analysis");
                 boolean completed = false;
                 try {
                     ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager(program)

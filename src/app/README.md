@@ -41,6 +41,8 @@ Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
+`program import` owns its startup and selection workflow; `--name` is the saved
+file name, independent of global `--program` and configured target defaults.
 Import retains stop/start/open/analyze order. `program save` saves in place and
 does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.

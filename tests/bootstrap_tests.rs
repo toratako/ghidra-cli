@@ -81,9 +81,10 @@ fn configured_startup_targets_apply_to_all_entry_points() {
     let project = Project::new();
     let raw = project.raw();
     project.ok(&[
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "configured-program",
         "--language",
         "x86:LE:32:default",
@@ -132,12 +133,16 @@ fn import_names_are_saved_and_selected_across_all_routes() {
             project.ok(&["bridge", "stop"]);
         }
         let result = project.ok(&[
+            "--program",
+            "unrelated-selection",
+            "program",
             "import",
             binary.to_str().unwrap(),
-            "--program",
+            "--name",
             name,
             "--no-analyze",
         ]);
+        assert_eq!(result[0]["command"], "program import");
         assert_eq!(result[0]["program"], name);
         project.assert_program_identity(name);
         let programs = project.ok(&["program", "list"]);
@@ -152,9 +157,10 @@ fn import_names_are_saved_and_selected_across_all_routes() {
     }
     let raw = project.raw();
     let args = [
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "raw-name",
         "--language",
         "x86:LE:32:default",
@@ -238,6 +244,7 @@ public class CheckProgramIdentity extends GhidraScript {
     let duplicate = project.run(&args);
     assert!(!duplicate.status.success());
     assert!(String::from_utf8_lossy(&duplicate.stderr).contains("Program already exists"));
+    assert!(String::from_utf8_lossy(&duplicate.stderr).contains("choose another --name"));
     let programs = project.ok(&["program", "list"]);
     let names: Vec<_> = programs
         .as_array()
@@ -250,7 +257,12 @@ public class CheckProgramIdentity extends GhidraScript {
     // Without an explicit name, Ghidra may choose a suffix; return and select
     // the real saved file rather than the original input name.
     for _ in 0..2 {
-        let result = project.ok(&["import", binary.to_str().unwrap(), "--no-analyze"]);
+        let result = project.ok(&[
+            "program",
+            "import",
+            binary.to_str().unwrap(),
+            "--no-analyze",
+        ]);
         let name = result[0]["program"].as_str().unwrap();
         project.assert_program_identity(name);
         let selected = project.ok(&["program", "list"]);
@@ -283,7 +295,7 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
 
     // A fresh project takes the one-shot route. Resolve this relative input
     // against the CLI's CWD while preserving the link's name for saving.
-    let mut command = project.command(&["import", name, "--no-analyze"]);
+    let mut command = project.command(&["program", "import", name, "--no-analyze"]);
     command.current_dir(&inputs);
     let output = common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -292,17 +304,18 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
     project.assert_program_identity(name);
 
     // The running bridge takes the TCP route. An implicit name collision must
-    // still get Ghidra's suffix, rather than behave like an explicit --program.
-    let result = project.ok(&["import", link.to_str().unwrap(), "--no-analyze"]);
+    // still get Ghidra's suffix, rather than behave like an explicit --name.
+    let result = project.ok(&["program", "import", link.to_str().unwrap(), "--no-analyze"]);
     let suffixed = result[0]["program"].as_str().unwrap();
     assert_ne!(suffixed, name);
     assert_ne!(suffixed, "actual.bin");
     project.assert_program_identity(suffixed);
 
     let explicit = [
+        "program",
         "import",
         link.to_str().unwrap(),
-        "--program",
+        "--name",
         "chosen-name",
         "--no-analyze",
     ];
@@ -328,9 +341,10 @@ fn analysis_run_reanalyzes_with_changed_settings() {
     let text = "The quick brown fox";
     std::fs::write(&raw, format!("{text}\0")).unwrap();
     project.ok(&[
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "strings-raw",
         "--language",
         "x86:LE:32:default",
@@ -406,9 +420,10 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     let raw = project.raw();
     // No entry point or function is needed to record a completed analysis.
     project.ok(&[
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "analyzed-raw",
         "--language",
         "x86:LE:32:default",
@@ -431,9 +446,10 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     client.program_close().unwrap();
     assert_flag("analyzed-raw", serde_json::json!(true));
     project.ok(&[
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "skipped-raw",
         "--language",
         "x86:LE:32:default",
@@ -541,9 +557,10 @@ fn saved_import_survives_bridge_state_directory_failure() {
     let blocked = project.root.path().join("blocked-data");
     std::fs::write(&blocked, "retain").unwrap();
     let mut command = project.command(&[
+        "program",
         "import",
         raw.to_str().unwrap(),
-        "--program",
+        "--name",
         "saved-name",
         "--language",
         "x86:LE:32:default",
@@ -590,9 +607,10 @@ fn unsupported_loader_options_never_save_a_program() {
     let raw = project.raw();
     for name in ["fresh-invalid", "existing-invalid"] {
         let output = project.run(&[
+            "program",
             "import",
             raw.to_str().unwrap(),
-            "--program",
+            "--name",
             name,
             "--loader",
             "BinaryLoader",
@@ -609,9 +627,10 @@ fn unsupported_loader_options_never_save_a_program() {
         assert_eq!(error["detail"]["option"], "-loader-baseAdrr");
         if name == "fresh-invalid" {
             project.ok(&[
+                "program",
                 "import",
                 raw.to_str().unwrap(),
-                "--program",
+                "--name",
                 "valid",
                 "--loader",
                 "BinaryLoader",

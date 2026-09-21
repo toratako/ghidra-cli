@@ -31,6 +31,8 @@ pub enum ProgramCommands {
     Info(super::options::ObjectOptions),
     /// Show program statistics
     Stats(super::options::ObjectOptions),
+    /// Import a binary into a project
+    Import(ImportArgs),
     /// Export program
     Export(ExportArgs),
     /// Retry saving pending changes without restarting the bridge.
@@ -67,7 +69,7 @@ pub struct ImportArgs {
     /// Save the imported program under this name (default: input file name).
     /// An explicitly named existing program is never overwritten.
     #[arg(long)]
-    pub program: Option<String>,
+    pub name: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
     /// Force a specific Ghidra loader (for raw blobs, use BinaryLoader)

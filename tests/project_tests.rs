@@ -32,16 +32,17 @@ fn test_import_binary() {
     let binary = common::fixture_binary();
 
     // Use run_cli_with_timeout to avoid Windows pipe handle inheritance.
-    // `ghidra-cli import` spawns a JVM whose inherited pipe handles block output() forever.
+    // `ghidra-cli program import` spawns a JVM whose inherited pipe handles block output() forever.
     let ghidra_bin = assert_cmd::cargo::cargo_bin!("ghidra-cli");
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "program",
             "import",
             binary.to_str().unwrap(),
             "--project",
             &project,
-            "--program",
+            "--name",
             common::FIXTURE_PROGRAM,
         ],
         std::time::Duration::from_secs(300),
@@ -89,11 +90,12 @@ fn test_analyze_program() {
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "program",
             "import",
             binary.to_str().unwrap(),
             "--project",
             &project,
-            "--program",
+            "--name",
             common::FIXTURE_PROGRAM,
             "--no-analyze",
         ],
@@ -350,11 +352,12 @@ fn test_import_existing_program() {
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "program",
             "import",
             binary.to_str().unwrap(),
             "--project",
             &project,
-            "--program",
+            "--name",
             common::FIXTURE_PROGRAM,
             "--no-analyze",
         ],
@@ -367,11 +370,12 @@ fn test_import_existing_program() {
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "program",
             "import",
             binary.to_str().unwrap(),
             "--project",
             &project,
-            "--program",
+            "--name",
             common::FIXTURE_PROGRAM,
             "--no-analyze",
         ],
@@ -407,6 +411,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
+            "program",
             "import",
             blob.to_str().unwrap(),
             "--project",

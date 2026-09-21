@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move binary import to `program import` and use `--name` for the saved program
+  name. Import still creates projects as needed and runs analysis by default.
 - Replace top-level `analyze` with `analysis run` and remove `analyzer list/set`
   in favor of `analysis option`. Analysis runs with saved Program settings.
 - Reuse the native decompiler across decompile, high P-code and variable edits

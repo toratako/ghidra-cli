@@ -4,8 +4,7 @@ use crate::cli::{self, Commands, QueryOptions};
 pub(super) fn requires_bridge(command: &Commands) -> bool {
     matches!(
         command,
-        Commands::Import(_)
-            | Commands::Decompile(_)
+        Commands::Decompile(_)
             | Commands::Function(_)
             | Commands::Strings(_)
             | Commands::Memory(_)
@@ -30,7 +29,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
 /// Extract the project name from a command's args (if present).
 pub(super) fn extract_project_from_command(command: &Commands) -> Option<String> {
     match command {
-        Commands::Import(args) => args.project.clone(),
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.project.clone(),
@@ -134,6 +132,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
+            cli::ProgramCommands::Import(args) => args.project.clone(),
             cli::ProgramCommands::List(args) => args.project.clone(),
             cli::ProgramCommands::Open(args) => args.project.clone(),
             cli::ProgramCommands::Close(args) => args.project.clone(),
@@ -257,6 +256,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
+            cli::ProgramCommands::Import(_) => None,
             cli::ProgramCommands::List(args) => args.program.clone(),
             cli::ProgramCommands::Open(args) => args.program.clone(),
             cli::ProgramCommands::Close(args) => args.program.clone(),

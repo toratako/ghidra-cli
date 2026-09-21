@@ -21,6 +21,7 @@ ghidra-cli
 │   ├── delete
 │   ├── info
 │   ├── stats
+│   ├── import
 │   ├── export
 │   └── save
 ├── function
@@ -117,7 +118,6 @@ ghidra-cli
 │   ├── set
 │   └── reset
 ├── doctor
-├── import
 ├── bridge
 │   ├── start
 │   ├── stop

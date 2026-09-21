@@ -257,7 +257,7 @@ the live session.
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge
 imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
-input-name file to implement `--program`; supply the name to the importer.
+input-name file to implement `--name`; supply the name to the importer.
 
 Ghidra's `analyzeAll()` initializes options and schedules full reanalysis itself;
 `analysis_run` must not separately call `reAnalyzeAll(null)`.
