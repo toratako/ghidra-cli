@@ -46,6 +46,8 @@ Path and lifecycle changes must follow the shared
   a mutation. Test shared validation boundaries with representative inputs instead
   of duplicating parser behavior. Supported platforms and Ghidra versions are part
   of the current contract.
+- Eliminate ambiguity; Design the CLI interface to be clear and unambiguous. Ensure that Agents can easily understand the purpose and usage of each command, option, and field.
+- Ensure the internal architecture is sound and suitable. If implementing a new feature requires addressing architectural issues, or if the current architecture is not suitable for the intended functionality, prioritize refactoring or redesigning the architecture to support the new feature effectively; Propose first, then ask user for approval before implementing.
 
 ### Skill documentation
 
