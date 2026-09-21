@@ -8,7 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-# macOS tests and builds are paused with the regular CI jobs.
+# macOS release builds remain paused pending release-specific validation.
 jobs:
   test:
     name: Test ${{ matrix.os }}

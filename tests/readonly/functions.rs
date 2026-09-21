@@ -246,10 +246,11 @@ fn test_decompile_by_name() {
     require_ghidra!();
     let harness = harness();
 
-    // The fixture exports this unambiguous function name.
+    let function =
+        crate::common::helpers::get_fixture_function(&harness.client().unwrap(), "add_numbers");
     let result = ghidra(harness)
         .arg("decompile")
-        .arg("add_numbers")
+        .arg(&function.name)
         .with_project(test_project(), TEST_PROGRAM)
         .run();
 

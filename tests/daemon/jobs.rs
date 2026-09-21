@@ -167,13 +167,8 @@ fn test_active_script_cancel_does_not_cancel_next_job() {
     let harness = start_daemon();
     let client = harness.client().unwrap();
     let worker = harness.client().unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().unwrap().to_owned();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address;
     let marker = format!("cancelled-script-edit-{}", uuid::Uuid::new_v4());
     let script_args = vec![address.clone(), marker.clone()];
     let script = std::thread::spawn(move || {

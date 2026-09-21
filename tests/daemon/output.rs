@@ -33,15 +33,9 @@ fn management_results_are_single_json_documents() {
             }
         }
     }
-    let function = harness
-        .client()
-        .unwrap()
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().unwrap();
+    let function =
+        crate::common::helpers::get_fixture_function(&harness.client().unwrap(), "add_numbers");
+    let address = function.address.as_str();
     for flag in ["--json", "--pretty"] {
         let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .args([
