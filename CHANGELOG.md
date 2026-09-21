@@ -11,7 +11,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   earlier commands, with structured recovery guidance for rolled-back failures,
   uncertain outcomes, and pending saves. Lost or malformed bridge responses now
   stop batches even under `--on-error continue`.
-
 - Add `function get --with-signature` for Program-defined return/parameter types,
   storage, automatic arguments, indirect types, and thunk signature provenance.
 - Add `function set-stack-purge TARGET --bytes N | --unknown` and expose
@@ -20,7 +19,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   their values, including structures, arrays, pointers, and interior components.
 - Add `memory read --source original` for preserved import bytes and file
   provenance in `memory info`; current-memory reads remain the default.
-
 - Add `bookmark list/get` for analysis diagnostics and user notes, and
   `memory info TARGET` for listing state and containing object boundaries.
 - Add `program list-relocations` with native relocation evidence and
@@ -42,15 +40,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add `type enum member delete TYPE --name MEMBER` to remove one named enum member.
 - Add `find constant VALUE` and inclusive `--min`/`--max` searches over numeric
   instruction operands, with optional bit-width and address bounds.
+- Attach versioned skill ZIP archives to GitHub releases, including each skill's
+  `SKILL.md` and supporting references.
+- Add Gitleaks pre-commit configuration and hook definitions for secret scanning.
 
 ### Changed
 
-- Validate every batch command and nested batch before execution, retaining the
-  checked input for execution. Syntax errors report all locations and execute no
-  commands; `--on-error` controls execution-time failures.
+- Validate all selected batch commands and their nested batches before execution,
+  retaining the checked input for execution. Syntax errors report all locations
+  and execute no commands; `--on-error` controls execution-time failures.
 - Include actual artifact paths and sizes, exporter messages, and format
   limitations in `program export` results.
-
 - Group field operations under `type field append/set/clear/delete` and enum
   member deletion under `type enum member delete`. Select existing fields with
   `--field NAME`, struct `--offset`, or union `--ordinal`; `--name` sets a field's
@@ -60,7 +60,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Return a common struct/union field receipt with canonical type identity,
   `changed`, containing-type sizes, and component snapshots in `before`/`after`.
   Appending reports `appended`; set, clear, and delete retain distinct actions.
-
 - Move binary import to `program import` and use `--name` for the saved program
   name. Import still creates projects as needed and runs analysis by default.
 - Replace top-level `analyze` with `analysis run` and remove `analyzer list/set`
@@ -72,14 +71,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   selects the whole containing function. Disassembly no longer rewinds from an
   undefined address to the containing function's entry.
 - Require `comment delete` to select `--comment-type` or `--all`, preserving
-  other comment types for a selective deletion.
+  other comment types for a selective deletion. Both `comment set` and
+  `comment delete` reject unsupported comment types before mutation.
 - Rename label creation to `symbol create-label`, external-symbol listing to
   `symbol externals`, and external-entry-point listing to `symbol entry-points`.
   Rename their bridge adapters and result collections to match.
 - Clarify `string refs PATTERN` as case-insensitive substring search followed by
   reference lookup; its bridge argument is `pattern`.
 - Rename setup's Java prerequisite bypass to `--skip-java-check`.
-
 - Make `tag get NAME` return tag details (`name`, `comment`, `use_count`). Use
   `function list --tag NAME` for member functions. `tag get` retains target and
   output options; filtering, sorting, pagination, and count options are removed.
@@ -107,6 +106,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dispatch. Unsupported bridges require explicit restart, without an automatic
   upgrade script. `program save` remains available directly for recovery before
   restart. Human-readable errors explain rollback and retained partial changes.
+- Dispatch bridge commands once, removing automatic bridge restarts and command
+  replay after unsupported-command errors or stale response shapes.
 - Replace `length` in `string list` and `find string` rows with `char_length`
   (Unicode code points in the decoded value) and `byte_length` (occupied Ghidra
   data bytes, including terminators/padding when defined). Update filters,
@@ -115,6 +116,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Apply `find string` paging in the bridge when the query permits it, after
   matching both the search pattern and any supported `value~...` filter.
   Sorting, counts and unsupported filters retain complete-input processing.
+- Restore macOS release binaries for Intel and Apple Silicon, with macOS ARM64
+  included in the full test suite that gates release artifacts.
+- Skip Ghidra integration CI for Markdown-only changes while retaining unit and
+  CLI checks. Run infrastructure suites in separate daemon and project jobs;
+  documentation pushes no longer cancel running Ghidra tests for code changes.
 
 ### Removed
 
@@ -123,19 +129,31 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   single object and retain target selection, `--fields`, and output formats.
   `memory read ADDRESS SIZE` still specifies the requested byte count with `SIZE`.
 - Remove the remaining `--target` options from function edits and queries,
-  `decompile`, `disassemble`, `xref to/from`, `find calls`, and
-  `graph callers/callees`. Pass one required positional `TARGET` instead.
+  `decompile`, `disassemble`, `xref to/from`, and `graph callers/callees`.
+  Pass one required positional `TARGET` instead.
   Supplying `--target` now fails during argument parsing instead of silently
   overriding a positional target, including in batch commands.
+- Remove address-only symbol rename/delete bridge requests and their Rust client
+  adapters. Requests now require complete `targets` snapshots, revalidated by
+  stable symbol ID before mutation.
+- Remove the fire-and-forget bridge `shutdown` command and the `name` fallback
+  for `type_create`. Direct clients use `shutdown_wait` to confirm the final save
+  and `definition` for struct creation.
 
 ### Fixed
 
+- Preserve boolean, numeric, and null `value` fields in compact text output,
+  including typed analysis option values displayed beside their names.
+- Reject unknown bridge response statuses instead of treating their payloads as
+  successful results. Transport failures after sending starts, malformed replies,
+  and read timeouts expose `detail.outcome_unknown` in structured diagnostics;
+  commands may already have taken effect. Read timeouts retain exit code 75 and
+  do not cancel the server job.
 - Preserve inferred parameters when setting a function's return type, keeping
   their types inferable where the calling convention permits and rejecting
   conflicts instead of silently renaming existing symbols.
 - Reject calling convention names unsupported by the selected program's compiler
   specification before changing the function.
-
 - Fix the macOS doctor loopback check by restoring blocking mode on the accepted
   socket, and restore macOS ARM64 CI with native Ghidra tools and portable fixtures.
 - Preserve references from distinct operands to the same destination in `xref to`.
