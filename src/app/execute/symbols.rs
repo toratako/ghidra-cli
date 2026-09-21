@@ -65,13 +65,7 @@ fn resolve_symbol_targets(
     filter_expr: Option<&str>,
     all: bool,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    if let Some(address) = address {
-        anyhow::ensure!(
-            ExplicitAddress::parse(address).is_some(),
-            "Invalid --address '{}': use a 0x-prefixed address",
-            address
-        );
-    }
+    let filter = parse_selector(address, filter_expr)?;
     let response = client.symbol_get_by_name(name)?;
     let mut candidates: Vec<serde_json::Value> = response
         .get("symbols")
@@ -90,11 +84,10 @@ fn resolve_symbol_targets(
         }
     }
 
-    if let Some(expr) = filter_expr {
-        let parsed = filter::Filter::parse(expr).map_err(describe_query_error)?;
+    if let Some((expression, parsed)) = filter_expr.zip(filter) {
         candidates.retain(|s| parsed.evaluate(s).unwrap_or(false));
         if candidates.is_empty() {
-            anyhow::bail!("No symbol named '{}' matches filter '{}'", name, expr);
+            anyhow::bail!("No symbol named '{}' matches filter '{}'", name, expression);
         }
     }
 
@@ -126,6 +119,22 @@ fn resolve_symbol_targets(
         );
     }
     Ok(candidates)
+}
+
+pub(super) fn parse_selector(
+    address: Option<&str>,
+    filter_expr: Option<&str>,
+) -> anyhow::Result<Option<filter::Filter>> {
+    if let Some(address) = address {
+        anyhow::ensure!(
+            ExplicitAddress::parse(address).is_some(),
+            "Invalid --address '{}': use a 0x-prefixed address",
+            address
+        );
+    }
+    filter_expr
+        .map(|expression| filter::Filter::parse(expression).map_err(describe_query_error))
+        .transpose()
 }
 
 fn address_matches(symbol: &serde_json::Value, requested: &str) -> bool {

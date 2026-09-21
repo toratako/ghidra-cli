@@ -13,7 +13,7 @@ The library exposes that same definition to `xtask` for documentation generation
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
-| `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on transaction/save failures or timeouts |
+| `batch.rs` | Validate and freeze nested batch input before bridge work; aggregate execution results and apply the error policy |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `output.rs` | Select output format, unwrap envelopes, apply query processing, and route C-only decompiler diagnostics to stderr |
 | `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
@@ -63,7 +63,16 @@ Client-side comparisons read canonical segmented addresses with a space name;
 symbol `--address` requires that name for segmented targets because the client
 cannot distinguish an unnamed segment from a numeric-looking registered space.
 
-Batch errors retain attempted results internally, including nested reports. The
+Batch preflight parses every line and nested batch before configuration/project
+resolution or bridge startup. It validates locally parsed query options and
+ranges, aggregates file/line diagnostics, and retains the parsed command tree
+for execution. Nested paths remain relative to the invocation's working
+directory; canonical paths detect include cycles. All included batch files must
+exist before execution. Program-dependent validation remains execution-time.
+Preflight failure reports `validation_failed`, `validation_errors`, and zero
+`commands_executed`, regardless of `--on-error`.
+
+Batch execution errors retain attempted results internally, including nested reports. The
 outer invocation prints the report to stdout using the same format as a successful
 batch, then reports summary diagnostics on stderr and exits nonzero. Commands run
 sequentially, with one transaction boundary per bridge request; a batch is never

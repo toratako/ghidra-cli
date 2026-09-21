@@ -13,7 +13,6 @@ use crate::format::OutputFormat;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
 use crate::query::{Query, QueryPlan};
-use clap::Parser;
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
@@ -51,7 +50,30 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
 
 /// Run a command that requires the bridge.
 fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
-    match execute_bridge_command(&cli) {
+    let result = (|| {
+        let prepared = if let Commands::Batch(args) = &cli.command {
+            Some(batch::prepare(
+                std::path::Path::new(&args.script_file),
+                |sub_cli| {
+                    anyhow::ensure!(
+                        requires_bridge(&sub_cli.command),
+                        "This command cannot run inside a batch"
+                    );
+                    if let Commands::Program(cli::ProgramCommands::Import(args)) = &sub_cli.command
+                    {
+                        import::validate_options(args)?;
+                    }
+                    parse_command_query(&sub_cli.command)?
+                        .plan(&sub_cli.command, None)
+                        .map(|_| ())
+                },
+            )?)
+        } else {
+            None
+        };
+        execute_bridge_command(&cli, prepared.as_ref())
+    })();
+    match result {
         Ok(result) => output::print_result(&cli, result),
         Err(error) => {
             if matches!(cli.command, Commands::Batch(_)) {
@@ -88,26 +110,31 @@ struct CommandResult {
     query: Option<Query>,
 }
 
-fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
-    if matches!(
-        cli.command,
-        Commands::Program(cli::ProgramCommands::Save(_))
-    ) {
-        return management::program_save_result(cli)
-            .map(|(value, _)| CommandResult { value, query: None });
+struct CommandQuery {
+    query: Option<Query>,
+    has_options: bool,
+}
+
+impl CommandQuery {
+    fn plan(self, command: &Commands, default_limit: Option<usize>) -> anyhow::Result<QueryPlan> {
+        let plan = QueryPlan::new(
+            self.query,
+            default_limit.filter(|_| self.has_options),
+            options::query_fetch_support(command),
+        );
+        options::validate_query_bounds(command, &plan)?;
+        Ok(plan)
     }
-    let output = Output::new(cli);
-    // Parse once, before any bridge work. The same plan travels with the result
-    // through standalone and batch output, so paging is never applied twice.
-    let mut query_options = extract_query_options(&cli.command);
-    if matches!(
-        cli.command,
-        Commands::Symbol(cli::SymbolCommands::Delete(_))
-    ) {
+}
+
+fn parse_command_query(command: &Commands) -> anyhow::Result<CommandQuery> {
+    execute::validate_command_syntax(command)?;
+    let mut query_options = extract_query_options(command);
+    if matches!(command, Commands::Symbol(cli::SymbolCommands::Delete(_))) {
         // This filter selects mutation targets, not rows in the deletion receipt.
-        // Still validate it before config loading, program selection, or bridge work.
-        if let Some(filter) = query_options.as_mut().and_then(|opts| opts.filter.take()) {
-            crate::filter::Filter::parse(&filter).map_err(describe_query_error)?;
+        // validate_command_syntax has checked it before config or bridge work.
+        if let Some(options) = &mut query_options {
+            options.filter = None;
         }
     }
     let query = query_options
@@ -116,13 +143,29 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
         .transpose()
         .map_err(describe_query_error)?
         .flatten();
-    let config = load_config(&cli.projects_dir)?;
-    let plan = QueryPlan::new(
+    Ok(CommandQuery {
         query,
-        query_options.as_ref().and(config.default_limit),
-        options::query_fetch_support(&cli.command),
-    );
-    options::validate_query_bounds(&cli.command, &plan)?;
+        has_options: query_options.is_some(),
+    })
+}
+
+fn execute_bridge_command(
+    cli: &Cli,
+    prepared_batch: Option<&batch::PreparedBatch>,
+) -> anyhow::Result<CommandResult> {
+    if matches!(
+        cli.command,
+        Commands::Program(cli::ProgramCommands::Save(_))
+    ) {
+        return management::program_save_result(cli)
+            .map(|(value, _)| CommandResult { value, query: None });
+    }
+    let output = Output::new(cli);
+    let query = parse_command_query(&cli.command)?;
+    let config = load_config(&cli.projects_dir)?;
+    // The same plan travels with the result through standalone and batch output,
+    // so paging is never applied twice. Preflight has already checked batch input.
+    let plan = query.plan(&cli.command, config.default_limit)?;
 
     // Extract project from command args, fall back to global --project, then config default
     let project_from_cmd =
@@ -188,14 +231,10 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
             }
 
             if let Commands::Batch(args) = &cli.command {
-                let content = std::fs::read_to_string(&args.script_file)
-                    .map_err(|e| anyhow::anyhow!("Failed to read batch file: {}", e))?;
                 let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
-                batch::execute_batch(&content, on_error, |line| {
-                    let mut sub_cli = Cli::try_parse_from(
-                        std::iter::once("ghidra-cli".to_owned())
-                            .chain(batch::split_arguments(line)?),
-                    )?;
+                let prepared = prepared_batch.expect("batch input was validated before execution");
+                batch::execute_batch(prepared, on_error, |line| {
+                    let mut sub_cli = line.cli.clone();
                     // Unspecified targets retain the batch's project and current
                     // selection. Explicit per-line targets use normal routing.
                     if sub_cli.project.is_none() {
@@ -208,7 +247,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
                         nested.on_error.get_or_insert(on_error);
                     }
                     sub_cli.quiet = true;
-                    let result = execute_bridge_command(&sub_cli)?;
+                    let result = execute_bridge_command(&sub_cli, line.nested.as_ref())?;
                     output::process_batch_result(result)
                 })
             } else {

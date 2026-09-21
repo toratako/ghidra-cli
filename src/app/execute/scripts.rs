@@ -44,18 +44,7 @@ pub(super) fn execute(
 /// the bridge JVM inherited. A trailing `:<digits>` is treated as MIN_ROWS;
 /// anything else (e.g. a Windows drive letter) stays part of the path.
 fn parse_expect_spec(spec: &str) -> anyhow::Result<serde_json::Value> {
-    let (path_part, min_rows) = match spec.rsplit_once(':') {
-        Some((p, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
-            let rows = n.parse::<i64>().map_err(|_| {
-                anyhow::anyhow!(
-                    "Invalid --expect MIN_ROWS '{n}': must be an integer from 0 to {}",
-                    i64::MAX
-                )
-            })?;
-            (p, Some(rows))
-        }
-        _ => (spec, None),
-    };
+    let (path_part, min_rows) = split_expect_spec(spec)?;
     let abs = std::path::absolute(path_part)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path_part.to_string());
@@ -65,4 +54,26 @@ fn parse_expect_spec(spec: &str) -> anyhow::Result<serde_json::Value> {
         obj.insert("min_rows".to_string(), serde_json::json!(n));
     }
     Ok(serde_json::Value::Object(obj))
+}
+
+pub(super) fn validate_expect_specs(specs: &[String]) -> anyhow::Result<()> {
+    for spec in specs {
+        split_expect_spec(spec)?;
+    }
+    Ok(())
+}
+
+fn split_expect_spec(spec: &str) -> anyhow::Result<(&str, Option<i64>)> {
+    match spec.rsplit_once(':') {
+        Some((p, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
+            let rows = n.parse::<i64>().map_err(|_| {
+                anyhow::anyhow!(
+                    "Invalid --expect MIN_ROWS '{n}': must be an integer from 0 to {}",
+                    i64::MAX
+                )
+            })?;
+            Ok((p, Some(rows)))
+        }
+        _ => Ok((spec, None)),
+    }
 }

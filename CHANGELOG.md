@@ -31,6 +31,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Validate every batch command and nested batch before execution, retaining the
+  checked input for execution. Syntax errors report all locations and execute no
+  commands; `--on-error` controls execution-time failures.
+
 - Group field operations under `type field append/set/clear/delete` and enum
   member deletion under `type enum member delete`. Select existing fields with
   `--field NAME`, struct `--offset`, or union `--ordinal`; `--name` sets a field's

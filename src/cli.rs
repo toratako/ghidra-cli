@@ -29,7 +29,7 @@ pub use output::OutputFormat;
 pub use project::*;
 pub use types::*;
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(name = "ghidra-cli")]
 #[command(version, about = "Rust CLI for Ghidra reverse engineering", long_about = None)]
 pub struct Cli {

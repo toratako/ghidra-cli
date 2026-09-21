@@ -124,12 +124,6 @@ fn run_import_steps(
     let binary_path = std::path::absolute(binary_path)?;
     let binary_path = dunce::simplified(&binary_path).to_path_buf();
     let (options, explicit_loader) = build_oneshot_import_options(args)?;
-    if let Some(name) = &options.program {
-        anyhow::ensure!(
-            !name.trim().is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']),
-            "--name must be a single non-empty file name"
-        );
-    }
     let running = bridge::is_bridge_running(project_path);
     let one_shot =
         explicit_loader || (running.is_none() && !project_has_program_data(project_path));
@@ -209,9 +203,19 @@ fn run_import_steps(
     )
 }
 
+pub(super) fn validate_options(args: &ImportArgs) -> anyhow::Result<()> {
+    build_oneshot_import_options(args).map(|_| ())
+}
+
 fn build_oneshot_import_options(
     args: &ImportArgs,
 ) -> anyhow::Result<(bridge::OneShotImportOptions, bool)> {
+    if let Some(name) = &args.name {
+        anyhow::ensure!(
+            !name.trim().is_empty() && name != "." && name != ".." && !name.contains(['/', '\\']),
+            "--name must be a single non-empty file name"
+        );
+    }
     anyhow::ensure!(
         args.compiler_spec.is_none() || args.language.is_some(),
         "--compiler-spec requires --language"

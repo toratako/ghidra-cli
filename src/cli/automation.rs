@@ -41,9 +41,10 @@ pub enum BatchErrorPolicy {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct BatchArgs {
+    /// Command file; syntax in all lines and nested batches is checked before execution
     pub script_file: String,
 
-    /// Action after a command error (default: continue; nested batches inherit).
+    /// Action after a runtime command error (default: continue; nested batches inherit).
     /// Transaction/save failures and timeouts always stop. Commands run sequentially;
     /// a failed ordinary request rolls back its own edits, while earlier commands remain saved.
     #[arg(long, value_enum, value_name = "MODE")]

@@ -15,9 +15,12 @@ function set-signature main --signature "int main(int argc, char **argv)"
 Backslashes escape the next character outside quotes; single quotes preserve
 literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backticks.
 Variables, command substitutions, and wildcards are never expanded. Empty lines
-and lines starting with `#` are ignored; malformed quoting fails that line and
-follows the selected `--on-error` policy. Nested batches inherit the policy
-unless overridden.
+and lines starting with `#` are ignored.
+
+All lines and nested batch files are checked before execution.
+Validation failures execute no commands.
+Function/type existence and other Program-dependent checks
+occur during execution; nested batches inherit `--on-error` unless overridden.
 
 ## Dependent edits
 

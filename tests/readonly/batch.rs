@@ -130,7 +130,7 @@ fn test_batch_invalid_file() {
 
 #[test]
 #[serial]
-fn test_batch_with_invalid_command() {
+fn test_batch_with_invalid_command_executes_nothing() {
     require_ghidra!();
     let harness = harness();
     let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
@@ -159,12 +159,18 @@ program info
     assert!(diagnostic["detail"].get("results").is_none());
     let report: serde_json::Value = serde_json::from_str(&result.stdout).unwrap();
     let error = &report[0];
-    assert_eq!(error["commands_executed"], 3);
+    assert_eq!(error["commands_parsed"], 3);
+    assert_eq!(error["commands_executed"], 0);
     assert_eq!(error["failed"], 1);
-    assert_eq!(error["not_executed"], 0);
-    assert!(error["results"][0]["result"].is_object());
-    assert!(error["results"][1]["error"].is_string());
-    assert!(error["results"][2]["result"].is_object());
+    assert_eq!(error["not_executed"], 3);
+    assert_eq!(error["validation_failed"], true);
+    assert_eq!(error["results"], serde_json::json!([]));
+    assert_eq!(
+        error["validation_errors"][0]["file"],
+        batch_file.to_str().unwrap()
+    );
+    assert_eq!(error["validation_errors"][0]["line"], 3);
+    assert!(error["validation_errors"][0]["error"].is_string());
 
     fs::remove_file(batch_file).ok();
 }

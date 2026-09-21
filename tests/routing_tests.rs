@@ -2257,7 +2257,7 @@ comment set 0x1003 ""
 }
 
 #[test]
-fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
+fn batch_reports_all_malformed_quoting_before_executing_any_lines() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("batch.txt"),
@@ -2276,9 +2276,11 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     let detail = &report[0];
     assert_eq!(detail["commands_parsed"], 4);
-    assert_eq!(detail["commands_executed"], 4);
+    assert_eq!(detail["commands_executed"], 0);
     assert_eq!(detail["failed"], 3);
-    assert_eq!(detail["not_executed"], 0);
+    assert_eq!(detail["not_executed"], 4);
+    assert_eq!(detail["validation_failed"], true);
+    assert_eq!(detail["results"], json!([]));
     for (index, diagnostic) in [
         "unterminated single quote",
         "unterminated double quote",
@@ -2287,71 +2289,157 @@ fn batch_reports_malformed_quoting_and_continues_with_later_lines() {
     .iter()
     .enumerate()
     {
-        let row = &detail["results"][index];
+        let row = &detail["validation_errors"][index];
+        assert_eq!(row["file"], "batch.txt");
         assert_eq!(row["line"], index + 2);
-        assert_eq!(row["exit_code"], 1);
         assert!(row["error"].as_str().unwrap().contains(diagnostic), "{row}");
     }
-    assert!(detail["results"][3]["result"].is_object());
-    let requests = bridge.requests.lock().unwrap();
-    let comments: Vec<_> = requests
-        .iter()
-        .filter(|r| r["command"] == "comment_set")
-        .collect();
-    assert_eq!(comments.len(), 1);
-    assert_eq!(comments[0]["args"]["address"], "0x1003");
-    assert_eq!(comments[0]["args"]["text"], "valid after errors");
+    assert!(bridge.requests.lock().unwrap().is_empty());
 }
 
 #[test]
-fn batch_on_error_controls_command_and_syntax_failures() {
-    for failing_line in [
-        "symbol rename missing renamed",
-        "comment set 0x1000 'unfinished",
-        "comment set",
-    ] {
-        for policy in [None, Some("continue"), Some("stop")] {
-            let bridge = RecordedBridge::new();
-            std::fs::write(
-                bridge.root.path().join("batch.txt"),
-                format!("comment set 0x1000 before\n{failing_line}\ncomment set 0x1001 after\n"),
-            )
+fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
+    for policy in ["continue", "stop"] {
+        let bridge = RecordedBridge::new();
+        std::fs::create_dir(bridge.root.path().join("scripts")).unwrap();
+        std::fs::write(
+            bridge.root.path().join("scripts/batch.txt"),
+            "comment set 0x1000 before\nbatch nested.txt\nbatch missing.txt\nfunction delete\n",
+        )
+        .unwrap();
+        // Nested files use the invocation's cwd, including names containing an apostrophe.
+        std::fs::write(
+            bridge.root.path().join("nested.txt"),
+            "function list --filter invalid\nsymbol delete existing --filter invalid\nsymbol rename existing renamed --filter invalid\nsymbol delete existing --address invalid\ngraph callers main --depth 2147483648\nclear 0x1000\nbatch \"scripts/./batch.txt\"\nbatch \"nested valid's.txt\"\nprogram import generated.bin --loader-option malformed\nprogram import generated.bin --base-address invalid\nscript run generated.java --expect results.jsonl:9223372036854775808\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bridge.root.path().join("nested valid's.txt"),
+            "comment set 0x1001 child\n",
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .args([
+                "batch",
+                "scripts/batch.txt",
+                "--program",
+                "must-not-open",
+                "--on-error",
+                policy,
+            ])
+            .output()
             .unwrap();
-            let mut command = bridge.command();
-            command.args(["batch", "batch.txt"]);
-            if let Some(policy) = policy {
-                command.args(["--on-error", policy]);
-            }
-            let output = command.output().unwrap();
-            assert_eq!(output.status.code(), Some(1), "{policy:?}: {output:?}");
-            assert!(!output.stdout.is_empty());
-            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-            assert!(error["detail"].get("results").is_none());
-            let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-            let detail = &report[0];
-            let stopped = policy == Some("stop");
-            assert_eq!(detail["commands_parsed"], 3);
-            assert_eq!(detail["commands_executed"], if stopped { 2 } else { 3 });
-            assert_eq!(detail["failed"], 1);
-            assert_eq!(detail["not_executed"], usize::from(stopped));
-            assert!(detail["results"][0]["result"].is_object());
-            assert_eq!(detail["results"][1]["line"], 2);
-            assert_eq!(detail["results"][1]["exit_code"], 1);
-            let requests = bridge.requests.lock().unwrap();
-            let comments: Vec<_> = requests
-                .iter()
-                .filter(|r| r["command"] == "comment_set")
-                .map(|r| r["args"]["text"].as_str().unwrap())
-                .collect();
-            assert_eq!(
-                comments,
-                if stopped {
-                    vec!["before"]
-                } else {
-                    vec!["before", "after"]
-                }
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let report = &report[0];
+        assert_eq!(report["commands_parsed"], 4);
+        assert_eq!(report["commands_executed"], 0);
+        assert_eq!(report["not_executed"], 4);
+        assert_eq!(report["results"], json!([]));
+        let errors = report["validation_errors"].as_array().unwrap();
+        assert_eq!(errors.len(), 12, "{errors:?}");
+        for (error, (file, line, message)) in errors.iter().zip([
+            ("nested.txt", 1, "invalid --filter expression"),
+            ("nested.txt", 2, "invalid --filter expression"),
+            ("nested.txt", 3, "invalid --filter expression"),
+            ("nested.txt", 4, "Invalid --address"),
+            ("nested.txt", 5, "--depth must be between"),
+            ("nested.txt", 6, "Invalid or ambiguous range"),
+            ("nested.txt", 7, "Batch include cycle"),
+            ("nested.txt", 9, "Invalid --loader-option"),
+            ("nested.txt", 10, "Invalid base address"),
+            ("nested.txt", 11, "Invalid --expect MIN_ROWS"),
+            (
+                "scripts/batch.txt",
+                3,
+                "Failed to read batch file missing.txt",
+            ),
+            ("scripts/batch.txt", 4, "required arguments"),
+        ]) {
+            assert_eq!(error["file"], file);
+            assert_eq!(error["line"], line);
+            assert!(
+                error["error"].as_str().unwrap().contains(message),
+                "{error}"
             );
         }
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn batch_can_reuse_a_nested_file_after_its_previous_invocation_finishes() {
+    let bridge = RecordedBridge::new();
+    std::fs::create_dir(bridge.root.path().join("scripts")).unwrap();
+    std::fs::write(
+        bridge.root.path().join("scripts/batch.txt"),
+        "batch \"nested valid's.txt\"\nbatch \"./nested valid's.txt\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        bridge.root.path().join("nested valid's.txt"),
+        "comment set 0x1000 nested\n",
+    )
+    .unwrap();
+    let report = bridge.run(&["batch", "scripts/batch.txt"]);
+    assert_eq!(report[0]["commands_executed"], 2);
+    assert_eq!(report[0]["failed"], 0);
+    assert_eq!(
+        bridge
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request["command"] == "comment_set")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn batch_on_error_controls_runtime_failures_after_preflight() {
+    for policy in [None, Some("continue"), Some("stop")] {
+        let bridge = RecordedBridge::new();
+        std::fs::write(
+            bridge.root.path().join("batch.txt"),
+            "comment set 0x1000 before\nsymbol rename missing renamed\ncomment set 0x1001 after\n",
+        )
+        .unwrap();
+        let mut command = bridge.command();
+        command.args(["batch", "batch.txt"]);
+        if let Some(policy) = policy {
+            command.args(["--on-error", policy]);
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{policy:?}: {output:?}");
+        assert!(!output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["detail"].get("results").is_none());
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let detail = &report[0];
+        let stopped = policy == Some("stop");
+        assert_eq!(detail["commands_parsed"], 3);
+        assert_eq!(detail["commands_executed"], if stopped { 2 } else { 3 });
+        assert_eq!(detail["failed"], 1);
+        assert_eq!(detail["not_executed"], usize::from(stopped));
+        assert!(detail["results"][0]["result"].is_object());
+        assert_eq!(detail["results"][1]["line"], 2);
+        assert_eq!(detail["results"][1]["exit_code"], 1);
+        let requests = bridge.requests.lock().unwrap();
+        let comments: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] == "comment_set")
+            .map(|r| r["args"]["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            comments,
+            if stopped {
+                vec!["before"]
+            } else {
+                vec!["before", "after"]
+            }
+        );
     }
 }
 
@@ -3316,7 +3404,7 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
 }
 
 #[test]
-fn batch_continues_after_invalid_arguments_without_selecting_their_programs() {
+fn batch_rejects_invalid_arguments_before_selecting_any_program() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("batch.txt"),
@@ -3330,18 +3418,11 @@ fn batch_continues_after_invalid_arguments_without_selecting_their_programs() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["commands_executed"], 2);
+    assert_eq!(report[0]["commands_executed"], 0);
     assert_eq!(report[0]["failed"], 1);
-    assert_eq!(report[0]["not_executed"], 0);
-    assert!(report[0]["results"][0]["error"].is_string());
-    let requests = bridge.requests.lock().unwrap();
-    let domain: Vec<_> = requests
-        .iter()
-        .filter(|r| r["command"] != "bridge_info")
-        .collect();
-    assert_eq!(domain.len(), 1, "{domain:?}");
-    assert_eq!(domain[0]["command"], "comment_set");
-    assert_eq!(domain[0]["args"]["text"], "after");
+    assert_eq!(report[0]["not_executed"], 2);
+    assert!(report[0]["validation_errors"][0]["error"].is_string());
+    assert!(bridge.requests.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -3442,7 +3523,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    for result in report[0]["results"]
+    for result in report[0]["validation_errors"]
         .as_array()
         .unwrap()
         .iter()
@@ -3458,13 +3539,8 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     }
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(error["detail"]["failed"], rejected);
-    let requests = bridge.requests.lock().unwrap();
-    let domain: Vec<_> = requests
-        .iter()
-        .filter(|r| r["command"] != "bridge_info")
-        .collect();
-    assert_eq!(domain.len(), 1, "{domain:?}");
-    assert_eq!(domain[0]["command"], "program_info");
+    assert_eq!(report[0]["commands_executed"], 0);
+    assert!(bridge.requests.lock().unwrap().is_empty());
 }
 
 #[test]

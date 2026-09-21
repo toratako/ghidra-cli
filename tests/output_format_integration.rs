@@ -67,6 +67,57 @@ fn mutations_reject_query_and_bulk_options_before_loading_config() {
 }
 
 #[test]
+fn batch_validation_precedes_configuration_loading_and_bridge_startup() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("config.yaml");
+    let original = "invalid: [yaml";
+    std::fs::write(&config, original).unwrap();
+    std::fs::write(
+        temp.path().join("batch.txt"),
+        "config set default_project changed\ncomment set 0x1000 before\nfunction list --filter invalid\nfunction delete\n",
+    )
+    .unwrap();
+    for flags in [vec![], vec!["--pretty"]] {
+        let output = isolated_command(&temp)
+            .current_dir(temp.path())
+            .env_remove("GHIDRA_INSTALL_DIR")
+            .args(["batch", "batch.txt"])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("Batch validation failed"), "{stderr}");
+        assert!(stderr.contains("batch.txt:1"), "{stderr}");
+        assert!(stderr.contains("batch.txt:3"), "{stderr}");
+        assert!(stderr.contains("batch.txt:4"), "{stderr}");
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report[0]["commands_executed"], 0);
+        assert_eq!(report[0]["not_executed"], 4);
+        assert_eq!(report[0]["validation_errors"].as_array().unwrap().len(), 3);
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), original);
+        assert!(!temp.path().join("projects").exists());
+    }
+}
+
+#[test]
+fn batch_missing_root_file_reports_a_validation_failure_without_a_project() {
+    let temp = tempfile::tempdir().unwrap();
+    let output = isolated_command(&temp)
+        .current_dir(temp.path())
+        .args(["batch", "missing.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["validation_failed"], true);
+    assert_eq!(report[0]["commands_executed"], 0);
+    assert_eq!(report[0]["validation_errors"][0]["file"], "missing.txt");
+    assert!(report[0]["validation_errors"][0]["line"].is_null());
+    assert!(!temp.path().join("projects").exists());
+}
+
+#[test]
 fn unknown_config_keys_fail_without_changing_the_file() {
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");

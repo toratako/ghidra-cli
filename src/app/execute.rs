@@ -38,6 +38,40 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
     Ok(code)
 }
 
+/// Validate locally parsed command syntax before any program selection or edits.
+pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Clear(args) = command {
+        parse_clear_range(&args.range)?;
+    }
+    let selector = match command {
+        Commands::Symbol(cli::SymbolCommands::Rename(args)) => {
+            Some((args.address.as_deref(), args.filter.as_deref()))
+        }
+        Commands::Symbol(cli::SymbolCommands::Delete(args)) => {
+            Some((args.address.as_deref(), args.options.filter.as_deref()))
+        }
+        _ => None,
+    };
+    if let Some((address, filter)) = selector {
+        symbols::parse_selector(address, filter)?;
+    }
+    if let Commands::Script(cli::ScriptCommands::Run(args)) = command {
+        scripts::validate_expect_specs(&args.expect)?;
+    }
+    Ok(())
+}
+
+fn parse_clear_range(range: &str) -> anyhow::Result<(String, String)> {
+    split_range(range).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid or ambiguous range '{}': use 0x-prefixed START:END, \
+             e.g. 0x1000:0x1010 or overlay:0x1000:overlay:0x1010; \
+             specify both segment components for segmented endpoints",
+            range
+        )
+    })
+}
+
 /// Execute a command via the bridge client.
 pub(super) fn execute_via_bridge(
     client: &BridgeClient,
@@ -405,14 +439,7 @@ pub(super) fn execute_via_bridge(
         },
         Commands::DefineCode(args) => client.define_code(&args.target, args.end.as_deref()),
         Commands::Clear(args) => {
-            let (start, end) = split_range(&args.range).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Invalid or ambiguous range '{}': use 0x-prefixed START:END, \
-                     e.g. 0x1000:0x1010 or overlay:0x1000:overlay:0x1010; \
-                     specify both segment components for segmented endpoints",
-                    args.range
-                )
-            })?;
+            let (start, end) = parse_clear_range(&args.range)?;
             client.clear_range(&start, &end, args.disasm_at.as_deref())
         }
         Commands::Pcode(cmd) => {
