@@ -13,12 +13,19 @@ import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolUtilities;
 import ghidra.program.model.symbol.SourceType;
 import java.util.Iterator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getDecompileTimeoutArg;
 
 final class FunctionSignatureCommands {
+    private static final Pattern C_TYPE_QUALIFIER =
+        Pattern.compile("\\b(?:const|volatile|restrict|_Atomic)\\b");
+    private static final Pattern ADJACENT_POINTER_RETURN_NAME =
+        Pattern.compile("^([^()]*\\*)([A-Za-z_][A-Za-z_0-9]*\\s*\\()");
+
     private final ProgramSession session;
     private final FunctionQueries functionQueries;
     private final TypeResolver typeResolver;
@@ -46,7 +53,7 @@ final class FunctionSignatureCommands {
                 new ghidra.app.util.parser.FunctionSignatureParser(
                     session.program().getDataTypeManager(), null);
             ghidra.program.model.data.FunctionDefinitionDataType funcDef =
-                sigParser.parse(func.getSignature(), sigStr);
+                sigParser.parse(func.getSignature(), prepareSignature(sigStr));
 
             if (funcDef == null) {
                 return errorResult("Failed to parse signature: " + sigStr);
@@ -74,6 +81,22 @@ final class FunctionSignatureCommands {
         } catch (Exception e) {
             return errorResult("Failed to set signature: " + e.getMessage());
         }
+    }
+
+    private static String prepareSignature(String signature) {
+        // Ghidra's function datatypes cannot retain C type qualifiers. Check
+        // before parsing: a trailing qualifier can otherwise become a parameter
+        // name, and CParser accepts some qualifiers without storing them.
+        Matcher qualifier = C_TYPE_QUALIFIER.matcher(signature);
+        if (qualifier.find()) {
+            throw new IllegalArgumentException("Ghidra function signatures cannot preserve the C type qualifier '"
+                + qualifier.group() + "' at character " + (qualifier.start() + 1));
+        }
+
+        // FunctionSignatureParser splits the return type and function name on
+        // whitespace. Insert only the missing separator in e.g. Entry **lookup;
+        // retain the type spelling, pointer depth, and remaining declaration.
+        return ADJACENT_POINTER_RETURN_NAME.matcher(signature).replaceFirst("$1 $2");
     }
 
     JsonObject handleFunctionSetReturnType(JsonObject args) {

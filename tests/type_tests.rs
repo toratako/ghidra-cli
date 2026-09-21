@@ -22,6 +22,9 @@ mod fields;
 #[path = "types/resolution.rs"]
 mod resolution;
 
+#[path = "types/signatures.rs"]
+mod signatures;
+
 #[path = "types/unions.rs"]
 mod unions;
 

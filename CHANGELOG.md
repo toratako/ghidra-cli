@@ -85,6 +85,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Accept adjacent pointer return declarators such as `Entry *lookup(...)` in
+  `function set-signature`, preserving the pointee and pointer depth. Reject C
+  type qualifiers that Ghidra function signatures cannot preserve with an
+  explicit diagnostic, leaving the function unchanged.
 - Describe `script list` as listing `.java` and `.py` files in Ghidra's script
   directories without checking whether they can be executed.
 - Preserve applied data types and settings during `memory write`, changing only

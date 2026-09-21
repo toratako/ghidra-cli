@@ -202,6 +202,12 @@ type before resolving its stored path; a matching path alone can name an unrelat
 user type. Rename success requires the actual name
 to match the request, since immutable Ghidra types can ignore `setName()`.
 
+Function signatures use `FunctionSignatureParser` with a missing space inserted
+between a pointer return declarator and its function name. Explicit C type
+qualifiers are rejected before parsing because Ghidra function datatypes cannot
+retain them; switching to `CParser` would silently discard some qualifiers.
+Persistence and qualifier rejection are covered in `tests/types/signatures.rs`.
+
 Union edits select existing members by ordinal, since their byte offsets overlap.
 `UnionFields` validates additions and replacements on detached copies. Type
 replacement applies the final union in one `replaceWith` call: a live delete then
