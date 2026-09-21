@@ -41,6 +41,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Validate every batch command and nested batch before execution, retaining the
   checked input for execution. Syntax errors report all locations and execute no
   commands; `--on-error` controls execution-time failures.
+- Include actual artifact paths and sizes, exporter messages, and format
+  limitations in `program export` results.
 
 - Group field operations under `type field append/set/clear/delete` and enum
   member deletion under `type enum member delete`. Select existing fields with

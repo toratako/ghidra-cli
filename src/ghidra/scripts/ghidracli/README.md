@@ -204,6 +204,8 @@ requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
 `ProgramCommands` references `Exporter` directly so OSGi imports the exporter
 package even though concrete exporter names are selected dynamically.
+Success receipts include actual artifact sizes (including XML's sidecar), native
+exporter messages and format limitations, without inferring complete coverage.
 GZF packing first ends the non-atomic request transaction and saves through
 `ProgramSession.save()`. It writes to private sibling staging and
 atomically replaces the destination after successful packing and a cancellation

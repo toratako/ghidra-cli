@@ -164,6 +164,11 @@ and local `truncation_reasons` explain omitted content.
 The edit receipt returns the resulting value and identifies a thunk's effective
 metadata owner when different from the requested function.
 
+`program_export` retains `status`, `format`, and `output`, and adds
+`program_path`, `requested_scope: "program"`, actual `artifacts` with path/size,
+`exporter_messages`, and format-specific `limitations`. Requested scope is not
+a claim of complete exported coverage; XML includes its `.bytes` companion.
+
 Function detail (`get_function`) includes inclusive `body_ranges` without
 adding them to function lists. Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming

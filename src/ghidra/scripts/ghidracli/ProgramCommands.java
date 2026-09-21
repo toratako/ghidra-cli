@@ -23,6 +23,7 @@ import ghidra.program.util.GhidraProgramUtilities;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -435,12 +436,73 @@ final class ProgramCommands {
             result.addProperty("status", "exported");
             result.addProperty("format", exportFormat);
             result.addProperty("output", outputPath);
+            result.addProperty("program_path", session.programPath());
+            // A null address selection requests the program, but each native
+            // exporter decides what it can represent. It is not a coverage check.
+            result.addProperty("requested_scope", "program");
+            result.add("artifacts", exportArtifacts(exportFormat, outputPath));
+            JsonArray messages = new JsonArray();
+            Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
+            if (log != null && !log.toString().isBlank()) messages.add(log.toString());
+            result.add("exporter_messages", messages);
+            result.add("limitations", exportLimitations(exportFormat));
             return result;
         } catch (Exception e) {
             Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
                 && e.getCause() != null ? e.getCause() : e;
             return errorResult("Failed to export (" + exportFormat + "): " + cause.getMessage());
         }
+    }
+
+    private static JsonArray exportArtifacts(String format, String outputPath) throws IOException {
+        JsonArray artifacts = new JsonArray();
+        Path output = new File(outputPath).toPath().toAbsolutePath();
+        artifacts.add(exportArtifact(output));
+        if ("xml".equalsIgnoreCase(format)) {
+            // XmlExporter defaults to memory contents. MemoryMapXmlMgr creates
+            // this file on every export, even when no initialized bytes exist.
+            String name = output.getFileName().toString();
+            if (name.endsWith(".xml")) name = name.substring(0, name.length() - 4);
+            artifacts.add(exportArtifact(output.resolveSibling(name + ".bytes")));
+        }
+        return artifacts;
+    }
+
+    private static JsonObject exportArtifact(Path path) throws IOException {
+        if (!Files.isRegularFile(path)) {
+            throw new IOException("Exporter did not create an output file: " + path);
+        }
+        JsonObject artifact = new JsonObject();
+        artifact.addProperty("path", path.toString());
+        artifact.addProperty("size_bytes", Files.size(path));
+        return artifact;
+    }
+
+    private static JsonArray exportLimitations(String format) {
+        JsonArray limitations = new JsonArray();
+        switch (format.toLowerCase(java.util.Locale.ROOT)) {
+            case "c":
+                limitations.add("Function bodies depend on successful decompilation; export success does not verify complete function coverage.");
+                limitations.add("Global declarations describe referenced globals and do not preserve original data initializers. Use data read or memory read to inspect values.");
+                limitations.add("Exporter messages do not include every decompiler diagnostic; inspect the generated C for diagnostic comments.");
+                break;
+            case "binary":
+                limitations.add("Initialized memory ranges are concatenated without address gaps or metadata; this is not the original executable file layout.");
+                break;
+            case "xml":
+                limitations.add("Memory contents are stored in the companion .bytes artifact; keep it with the XML file.");
+                break;
+            case "asm":
+            case "html":
+                limitations.add("The output is a formatted listing, not a restorable program database.");
+                break;
+            case "hex":
+                limitations.add("Only initialized memory in the default address space is represented.");
+                break;
+            default:
+                break;
+        }
+        return limitations;
     }
 
     JsonObject handleStats() {

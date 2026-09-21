@@ -89,6 +89,8 @@ ghidra-cli program export gzf --project target -o ./target.gzf
 ghidra-cli program export binary -o ./target.patched.bin --project target
 ```
 
+C exports contain decompiled functions and referenced global declarations; they do not reconstruct complete data initializers.
+
 `gzf` saves the program before packing and atomically replaces the destination
 after successful export. Failure or cancellation before replacement preserves
 an existing destination; filesystems without atomic replacement support return an error.
