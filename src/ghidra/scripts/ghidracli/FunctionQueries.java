@@ -21,10 +21,18 @@ final class FunctionQueries {
         this.addressResolver = addressResolver;
     }
 
-    JsonObject functionToJson(Function func) {
+    JsonObject functionContext(Function func) {
         JsonObject funcData = new JsonObject();
         funcData.addProperty("name", func.getName());
         funcData.addProperty("address", AddressCodec.format(func.getEntryPoint()));
+        funcData.addProperty("is_external", func.isExternal());
+        var block = session.program().getMemory().getBlock(func.getEntryPoint());
+        funcData.add("entry_memory", block == null ? JsonNull.INSTANCE : MemoryBlockInfo.summary(block));
+        return funcData;
+    }
+
+    JsonObject functionToJson(Function func) {
+        JsonObject funcData = functionContext(func);
         funcData.addProperty("size", func.getBody().getNumAddresses());
         funcData.addProperty("entry_point", AddressCodec.format(func.getEntryPoint()));
         funcData.add("tags", TagSupport.functionTagNames(func));

@@ -61,6 +61,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/DecompileCommands.java"),
     ),
     (
+        "ghidracli/DecompileWarnings.java",
+        include_str!("../scripts/ghidracli/DecompileWarnings.java"),
+    ),
+    (
         "ghidracli/DecompilerSession.java",
         include_str!("../scripts/ghidracli/DecompilerSession.java"),
     ),
@@ -107,6 +111,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/MemoryCommands.java",
         include_str!("../scripts/ghidracli/MemoryCommands.java"),
+    ),
+    (
+        "ghidracli/MemoryBlockInfo.java",
+        include_str!("../scripts/ghidracli/MemoryBlockInfo.java"),
     ),
     (
         "ghidracli/MemoryPatch.java",

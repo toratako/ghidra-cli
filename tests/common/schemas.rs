@@ -16,6 +16,8 @@ pub struct Function {
     #[serde(default)]
     pub signature: Option<String>,
     pub entry_point: String,
+    pub is_external: bool,
+    pub entry_memory: Option<FunctionMemory>,
     #[serde(default)]
     pub calling_convention: Option<String>,
     #[serde(default)]
@@ -30,6 +32,12 @@ pub struct Function {
     pub decompiled: Option<String>,
     #[serde(default)]
     pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FunctionMemory {
+    pub name: String,
+    pub permissions: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

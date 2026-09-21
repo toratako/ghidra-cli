@@ -195,8 +195,52 @@ fn format_csv_value(value: &JsonValue) -> String {
     }
 }
 
-/// Append only the decompiler details requested by the caller.
+pub(crate) fn format_decompile_warning(warning: &JsonValue) -> Option<String> {
+    let message = warning.get("message")?.as_str()?;
+    let source = warning.get("source")?.as_str()?;
+    let location = warning
+        .get("address")
+        .and_then(JsonValue::as_str)
+        .map(|address| format!(" at {address}"))
+        .unwrap_or_default();
+    Some(format!("[{source}{location}] {message}"))
+}
+
+fn format_function_attributes(map: &serde_json::Map<String, JsonValue>, result: &mut String) {
+    if let Some(external) = map.get("is_external").and_then(JsonValue::as_bool) {
+        result.push_str(&format!("External: {external}\n"));
+    }
+    if let Some(memory) = map.get("entry_memory") {
+        if memory.is_null() {
+            result.push_str("Entry memory: none\n");
+        } else {
+            let name = memory
+                .get("name")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("?");
+            let permissions = memory
+                .get("permissions")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("");
+            result.push_str(&format!("Entry memory: {name} ({permissions})\n"));
+        }
+    }
+}
+
+/// Append diagnostics and the variable details requested by the caller.
 fn format_decompile_details(map: &serde_json::Map<String, JsonValue>, result: &mut String) {
+    if let Some(warnings) = map
+        .get("warnings")
+        .and_then(JsonValue::as_array)
+        .filter(|v| !v.is_empty())
+    {
+        result.push_str("\nWarnings:\n");
+        for warning in warnings {
+            if let Some(text) = format_decompile_warning(warning) {
+                result.push_str(&format!("  {text}\n"));
+            }
+        }
+    }
     for (key, title) in [("params", "Parameters"), ("variables", "Variables")] {
         if let Some(rows) = map
             .get(key)
@@ -241,6 +285,7 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                         result.push_str(sig);
                         result.push('\n');
                     }
+                    format_function_attributes(map, &mut result);
                     result.push_str(code);
                     if !code.ends_with('\n') {
                         result.push('\n');
@@ -333,7 +378,7 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     })
                     .filter_map(|(k, v)| {
                         let s = format_json_value(v);
-                        if s.is_empty() || s == "null" || s == "\"\"" {
+                        if s.is_empty() || (s == "null" && k != "entry_memory") || s == "\"\"" {
                             None
                         } else {
                             Some(format!("{}={}", k, s))
@@ -386,6 +431,7 @@ fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
                     if let Some(name) = map.get("name").and_then(|v| v.as_str()) {
                         result.push_str(&format!("Function:  {}\n", name));
                     }
+                    format_function_attributes(map, &mut result);
                     result.push('\n');
                     result.push_str(code);
                     if !code.ends_with('\n') {

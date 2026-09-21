@@ -40,9 +40,7 @@ final class DecompileCommands {
 
         if (results.decompileCompleted()) {
             String code = results.getDecompiledFunction().getC();
-            JsonObject result = new JsonObject();
-            result.addProperty("name", func.getName());
-            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
+            JsonObject result = functionQueries.functionContext(func);
             String sig = null;
             try {
                 sig = func.getPrototypeString(false, false);
@@ -55,6 +53,7 @@ final class DecompileCommands {
                 result.add("signature", JsonNull.INSTANCE);
             }
             result.addProperty("code", code);
+            result.add("warnings", DecompileWarnings.collect(results));
 
             boolean withVars = getArgBool(args, "with_vars", false);
             boolean withParams = getArgBool(args, "with_params", false);
@@ -114,8 +113,10 @@ final class DecompileCommands {
             } else {
                 prefix = "Decompilation failed";
             }
-            return errorResult(prefix + " for " + func.getName() + " at " +
+            JsonObject error = errorResult(prefix + " for " + func.getName() + " at " +
                 AddressCodec.format(func.getEntryPoint()) + ": " + detail.trim());
+            error.add("detail", functionQueries.functionContext(func));
+            return error;
         }
     }
 }

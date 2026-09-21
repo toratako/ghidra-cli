@@ -66,21 +66,51 @@ pub(super) fn describe_query_error(err: GhidraError) -> anyhow::Error {
     }
 }
 
-/// Check if a decompile result looks like .NET managed code and warn the user.
-fn check_dotnet_decompile_warning(command: &Commands, result: &serde_json::Value) {
-    let is_decompile = matches!(command, Commands::Decompile(_));
-    if !is_decompile {
-        return;
+/// C-only output retains comments, but API diagnostics need a separate stream.
+fn c_decompile_diagnostics(
+    value: &serde_json::Value,
+    query: Option<&Query>,
+) -> crate::error::Result<String> {
+    if query.is_some_and(|q| q.count_only) {
+        return Ok(String::new());
     }
-
-    if let Some(code) = result.get("code").and_then(|c| c.as_str()) {
-        if code.contains("halt_baddata()") || code.contains(".NET CLR Managed Code") {
-            eprintln!(
-                "Warning: This appears to be .NET managed code. Ghidra cannot decompile .NET IL bytecode.\n\
-                 Consider using a .NET decompiler (e.g., ilspy-cli) for better results."
-            );
+    let mut rows = unwrap_bridge_response(value.clone());
+    if let Some(query) = query {
+        rows = query.select_rows(rows)?;
+        if let Some(fields) = &query.fields {
+            // A projection without code produces JSON even with --format c.
+            if query
+                .select_fields(&rows, fields)?
+                .iter()
+                .any(|row| row.get("code").is_none())
+            {
+                return Ok(String::new());
+            }
         }
     }
+    let mut diagnostics = String::new();
+    for row in rows {
+        if let Some(warnings) = row.get("warnings").and_then(serde_json::Value::as_array) {
+            for warning in warnings {
+                if warning["source"] != "decompiler" {
+                    continue;
+                }
+                let in_code = warnings.iter().any(|other| {
+                    other["source"] == "c_comment"
+                        && other["message"]
+                            .as_str()
+                            .zip(warning["message"].as_str())
+                            .is_some_and(|(a, b)| a.split_whitespace().eq(b.split_whitespace()))
+                });
+                if !in_code {
+                    if let Some(text) = crate::format::format_decompile_warning(warning) {
+                        diagnostics.push_str(&format!("Warning: {text}\n"));
+                    }
+                }
+            }
+        }
+    }
+    Ok(diagnostics)
 }
 
 /// Identify the same top-level row array for default limits and query output.
@@ -248,10 +278,11 @@ fn process_query_response(
 }
 
 pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<()> {
-    if !cli.quiet {
-        check_dotnet_decompile_warning(&cli.command, &result.value);
-    }
     let format = output_format(cli);
+    if !cli.quiet && format == OutputFormat::C && matches!(cli.command, Commands::Decompile(_)) {
+        let diagnostics = c_decompile_diagnostics(&result.value, result.query.as_ref())?;
+        let _ = std::io::stderr().lock().write_all(diagnostics.as_bytes());
+    }
 
     if let Some(mut query) = result.query {
         query.format = format;

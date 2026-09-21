@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add structured decompilation warnings with their source, message, and available
+  address. Successful decompilation remains successful when warnings are present.
+- Add `is_external` and `entry_memory` to function queries and decompilation,
+  using the memory map's block names and permissions.
 - Add `analysis option list/get/set` for typed Program analysis settings,
   including analyzer enablement, nested options, defaults and enum choices.
   Setting values saves without running analysis.
@@ -87,6 +91,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Report Ghidra diagnostics instead of inferring .NET code from bad-instruction
+  output. C-only output sends diagnostics absent from its comments to stderr.
 - Accept adjacent pointer return declarators such as `Entry *lookup(...)` in
   `function set-signature`, preserving the pointee and pointer depth. Reject C
   type qualifiers that Ghidra function signatures cannot preserve with an

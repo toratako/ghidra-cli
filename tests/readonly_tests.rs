@@ -15,6 +15,8 @@ mod byte_regex;
 mod calls;
 #[path = "readonly/constants.rs"]
 mod constants;
+#[path = "readonly/decompile.rs"]
+mod decompile;
 #[path = "readonly/functions.rs"]
 mod functions;
 #[path = "readonly/program.rs"]

@@ -19,6 +19,13 @@ candidates; use an address to select one.
 `--format c` prints decompiled code without JSON escaping. Use JSON when you
 need the accompanying variable/parameter metadata.
 
+Check `warnings` when assessing recovered control flow or calling conventions.
+`source: c_comment` identifies a warning in the C comments, which may include
+user-written notes; `source: decompiler` identifies an API diagnostic.
+`entry_memory` describes the function's entry block, not every body range; null
+means no block covers that address. `is_external` identifies Ghidra external
+functions, not local thunks that call them.
+
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 

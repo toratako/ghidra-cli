@@ -158,6 +158,18 @@ impl RecordedBridge {
                     "analysis_option_set" => json!({
                         "name": args["name"], "type": "string", "value": args["value"], "status": "set",
                     }),
+                    "decompile" if args["address"] == "warned" => {
+                        json!({
+                            "name": "warned", "address": "0x1000",
+                            "is_external": false, "entry_memory": {"name": "code", "permissions": "rx"},
+                            "code": "/* WARNING: in C */\nint warned(void) { return 0; }\n",
+                            "warnings": [
+                                {"source": "decompiler", "message": "API-only diagnostic", "address": null},
+                                {"source": "decompiler", "message": "WARNING: in C", "address": null},
+                                {"source": "c_comment", "message": "WARNING: in C", "address": "0x1000"}
+                            ]
+                        })
+                    }
                     "decompile" => {
                         json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
@@ -1460,6 +1472,78 @@ fn explicit_code_formats_override_json_without_changing_output_defaults() {
             .unwrap()
             .starts_with("0x1000  90           NOP\n"));
     }
+}
+
+#[test]
+fn decompile_warnings_follow_output_formats_and_selected_rows() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args(["decompile", "warned"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let rows: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(rows[0]["warnings"].as_array().unwrap().len(), 3);
+    assert_eq!(rows[0]["entry_memory"]["permissions"], "rx");
+    let code = rows[0]["code"].as_str().unwrap();
+    for fields in [vec![], vec!["--fields", "code"]] {
+        let output = bridge
+            .command()
+            .args(["decompile", "warned", "--format", "c"])
+            .args(&fields)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), code);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Warning: [decompiler] API-only diagnostic\n"
+        );
+    }
+    for format in ["compact", "full"] {
+        let output = bridge
+            .command()
+            .args(["decompile", "warned", "--format", format])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains(code), "{text}");
+        assert!(text.contains("Warnings:\n"), "{text}");
+        assert!(text.contains("[decompiler] API-only diagnostic"), "{text}");
+        assert!(
+            text.contains("[c_comment at 0x1000] WARNING: in C"),
+            "{text}"
+        );
+        assert!(
+            text.contains("External: false\nEntry memory: code (rx)"),
+            "{text}"
+        );
+    }
+    for flags in [
+        vec!["--count"],
+        vec!["--filter", "name=absent"],
+        vec!["--fields", "warnings"],
+        vec!["--quiet"],
+    ] {
+        let output = bridge
+            .command()
+            .args(["decompile", "warned", "--format", "c"])
+            .args(&flags)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{flags:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{flags:?}: {output:?}");
+    }
+    std::fs::write(bridge.root.path().join("batch.txt"), "decompile warned\n").unwrap();
+    let batch = bridge.run(&["batch", "batch.txt"]);
+    assert_eq!(
+        batch[0]["results"][0]["result"]["warnings"],
+        rows[0]["warnings"]
+    );
 }
 
 #[test]

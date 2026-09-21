@@ -15,7 +15,7 @@ The library exposes that same definition to `xtask` for documentation generation
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs` | Aggregate attempted command results and apply the error policy; always stop on transaction/save failures or timeouts |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
-| `output.rs` | Warn about managed-code decompilation, select output format, unwrap envelopes, and apply query processing |
+| `output.rs` | Select output format, unwrap envelopes, apply query processing, and route C-only decompiler diagnostics to stderr |
 | `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
 | `installation.rs` | Setup and doctor commands |
 | `local.rs` | Configuration and project commands |
@@ -41,6 +41,9 @@ Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
+Decompilation diagnostics are result fields in JSON and human formats. C-only
+output retains the generated C and sends API diagnostics absent from its warning
+comments to stderr; count, filtering, field projection, and quiet mode still apply.
 `program import` owns its startup and selection workflow; `--name` is the saved
 file name, independent of global `--program` and configured target defaults.
 Import retains stop/start/open/analyze order. `program save` saves in place and

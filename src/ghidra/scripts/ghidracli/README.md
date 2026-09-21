@@ -117,6 +117,8 @@ another consumer or terminate its checkout.
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
+| `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
+| `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
@@ -207,6 +209,19 @@ between a pointer return declarator and its function name. Explicit C type
 qualifiers are rejected before parsing because Ghidra function datatypes cannot
 retain them; switching to `CParser` would silently discard some qualifiers.
 Persistence and qualifier rejection are covered in `tests/types/signatures.rs`.
+
+`FunctionQueries.functionContext` supplies `is_external` and `entry_memory` to
+function get/list, decompilation results, and native decompilation failure details.
+The block summary describes only the entry address; no block yields JSON null.
+The function-list iterator still selects Ghidra's memory functions.
+
+Completed decompilation includes a `warnings` array. Each item has `source`
+(`decompiler` for the API message or `c_comment`), `message`, and a nullable
+`address`. `DecompileWarnings` inspects comment markup, including its spacing and
+line breaks, rather than scanning C strings for warning text. Markup does not
+preserve whether a comment was engine-generated or user-written; keep that
+distinction explicit through provenance. The generated C is unchanged. Native
+failures, cancellation, and timeout retain their existing failure paths.
 
 Union edits select existing members by ordinal, since their byte offsets overlap.
 `UnionFields` validates additions and replacements on detached copies. Type
