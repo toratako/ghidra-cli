@@ -16,6 +16,7 @@ import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.reloc.Relocation;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.util.GhidraProgramUtilities;
@@ -25,6 +26,8 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.HexFormat;
+import java.util.Iterator;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -45,6 +48,8 @@ final class ProgramCommands {
         result.addProperty("path", session.programPath());
         result.addProperty("executable_path", session.program().getExecutablePath());
         result.addProperty("executable_format", session.program().getExecutableFormat());
+        result.addProperty("executable_md5", executableHash(session.program().getExecutableMD5()));
+        result.addProperty("executable_sha256", executableHash(session.program().getExecutableSHA256()));
         String compiler = session.program().getCompiler();
         if (compiler != null && !compiler.isEmpty()) {
             result.addProperty("compiler", compiler);
@@ -59,6 +64,44 @@ final class ProgramCommands {
         FunctionManager fm = session.program().getFunctionManager();
         result.addProperty("function_count", fm.getFunctionCount());
 
+        return result;
+    }
+
+    private static String executableHash(String hash) {
+        // ProgramDB uses this sentinel when the imported-file metadata is absent.
+        return hash == null || hash.isEmpty() || "unknown".equals(hash) ? null : hash;
+    }
+
+    JsonObject handleListRelocations() throws CancelledException {
+        if (session.program() == null) return errorResult("No program loaded");
+
+        JsonArray relocations = new JsonArray();
+        Iterator<Relocation> iterator = session.program().getRelocationTable().getRelocations();
+        while (iterator.hasNext()) {
+            session.monitor().checkCancelled();
+            Relocation relocation = iterator.next();
+            JsonObject row = new JsonObject();
+            row.addProperty("address", AddressCodec.format(relocation.getAddress()));
+            row.addProperty("type", relocation.getType());
+            row.addProperty("status", relocation.getStatus().name());
+            row.addProperty("symbol_name", relocation.getSymbolName());
+            long[] values = relocation.getValues();
+            if (values == null) {
+                row.add("values", JsonNull.INSTANCE);
+            } else {
+                JsonArray serializedValues = new JsonArray();
+                for (long value : values) serializedValues.add(value);
+                row.add("values", serializedValues);
+            }
+            byte[] originalBytes = relocation.getBytes();
+            row.addProperty("original_bytes", originalBytes == null
+                ? null : HexFormat.of().formatHex(originalBytes));
+            relocations.add(row);
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("relocations", relocations);
+        result.addProperty("count", relocations.size());
         return result;
     }
 

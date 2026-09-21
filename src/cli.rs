@@ -121,6 +121,10 @@ pub enum Commands {
     #[command(subcommand)]
     Comment(CommentCommands),
 
+    /// Bookmark operations
+    #[command(subcommand)]
+    Bookmark(BookmarkCommands),
+
     /// Search operations
     #[command(subcommand)]
     Find(FindCommands),

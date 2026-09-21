@@ -1,5 +1,6 @@
 package ghidracli;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
@@ -60,6 +61,20 @@ final class FunctionQueries {
         }
 
         return funcData;
+    }
+
+    JsonObject functionDetailToJson(Function func) throws ghidra.util.exception.CancelledException {
+        JsonObject result = functionToJson(func);
+        JsonArray ranges = new JsonArray();
+        for (var range : func.getBody().getAddressRanges()) {
+            session.monitor().checkCancelled();
+            JsonObject row = new JsonObject();
+            row.addProperty("start", AddressCodec.format(range.getMinAddress()));
+            row.addProperty("end", AddressCodec.format(range.getMaxAddress()));
+            ranges.add(row);
+        }
+        result.add("body_ranges", ranges);
+        return result;
     }
 
     String buildFunctionTargetHint(String target) {

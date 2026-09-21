@@ -31,6 +31,8 @@ pub enum ProgramCommands {
     Info(super::options::ObjectOptions),
     /// Show program statistics
     Stats(super::options::ObjectOptions),
+    /// List program relocations
+    ListRelocations(super::options::QueryOptions),
     /// Import a binary into a project
     Import(ImportArgs),
     /// Export program

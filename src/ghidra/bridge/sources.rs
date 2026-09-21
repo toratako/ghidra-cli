@@ -41,6 +41,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/BridgeRuntime.java"),
     ),
     (
+        "ghidracli/BookmarkCommands.java",
+        include_str!("../scripts/ghidracli/BookmarkCommands.java"),
+    ),
+    (
         "ghidracli/BridgeServer.java",
         include_str!("../scripts/ghidracli/BridgeServer.java"),
     ),
@@ -115,6 +119,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/MemoryBlockInfo.java",
         include_str!("../scripts/ghidracli/MemoryBlockInfo.java"),
+    ),
+    (
+        "ghidracli/MemoryInfoCommands.java",
+        include_str!("../scripts/ghidracli/MemoryInfoCommands.java"),
     ),
     (
         "ghidracli/MemoryPatch.java",

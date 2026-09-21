@@ -83,7 +83,7 @@ final class FunctionCommands {
         return result;
     }
 
-    JsonObject handleGetFunction(JsonObject args) {
+    JsonObject handleGetFunction(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
         String target = getArgString(args, "address");
@@ -95,7 +95,28 @@ final class FunctionCommands {
         if (func == null) {
             return errorResult(functionQueries.buildFunctionTargetHint(target));
         }
-        return functionQueries.functionToJson(func);
+        return functionQueries.functionDetailToJson(func);
+    }
+
+    JsonObject handleListCallingConventions() throws ghidra.util.exception.CancelledException {
+        if (session.program() == null) return errorResult("No program loaded");
+
+        var compilerSpec = session.program().getCompilerSpec();
+        var defaultConvention = compilerSpec.getDefaultCallingConvention();
+        JsonArray conventions = new JsonArray();
+        for (var convention : compilerSpec.getCallingConventions()) {
+            session.monitor().checkCancelled();
+            JsonObject row = new JsonObject();
+            row.addProperty("name", convention.getName());
+            row.addProperty("is_default", defaultConvention != null
+                && convention.getName().equals(defaultConvention.getName()));
+            conventions.add(row);
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("calling_conventions", conventions);
+        result.addProperty("count", conventions.size());
+        return result;
     }
 
     JsonObject handleRenameFunction(JsonObject args) {

@@ -209,6 +209,22 @@ pub struct TagDetachArgs {
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum BookmarkCommands {
+    /// List all bookmarks
+    List(QueryOptions),
+    /// Get bookmarks at an address
+    Get(BookmarkGetArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct BookmarkGetArgs {
+    /// Explicit address, e.g. 0x401000 or overlay:0x1000
+    pub address: String,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum CommentCommands {
     /// List all comments
     List(QueryOptions),

@@ -177,9 +177,24 @@ impl BridgeClient {
         self.send_command("memory_map", None)
     }
 
+    /// Get instruction, data, function, and memory details at a target.
+    pub fn memory_info(&self, address: &str) -> Result<serde_json::Value> {
+        self.send_command("memory_info", Some(json!({"address": address})))
+    }
+
     /// Get program info.
     pub fn program_info(&self) -> Result<serde_json::Value> {
         self.send_command("program_info", None)
+    }
+
+    /// List all program relocations.
+    pub fn program_list_relocations(&self) -> Result<serde_json::Value> {
+        self.send_command("program_list_relocations", None)
+    }
+
+    /// List the current compiler specification's calling conventions.
+    pub fn function_list_calling_conventions(&self) -> Result<serde_json::Value> {
+        self.send_command("function_list_calling_conventions", None)
     }
 
     /// Get cross-references to an address.
@@ -369,6 +384,14 @@ impl BridgeClient {
             "type_apply",
             Some(json!({"address": address, "type_name": type_name, "force": force})),
         )
+    }
+
+    pub fn bookmark_list(&self) -> Result<serde_json::Value> {
+        self.send_command("bookmark_list", None)
+    }
+
+    pub fn bookmark_get(&self, address: &str) -> Result<serde_json::Value> {
+        self.send_command("bookmark_get", Some(json!({"address": address})))
     }
 
     pub fn comment_list(

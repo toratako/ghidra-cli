@@ -8,6 +8,8 @@ pub enum FunctionCommands {
     List(FunctionListArgs),
     /// Get function details
     Get(FunctionGetArgs),
+    /// List calling conventions supported by the program's compiler specification
+    ListCallingConventions(QueryOptions),
     /// List existing instructions in the function body, including disjoint ranges.
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(name = "disassemble")]

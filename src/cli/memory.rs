@@ -6,10 +6,21 @@ use serde::{Deserialize, Serialize};
 pub enum MemoryCommands {
     /// Show memory map
     Map(QueryOptions),
+    /// Show the instruction, data, function, and memory block at a target
+    Info(MemoryInfoArgs),
     /// Read memory
     Read(MemReadArgs),
     /// Write hex bytes to memory
     Write(MemWriteArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryInfoArgs {
+    /// Exact symbol name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

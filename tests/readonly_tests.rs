@@ -9,6 +9,8 @@ use common::{ensure_test_project, get_function_address, ghidra, test_project, Da
 
 #[path = "readonly/batch.rs"]
 mod batch;
+#[path = "readonly/bookmarks.rs"]
+mod bookmarks;
 #[path = "readonly/byte_regex.rs"]
 mod byte_regex;
 #[path = "readonly/calls.rs"]
@@ -17,10 +19,16 @@ mod calls;
 mod constants;
 #[path = "readonly/decompile.rs"]
 mod decompile;
+#[path = "readonly/function_details.rs"]
+mod function_details;
 #[path = "readonly/functions.rs"]
 mod functions;
+#[path = "readonly/memory_info.rs"]
+mod memory_info;
 #[path = "readonly/program.rs"]
 mod program;
+#[path = "readonly/program_metadata.rs"]
+mod program_metadata;
 #[path = "readonly/query.rs"]
 mod query;
 #[path = "readonly/relationships.rs"]

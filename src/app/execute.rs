@@ -80,6 +80,9 @@ pub(super) fn execute_via_bridge(
                 FunctionCommands::Get(args) => {
                     client.send_command("get_function", Some(json!({"address": args.target})))
                 }
+                FunctionCommands::ListCallingConventions(_) => {
+                    client.function_list_calling_conventions()
+                }
                 FunctionCommands::Disasm(args) => client.function_disasm(&args.target, list_limit),
                 FunctionCommands::Rename(args) => client.send_command(
                     "rename_function",
@@ -147,6 +150,7 @@ pub(super) fn execute_via_bridge(
             use cli::MemoryCommands;
             match cmd {
                 MemoryCommands::Map(_) => client.memory_map(),
+                MemoryCommands::Info(args) => client.memory_info(&args.target),
                 MemoryCommands::Write(args) => client.memory_write(&args.address, &args.hex),
                 MemoryCommands::Read(args) => client.send_command(
                     "read_memory",
@@ -187,6 +191,7 @@ pub(super) fn execute_via_bridge(
                 }
                 ProgramCommands::Info(_) => client.program_info(),
                 ProgramCommands::Stats(_) => client.stats(),
+                ProgramCommands::ListRelocations(_) => client.program_list_relocations(),
                 ProgramCommands::Export(args) => {
                     let output = std::path::absolute(&args.output)?;
                     client.program_export(&args.format, Some(&output.to_string_lossy()))
@@ -310,6 +315,10 @@ pub(super) fn execute_via_bridge(
                 ),
             }
         }
+        Commands::Bookmark(cmd) => match cmd {
+            cli::BookmarkCommands::List(_) => client.bookmark_list(),
+            cli::BookmarkCommands::Get(args) => client.bookmark_get(&args.address),
+        },
         Commands::Comment(cmd) => {
             use cli::CommentCommands;
             match cmd {

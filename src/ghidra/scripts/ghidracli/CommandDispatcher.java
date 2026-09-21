@@ -18,8 +18,10 @@ final class CommandDispatcher {
     private final PcodeCommands pcodeCommands;
     private final AnalysisCommands analysisCommands;
     private final CommentCommands commentCommands;
+    private final BookmarkCommands bookmarkCommands;
     private final GraphCommands graphCommands;
     private final MemoryCommands memoryCommands;
+    private final MemoryInfoCommands memoryInfoCommands;
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
     private final FunctionSignatureCommands functionSignatureCommands;
@@ -46,8 +48,10 @@ final class CommandDispatcher {
         pcodeCommands = new PcodeCommands(session, addressResolver, functionQueries);
         analysisCommands = new AnalysisCommands(session);
         commentCommands = new CommentCommands(session);
+        bookmarkCommands = new BookmarkCommands(session);
         graphCommands = new GraphCommands(session, functionQueries);
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
+        memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
 
@@ -55,8 +59,10 @@ final class CommandDispatcher {
         if (command == null) return null;
         switch (command) {
             case "program_info":    return programCommands.handleProgramInfo();
+            case "program_list_relocations": return programCommands.handleListRelocations();
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);
+            case "function_list_calling_conventions": return functionCommands.handleListCallingConventions();
             case "function_disasm": return memoryCommands.handleFunctionDisasm(args);
             case "rename_function": return functionCommands.handleRenameFunction(args);
             case "create_function": return functionCommands.handleCreateFunction(args);
@@ -66,6 +72,7 @@ final class CommandDispatcher {
             case "symbol_externals":    return listingCommands.handleSymbolExternals(args);
             case "symbol_entry_points":    return listingCommands.handleSymbolEntryPoints(args);
             case "memory_map":      return listingCommands.handleMemoryMap();
+            case "memory_info":     return memoryInfoCommands.handleInfo(args);
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
             case "import":          return programCommands.handleImport(args);
@@ -134,6 +141,9 @@ final class CommandDispatcher {
             case "comment_get":     return commentCommands.handleCommentGet(args);
             case "comment_set":     return commentCommands.handleCommentSet(args);
             case "comment_delete":  return commentCommands.handleCommentDelete(args);
+            // Bookmark queries
+            case "bookmark_list":   return bookmarkCommands.handleList();
+            case "bookmark_get":    return bookmarkCommands.handleGet(args);
             // Graph commands
             case "graph_calls":     return graphCommands.handleGraphCalls(args);
             case "graph_callers":   return graphCommands.handleGraphCallers(args);

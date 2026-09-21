@@ -124,7 +124,7 @@ fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
             .find(|m| m["name"] == block)
             .unwrap();
         let expected = json!({"name": block, "permissions": expected["permissions"]});
-        let got = row(&["function", "get", name]);
+        let mut got = row(&["function", "get", name]);
         assert_eq!(got["is_external"], false);
         assert_eq!(got["entry_memory"], expected);
         let from_list = listed
@@ -133,6 +133,7 @@ fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
             .iter()
             .find(|f| f["name"] == name)
             .unwrap();
+        assert!(got.as_object_mut().unwrap().remove("body_ranges").is_some());
         assert_eq!(from_list, &got);
     }
     assert_eq!(

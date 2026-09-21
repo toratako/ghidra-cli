@@ -21,12 +21,14 @@ ghidra-cli
 │   ├── delete
 │   ├── info
 │   ├── stats
+│   ├── list-relocations
 │   ├── import
 │   ├── export
 │   └── save
 ├── function
 │   ├── list
 │   ├── get
+│   ├── list-calling-conventions
 │   ├── disassemble
 │   ├── rename
 │   ├── create
@@ -49,6 +51,7 @@ ghidra-cli
 │   └── rename
 ├── memory
 │   ├── map
+│   ├── info
 │   ├── read
 │   └── write
 ├── xref
@@ -94,6 +97,9 @@ ghidra-cli
 │   ├── get
 │   ├── set
 │   └── delete
+├── bookmark
+│   ├── list
+│   └── get
 ├── find
 │   ├── string
 │   ├── text
@@ -131,4 +137,4 @@ ghidra-cli
 └── setup
 ```
 
-119 command nodes (excluding the root), 0 aliases.
+125 command nodes (excluding the root), 0 aliases.

@@ -66,6 +66,35 @@ fn call_graph_fixture() -> Value {
     json!({"node_count": nodes.len(), "edge_count": edges.len(), "nodes": nodes, "edges": edges})
 }
 
+fn api_list_fixture(command: &str) -> (&'static str, Vec<Value>) {
+    match command {
+        "bookmark_list" | "bookmark_get" => (
+            "bookmarks",
+            ["zeta", "alpha", "beta"]
+                .into_iter()
+                .map(|comment| json!({"address": "overlay:0x1000", "type": "Note", "category": "Review", "comment": comment}))
+                .collect(),
+        ),
+        "program_list_relocations" => (
+            "relocations",
+            ["zeta", "alpha", "beta"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, symbol_name)| json!({"address": format!("0x{:x}", 0x1000 + i), "symbol_name": symbol_name, "status": "APPLIED"}))
+                .collect(),
+        ),
+        "function_list_calling_conventions" => (
+            "calling_conventions",
+            ["zeta", "alpha", "beta"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, name)| json!({"name": name, "is_default": i == 0}))
+                .collect(),
+        ),
+        _ => panic!("unexpected API list command: {command}"),
+    }
+}
+
 struct RecordedBridge {
     root: tempfile::TempDir,
     project: PathBuf,
@@ -158,6 +187,13 @@ impl RecordedBridge {
                     "analysis_option_set" => json!({
                         "name": args["name"], "type": "string", "value": args["value"], "status": "set",
                     }),
+                    "bookmark_list"
+                    | "bookmark_get"
+                    | "program_list_relocations"
+                    | "function_list_calling_conventions" => {
+                        let (key, rows) = api_list_fixture(request["command"].as_str().unwrap());
+                        json!({key: rows, "count": rows.len()})
+                    }
                     "decompile" if args["address"] == "warned" => {
                         json!({
                             "name": "warned", "address": "0x1000",
@@ -173,6 +209,12 @@ impl RecordedBridge {
                     "decompile" => {
                         json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
+                    "memory_info" => json!({
+                        "address": "0x1000", "kind": "instruction",
+                        "instruction": {"address": "0x1000", "end": "0x1001", "size": 2, "offset": 0, "mnemonic": "MOV"},
+                        "data": null, "function": {"name": "main", "address": "0x1000"},
+                        "memory": {"name": "code", "start": "0x1000", "end": "0x1fff", "permissions": "rx", "initialized": true},
+                    }),
                     "read_memory" => json!({
                         "address": args["address"], "size": 8, "hex": "0000000001000000",
                         "pointers": [
@@ -3994,6 +4036,205 @@ fn memory_read_preserves_bytes_and_pointers_with_output_options() {
             assert_eq!(domain[0]["args"]["program"], "B");
             assert_eq!(domain[1]["command"], "read_memory");
             assert_eq!(domain[1]["args"], json!({"address": "0x1000", "size": 8}));
+        }
+    }
+}
+
+#[test]
+fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
+    let bridge = RecordedBridge::new();
+    for (command, wire, field) in [
+        (vec!["bookmark", "list"], "bookmark_list", "comment"),
+        (
+            vec!["bookmark", "get", "overlay:0x1000"],
+            "bookmark_get",
+            "comment",
+        ),
+        (
+            vec!["program", "list-relocations"],
+            "program_list_relocations",
+            "symbol_name",
+        ),
+        (
+            vec!["function", "list-calling-conventions"],
+            "function_list_calling_conventions",
+            "name",
+        ),
+    ] {
+        let (key, rows) = api_list_fixture(wire);
+        let filter = format!("{field}=beta");
+        for (flags, expected) in [
+            (vec![], json!([rows[0]])),
+            (vec!["--limit", "0"], json!(rows)),
+            (vec!["--limit", "2"], json!([rows[0], rows[1]])),
+            (vec!["--filter", &filter], json!([rows[2]])),
+            (vec!["--offset", "1"], json!([rows[1]])),
+            (vec!["--sort", field], json!([rows[1]])),
+            (vec!["--count"], json!(3)),
+            (vec!["--filter", &filter, "--count"], json!(1)),
+            (vec!["--offset", "1", "--limit", "1", "--count"], json!(1)),
+            (
+                vec![
+                    "--sort", field, "--offset", "1", "--limit", "1", "--fields", field,
+                ],
+                json!([{field: "beta"}]),
+            ),
+        ] {
+            let args: Vec<_> = command
+                .iter()
+                .copied()
+                .chain(["--program", "B"])
+                .chain(flags.iter().copied())
+                .collect();
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let actual = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                        .unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                let expected = if batch && flags.is_empty() {
+                    json!({key: expected, "count": expected.as_array().unwrap().len()})
+                } else {
+                    expected.clone()
+                };
+                assert_eq!(actual, expected, "{args:?}, batch={batch}");
+                let requests = bridge.requests.lock().unwrap();
+                let domain: Vec<_> = requests
+                    .iter()
+                    .filter(|r| r["command"] != "bridge_info")
+                    .collect();
+                assert_eq!(domain.len(), 2, "{domain:?}");
+                assert_eq!(domain[0]["command"], "open_program");
+                assert_eq!(domain[0]["args"], json!({"program": "B"}));
+                assert_eq!(domain[1]["command"], wire);
+                if wire == "bookmark_get" {
+                    assert_eq!(domain[1]["args"], json!({"address": "overlay:0x1000"}));
+                } else {
+                    assert!(domain[1].get("args").is_none());
+                }
+            }
+        }
+        let output = bridge
+            .command()
+            .args(command)
+            .args(["--format", "compact", "--limit", "0"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            text.contains("zeta") && text.contains("alpha") && text.contains("beta"),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn memory_info_preserves_nested_details_and_projection_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for target in ["main", "overlay:0x1000"] {
+        for fields in [None, Some("kind,instruction,data,function,memory")] {
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                let mut args = vec!["memory", "info", target, "--program", "B"];
+                if let Some(fields) = fields {
+                    args.extend(["--fields", fields]);
+                }
+                let result = if batch {
+                    std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                        .unwrap();
+                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                } else {
+                    bridge.run(&args)
+                };
+                let object = if batch && fields.is_none() {
+                    &result
+                } else {
+                    &result[0]
+                };
+                assert_eq!(object["kind"], "instruction");
+                assert_eq!(object["instruction"]["mnemonic"], "MOV");
+                assert_eq!(object["data"], Value::Null);
+                assert_eq!(object["function"]["name"], "main");
+                assert_eq!(object["memory"]["permissions"], "rx");
+                assert_eq!(object.get("address").is_some(), fields.is_none());
+                let requests = bridge.requests.lock().unwrap();
+                let domain: Vec<_> = requests
+                    .iter()
+                    .filter(|r| r["command"] != "bridge_info")
+                    .collect();
+                assert_eq!(domain.len(), 2, "{domain:?}");
+                assert_eq!(domain[0]["command"], "open_program");
+                assert_eq!(domain[0]["args"], json!({"program": "B"}));
+                assert_eq!(domain[1]["command"], "memory_info");
+                assert_eq!(domain[1]["args"], json!({"address": target}));
+            }
+        }
+    }
+    let output = bridge
+        .command()
+        .args(["memory", "info", "main", "--format", "compact"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains("instruction") && text.contains("MOV") && text.contains("main"),
+        "{text}"
+    );
+}
+
+#[test]
+fn api_reads_honor_project_overrides_in_standalone_and_batch() {
+    let first = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    for (command, wire) in [
+        (vec!["bookmark", "list"], "bookmark_list"),
+        (vec!["bookmark", "get", "0x1000"], "bookmark_get"),
+        (vec!["memory", "info", "main"], "memory_info"),
+        (
+            vec!["program", "list-relocations"],
+            "program_list_relocations",
+        ),
+        (
+            vec!["function", "list-calling-conventions"],
+            "function_list_calling_conventions",
+        ),
+    ] {
+        for batch in [false, true] {
+            first.requests.lock().unwrap().clear();
+            selected.requests.lock().unwrap().clear();
+            let args: Vec<_> = command
+                .iter()
+                .copied()
+                .chain([
+                    "--project",
+                    selected.project.to_str().unwrap(),
+                    "--program",
+                    "B",
+                ])
+                .collect();
+            if batch {
+                std::fs::write(first.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                first.run(&["batch", "batch.txt"]);
+            } else {
+                first.run(&args);
+            }
+            assert!(first
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|r| r["command"] == "bridge_info"));
+            let requests = selected.requests.lock().unwrap();
+            assert_eq!(requests.iter().filter(|r| r["command"] == wire).count(), 1);
+            assert!(requests
+                .iter()
+                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
         }
     }
 }
