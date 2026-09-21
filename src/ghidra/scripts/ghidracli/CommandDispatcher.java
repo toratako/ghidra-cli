@@ -9,6 +9,7 @@ final class CommandDispatcher {
     private final ProgramSession session;
     private final FunctionCommands functionCommands;
     private final ProgramCommands programCommands;
+    private final ProgramExportCommands programExportCommands;
     private final ListingCommands listingCommands;
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
@@ -40,6 +41,7 @@ final class CommandDispatcher {
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
+        programExportCommands = new ProgramExportCommands(session);
         listingCommands = new ListingCommands(session, stringQueries);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
@@ -86,7 +88,7 @@ final class CommandDispatcher {
             case "program_close":   return programCommands.handleProgramClose();
             case "program_save":    return programCommands.handleProgramSave();
             case "program_delete":  return programCommands.handleProgramDelete(args);
-            case "program_export":  return programCommands.handleProgramExport(args);
+            case "program_export":  return programExportCommands.handleProgramExport(args);
             // Find commands
             case "find_string":     return searchCommands.handleFindString(args);
             case "find_text":       return searchCommands.handleFindText(args);

@@ -3,8 +3,15 @@
 All CLI-to-bridge command traffic uses `BridgeClient` in [client.rs](client.rs).
 Typed adapters construct arguments; unsupported adapters can use
 `send_command(command, args)` directly. [protocol.rs](protocol.rs) defines the
-wire structs; [client/transport.rs](client/transport.rs) owns transport and its
-tests. Raw TCP elsewhere is only a liveness probe.
+wire structs; [client/transport.rs](client/transport.rs) owns transport, with tests
+in [client/transport/tests.rs](client/transport/tests.rs). Raw TCP elsewhere is
+only a liveness probe.
+
+Typed adapters remain methods on `BridgeClient`, grouped under `client/`:
+`functions.rs` owns function/decompiler, p-code, xref and graph requests;
+`memory.rs` owns memory and instruction operations; `annotations.rs` owns
+symbols, types, tags, bookmarks and comments; `program.rs` owns program lifecycle
+and analysis; `search.rs` owns strings and searches; `scripts.rs` owns scripts.
 
 ## Connection and timeout boundaries
 

@@ -7,7 +7,6 @@ pub mod cli;
 #[path = "error.rs"]
 pub mod error;
 
-#[path = "config.rs"]
 pub mod config;
 
 #[path = "ipc/mod.rs"]

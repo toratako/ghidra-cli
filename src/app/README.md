@@ -5,6 +5,10 @@ and error/exit reporting; these private modules own workflows. `src/cli.rs` owns
 the command tree and re-exports family arguments/query options from `src/cli/`.
 The library exposes that same definition to `xtask` for documentation generation.
 `src/cli/output.rs` owns output format names and parsing; `src/format/` owns rendering.
+Rendering dispatch stays in `format/mod.rs`; `human.rs`, `tabular.rs`, and
+`code.rs` own human-readable, table/CSV/TSV, and C/assembly output respectively.
+CLI parsing tests are grouped under `src/cli/tests/`, with shared command-tree
+and target checks in `src/cli/tests.rs`.
 
 | File | Responsibility |
 |------|----------------|

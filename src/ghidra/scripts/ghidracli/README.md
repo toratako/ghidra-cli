@@ -114,7 +114,8 @@ another consumer or terminate its checkout.
 | Classes | Responsibility |
 |---|---|
 | `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
-| `ProgramCommands`, `ProgramSession` | Program metadata, import/export/analysis, selection and release |
+| `ProgramCommands`, `ProgramSession` | Program metadata, import/analysis, selection and release |
+| `ProgramExportCommands` | Native exporters, artifact receipts, and GZF publication |
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
@@ -215,7 +216,7 @@ remain unavailable and exact integers are serialized as decimal strings.
 Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs
 are included when it returns false. File outputs are outside Program transactions.
-`ProgramCommands` references `Exporter` directly so OSGi imports the exporter
+`ProgramExportCommands` references `Exporter` directly so OSGi imports the exporter
 package even though concrete exporter names are selected dynamically.
 Success receipts include actual artifact sizes (including XML's sidecar), native
 exporter messages and format limitations, without inferring complete coverage.
