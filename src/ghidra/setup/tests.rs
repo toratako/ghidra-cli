@@ -57,6 +57,21 @@ fn fixture_archive(path: &Path, valid: bool) -> Result<()> {
     Ok(())
 }
 
+fn append_archive_file(path: &Path, name: &str, contents: &[u8]) -> Result<()> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?;
+    let mut archive = zip::ZipWriter::new_append(file)?;
+    archive.start_file(
+        name,
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+    )?;
+    archive.write_all(contents)?;
+    archive.finish()?;
+    Ok(())
+}
+
 #[test]
 fn publication_rejects_invalid_archive_and_preserves_existing_tree() -> Result<()> {
     let temp = tempfile::tempdir()?;
@@ -78,6 +93,79 @@ fn publication_rejects_invalid_archive_and_preserves_existing_tree() -> Result<(
 }
 
 #[test]
+fn publication_rejects_unsafe_archive_layouts_without_changing_existing_installation() -> Result<()>
+{
+    for (entry, diagnostic) in [
+        ("../ghidra_test/keep", "Archive contains an invalid path"),
+        (
+            "another_root/keep",
+            "Archive contains multiple root directories",
+        ),
+    ] {
+        let temp = tempfile::tempdir()?;
+        let target = temp.path().join("install");
+        let archive = temp.path().join("distribution.zip");
+        fixture_archive(&archive, true)?;
+        let installed = publish_archive(&archive, &target, true)?;
+        std::fs::write(installed.join("keep"), "existing data")?;
+        // Earlier entries form a complete installation, so failure must still
+        // discard them. A traversal would reach the live tree beside staging.
+        append_archive_file(&archive, entry, b"overwritten")?;
+
+        let error = publish_archive(&archive, &target, true).unwrap_err();
+        assert!(error.to_string().contains(diagnostic), "{error:#}");
+        assert_eq!(
+            std::fs::read_to_string(installed.join("keep"))?,
+            "existing data"
+        );
+        assert!(crate::ghidra::bridge::find_headless_script(&installed).is_ok());
+        // Only the original installation and its publication lock remain.
+        assert_eq!(std::fs::read_dir(&target)?.count(), 2);
+    }
+    Ok(())
+}
+
+#[test]
+fn publication_discards_partial_extraction_after_checksum_failure_and_allows_retry() -> Result<()> {
+    use std::io::{Seek, SeekFrom};
+
+    let temp = tempfile::tempdir()?;
+    let target = temp.path().join("install");
+    let archive = temp.path().join("distribution.zip");
+    fixture_archive(&archive, true)?;
+    let language = "ghidra_test/languages/test.sla";
+    append_archive_file(&archive, language, b"compiled language")?;
+    let valid_archive = std::fs::read(&archive)?;
+    let data_start = {
+        let mut zip = zip::ZipArchive::new(File::open(&archive)?)?;
+        let entry = zip.by_name(language)?;
+        entry.data_start().unwrap()
+    };
+    {
+        let mut file = std::fs::OpenOptions::new().write(true).open(&archive)?;
+        file.seek(SeekFrom::Start(data_start))?;
+        file.write_all(b"!")?;
+    }
+
+    // The corrupt member comes after every required runtime file. Accepting
+    // that partially extracted tree would leave an unusable language installed.
+    let error = publish_archive(&archive, &target, true).unwrap_err();
+    assert!(error.to_string().contains("checksum"), "{error:#}");
+    assert_eq!(std::fs::read_dir(&target)?.count(), 0);
+
+    std::fs::write(&archive, valid_archive)?;
+    let installed = publish_archive(&archive, &target, true)?;
+    assert_eq!(installed, dunce::canonicalize(target.join("ghidra_test"))?);
+    assert_eq!(
+        std::fs::read(installed.join("languages/test.sla"))?,
+        b"compiled language"
+    );
+    assert!(crate::ghidra::bridge::find_headless_script(&installed).is_ok());
+    assert_eq!(std::fs::read_dir(&target)?.count(), 2);
+    Ok(())
+}
+
+#[test]
 fn concurrent_publication_reuses_existing_installation() -> Result<()> {
     let temp = tempfile::tempdir()?;
     let archive = temp.path().join("valid.zip");
@@ -93,11 +181,14 @@ fn concurrent_publication_reuses_existing_installation() -> Result<()> {
     let paths: Vec<_> = workers.into_iter().map(|w| w.join().unwrap()).collect();
     assert!(paths.iter().all(|p| p == &paths[0]));
     std::fs::write(paths[0].join("keep"), "existing data")?;
+    let runtime = paths[0].join("Ghidra/Framework/Utility/lib/Utility.jar");
+    std::fs::write(&runtime, "local runtime")?;
     assert_eq!(publish_archive(&archive, &target, true)?, paths[0]);
     assert_eq!(
         std::fs::read_to_string(paths[0].join("keep"))?,
         "existing data"
     );
+    assert_eq!(std::fs::read_to_string(runtime)?, "local runtime");
     Ok(())
 }
 

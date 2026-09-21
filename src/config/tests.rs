@@ -127,6 +127,42 @@ fn concurrent_updates_preserve_every_increment() {
     assert_eq!(Config::load_from(&path).unwrap().default_limit, Some(1040));
 }
 
+#[cfg(unix)]
+#[test]
+fn save_and_update_preserve_shared_config_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.yaml");
+    fs::write(&path, "default_project: original\n").unwrap();
+    // A replacement must remain group-readable without opening it to everyone.
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+
+    Config {
+        default_project: Some("saved-project".into()),
+        ..Config::default()
+    }
+    .save_at(&path)
+    .unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+
+    Config::update_at(&path, |config| {
+        config.default_limit = Some(37);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let restored = Config::load_from(&path).unwrap();
+    assert_eq!(restored.default_project.as_deref(), Some("saved-project"));
+    assert_eq!(restored.default_limit, Some(37));
+}
+
 #[test]
 fn save_and_update_replace_config_while_previous_version_is_open() {
     use std::io::Read;

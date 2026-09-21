@@ -167,17 +167,85 @@ fn editing_capabilities_are_required_before_program_selection_or_edits() {
 }
 
 #[test]
-fn pending_save_recovery_does_not_require_atomic_edit_capability() {
-    let bridge = RecordedBridge::with_info(json!({"auto_save": true}));
+fn pending_save_recovery_preserves_selection_and_bypasses_edit_capabilities() {
+    for program in [None, Some("B")] {
+        let bridge = RecordedBridge::with_info(json!({"auto_save": true}));
+        std::fs::write(
+            bridge.root.path().join("config.yaml"),
+            "default_program: configured-startup-program\n",
+        )
+        .unwrap();
+        let mut command = bridge.command();
+        command.args(["program", "save"]);
+        if let Some(program) = program {
+            command.args(["--program", program]);
+        }
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{program:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["project"], json!(bridge.project));
+        assert_eq!(result["observed_program"], program.unwrap_or("A"));
+        let mut expected = Vec::new();
+        if let Some(program) = program {
+            expected.push(json!({"command": "open_program", "args": {"program": program}}));
+        }
+        expected.push(json!({"command": "program_save"}));
+        assert_eq!(
+            *bridge.requests.lock().unwrap(),
+            expected,
+            "Recovery must save the selected program without capability checks, restart, or replay"
+        );
+    }
+}
+
+#[test]
+fn explicit_save_failure_preserves_recovery_details_and_running_bridge() {
+    let bridge = RecordedBridge::with_info(json!({"test_save_failure": true}));
     let output = bridge.command().args(["program", "save"]).output().unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let requests = bridge.requests.lock().unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["message"], "Save failed");
+    assert_eq!(error["detail"], json!({"save_failed": true}));
     assert_eq!(
-        requests.len(),
-        1,
-        "Save must not restart or replay: {requests:?}"
+        *bridge.requests.lock().unwrap(),
+        vec![json!({"command": "program_save"})],
+        "A failed save must return to the caller without an implicit retry or restart"
     );
-    assert_eq!(requests[0]["command"], "program_save");
+    assert_eq!(
+        super::bridge::read_port_file(&bridge.project).unwrap(),
+        Some(bridge.port)
+    );
+    assert_eq!(
+        super::bridge::read_pid_file(&bridge.project).unwrap(),
+        Some(std::process::id())
+    );
+    assert_eq!(bridge.run(&["bridge", "ping"])["responsive"], true);
+}
+
+#[test]
+fn starting_a_running_bridge_keeps_its_program_selection() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_program: configured-startup-program\n",
+    )
+    .unwrap();
+    for args in [
+        vec!["bridge", "start"],
+        vec!["bridge", "start", "--program", "B"],
+    ] {
+        let result = bridge.run(&args);
+        assert_eq!(result["state"], "running");
+        assert_eq!(result["project"], json!(bridge.project));
+        assert_eq!(result["port"], bridge.port);
+        assert!(
+            bridge.requests.lock().unwrap().is_empty(),
+            "Start options must not reopen a program or restart an existing bridge"
+        );
+    }
+    assert_eq!(bridge.run(&["program", "info"])[0]["observed_program"], "A");
 }
 
 #[test]

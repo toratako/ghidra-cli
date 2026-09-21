@@ -1,6 +1,106 @@
 use super::isolated_command;
 
 #[test]
+fn config_set_preserves_persisted_values_despite_invocation_overrides() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    let mut expected = ghidra_cli::config::Config {
+        ghidra_project_dir: Some(temp.path().join("configured-projects")),
+        java_home: Some(temp.path().join("configured-jdk")),
+        default_project: Some("saved-project".into()),
+        default_program: Some("saved-program".into()),
+        default_limit: Some(37),
+        launch_timeout_secs: Some(240),
+        ..Default::default()
+    };
+    std::fs::write(&config_path, serde_yaml::to_string(&expected).unwrap()).unwrap();
+    let requested = temp.path().join("saved project's directory");
+
+    let output = isolated_command(&temp)
+        .env(
+            "GHIDRA_PROJECT_DIR",
+            temp.path().join("environment-projects"),
+        )
+        .env("GHIDRA_CLI_JAVA_HOME", temp.path().join("environment-jdk"))
+        .arg("--projects-dir")
+        .arg(temp.path().join("invocation-projects"))
+        .arg("--java-home")
+        .arg(temp.path().join("invocation-jdk"))
+        .args([
+            "--project",
+            "invocation-project",
+            "--program",
+            "invocation-program",
+        ])
+        .args(["config", "set", "ghidra_project_dir"])
+        .arg(&requested)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["key"], "ghidra_project_dir");
+
+    expected.ghidra_project_dir = Some(requested.clone());
+    let persisted: serde_json::Value =
+        serde_yaml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert_eq!(persisted, serde_json::to_value(&expected).unwrap());
+
+    // A fresh invocation must resolve the saved target, not a previous override.
+    let output = isolated_command(&temp)
+        .env_remove("GHIDRA_PROJECT_DIR")
+        .args(["bridge", "status"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(status["state"], "stopped");
+    assert_eq!(
+        status["project"],
+        serde_json::json!(requested.join("saved-project"))
+    );
+}
+
+#[test]
+fn config_reset_recovers_malformed_yaml_without_saving_invocation_overrides() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    std::fs::write(
+        &config_path,
+        "default_program: saved-program\ndefault_limit: [\n",
+    )
+    .unwrap();
+
+    let output = isolated_command(&temp)
+        .env("GHIDRA_CLI_JAVA_HOME", temp.path().join("environment-jdk"))
+        .arg("--projects-dir")
+        .arg(temp.path().join("invocation-projects"))
+        .arg("--java-home")
+        .arg(temp.path().join("invocation-jdk"))
+        .args(["config", "reset"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["message"], "Configuration reset to defaults");
+
+    let expected = serde_json::to_value(ghidra_cli::config::Config::default()).unwrap();
+    let persisted: serde_json::Value =
+        serde_yaml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert_eq!(persisted, expected);
+    let output = isolated_command(&temp)
+        .args(["config", "list"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        expected
+    );
+}
+
+#[test]
 fn unknown_config_keys_fail_without_changing_the_file() {
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");

@@ -292,11 +292,15 @@ fn eof_after_send_reports_unknown_outcome_without_replay() {
         BufReader::new(&stream).read_line(&mut request).unwrap();
         assert!(request.contains("comment_set"));
         // The request was accepted, but its response is lost.
+        // Keep the listener alive so an unsafe retry remains observable.
+        listener
     });
     let error = client
         .send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)))
         .unwrap_err();
-    server.join().unwrap();
+    let listener = server.join().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
     assert!(error
         .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
         .is_some());
@@ -322,15 +326,54 @@ fn truncated_reply_retains_parse_failure_and_unknown_outcome() {
         stream
             .write_all(b"{\"status\":\"success\",\"data\":")
             .unwrap();
+        listener
     });
     let error = client
         .send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)))
         .unwrap_err();
-    server.join().unwrap();
+    let listener = server.join().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
     assert!(error
         .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
         .is_some());
     assert!(error.downcast_ref::<serde_json::Error>().is_some());
+}
+
+#[test]
+fn mutation_read_timeout_retains_its_type_without_replay() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port());
+    let args = serde_json::json!({"address": "0x1000", "text": "reviewed"});
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut request = String::new();
+        BufReader::new(&stream).read_line(&mut request).unwrap();
+        // The accepted job can still be running after the client gives up.
+        // Return the open socket to keep it alive until the client times out.
+        (listener, stream, request)
+    });
+    let error = client
+        .send_command_with_timeout(
+            "comment_set",
+            Some(args.clone()),
+            Some(Duration::from_millis(100)),
+        )
+        .unwrap_err();
+    let (listener, _pending_job, request) = server.join().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&request).unwrap(),
+        serde_json::json!({"command": "comment_set", "args": args})
+    );
+    let timeout = error
+        .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+        .expect("callers must still recognize a wait timeout for exit code 75");
+    assert_eq!(timeout.command, "comment_set");
+    listener.set_nonblocking(true).unwrap();
+    assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
 }
 
 #[test]
