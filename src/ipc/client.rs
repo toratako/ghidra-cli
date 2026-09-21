@@ -608,6 +608,18 @@ impl BridgeClient {
         )
     }
 
+    /// Set the return type, preserving uncommitted parameters through decompilation.
+    pub fn function_set_return_type(
+        &self,
+        target: &str,
+        return_type: &str,
+    ) -> Result<serde_json::Value> {
+        self.send_decompile_command(
+            "function_set_return_type",
+            json!({"target": target, "return_type": return_type}),
+        )
+    }
+
     pub fn function_set_noreturn(&self, target: &str, value: bool) -> Result<serde_json::Value> {
         self.send_command(
             "function_set_noreturn",

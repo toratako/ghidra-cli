@@ -17,9 +17,10 @@ a sent mutation could duplicate it. Read waits include time in the program queue
 The write timeout is 30s; configurable read/connect/long-operation budgets are in
 [the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
 in the shared decompiler adapter because it is a Ghidra parameter, not a socket budget.
-`decompile`, high `pcode_function`, and `function_edit_var` share the native budget
-and long-operation socket wait. Their `timeout_secs` argument defaults to zero
-(unbounded); numeric integers through 2,147,483 seconds are accepted. Reject larger
+`decompile`, high `pcode_function`, `function_edit_var`, and
+`function_set_return_type` share the native budget and long-operation socket wait.
+Their `timeout_secs` argument defaults to zero (unbounded); numeric integers
+through 2,147,483 seconds are accepted. Reject larger
 values before Ghidra's signed-int seconds-to-milliseconds conversion can overflow.
 EOF without a reply is an error; read timeouts exit 75 without cancelling the job.
 Shutdown uses the caller's remaining total deadline for connect, write, and read;
@@ -127,6 +128,16 @@ hex `original_bytes`. Multiple relocations at one address remain separate.
 `function_list_calling_conventions` returns `{calling_conventions, count}` with
 `name` and `is_default` from the selected Program's compiler specification.
 These lists fetch complete inputs for the common Rust query pipeline.
+
+`function_set_return_type` preserves uncommitted input parameters before fixing
+the return type. Newly inferred parameter types remain undefined where this
+preserves their ABI storage; types needed for their ABI placement are retained.
+Existing explicit parameter metadata is preserved. `parameters_committed` counts
+newly saved inferred parameters, or zero when none were added. Thunk edits report
+the ultimate metadata owner as `effective_function` and `effective_address`.
+Required decompilation or parameter preservation failures roll back the request;
+an explicit complete `function_set_signature` is the recovery path when the
+parameter definition cannot be inferred safely.
 
 `memory_info` takes a name-or-address `address` and returns one object with the
 resolved `address` and `kind`: `instruction`, `data`, `undefined`, or `unmapped`.

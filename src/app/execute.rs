@@ -152,13 +152,9 @@ pub(super) fn execute_via_bridge(
                         "signature": args.signature,
                     })),
                 ),
-                FunctionCommands::SetReturnType(args) => client.send_command(
-                    "function_set_return_type",
-                    Some(json!({
-                        "target": args.target,
-                        "return_type": args.return_type,
-                    })),
-                ),
+                FunctionCommands::SetReturnType(args) => {
+                    client.function_set_return_type(&args.target, &args.return_type)
+                }
                 FunctionCommands::SetCallingConvention(args) => client.send_command(
                     "function_set_calling_convention",
                     Some(json!({

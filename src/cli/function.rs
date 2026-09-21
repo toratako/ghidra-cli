@@ -22,7 +22,7 @@ pub enum FunctionCommands {
     Delete(FunctionDeleteArgs),
     /// Set function signature from C-style string
     SetSignature(SetSignatureArgs),
-    /// Set function return type
+    /// Set function return type while preserving inferred parameters
     SetReturnType(SetReturnTypeArgs),
     /// Set function calling convention
     SetCallingConvention(SetCallingConventionArgs),

@@ -116,6 +116,7 @@ another consumer or terminate its checkout.
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
 | `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
+| `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
@@ -139,6 +140,16 @@ Errors use `error` for messages and `detail` for diagnostics. Additional fields
 take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
+
+`FunctionReturnType` decompiles internal `DEFAULT` signatures before a return edit
+can lock an empty or partial input declaration. Rebuilding retains existing
+parameter metadata and stores new inferred types as sized undefined types only
+when the calling convention assigns the same parameter storage. Keep required
+floating-point/aggregate types instead of switching to custom storage just to
+relax their types. Parameter conflicts fail the request without force-removing
+locals or renaming symbols; the GUI's commit helper permits both side effects.
+Existing explicit declarations, external functions, and undefined return types
+do not require decompilation; undefined return types do not raise signature source.
 
 `AddressCodec` owns strict parsing and address serialization. The
 [wire address contract](../../../ipc/README.md#addresses-and-symbol-targets) covers space qualification, numeric-looking space names, and word remainders.

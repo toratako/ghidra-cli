@@ -2001,7 +2001,7 @@ comment set 0x1000 'Header length includes the prefix'
             ),
             (
                 json!("function_set_return_type"),
-                json!({"target": "parse_header", "return_type": "unsigned long"}),
+                json!({"target": "parse_header", "return_type": "unsigned long", "timeout_secs": 0}),
             ),
             (
                 json!("comment_set"),
@@ -2016,6 +2016,10 @@ fn decompiler_commands_share_native_timeout_configuration() {
     let bridge = RecordedBridge::new();
     for (args, wire) in [
         (vec!["decompile", "main"], "decompile"),
+        (
+            vec!["function", "set-return-type", "main", "--type", "void"],
+            "function_set_return_type",
+        ),
         (
             vec!["pcode", "function", "main", "--high"],
             "pcode_function",

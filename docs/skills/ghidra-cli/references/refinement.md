@@ -20,9 +20,13 @@ ghidra-cli function set-noreturn abort_path --project target
 
 `function rename` uses `--address` to disambiguate duplicate names.
 
+`function set-return-type` can save inferred parameter locations without fixing
+their types. Use `function set-signature` when the complete prototype is known.
+
 Use `function get --with-signature` to inspect the current Program definition
 and its argument/return storage, including hidden arguments and
-indirect returns.
+indirect returns. Saved undefined parameter types can still be refined in
+decompiler output.
 
 `function edit-var` selects a local variable or parameter by exact name;
 ambiguous names return candidates. `before` describes the decompiler's variable,

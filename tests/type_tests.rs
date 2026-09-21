@@ -28,6 +28,9 @@ mod resolution;
 #[path = "types/signatures.rs"]
 mod signatures;
 
+#[path = "types/return_types.rs"]
+mod return_types;
+
 #[path = "types/unions.rs"]
 mod unions;
 

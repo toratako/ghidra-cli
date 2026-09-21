@@ -105,6 +105,7 @@ final class FunctionSignatureCommands {
         String returnTypeName = getArgString(args, "return_type");
         if (target == null || returnTypeName == null)
             return errorResult("target and return_type required");
+        int timeoutSecs = getDecompileTimeoutArg(args);
 
         try {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
@@ -114,7 +115,8 @@ final class FunctionSignatureCommands {
             if (returnType == null)
                 return errorResult("Return type not found: " + returnTypeName);
 
-            func.setReturnType(returnType, SourceType.USER_DEFINED);
+            Function effective = func.isThunk() ? func.getThunkedFunction(true) : func;
+            int committed = new FunctionReturnType(session).set(effective, returnType, timeoutSecs);
 
             String sig = null;
             try { sig = func.getPrototypeString(false, false); } catch (Exception e) {}
@@ -122,8 +124,14 @@ final class FunctionSignatureCommands {
             JsonObject result = new JsonObject();
             result.addProperty("status", "return_type_set");
             result.addProperty("function", func.getName());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
             result.addProperty("return_type", returnTypeName);
+            result.addProperty("parameters_committed", committed);
             if (sig != null) result.addProperty("signature", sig);
+            if (!effective.equals(func)) {
+                result.addProperty("effective_function", effective.getName());
+                result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+            }
             return result;
         } catch (Exception e) {
             return errorResult("Failed to set return type: " + e.getMessage(), e);
