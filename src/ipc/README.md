@@ -102,6 +102,51 @@ Union fields use zero-based `ordinal` selectors (returned by `type_get`),
 since their offsets overlap. `type_set_field` requires exactly one of struct
 `offset` or union `ordinal`; `type_del_field` uses `field_name` or union `ordinal`.
 
+`bookmark_list` and `bookmark_get` return `{bookmarks, count}` with `address`,
+`type`, `category`, and `comment`. Get takes an explicit `address` and retains
+all types/categories there, including external and unmapped addresses.
+`program_list_relocations` returns `{relocations, count}`; rows retain native
+`address`, numeric `type`, `status`, nullable `symbol_name`/`values`, and nullable
+hex `original_bytes`. Multiple relocations at one address remain separate.
+`function_list_calling_conventions` returns `{calling_conventions, count}` with
+`name` and `is_default` from the selected Program's compiler specification.
+These lists fetch complete inputs for the common Rust query pipeline.
+
+`memory_info` takes a name-or-address `address` and returns one object with the
+resolved `address` and `kind`: `instruction`, `data`, `undefined`, or `unmapped`.
+Nullable `instruction`/`data` describe the containing top-level code unit with
+`address`, inclusive `end`, byte `size`, and byte `offset` from its start;
+instruction adds `mnemonic`, data adds `type`/`type_path`. Nullable `function`
+has its name/entry address; nullable `memory` has block name, permissions,
+inclusive bounds, and `initialized`. Undefined listing state and uninitialized
+memory are independent. `initialized` is the native block flag; byte/bit-mapped
+blocks report false even when their backing bytes are readable. This query does
+not decode data values.
+
+Function detail (`get_function`) includes inclusive `body_ranges` without
+adding them to function lists. Xref rows include native `operand_index`,
+`source`, and `primary`; operand `-1` is the mnemonic reference. Incoming
+deduplication includes the operand so distinct references stay selectable.
+`program_info` adds nullable `executable_md5` and `executable_sha256` from
+imported-file metadata, not from current memory bytes.
+
+Type components include zero-based `ordinal` and `is_bitfield`. Bitfields expose
+effective `bit_size`, `bit_offset` within the component storage, and
+`base_type`/`base_type_path`; these four fields are null for ordinary components.
+The byte `offset`/`size` describe Ghidra's minimal component storage, so a bit
+offset is not relative to the entire base type or structure.
+
+Decompilation includes `basic_block_count` from HighFunction p-code blocks,
+or null when that result is unavailable. `with_jump_tables: true` adds
+`jump_tables: [{switch_address, cases: [{address, label, is_default}]}]`.
+Case order and raw signed 32-bit Java labels retain the native API result;
+they do not establish the source expression's signedness or original width.
+`is_default` follows Ghidra's switch analyzer: the native `0xbad1abe1` label or
+the first destination beyond the label array. Later missing labels stay null.
+An empty array means no tables were returned; null means HighFunction is
+unavailable. Without the flag, the field is omitted. Explicit C output remains
+code-only.
+
 `graph_callers` and `graph_callees` take `function`, `depth`, and `limit` and
 return `{target, calls, count}`. Each call has `caller`, nullable `caller_address`,
 `callee`, `callee_address`, `call_site`, `destination`, `via`, `type`, and `depth`. Function names

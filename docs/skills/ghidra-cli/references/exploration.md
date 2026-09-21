@@ -6,6 +6,7 @@
 ghidra-cli function list --fields name,address,size --limit 100 --project target
 ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
+ghidra-cli decompile dispatch --with-jump-tables --project target
 ghidra-cli decompile main --format c --project target
 ghidra-cli graph callees main --project target
 ghidra-cli xref to main --project target
@@ -25,6 +26,10 @@ user-written notes; `source: decompiler` identifies an API diagnostic.
 `entry_memory` describes the function's entry block, not every body range; null
 means no block covers that address. `is_external` identifies Ghidra external
 functions, not local thunks that call them.
+
+`basic_block_count` counts optimized decompiler blocks. Jump tables contain
+only recovered destinations; an empty result does not rule out an indirect
+branch. Use `is_default` to identify default destinations.
 
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
@@ -103,10 +108,20 @@ For instruction-text matching and disassembly ranges, see
 ```bash
 ghidra-cli symbol list --limit 100 --project target
 ghidra-cli memory map --project target
+ghidra-cli memory info 0x401003 --project target
 ghidra-cli memory read 0x401000 64 --project target
 ```
 
 For byte edits, see [patching](low-level.md#patching).
+
+## Analysis diagnostics
+
+```bash
+ghidra-cli bookmark list --filter 'type=Error' --project target
+ghidra-cli bookmark get 0x401000 --project target
+```
+
+Bookmarks help locate analysis problems after `analysis run`.
 
 ## Query controls
 

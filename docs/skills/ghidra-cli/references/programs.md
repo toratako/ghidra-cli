@@ -7,6 +7,7 @@ ghidra-cli project list
 ghidra-cli project info target
 ghidra-cli program list --project target
 ghidra-cli program info --project target --program target.bin
+ghidra-cli program list-relocations --filter 'status=FAILURE' --project target
 ghidra-cli bridge status --project target
 ghidra-cli job list --project target
 ghidra-cli job get 42 --project target

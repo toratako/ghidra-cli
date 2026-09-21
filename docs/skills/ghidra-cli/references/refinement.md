@@ -11,6 +11,7 @@ ghidra-cli function set-signature parse_header \
 ghidra-cli function edit-var parse_header --var local_10 \
   --name header --type "Header *" --project target
 ghidra-cli function set-return-type abort_path --type void --project target
+ghidra-cli function list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-noreturn abort_path --project target
 ```

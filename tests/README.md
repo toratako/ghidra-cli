@@ -92,6 +92,8 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [daemon/transaction.rs](daemon/transaction.rs) | Late-error/cancellation rollback, pending edits after save failure, foreign/leaked transactions, preview isolation; test-owned Java failure probes, no production hooks |
 | [daemon/decompiler.rs](daemon/decompiler.rs) | Native process reuse, invalidation after save/rollback, cancellation/timeout recovery, monitor isolation and release |
 | [readonly/decompile.rs](readonly/decompile.rs) | Warning-comment provenance, API-message extraction, entry block permissions, external/unmapped functions, and unchanged function-list scope |
+| [readonly/decompile_details.rs](readonly/decompile_details.rs), [readonly/function_details.rs](readonly/function_details.rs) | Recovered jump tables, decompiler block counts, disjoint body ranges, and available calling conventions |
+| [readonly/bookmarks.rs](readonly/bookmarks.rs), [readonly/memory_info.rs](readonly/memory_info.rs), [readonly/program_metadata.rs](readonly/program_metadata.rs) | Bookmark preservation, address classification, relocation evidence, and original executable hashes |
 | [daemon/analysis.rs](daemon/analysis.rs) | Native option types/defaults/choices, settings-only edits versus full reanalysis, rollback and reopen persistence |
 | [patch/memory_write.rs](patch/memory_write.rs) | Preserved component settings and instructions, pointer references across widths/byte orders, string storage, shared memory, overlays and delay slots |
 | [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion |

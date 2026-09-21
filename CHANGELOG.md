@@ -7,6 +7,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `bookmark list/get` for analysis diagnostics and user notes, and
+  `memory info TARGET` for listing state and containing object boundaries.
+- Add `program list-relocations` with native relocation evidence and
+  `function list-calling-conventions` with the selected program's default.
+- Expose disjoint body ranges in `function get`, operand/source/primary metadata
+  in xrefs, original executable hashes in `program info`, and component ordinals
+  and bitfield layout in `type get`.
+- Add decompiler basic-block counts and `decompile --with-jump-tables` for
+  recovered case destinations and default branches.
 - Add structured decompilation warnings with their source, message, and available
   address. Successful decompilation remains successful when warnings are present.
 - Add `is_external` and `entry_memory` to function queries and decompilation,
@@ -91,6 +100,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve references from distinct operands to the same destination in `xref to`.
 - Report Ghidra diagnostics instead of inferring .NET code from bad-instruction
   output. C-only output sends diagnostics absent from its comments to stderr.
 - Accept adjacent pointer return declarators such as `Entry *lookup(...)` in
