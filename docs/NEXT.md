@@ -16,14 +16,12 @@ CLI/module contracts, implementation requirements, and acceptance criteria.
 
 ## Next slices
 
-| Slice | Purpose and dependency |
-|---|---|
-| Fresh-process verification | Identity/invariant checks before durable success; enables verified writes and corpus scheduling |
-| Multi-source modules | Checked-in sibling sources/JARs, content-addressed cache, structured diagnostics, read/write policy |
-| Durable corpus scheduler | Content-isolated projects with transactional state, resume/dedup, budgets, and quarantine; separate from `batch` |
-| RE-native bulk data | Server-side queries, streaming, per-function export, and verified bulk mutations |
-| Capability negotiation | Versioned feature/identity handshake; explicit mismatch errors |
-
+See [verification](PLAN.md#1-fresh-process-verification),
+[modules](PLAN.md#2-multi-source-module-runtime),
+[corpus scheduling](PLAN.md#3-durable-corpus-scheduler),
+[queries/streaming](PLAN.md#4-server-side-query-and-streaming),
+[bulk edits](PLAN.md#5-transactional-bulk-apply), and
+[capabilities](PLAN.md#6-protocol-capabilities) for contracts and acceptance.
 Scheduler state/protocol must not depend on eventual CLI-versus-service packaging.
 
 ## Open design questions

@@ -136,19 +136,15 @@ take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
 
-`AddressCodec` owns strict parsing and address serialization. Numeric colon
-components require `0x`/`0X`, with optional address-space qualification. Segmented
-output always includes the space name and preserves both components, for example
-`ram:0x1234:0x0005`; a registered numeric-looking space name takes precedence
-when parsing an unqualified-looking input. Word addresses preserve `.byte` remainders.
+`AddressCodec` owns strict parsing and address serialization. The
+[wire address contract](../../../ipc/README.md#addresses-and-symbol-targets) covers space qualification, numeric-looking space names, and word remainders.
 Use `format(Address)` for address fields and generated diagnostics, and
 `parse(AddressFactory, String)` for address-only inputs. `isExplicit` classifies
 explicit-looking input, including malformed tokens; `isValidSyntax` validates
 syntax when no program factory exists, such as import base-address options.
-`AddressResolver` looks up unprefixed input as exact names, never bare-hex or
-`FUN_...` address inference. Do not pass user address text directly to Ghidra's
-permissive factory parser. Instruction/decompiler text, byte strings, numeric
-offsets, and user-script stdout keep their native representation.
+`AddressResolver` owns exact-name lookup. Do not pass user address text directly
+to Ghidra's permissive factory parser. Instruction/decompiler text, byte strings,
+numeric offsets, and user-script stdout keep their native representation.
 
 `StructureFields` stages offset edits on a detached structure copy, validates
 field boundaries and conflicts, then applies only the target component edit in a
@@ -246,8 +242,8 @@ Program and request monitor. Reuse requires the same Program object and modifica
 number; any change, including saved edits or rollback, causes reopening on next use.
 Results are not retained. Ghidra flushes native function/symbol data after each
 decompilation; reopening also refreshes language and address-space initialization.
-Native decompilation failure or cancellation closes the interface. Switching/closing
-saves first, then synchronously closes the decompiler before releasing the Program;
+Failure or cancellation closes the interface. Switching/closing saves first,
+then synchronously closes the decompiler before releasing the Program;
 `dispose()` alone defers cleanup to Ghidra's disposer thread. A failed save retains
 the live session.
 
@@ -257,22 +253,14 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--program`; supply the name to the importer.
 
-`analysis_run` is the sole explicit analysis request. Ghidra's `analyzeAll()`
-initializes options and schedules full reanalysis itself, so callers must not
-separately call `reAnalyzeAll(null)`. The CLI's `analysis run` receipt retains
-`command/status/data` with the saved program name and function count.
+Ghidra's `analyzeAll()` initializes options and schedules full reanalysis itself;
+`analysis_run` must not separately call `reAnalyzeAll(null)`.
 
-`AnalysisCommands` reads Program.ANALYSIS_PROPERTIES for `analysis_option_list`,
-`analysis_option_get`, and `analysis_option_set`. Names include dotted nested
-options and analyzer enablement switches. Settings use their existing native
-types, defaults and descriptions; enum choices use constant names, not display
-labels. Set validates the full input before `putObject`; unknown names never
-create options. Boolean, int, long, float, double, string, file and enum values
-are settable; other native types remain visible with `settable: false`.
-Numeric parsing rejects overflow and non-finite floating-point values. Settings
-use the ordinary atomic request/save boundary and never schedule analysis.
-Test coverage in `tests/daemon/analysis.rs` compares native values in a separate
-saved database, invalid-input preservation, and close/reopen persistence.
+`AnalysisCommands` reads `Program.ANALYSIS_PROPERTIES`, preserving native types,
+defaults and descriptions. Validate before `putObject`; unknown names must not
+create options. Setting options never schedules analysis. See the
+[wire contract](../../../ipc/README.md) for value representation and
+`tests/daemon/analysis.rs` for independent saved-database and persistence checks.
 
 `ProgramSession.analyzeAll()` and detached import analysis check cancellation
 before recording Ghidra's standard analyzed flag. The ordinary request/import
@@ -302,10 +290,9 @@ for traversal queries and source function nodes for the whole-program graph.
 `find_instruction` scans existing listing instructions using literal text matching
 (`Locale.ROOT` when case-insensitive). It and `disasm_range` share inclusive,
 same-address-space bounds in `AddressResolver.instructionRange`; one-sided search
-bounds stay in the supplied address space. Both check cancellation during iteration
-and have no hidden scan cap. The client sends an uncapped fetch when filtering,
-sorting, counting, or offsetting needs all rows. `disasm_range` has a distinct wire
-name so an older bridge cannot silently ignore `disassemble --end`.
+bounds stay in the supplied address space. Both check cancellation during
+iteration and have no hidden scan cap; see
+[query planning](../../../query/README.md) for fetch limits.
 
 `find_bytes_regex` uses Ghidra's `RegExByteMatcher` and `MemorySearcher` over
 loaded, initialized memory. `SearchCommands` resolves those optional classes
@@ -319,14 +306,10 @@ while serializing hits: native cancellation can otherwise look like successful
 partial results. Cancellation is cooperative and cannot interrupt an individual
 Java regex evaluation. The native implementation uses finite buffers/overlap;
 do not promise unbounded match spans, global anchor semantics, or all overlapping
-hits. Integration tests cover normal cross-buffer and contiguous-block matches,
-memory gaps, unsigned bytes, zero-length errors, query limits and cancellation.
+hits.
 
-`disasm` reads existing instructions from the resolved start, retaining its
-containing-instruction/function-entry fallback. It uses checked
-nonnegative-long `limit` bounds, with missing/null/zero meaning unlimited, and
-checks cancellation while collecting instructions. The CLI applies its configured
-default.
+`disasm` retains its containing-instruction/function-entry fallback when
+resolving the start and checks cancellation while collecting instructions.
 
 `define_code` returns a change receipt, never instruction
 rows, and rejects query bounds such as `limit`. `target` and optional inclusive
@@ -346,8 +329,7 @@ and redisassembly share the atomic request. A failed redisassembly receipt has
 `function_disasm` resolves a function through `FunctionQueries` and reads existing
 instructions from its complete `getBody()` address set, including disjoint ranges.
 It shares instruction serialization with `disasm_range`; interior targets select
-the whole body. Rust fetch planning applies the
-usual query limits and requests all rows before client-side selection when needed.
+the whole body.
 
 ## Validation
 

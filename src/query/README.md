@@ -48,7 +48,6 @@ options, with projection only, or after filtering, sorting or offset.
 Explicit `--limit 0` is unlimited. `--count` ignores the
 configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.
-Batch row selection and output formats retain their existing behavior.
 
 `graph calls` applies the residual query to its `nodes`, retaining the graph
 object with `nodes`, `edges`, `node_count`, and `edge_count`. Edges remain in
@@ -65,23 +64,18 @@ its pattern and a pushed `value~...` filter are independent AND predicates.
 It shares `StringQueries` with `string list`, including row fields
 `address`, `value`, `char_length` (Unicode code points) and `byte_length`
 (occupied Ghidra data bytes, potentially including terminators/padding).
-The former `length` field is removed from both commands.
 `find constant` matches numeric Scalar operands before applying the same
 limit-only fetch plan as `find instruction`. Its value/range and optional width
 predicates run in Java; query filters, sorts, counts and offsets request all
 matches for residual selection in Rust.
-`find text` and literal `find bytes` share exact-byte memory scanning, including
-overlapping matches and cancellation checks. `find bytes --regex` uses native
-Ghidra byte regex scanning with the same query plan; the regex is applied in
-the bridge before any fetch cap, while residual filters/sorts/counts/offsets
-still request all matching rows.
+`find bytes --regex` applies its native Ghidra regex before the fetch cap;
+residual selection still requests all matches.
 
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before
 filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.
-`define-code` is a mutation returning only a receipt, not a row query. It accepts
-no query options and does not use `default_limit`. Its optional `--end` bounds
-instruction creation, not response rows. Use `disassemble` for subsequent reads.
+`define-code` returns a mutation receipt: `--end` bounds instruction creation,
+and `default_limit` does not apply. Use `disassemble` for subsequent reads.
 
 ## Boundaries and validation
 
@@ -97,20 +91,13 @@ instruction creation, not response rows. Use `disassemble` for subsequent reads.
 - Java and Rust lowercase some Unicode contexts differently (e.g. `AΣ_A`),
   so contains pushdown can miss matches or shift pages. This known limitation
   is expected to have little impact on typical ASCII-based RE queries.
-- Planner tests compare pushed and full-fetch results across filters, sort,
-  count, projection, limits and offsets. Routing tests cover actual wire arguments
-  and standalone/batch equivalence. `tests/readonly/query.rs` checks all five
-  list handlers and `find string` against full rows, including Unicode samples
-  under a Turkish JVM locale, tag predicates, comment types, empty pages and numeric bounds.
-  These samples do not establish identical Unicode casing tables across every
-  Rust/JDK release; repeat the cross-runtime checks when upgrading toolchains.
-- `tests/readonly/strings.rs` verifies identical list/search rows, code-point and
-  occupied-byte lengths for UTF-8/UTF-16 strings, and paging after both search
-  predicates. It covers empty values, supplementary/combining characters and
-  terminated/unterminated data, plus length filters, sorting and projection.
-- `tests/readonly/search_limits.rs` exercises searches with 160 matches, client
-  default caps, complete counts/selection, batch output, and cancellation of an
-  uncapped dense byte search followed by a fresh request.
+- Planner tests compare pushed and full-fetch results; routing tests check wire
+  arguments and standalone/batch equivalence. `tests/readonly/query.rs` covers
+  list/search paging, including Unicode samples under a Turkish JVM locale.
+  Repeat these cross-runtime checks on toolchain upgrades: samples do not prove
+  identical Rust/JDK casing tables. `strings.rs` covers code-point/occupied-byte
+  lengths and both search predicates; `search_limits.rs` covers uncapped
+  selection, batch output, and cancellation followed by a fresh request.
 
 Deferred features and their reasons are in the
 [server-side query plan](../../docs/PLAN.md#4-server-side-query-and-streaming).

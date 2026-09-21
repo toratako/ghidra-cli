@@ -14,10 +14,8 @@
 | `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
 | `scripts/ghidracli/` | Java runtime, transport, scheduling, program session, and command handlers; see [Java bridge map](scripts/ghidracli/README.md) |
 
-`bridge.rs` re-exports `start_bridge`, `OneShotImportOptions`, `import_oneshot`,
-`compile_check`, and `find_headless_script`, preserving existing public import
-paths. Persistent startup and one-shot imports share launcher/JDK selection;
-their process and stream lifetimes remain owned by their respective workflows.
+Persistent startup and one-shot imports share launcher/JDK selection but own
+their process and stream lifetimes separately.
 
 ## Startup and import
 

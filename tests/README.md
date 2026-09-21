@@ -18,11 +18,9 @@ changed child environments invoke doctor directly.
 Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK;
 see [runtime installation](../docs/runtime.md#installation).
 
-`cargo xtask test` forwards arguments (including `--help`) to `cargo test`, preserves
-their order, the caller's working directory and Cargo's failure status, and shares
-a fresh temporary fixture across suites for one invocation. Plain `cargo test`
-limits fixture reuse to each test executable. Use `cargo xtask test` when selecting
-several Ghidra suites:
+`cargo xtask test` shares a fresh temporary fixture across suites for one
+invocation; plain `cargo test` limits reuse to each test executable. Use the runner
+when selecting several Ghidra suites:
 
 ```bash
 cargo xtask test --test comment_tests --test type_tests
@@ -41,13 +39,10 @@ cargo test --test daemon_tests
 cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests
 ```
 
-`command_tests::test_doctor` checks a working installation in CI's
-`readonly-integration` job; `output_format_integration` checks doctor's failure
-output/exit status with a missing installation path.
-It also checks project listing, exclusion of bare directories, and preservation of
-project files when Ghidra is unavailable. Successful `.gpr`/`.rep` deletion uses
-Ghidra's lock API and belongs in `project_tests`, including directory overrides
-and preservation of unrelated source files.
+Doctor success belongs to `command_tests` in CI's `readonly-integration` job;
+missing-installation failures and project-file preservation belong to
+`output_format_integration`. Successful project deletion requires Ghidra's lock
+API and belongs to `project_tests`.
 
 Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
 reference `.snap` files are not tracked. To run without accepting snapshots:
@@ -84,102 +79,29 @@ identity. Filter a domain with, for example,
 | `routing_tests` | Recorded bridge requests: management/jobs, batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
 
-`daemon_tests` exercises `bridge start/stop/restart/status/ping` and
-`job list/get/cancel`, including cancellation of the active job when no ID is given.
-Recorded routing tests verify job IDs, control requests, JSON modes, and project
-selection across the nested commands; output tests preserve successful stopped
-`bridge status` results and failing `bridge ping`/job requests without auto-start.
-`daemon_tests` also checks cancellation does not poison the next job, handlers
-follow program switch/close, automatic saves are visible in a separate database
-object before shutdown, and failed mutations cannot erase earlier edits. Save
-failures retain the editing result and program for recovery; explicit save keeps
-the same JVM. `daemon/decompiler.rs` exercises real native process reuse across
-decompile/high p-code/variable edits, invalidation after saved changes and rollback,
-native cancellation/timeout recovery, monitor isolation, and release on Program
-switch/close while preserving the session after save failure.
-`daemon/transaction.rs` checks rollback after a late exception,
-cancellation, or a native false result, first-save failure without implicit retry,
-preservation of pending edits across a later rollback, foreign transaction
-rejection, recovery after transaction-start failure, rejection of previews after
-request edits, and pending rollback after a leaked native child in previews or
-ordinary edits. These probes inject
-failures through test-owned Java wrappers, without production failure hooks.
-Stop/restart/project deletion also preserve unsaved state on final
-save failure; recovered edits survive shutdown and reopening. Project tests hold
-an external Ghidra owner to verify refusal and deletion after lock release.
-Bootstrap tests reject unknown loader options without saving a program.
-They check symlink input names across one-shot and running-bridge imports,
-including implicit collision suffixes and explicit-name collision errors.
-They also verify analysis-completion flags for raw imports, reanalysis and
-cancelled jobs. Analysis tests verify that `analysis option set` only changes
-settings, while `analysis run` reruns full analysis with boolean and detailed enum
-settings and saves its results. `daemon/analysis.rs` checks native option types,
-defaults and choices, saved database values, invalid-input rollback and reopen
-persistence. Routing tests cover analysis target selection, list queries, object
-projection and JSON receipts in standalone and batch execution.
-Program-session tests compare live and saved flags independently
-of function count and check recursive status counts across restart and deletion.
-Real bridge tests cover OSGi loading of the whole source bundle.
-Script tests exercise JDK parsing of stdin declarations through that OSGi path.
-Symbol tests cover generated-label rejection, rollback of cascading multi-symbol
-deletions, and foreign transaction rejection without erasing the owner's edits.
-Patch tests verify that failed writes and clear/redisassembly requests restore
-bytes, listing definitions, and permissions. `patch/memory_write.rs` checks saved
-data/component settings, unchanged instructions in mixed writes, nested and typed
-pointer references across widths/byte orders, explicit reference precedence,
-string storage validation, shared-memory rejection, independent overlays, and
-delay slots. The transaction probes inject failures after byte ranges and pointer
-reference updates, plus cancellation, and check live and saved rollback state.
-Type tests verify that
-explicit field sizes are either honored or rejected before layout changes.
-Type tests also inspect saved component format/byte-order settings after metadata
-and layout edits.
-`types/unions.rs` covers ordinal selection, member replacement, packing/alignment,
-parent layouts and persisted component settings. `types/enums.rs` checks selective
-member deletion, equal-valued aliases, empty enums and rejected ambiguous targets.
-They cover explicit signed-char semantics on an unsigned-char ABI, rejected
-immutable renames, and deletion of registered arrays, pointers and aliased types
-after reopening, while preserving unrelated types that share an alias target's name.
-Comment tests include external and unmapped addresses; symbol tests round-trip
-default thunk and dynamic-label names while retaining ambiguity safeguards.
-Memory tests cover Thumb mode bits, odd x86 entries and overlay boundaries.
-Program-session tests exclude root and nested data type archives from program lists
-and status counts.
-Script/routing tests check minimum-row boundaries and reject invalid constraints
-before script execution.
-Formatter tests cover requested decompiler details in compact and full text output.
-Graph routing tests cover node filtering, sorting, paging, counts and projection
-in standalone/batch results while preserving outgoing edges beyond the page.
-`readonly/relationships.rs` checks graph queries against the real bridge's nodes
-and edges. `readonly/calls.rs` compares incoming, outgoing, and whole-program
-call edges across thunks, import pointers, pointer chains/cycles, disjoint bodies,
-interior/undefined destinations, unowned callers, multiple targets, and duplicate
-reference evidence, embedded pointer tables, and primary call overrides. It also
-exercises field selection and standalone/batch queries.
-`readonly/query.rs` compares server-filtered pages with full rows for the five
-supported list handlers and `find string`, including Unicode under a Turkish
-locale, function tags, multiple comment types, unlimited/empty pages and bounds
-beyond Java `int`. Planner and routing tests separately verify residual processing
-and standalone/batch equivalence.
-`readonly/strings.rs` checks shared list/search rows, Unicode code-point counts
-and occupied byte lengths for UTF-8/UTF-16, empty/unterminated strings, supplementary
-and combining characters, length queries, and paging after pattern plus filter.
-`readonly/search.rs` checks defined-only string search and exact text searches
-in UTF-8, UTF-16LE/BE, and Shift_JIS, including overlaps and encoding errors.
-`readonly/constants.rs` checks Scalar occurrence search across signed/unsigned
-values and widths, exact 64-bit boundaries, displacements, overlays, address/data
-exclusion, CLI/batch query controls, and cancellation followed by a fresh monitor.
-`readonly/search_limits.rs` checks paging/counts for string, text, and byte
-searches (including byte regex) and cancellation of all raw search modes.
-`readonly/byte_regex.rs` checks native byte regex semantics, result lengths,
-initialized memory boundaries, overlays, invalid/zero-length matches, and CLI/batch
-parity. CLI/routing tests also preserve regex escaping and query fetch limits.
-Batch coverage checks nonzero failure exits, preservation of per-command results
-and save errors, and stopping subsequent commands after a transaction-boundary
-failure, save failure, or timeout, including through nested batches.
-Program deletion coverage includes the initial program, closed files with matching
-internal names, a stopped bridge, empty projects, batch deletion, and failures
-that must preserve other consumers or unsaved changes.
+For narrower regression work, these modules cover the non-obvious boundaries:
+
+| Source | Scope |
+|---|---|
+| [daemon/program_session.rs](daemon/program_session.rs), [daemon/deletion.rs](daemon/deletion.rs) | Live versus saved state, program switching, recursive counts excluding type archives, deletion without wrong-target changes |
+| [daemon/transaction.rs](daemon/transaction.rs) | Late-error/cancellation rollback, pending edits after save failure, foreign/leaked transactions, preview isolation; test-owned Java failure probes, no production hooks |
+| [daemon/decompiler.rs](daemon/decompiler.rs) | Native process reuse, invalidation after save/rollback, cancellation/timeout recovery, monitor isolation and release |
+| [daemon/analysis.rs](daemon/analysis.rs) | Native option types/defaults/choices, settings-only edits versus full reanalysis, rollback and reopen persistence |
+| [patch/memory_write.rs](patch/memory_write.rs) | Preserved component settings and instructions, pointer references across widths/byte orders, string storage, shared memory, overlays and delay slots |
+| [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion |
+| [readonly/calls.rs](readonly/calls.rs), [readonly/relationships.rs](readonly/relationships.rs) | Call resolution through thunks/pointers, undefined endpoints and reference evidence; real graph nodes/edges |
+| [readonly/query.rs](readonly/query.rs) | Server pages versus full rows, Unicode/Turkish locale, tags/comments, bounds beyond Java `int` |
+| [readonly/strings.rs](readonly/strings.rs), [readonly/search.rs](readonly/search.rs) | Code-point versus occupied-byte lengths, defined strings versus encoded text, overlaps and encoding errors |
+| [readonly/constants.rs](readonly/constants.rs) | Scalar signedness/widths, exact 64-bit boundaries, overlays, address/data exclusion and cancellation |
+| [readonly/search_limits.rs](readonly/search_limits.rs), [readonly/byte_regex.rs](readonly/byte_regex.rs) | Search pagination/cancellation, native byte regex semantics and initialized-memory boundaries |
+
+Keep paired checks where one layer cannot prove the other: routing tests record
+standalone/batch requests and client query processing; real bridge tests exercise
+OSGi loading and native behavior. Persistence tests inspect saved databases or
+reopen projects rather than relying only on live responses. Project deletion tests
+hold an external Ghidra owner and retry after lock release. Batch tests verify
+that save/transaction failures and timeouts stop later commands, including nested
+batches.
 
 `common::test_project()` gives each test executable a fresh project. Read-only
 suites reuse a bridge to amortize JVM startup; lifecycle/mutation suites may

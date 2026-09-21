@@ -30,7 +30,7 @@ fn test_function_list() {
 ```
 
 `ghidra(&harness)` supplies the project; `timeout` sets the command budget.
-Use response schemas/domain assertions. See [suite guidance](../README.md) for
+See [suite guidance](../README.md) for
 fixture compilation, serial execution, commands, and unbootstrapped snapshots.
 
 ## Lifecycle boundaries
@@ -51,14 +51,13 @@ sources. Later suites fail with the original diagnostic; the next invocation
 starts fresh. Copies use ordinary files, preserve the project
 basename, omit sibling lock/discovery files, and reject existing destinations.
 
-`require_ghidra!()` delegates to this module's shared `DoctorCheck`, avoiding a
-cache per macro expansion. Every caller checks the retained output/spawn failure.
-For prerequisite policy and direct doctor tests, see [suite guidance](../README.md#run).
+`require_ghidra!()` shares one `DoctorCheck` per executable, not per macro
+expansion; see [prerequisite policy](../README.md#run).
 
 `DaemonTestHarness::new()` calls the lifecycle API directly, preserving startup
-errors, and records the PID and port. Drop calls `stop_bridge()` to drain/force
-termination, then waits for original and current PIDs (restart may change them)
-to release locks: up to 15s per PID, or 30s on Windows, after stop. Only then are stale
+errors, and records the PID and port. Drop calls `stop_bridge()` to drain accepted
+work, then waits for original and current PIDs (restart may change them) to release
+locks: up to 15s per PID, or 30s on Windows, after stop. Only then are stale
 discovery files removed. Statics do not receive Rust Drop; suite-exit cleanup
 stops the bridge and removes its project/local fixture. Shared sources belong to
 the runner. Cleanup is best effort under forced termination.

@@ -6,8 +6,6 @@ Follow [the install steps](../README.md#install) using `ghidra-cli setup` or an
 existing Ghidra 11+ installation. A full JDK is required (`javac` and
 `jdk.compiler`, not a JRE); Ghidra 12.x requires JDK 21 (older releases accept
 JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
-Use `ghidra-cli setup --version 11.0` (or a patch release such as `11.0.1`)
-to select a release number; omit `--version` to install the latest release.
 Use `setup --skip-java-check` to install Ghidra before a JDK is available;
 running Ghidra still requires a suitable full JDK.
 `find bytes --regex` requires Ghidra's native `memsearch` API, introduced in
@@ -55,10 +53,6 @@ files are retained.
 Ghidra 12.1+ rejects project paths containing dot-prefixed components; on Linux
 the default falls back from the cache directory to `~/ghidra-cli-projects`.
 
-Set default targets with `ghidra-cli config set default_project target` and
-`ghidra-cli config set default_program target.bin`. Explicit command targets
-override these saved defaults.
-
 Configuration updates lock the resolved config target and atomically replace its
 contents. Existing config symlinks remain links; a dangling link fails rather
 than being replaced. Concurrent updates preserve unrelated settings.
@@ -70,7 +64,9 @@ otherwise). For newline-delimited JSON, use `--format ndjson` or
 `default_limit` also applies after client filtering, sorting, and
 offset when no explicit limit is given; `--count` and `--limit 0` bypass that cap.
 
-Project selection uses `--project`, then config `default_project`. Explicit
+Set defaults with `ghidra-cli config set default_project target` and
+`ghidra-cli config set default_program target.bin`. Project selection uses
+`--project`, then `default_project`. Explicit
 `--program` selects a program; a running bridge otherwise keeps its current
 selection. When starting a bridge, config `default_program` supplies the default
 program if no explicit program was given.
@@ -136,12 +132,11 @@ ghidra-cli bridge stop --project P
 ```
 
 Commands needing the bridge start a per-project JVM on demand. Program jobs use
-a FIFO of 256, with 100 recent jobs retained. `job list` shows active, queued, and
-recent jobs; `job get JOB_ID` requires an ID and shows that job. `job cancel [JOB_ID]`
-defaults to the active job; queued cancellation is immediate, active cancellation
-cooperative. Socket read timeouts return `Timeout:` with exit 75 while work stays
-running or queued; inspect `job list` before retrying a mutation. Shutdown rejects
-new work and drains accepted jobs, including a full queue.
+a FIFO of 256, with 100 recent jobs retained. `job cancel` defaults to the active
+job; queued cancellation is immediate, active cancellation cooperative. Socket
+read timeouts return `Timeout:` with exit 75 while work stays running or queued;
+inspect `job list` before retrying a mutation. Shutdown rejects new work and
+drains accepted jobs, including a full queue.
 The shutdown timeout reports an error (exit 75) and preserves discovery files and
 the live process; it does not force termination. Inspect the process and retry
 stop after accepted work finishes. Cancellation state is isolated per job, and
@@ -151,11 +146,7 @@ the same JVM and program open. Resolve the cause, retry `program save`, then sto
 
 Program commands, including analysis, scripts, and each batch operation, save
 before reporting success. Switching/closing also saves first; failure keeps the
-program open. A running bridge without the required saving, address, or atomic-edit
-capabilities is rejected before program dispatch, with explicit restart guidance;
-the CLI does not automatically upgrade it. `program save` remains available for
-in-place recovery before restarting. Older bridges without final save confirmation
-require the [manual upgrade procedure](#upgrading).
+program open. For a bridge from another build, follow [upgrading](#upgrading).
 
 `program delete --program NAME` deletes the project file without selecting it.
 Deleting the current program saves and closes it first; deleting another file
@@ -214,10 +205,8 @@ gate so pending edits can be saved in place before an explicit bridge restart.
 Use `-v`/`-vv`/`-vvv` for warn/info/debug logs; `--quiet` suppresses
 non-essential output.
 
-Run `ghidra-cli doctor` to check Ghidra, analyzeHeadless, project/config paths, the
-selected full JDK, storage writes, loopback networking, and compilation of the
-embedded Java bundle. Use `doctor --runtime` for runtime OSGi compatibility and
-Ghidra's own startup writes.
+Start with `ghidra-cli doctor`; use `doctor --runtime` for OSGi compatibility and
+Ghidra's startup writes (see [installation](#installation) for probe side effects).
 
 Startup errors identify the operation and path where available. Import failures
 also carry `detail.workflow_stage`, `project`, `import_status`, `analysis_status`,
@@ -230,10 +219,9 @@ the Java script runs retain the launcher output instead of inventing a path.
 Rust filesystem diagnostics include `detail.io_kind`, a stable snake_case
 classification such as `read_only_filesystem`, `permission_denied`, or
 `not_found` (`other` for unclassified kinds). `detail.os_error` is the native
-numeric code when the I/O error exposes one, otherwise `null`. Wrappers such as
-`tempfile` can retain the classification and message while hiding the numeric
-code; use `io_kind` for automation instead of parsing the message. Temporary
-file and directory management continues to use `tempfile`.
+numeric code when the I/O error exposes one, otherwise `null`. Use `io_kind` for
+automation instead of parsing messages; wrappers can hide the numeric code while
+retaining the classification.
 
 Linux/WSL may need X11 libraries even headless because initialization loads AWT.
 For `libXtst.so.6` errors, install `libxtst` (Arch), `libxtst6` (Debian/Ubuntu), or

@@ -1,19 +1,14 @@
 # Agent Instructions
 
-This CLI primarily serves AI agents. The [skill](docs/skills/ghidra-cli/SKILL.md) is for AI
-agents doing reverse engineering (RE) with this CLI. Keep the skill and its
-references self-contained: agents must not need other project docs to do RE work.
-Include only information those agents need for that work.
+This CLI primarily serves AI agents. Keep the RE
+[skill](docs/skills/ghidra-cli/SKILL.md) self-contained; installation,
+configuration, and environment recovery belong outside it. Keep implementation
+and test docs with their modules, and plans separate from implemented behavior.
+Other docs link to `SKILL.md`, not its internal references. See the
+[documentation map](docs/README.md).
 
-Keep installation, configuration, and environment recovery docs outside the skill.
-Keep implementation and test docs with their modules. Separate future plans from
-implemented behavior. Other docs may link to `SKILL.md` as the entry point, but
-must not depend on how the skill's references are organized.
-See the [documentation map](docs/README.md).
-
-Write for each document's audience. Keep useful examples, domain knowledge,
-non-obvious constraints, and recovery steps. Do not remove these just to shorten
-a document or meet a shared length target. Omit generic advice and repetition.
+Prune repetition, not audience-specific examples, domain knowledge, constraints,
+or recovery steps; document length is not a target.
 
 - Never skip tests because Ghidra is missing: `require_ghidra!()` must fail when
   `ghidra-cli doctor` fails. See [test commands and coverage](tests/README.md).

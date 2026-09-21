@@ -40,17 +40,16 @@ reopens the queue for recovery.
 
 Request `command` is required; optional `args` is omitted when `None`.
 Response `data` and `message` are optional. The CLI unwraps the response and
-chooses its output format; the bridge always sends compact JSON.
+chooses its output format; the bridge always sends compact JSON. `success`
+unwraps to `data` or `{}`; `error` retains message and structured detail;
+`shutdown` becomes `{"status":"shutdown"}`. Other statuses are protocol errors.
 
-`list_functions`, `list_strings`, `symbol_list`, `type_list`, `comment_list`, and
-`find_string` accept literal `filter`, `offset`, and `limit` arguments. Filters are
-case-insensitive contains on their documented string field; the DSL stays in
-Rust. Offset counts matching rows before limit; missing/null/zero limit is
-unlimited and missing/null offset is zero. Numeric page arguments must be
-integers in `0..=9223372036854775807`; invalid values fail instead of narrowing
-to Java `int`. Responses retain their array and returned-row `count` envelope.
-See [query planning](../query/README.md) for when these arguments may be pushed.
-The CLI and running Java bridge must use the same build.
+The [paged list adapters](../query/README.md#conservative-list-queries) accept
+literal `filter`, `offset`, and `limit`; the filter DSL stays in Rust. Offset
+counts matching rows before limit. Missing/null/zero limit is unlimited;
+missing/null offset is zero. Page arguments must be integers in
+`0..=9223372036854775807`, never narrowed to Java `int`. Responses retain their
+array and returned-row `count`. CLI and bridge must use the same build.
 
 `find_string` also accepts `pattern`, a case-insensitive literal substring of
 the decoded string value. Missing/null/empty patterns match all defined strings
@@ -60,8 +59,6 @@ and `filter` must match before offset/limit are applied. `list_strings` and
 points), and `byte_length` (Ghidra data's occupied bytes, including any defined
 terminators/padding). Their response array keys are `strings` and `results`,
 respectively.
-`BridgeClient::find_string_page` exposes filter/offset/limit, while
-`find_string` and `find_string_with_limit` retain their existing defaults.
 
 `analysis_run` uses the long-operation wait and performs full analysis with the
 Program's saved settings. `analysis_option_list` returns `{options, count}`;
@@ -101,12 +98,9 @@ Only Scalar objects in existing instruction operands are scanned. Results use
 unsigned hexadecimal `value`, decimal `signed_value`, and `function` when known.
 Both value representations are strings to preserve all 64 bits across consumers.
 
-`type_create_union` takes `name` and creates an empty union. `type_set_field`
-selects a struct field with `offset` or an existing union member with `ordinal`;
-exactly one selector is required. `type_del_field` takes `field_name` or a union
-`ordinal`. Ordinals are zero-based and are returned in union `type_get` components.
-`type_add_field` accepts both structs and unions. `type_del_enum_member` takes
-`type_name` and exact `member_name`, removing only that named member.
+Union fields use zero-based `ordinal` selectors (returned by `type_get`),
+since their offsets overlap. `type_set_field` requires exactly one of struct
+`offset` or union `ordinal`; `type_del_field` uses `field_name` or union `ordinal`.
 
 `graph_callers` and `graph_callees` take `function`, `depth`, and `limit` and
 return `{target, calls, count}`. Each call has `caller`, nullable `caller_address`,
@@ -120,9 +114,6 @@ function body. `graph_calls` retains its nodes/edges envelope and node-based que
 contract; its edges carry the same call fields except depth, plus `from`/`to` IDs.
 Edges to external or undefined destinations need not have a node in the response.
 
-`disasm` uses the checked `limit` argument; missing/null/zero means unlimited.
-The CLI resolves `default_limit` before sending these requests.
-
 `define_code` accepts `target` and optional inclusive `end`, both exact names or
 explicit addresses. Bounds are validated before mutation. It follows native
 Ghidra code flow but confines complete instructions and delay-slot groups to the
@@ -135,30 +126,27 @@ does not use this bounded operation. Clearing and its optional redisassembly are
 atomic together; a failed redisassembly receipt has
 `status: "failed"` in the error detail. Failure rolls back the clearing.
 
+## Persistence and recovery
+
 `bridge_info.auto_save: true` advertises saving before successful program
 responses. `program_save` retries pending saves without restarting. A save failure
 returns `error` with `detail.save_failed: true`, `saved: false`, and the original
 `command_response`; do not replay the edit. The first save failure in a request
 is returned without an implicit retry, leaving pending edits for explicit save.
 
-Ordinary requests are atomic: error or cancellation rolls back all their Program
-changes and adds `detail.rolled_back: true`; cancellation also adds
-`detail.cancelled: true`. Earlier requests remain intact, including earlier lines
-in a batch. Rollback does not flush pending edits from an earlier save failure.
-The non-atomic exceptions are `analysis_run`, `script_run`, `import`, `program_export`,
-`open_program`, `program_close`, `program_save`, and `program_delete`. Errors from
-those requests can include `detail.partial_changes_saved: true` when retained
-Program changes were saved; external project/file effects are outside rollback.
+Ordinary failures roll back the request's Program changes and report
+`detail.rolled_back: true`; cancellation adds `detail.cancelled: true`.
+Earlier requests and pending unsaved edits remain intact. The
+[non-atomic exceptions and transaction ownership rules](../ghidra/scripts/ghidracli/README.md#execution-and-ownership)
+are owned by `ProgramSession`. Non-atomic errors report
+`detail.partial_changes_saved: true` when retained Program changes were saved;
+external project/file effects are outside rollback.
 
-Transaction ownership failures use `detail.transaction_failed: true`, without
-claiming rollback. An ordinary request is rejected before execution if a foreign
-transaction is already active; that transaction and its edits remain untouched.
-If native code leaves a child open inside an atomic request, the bridge aborts
-its owned root entry and leaves rollback pending until the child's owner closes
-it. The response retains `command_response` for diagnosis, but reports neither
-`rolled_back` nor a save; those failed-request edits cannot be committed.
-The owning script must resolve the outstanding transaction; recovery scripts
-are still accepted.
+Ownership failures report `detail.transaction_failed: true`, without claiming
+rollback or saving. A leaked child transaction leaves rollback pending;
+`command_response` is retained for diagnosis. Keep the bridge running and close
+the outstanding transaction through its owning script; recovery scripts remain
+available. Never replay the edit or save while rollback is pending.
 
 `bridge_info.atomic_edits: true` advertises this request rollback contract. The CLI
 requires it alongside `auto_save` and `explicit_addresses` before program dispatch;
@@ -167,14 +155,13 @@ the program command or automatically upgrading the bridge. Explicit `program_sav
 uses the direct recovery path and remains available before restarting an older
 bridge with pending edits.
 
+## Other command distinctions
+
 `xrefs_from` reads references from the exact resolved `address`. With `function: true`,
 it resolves the containing function and reads its full body, including disjoint ranges.
 `string_refs` takes `pattern`, a case-insensitive substring of defined string values.
 `comment_delete` requires exactly one of `comment_type` (EOL/PRE/POST/PLATE,
 case-insensitive) or `all: true`. Invalid or missing scope fails before deletion.
-`symbol_externals` returns `externals` rows with name, address, and library;
-`symbol_entry_points` returns `entry_points` rows with name and address.
-Both describe Ghidra's symbol database. `symbol_create_label` creates a label.
 
 `find_text` accepts non-empty `text`, optional `encoding` (a Java charset name,
 default `utf-8`), and the checked `limit` used by `find_bytes`/`find_string`.
@@ -192,11 +179,9 @@ it does not decode text. Invalid patterns and encountered zero-length matches
 fail. Native buffering and overlap semantics apply. Cancellation is checked
 after the native search, which otherwise returns partial results.
 
-`bridge_info.explicit_addresses: true` advertises strict address parsing and
-canonical address output. Before program dispatch, the CLI rejects a bridge
-without this capability and requests an explicit restart; it never downgrades
-address interpretation.
+## Addresses and symbol targets
 
+`bridge_info.explicit_addresses: true` advertises this address contract.
 Address strings require `0x`/`0X` for every numeric colon component:
 `0x401000`, `overlay:0x1000`, or `ram:0x1234:0x0005`. Segmented output always
 includes the space name so numeric-looking registered space names cannot make
@@ -220,10 +205,3 @@ is revalidated before any mutation; stale or duplicate selections fail.
 Failed multi-symbol deletion reports `attempted_deleted`, `failed`, and
 `not_attempted` in detail. These are attempted-work diagnostics; `deleted` and
 the committed `count` appear only on success.
-
-| Response status | Client result |
-|---|---|
-| `success` | `data`, or `{}` if absent |
-| `error` | Error with `message` and available structured detail |
-| `shutdown` | `{"status":"shutdown"}` |
-| Other | Protocol error |

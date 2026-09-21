@@ -39,11 +39,5 @@ if it is missing or stale; it accepts CRLF line endings in Windows checkouts.
 | [src/gen_tree.rs](src/gen_tree.rs) | Command tree rendering, generation, and freshness checks |
 | [../src/cli.rs](../src/cli.rs) | Shared CLI command definitions |
 
-These checks cover the task package and generated documentation without Ghidra:
-
-```bash
-cargo test -p xtask
-cargo xtask gen-tree --check
-cargo fmt --all -- --check
-cargo clippy --workspace -- -D warnings
-```
+Run `cargo test -p xtask` and `cargo xtask gen-tree --check` without Ghidra.
+See [repository checks](../tests/README.md#run) for formatting and lint commands.
