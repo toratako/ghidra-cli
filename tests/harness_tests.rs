@@ -15,6 +15,8 @@ fn fixture_function_lookup_prefers_exact_names_and_preserves_fallbacks() {
                 "address": format!("0x{index:08x}"),
                 "entry_point": format!("0x{index:08x}"),
                 "size": 1,
+                "is_external": false,
+                "entry_memory": null,
             }))
             .unwrap()
         })

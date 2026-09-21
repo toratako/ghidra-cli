@@ -111,6 +111,8 @@ pub fn loopback_check() -> Result<()> {
             Err(error) => return Err(error).context("doctor.loopback_accept failed"),
         }
     };
+    // BSD-derived systems inherit the listener's nonblocking mode on accept.
+    server.set_nonblocking(false)?;
     server.set_read_timeout(Some(timeout))?;
     client.write_all(b"ping")?;
     let mut data = [0; 4];

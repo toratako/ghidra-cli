@@ -39,7 +39,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     concurrency:
-      group: ${{ github.workflow }}-unit-and-cli-${{ github.ref }}-${{ matrix.os }}
+      group: ${{ github.workflow }}-unit-and-cli-${{ github.ref }}-${{ github.sha }}-${{ matrix.os }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -72,14 +72,14 @@ jobs:
 
   # Ghidra setup - installs Ghidra to seed installation caches.
   # This runs once per OS, then test jobs use the cached artifacts.
-  # Job-level cancellation lets documentation pushes leave code tests running.
+  # Keep diagnostic revisions separate so later probes preserve baseline runs.
   ghidra-setup:
     needs: changes
     if: ${{ needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:
-      group: ${{ github.workflow }}-ghidra-setup-${{ github.ref }}-${{ matrix.os }}
+      group: ${{ github.workflow }}-ghidra-setup-${{ github.ref }}-${{ github.sha }}-${{ matrix.os }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -132,7 +132,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
       - name: Inspect macOS native tools
         if: runner.os == 'macOS'
         shell: python
@@ -147,7 +146,8 @@ jobs:
           for install in sorted(root.glob("ghidra_*")):
               print(f"Ghidra installation: {install.name}", flush=True)
               for module in ["Ghidra/Features/Decompiler", "GPL/DemanglerGnu"]:
-                  paths = sorted((install / module / "os").glob("mac_*/*"))
+                  paths = sorted((install / module).glob("os/mac_*/*"))
+                  paths += sorted((install / module).glob("build/os/mac_*/*"))
                   if not paths:
                       print(f"No macOS native files: {module}", flush=True)
                   for path in paths:
@@ -161,7 +161,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:
-      group: ${{ github.workflow }}-readonly-integration-${{ github.ref }}-${{ matrix.os }}
+      group: ${{ github.workflow }}-readonly-integration-${{ github.ref }}-${{ github.sha }}-${{ matrix.os }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -231,7 +231,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:
-      group: ${{ github.workflow }}-mutation-integration-${{ github.ref }}-${{ matrix.os }}
+      group: ${{ github.workflow }}-mutation-integration-${{ github.ref }}-${{ github.sha }}-${{ matrix.os }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -301,7 +301,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:
-      group: ${{ github.workflow }}-infrastructure-${{ github.ref }}-${{ matrix.os }}-${{ matrix.suite }}
+      group: ${{ github.workflow }}-infrastructure-${{ github.ref }}-${{ github.sha }}-${{ matrix.os }}-${{ matrix.suite }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
