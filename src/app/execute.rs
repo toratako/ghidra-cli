@@ -246,34 +246,44 @@ pub(super) fn execute_via_bridge(
                     "type_rename",
                     Some(json!({"old_name": args.old_name, "new_name": args.new_name})),
                 ),
-                TypeCommands::AddField(args) => client.send_command(
-                    "type_add_field",
-                    Some(json!({
-                        "type_name": args.type_name,
-                        "field_name": args.name,
-                        "field_type": args.field_type,
-                        "size": args.size,
-                    })),
-                ),
-                TypeCommands::SetField(args) => client.send_command(
-                    "type_set_field",
-                    Some(json!({"type_name": args.type_name, "offset": args.offset,
-                        "ordinal": args.ordinal,
-                        "field_name": args.name, "field_type": args.field_type,
-                        "size": args.size, "comment": args.comment})),
-                ),
-                TypeCommands::ClearField(args) => client.send_command(
-                    "type_clear_field",
-                    Some(json!({"type_name": args.type_name, "offset": args.offset})),
-                ),
-                TypeCommands::DelField(args) => client.send_command(
-                    "type_del_field",
-                    Some(json!({
-                        "type_name": args.type_name,
-                        "field_name": args.name,
-                        "ordinal": args.ordinal,
-                    })),
-                ),
+                TypeCommands::Field(cmd) => match cmd {
+                    cli::TypeFieldCommands::Append(args) => client.send_command(
+                        "type_field_append",
+                        Some(json!({
+                            "type_name": args.type_name,
+                            "field_name": args.name,
+                            "field_type": args.field_type,
+                            "size": args.size,
+                        })),
+                    ),
+                    cli::TypeFieldCommands::Set(args) => client.send_command(
+                        "type_field_set",
+                        Some(json!({
+                            "type_name": args.type_name,
+                            "offset": args.selector.offset,
+                            "ordinal": args.selector.ordinal,
+                            "field": args.selector.field,
+                            "field_name": args.name,
+                            "field_type": args.field_type,
+                            "size": args.size,
+                            "comment": args.comment,
+                        })),
+                    ),
+                    cli::TypeFieldCommands::Clear(args) => client.send_command(
+                        "type_field_clear",
+                        Some(json!({"type_name": args.type_name, "offset": args.offset,
+                            "field": args.field})),
+                    ),
+                    cli::TypeFieldCommands::Delete(args) => client.send_command(
+                        "type_field_delete",
+                        Some(json!({
+                            "type_name": args.type_name,
+                            "offset": args.selector.offset,
+                            "ordinal": args.selector.ordinal,
+                            "field": args.selector.field,
+                        })),
+                    ),
+                },
                 TypeCommands::DelEnumMember(args) => client.send_command(
                     "type_del_enum_member",
                     Some(json!({"type_name": args.type_name, "member_name": args.name})),

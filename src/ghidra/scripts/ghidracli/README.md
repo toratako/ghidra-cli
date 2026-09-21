@@ -119,7 +119,7 @@ another consumer or terminate its checkout.
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
-| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
+| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
 | `ConstantSearch` | Signed/unsigned value matching over existing instruction Scalar operands |
@@ -154,9 +154,14 @@ request-owned transaction. Never replace the whole structure with the staged cop
 Ghidra discards component settings when rebuilding it. Metadata-only edits update
 the original component, preserving its settings; layout edits leave other
 components' settings intact.
-`set-field` and `clear-field` share this path. `add-field` only appends;
-`del-field` removes bytes. Both `add-field` and `set-field` validate explicit
-sizes before applying changes; `set-field --size` requires `--type`.
+`TypeFields` resolves mutually exclusive selectors and builds the common field
+receipt. Names match actual field names, never generated display names. Named
+struct set/clear resolve to the guarded offset path; named deletion can identify
+bit-fields and zero-length components that offset deletion must reject.
+`field set` and `field clear` share the staged edit path. `field append` appends
+using native packing/alignment; `field delete` removes components and allows
+native compaction. Both `field append` and `field set` validate explicit
+sizes before applying changes; `field set --size` requires `--type`.
 Never use packed replacement/clearing for offset edits: Ghidra may repack or
 delete components.
 Metadata-only edits preserve packing. Zero-length structures report a logical

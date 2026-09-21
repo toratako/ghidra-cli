@@ -1,6 +1,5 @@
 package ghidracli;
 
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.docking.settings.Settings;
 import ghidra.docking.settings.SettingsDefinition;
@@ -23,12 +22,6 @@ final class UnionFields {
         return union.isZeroLength() ? 0 : union.getLength();
     }
 
-    static int ordinal(JsonObject args) {
-        if (JsonProtocol.getArgString(args, "ordinal") == null)
-            throw new IllegalArgumentException("Union member ordinal is required; use --ordinal from type get");
-        return JsonProtocol.getNonnegativeIntArg(args, "ordinal", 0);
-    }
-
     private static DataTypeComponent target(Union union, int ordinal) {
         if (ordinal < 0 || ordinal >= union.getNumComponents())
             throw new IllegalArgumentException("Union member ordinal is outside the union: " + ordinal);
@@ -36,13 +29,6 @@ final class UnionFields {
         if (field.isBitFieldComponent())
             throw new IllegalArgumentException("Bit-field members are not supported by union field edits");
         return field;
-    }
-
-    static int namedOrdinal(Union union, String name) {
-        for (DataTypeComponent field : union.getComponents()) {
-            if (name.equals(field.getFieldName())) return field.getOrdinal();
-        }
-        throw new IllegalArgumentException("Field not found: " + name + " in " + union.getPathName());
     }
 
     private static void validateName(Union union, String name, int ordinal) throws Exception {
@@ -74,7 +60,7 @@ final class UnionFields {
                 + " for field type " + field.getDataType().getName());
     }
 
-    static JsonObject add(Union union, String name, DataType type, Integer size) throws Exception {
+    static JsonObject append(Union union, String name, DataType type, Integer size) throws Exception {
         validateName(union, name, -1);
         type = fieldType(union, type, size);
         Union staged = (Union) union.copy(union.getDataTypeManager());
@@ -82,7 +68,7 @@ final class UnionFields {
         verifyField(field, name, size);
         int beforeSize = length(union);
         DataTypeComponent added = union.add(type, field.getLength(), name, null);
-        return result(union, added.getOrdinal(), beforeSize, null, describe(added), "added");
+        return TypeFields.result(union, beforeSize, length(union), null, describe(added), "appended");
     }
 
     static JsonObject set(Union union, int ordinal, String name, DataType type,
@@ -109,7 +95,7 @@ final class UnionFields {
         }
         verifyField(staged.getComponent(ordinal), effectiveName, size);
         if (before.equals(describe(staged.getComponent(ordinal))) && beforeSize == length(staged))
-            return result(union, ordinal, beforeSize, before, before, "unchanged");
+            return TypeFields.result(union, beforeSize, length(union), before, before, "unchanged");
 
         if (type == null) {
             union.getComponent(ordinal).setFieldName(effectiveName);
@@ -131,7 +117,7 @@ final class UnionFields {
                 }
             }
         }
-        return result(union, ordinal, beforeSize, before, describe(union.getComponent(ordinal)), "updated");
+        return TypeFields.result(union, beforeSize, length(union), before, describe(union.getComponent(ordinal)), "updated");
     }
 
     private static boolean supportsSetting(DataTypeComponent field, String key) {
@@ -146,21 +132,6 @@ final class UnionFields {
         JsonObject before = describe(target(union, ordinal));
         int beforeSize = length(union);
         union.delete(ordinal);
-        return result(union, ordinal, beforeSize, before, null, "deleted");
-    }
-
-    private static JsonObject result(Union union, int ordinal, int beforeSize,
-            JsonObject before, JsonObject after, String status) {
-        JsonObject result = new JsonObject();
-        result.addProperty("status", status);
-        result.addProperty("changed", !status.equals("unchanged"));
-        result.addProperty("union", union.getName());
-        result.addProperty("path", union.getPathName());
-        result.addProperty("ordinal", ordinal);
-        result.addProperty("size_before", beforeSize);
-        result.addProperty("size_after", length(union));
-        result.add("before", before == null ? JsonNull.INSTANCE : before);
-        result.add("after", after == null ? JsonNull.INSTANCE : after);
-        return result;
+        return TypeFields.result(union, beforeSize, length(union), before, null, "deleted");
     }
 }

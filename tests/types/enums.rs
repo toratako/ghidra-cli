@@ -118,7 +118,9 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
     type_command(&program, &["create", "struct", "Holder"]).assert_success();
     type_command(
         &program,
-        &["add-field", "Holder", "--name", "Remove", "--type", "byte"],
+        &[
+            "field", "append", "Holder", "--name", "Remove", "--type", "byte",
+        ],
     )
     .assert_success();
     let first = definition(&program, "/First/Mode");

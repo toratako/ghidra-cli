@@ -98,9 +98,22 @@ Only Scalar objects in existing instruction operands are scanned. Results use
 unsigned hexadecimal `value`, decimal `signed_value`, and `function` when known.
 Both value representations are strings to preserve all 64 bits across consumers.
 
-Union fields use zero-based `ordinal` selectors (returned by `type_get`),
-since their offsets overlap. `type_set_field` requires exactly one of struct
-`offset` or union `ordinal`; `type_del_field` uses `field_name` or union `ordinal`.
+`type_field_set`, `type_field_clear`, and `type_field_delete` take `type_name`
+and exactly one selector: struct `offset`, union `ordinal`, or exact existing
+`field` name. `field_name` sets a new name; it never selects a target.
+`type_field_clear` accepts structures only. Offset deletion requires a defined
+field's exact start and rejects bit-fields and zero-length fields; named struct
+deletion retains support for those components. Union offsets overlap, so ordinal
+selection uses the zero-based value returned by `type_get`.
+
+`type_field_append` and the three edits return a common receipt:
+`{status, changed, name, path, kind, size_before, size_after, before, after}`.
+`name`, `path`, and `kind` identify the containing type. Sizes describe that
+type, with logical size zero for empty composites. `before` and `after` are
+component snapshots using the `type_get.components` schema, or null when no
+defined field exists on that side of the edit. Status is `appended`, `created`,
+`updated`, `cleared`, `deleted`, or `unchanged`; `changed` is false only for
+`unchanged`. Clearing already-undefined space returns two null snapshots.
 
 `bookmark_list` and `bookmark_get` return `{bookmarks, count}` with `address`,
 `type`, `category`, and `comment`. Get takes an explicit `address` and retains

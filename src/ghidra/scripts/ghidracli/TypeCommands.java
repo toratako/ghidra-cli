@@ -162,7 +162,7 @@ final class TypeCommands {
         if (!typeName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
             return errorResult("Invalid type name: '" + typeName + "'. `type create struct` takes a "
                 + "bare identifier and always creates an empty struct; build fields afterward "
-                + "with `type add-field`. It does not parse a C-style struct definition.");
+                + "with `type field append`. It does not parse a C-style struct definition.");
         }
 
         try {
@@ -456,7 +456,7 @@ final class TypeCommands {
         }
     }
 
-    JsonObject handleTypeAddField(JsonObject args) {
+    JsonObject handleTypeFieldAppend(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "type_name");
         String fieldName = getArgString(args, "field_name");
@@ -473,7 +473,7 @@ final class TypeCommands {
             DataType fieldDataType = typeResolver.resolveDataType(fieldTypeName);
             if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
             if (structType instanceof Union)
-                return UnionFields.add((Union) structType, fieldName, fieldDataType, StructureFields.size(args));
+                return UnionFields.append((Union) structType, fieldName, fieldDataType, StructureFields.size(args));
 
             Structure struct = (Structure) structType;
             DataTypeUtilities.checkAncestry(struct, fieldDataType);
@@ -489,17 +489,13 @@ final class TypeCommands {
                 staged.add(fieldDataType, fieldName, null);
             }
             // Preserve existing components and their per-field default settings.
-            if (size != null) struct.add(fieldDataType, size, fieldName, null);
-            else struct.add(fieldDataType, fieldName, null);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "field_added");
-            result.addProperty("struct", typeName);
-            result.addProperty("field", fieldName);
-            result.addProperty("field_type", fieldTypeName);
-            return result;
+            int sizeBefore = StructureFields.length(struct);
+            DataTypeComponent added = size != null ? struct.add(fieldDataType, size, fieldName, null)
+                : struct.add(fieldDataType, fieldName, null);
+            return TypeFields.result(struct, sizeBefore, StructureFields.length(struct),
+                null, StructureFields.describe(added), "appended");
         } catch (Exception e) {
-            return errorResult("Failed to add field: " + e.getMessage(), e);
+            return errorResult("Failed to append field: " + e.getMessage(), e);
         }
     }
 
@@ -512,7 +508,7 @@ final class TypeCommands {
         return (Structure) type;
     }
 
-    JsonObject handleTypeSetField(JsonObject args) {
+    JsonObject handleTypeFieldSet(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         try {
             String targetName = getArgString(args, "type_name");
@@ -522,19 +518,17 @@ final class TypeCommands {
             if (target == null) return errorResult("Type not found: " + targetName);
             if (!(target instanceof Structure) && !(target instanceof Union))
                 return errorResult("Type is not a struct or union: " + targetName);
-            if (target instanceof Union && getArgString(args, "offset") != null)
-                return errorResult("Union members require --ordinal, not --offset");
-            if (target instanceof Structure && getArgString(args, "ordinal") != null)
-                return errorResult("Struct fields require --offset, not --ordinal");
+            int position = target instanceof Union ? TypeFields.unionOrdinal((Union) target, args)
+                : TypeFields.structureOffset((Structure) target, args);
             String typeName = getArgString(args, "field_type");
             DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
             if (target instanceof Union)
-                return UnionFields.set((Union) target, UnionFields.ordinal(args),
+                return UnionFields.set((Union) target, position,
                     getArgString(args, "field_name"), type, comment, StructureFields.size(args));
             Structure struct = (Structure) target;
-            return StructureFields.set(struct, StructureFields.offset(args),
+            return StructureFields.set(struct, position,
                 getArgString(args, "field_name"), type, comment, comment != null,
                 StructureFields.size(args)).apply(struct);
         } catch (Exception e) {
@@ -542,54 +536,37 @@ final class TypeCommands {
         }
     }
 
-    JsonObject handleTypeClearField(JsonObject args) {
+    JsonObject handleTypeFieldClear(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         try {
             Structure struct = findStructure(args);
-            return StructureFields.clear(struct, StructureFields.offset(args)).apply(struct);
+            return StructureFields.clear(struct, TypeFields.structureOffset(struct, args)).apply(struct);
         } catch (Exception e) {
             return errorResult("Failed to clear field: " + e.getMessage(), e);
         }
     }
 
-    JsonObject handleTypeDelField(JsonObject args) {
+    JsonObject handleTypeFieldDelete(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String typeName = getArgString(args, "type_name");
-        String fieldName = getArgString(args, "field_name");
-        boolean hasOrdinal = getArgString(args, "ordinal") != null;
-        if (typeName == null || (fieldName != null) == hasOrdinal)
-            return errorResult("type_name and exactly one of field_name or ordinal required");
+        if (typeName == null || typeName.isBlank()) return errorResult("Struct or union name required");
 
         try {
             DataType structType = typeResolver.resolveDataType(typeName);
             if (structType == null) return errorResult("Type not found: " + typeName);
             if (structType instanceof Union) {
                 Union union = (Union) structType;
-                return UnionFields.delete(union, hasOrdinal ? UnionFields.ordinal(args)
-                    : UnionFields.namedOrdinal(union, fieldName));
+                return UnionFields.delete(union, TypeFields.unionOrdinal(union, args));
             }
             if (!(structType instanceof Structure))
                 return errorResult("Type is not a struct or union: " + typeName);
-            if (hasOrdinal) return errorResult("Struct field deletion requires --name");
 
             Structure struct = (Structure) structType;
-            int ordinal = -1;
-            for (DataTypeComponent comp : struct.getComponents()) {
-                if (fieldName.equals(comp.getFieldName())) {
-                    ordinal = comp.getOrdinal();
-                    break;
-                }
-            }
-            if (ordinal < 0)
-                return errorResult("Field not found: " + fieldName + " in " + typeName);
-
-            struct.delete(ordinal);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "field_deleted");
-            result.addProperty("struct", typeName);
-            result.addProperty("field", fieldName);
-            return result;
+            DataTypeComponent field = TypeFields.structureDeletionTarget(struct, args);
+            int sizeBefore = StructureFields.length(struct);
+            JsonObject before = StructureFields.describe(field);
+            struct.delete(field.getOrdinal());
+            return TypeFields.result(struct, sizeBefore, StructureFields.length(struct), before, null, "deleted");
         } catch (Exception e) {
             return errorResult("Failed to delete field: " + e.getMessage(), e);
         }

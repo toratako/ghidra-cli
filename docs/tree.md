@@ -69,10 +69,11 @@ ghidra-cli
 │   ├── import-c
 │   ├── delete
 │   ├── rename
-│   ├── add-field
-│   ├── set-field
-│   ├── clear-field
-│   ├── del-field
+│   ├── field
+│   │   ├── append
+│   │   ├── set
+│   │   ├── clear
+│   │   └── delete
 │   └── del-enum-member
 ├── tag
 │   ├── list
@@ -137,4 +138,4 @@ ghidra-cli
 └── setup
 ```
 
-125 command nodes (excluding the root), 0 aliases.
+126 command nodes (excluding the root), 0 aliases.

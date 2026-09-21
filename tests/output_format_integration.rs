@@ -522,37 +522,25 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
     let mut cases = vec![
-        vec!["type", "set-field", "Manager", "--offset", "0x1c"],
-        vec!["type", "set-field", "Manager", "--name", "hook"],
+        vec!["type", "field", "delete", "Manager"],
         vec![
-            "type",
-            "set-field",
-            "Manager",
-            "--offset",
-            "0x1c",
-            "--name",
-            "",
+            "type", "field", "delete", "Manager", "--field", "hook", "--offset", "0",
+        ],
+        vec!["type", "field", "set", "Manager", "--field", "hook"],
+        vec![
+            "type", "field", "set", "Manager", "--field", "", "--name", "hook",
+        ],
+        vec!["type", "field", "set", "Manager", "--offset", "0x1c"],
+        vec!["type", "field", "set", "Manager", "--name", "hook"],
+        vec![
+            "type", "field", "set", "Manager", "--offset", "0x1c", "--name", "",
         ],
         vec![
-            "type",
-            "set-field",
-            "Manager",
-            "--offset",
-            "0x1c",
-            "--type",
-            "",
+            "type", "field", "set", "Manager", "--offset", "0x1c", "--type", "",
         ],
-        vec!["type", "clear-field", "Manager"],
+        vec!["type", "field", "clear", "Manager"],
         vec![
-            "type",
-            "set-field",
-            "Manager",
-            "--offset",
-            "0",
-            "--name",
-            "hook",
-            "--size",
-            "8",
+            "type", "field", "set", "Manager", "--offset", "0", "--name", "hook", "--size", "8",
         ],
     ];
     for offset in [
@@ -566,9 +554,9 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
         "2147483648",
         "0x80000000",
     ] {
-        for command in ["set-field", "clear-field"] {
-            let mut args = vec!["type", command, "Manager", "--offset", offset];
-            if command != "clear-field" {
+        for command in ["set", "clear", "delete"] {
+            let mut args = vec!["type", "field", command, "Manager", "--offset", offset];
+            if command == "set" {
                 args.extend(["--name", "hook", "--type", "int"]);
             }
             cases.push(args);

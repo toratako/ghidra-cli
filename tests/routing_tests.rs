@@ -585,7 +585,8 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
         (
             vec![
                 "type",
-                "set-field",
+                "field",
+                "set",
                 "/Recovered/Payload",
                 "--ordinal",
                 "1",
@@ -596,19 +597,86 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
                 "--comment",
                 "",
             ],
-            "type_set_field",
-            json!({"type_name": "/Recovered/Payload", "offset": null, "ordinal": 1,
+            "type_field_set",
+            json!({"type_name": "/Recovered/Payload", "offset": null, "ordinal": 1, "field": null,
                 "field_name": "flags", "field_type": "uint", "comment": "", "size": null}),
         ),
         (
-            vec!["type", "del-field", "/Recovered/Payload", "--ordinal", "0"],
-            "type_del_field",
-            json!({"type_name": "/Recovered/Payload", "field_name": null, "ordinal": 0}),
+            vec![
+                "type",
+                "field",
+                "delete",
+                "/Recovered/Payload",
+                "--ordinal",
+                "0",
+            ],
+            "type_field_delete",
+            json!({"type_name": "/Recovered/Payload", "offset": null, "field": null, "ordinal": 0}),
         ),
         (
-            vec!["type", "del-field", "/Recovered/Payload", "--name", "flags"],
-            "type_del_field",
-            json!({"type_name": "/Recovered/Payload", "field_name": "flags", "ordinal": null}),
+            vec![
+                "type",
+                "field",
+                "delete",
+                "/Recovered/Payload",
+                "--field",
+                "flags",
+            ],
+            "type_field_delete",
+            json!({"type_name": "/Recovered/Payload", "offset": null, "field": "flags", "ordinal": null}),
+        ),
+        (
+            vec![
+                "type",
+                "field",
+                "append",
+                "/Recovered/Header",
+                "--name",
+                "flags",
+                "--type",
+                "uint",
+            ],
+            "type_field_append",
+            json!({"type_name": "/Recovered/Header", "field_name": "flags", "field_type": "uint", "size": null}),
+        ),
+        (
+            vec![
+                "type",
+                "field",
+                "set",
+                "/Recovered/Header",
+                "--field",
+                "flags",
+                "--name",
+                "options",
+            ],
+            "type_field_set",
+            json!({"type_name": "/Recovered/Header", "field": "flags", "offset": null, "ordinal": null,
+                "field_name": "options", "field_type": null, "comment": null, "size": null}),
+        ),
+        (
+            vec![
+                "type",
+                "field",
+                "clear",
+                "/Recovered/Header",
+                "--field",
+                "flags",
+            ],
+            "type_field_clear",
+            json!({"type_name": "/Recovered/Header", "field": "flags", "offset": null}),
+        ),
+        (
+            vec![
+                "type",
+                "field",
+                "delete",
+                "/Recovered/Header",
+                "--offset",
+                "0x10",
+            ],
+            "type_field_delete",
+            json!({"type_name": "/Recovered/Header", "field": null, "offset": 16, "ordinal": null}),
         ),
     ] {
         args.extend([
@@ -1769,7 +1837,8 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
     ] {
         let mut args = vec![
             "type",
-            "set-field",
+            "field",
+            "set",
             "/Recovered/Manager",
             "--offset",
             offset,
@@ -1781,13 +1850,13 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         let mut requests = bridge.requests.lock().unwrap();
         let edits: Vec<_> = requests
             .iter()
-            .filter(|r| r["command"] == "type_set_field")
+            .filter(|r| r["command"] == "type_field_set")
             .collect();
         assert_eq!(edits.len(), 1);
         assert_eq!(
             edits[0]["args"],
             json!({
-                "type_name": "/Recovered/Manager", "offset": 28, "ordinal": null,
+                "type_name": "/Recovered/Manager", "offset": 28, "ordinal": null, "field": null,
                 "field_name": name, "field_type": field_type, "comment": comment, "size": size,
             })
         );
@@ -1798,7 +1867,8 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
     }
     bridge.run(&[
         "type",
-        "clear-field",
+        "field",
+        "clear",
         "/Recovered/Manager",
         "--offset",
         "0x1c",
@@ -1809,12 +1879,12 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         let mut requests = bridge.requests.lock().unwrap();
         let edits: Vec<_> = requests
             .iter()
-            .filter(|r| r["command"] == "type_clear_field")
+            .filter(|r| r["command"] == "type_field_clear")
             .collect();
         assert_eq!(edits.len(), 1);
         assert_eq!(
             edits[0]["args"],
-            json!({"type_name": "/Recovered/Manager", "offset": 28})
+            json!({"type_name": "/Recovered/Manager", "offset": 28, "field": null})
         );
         assert!(requests
             .iter()
@@ -1822,18 +1892,12 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         requests.clear();
     }
     bridge.run(&[
-        "type",
-        "add-field",
-        "Manager",
-        "--name",
-        "hook",
-        "--type",
-        "Hook *",
+        "type", "field", "append", "Manager", "--name", "hook", "--type", "Hook *",
     ]);
     let requests = bridge.requests.lock().unwrap();
     let added = requests
         .iter()
-        .find(|r| r["command"] == "type_add_field")
+        .find(|r| r["command"] == "type_field_append")
         .unwrap();
     assert_eq!(
         added["args"],
