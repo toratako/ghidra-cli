@@ -38,9 +38,8 @@ ghidra-cli symbol entry-points --sort name --limit 0
 
 ## Import and reanalysis
 
-`analysis run --project target --program target.bin` analyzes the entire program
-using its saved settings. To configure the first analysis, import with
-`--no-analyze`, change the options, then run analysis:
+`analysis run` analyzes the entire program using its saved settings.
+To configure the first analysis:
 
 ```bash
 ghidra-cli program import ./target.bin --project target --no-analyze
@@ -50,9 +49,9 @@ ghidra-cli analysis option set "ASCII Strings.Minimum String Length" LEN_10 --pr
 ghidra-cli analysis run --project target --program target.bin
 ```
 
-Use the option's exact `name`; for enums, select a constant from `choices`.
-Analyzer enablement is a boolean option, e.g. `analysis option set "ASCII Strings" false`.
-Setting an option saves it to the Program without running analysis.
+For enum options, select a constant from `choices`. Analyzer enablement is a
+boolean option, e.g. `analysis option set "ASCII Strings" false`.
+Setting options does not run analysis.
 
 `program import INPUT --name NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
@@ -90,7 +89,7 @@ ghidra-cli program export gzf --project target -o ./target.gzf
 ghidra-cli program export binary -o ./target.patched.bin --project target
 ```
 
-C exports contain decompiled functions and referenced global declarations; they do not reconstruct complete data initializers.
+C exports do not reconstruct complete data initializers.
 
 `gzf` saves the program before packing and atomically replaces the destination
 after successful export. Failure or cancellation before replacement preserves

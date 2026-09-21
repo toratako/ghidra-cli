@@ -23,10 +23,9 @@ ghidra-cli function set-noreturn abort_path --project target
 `function set-return-type` can save inferred parameter locations without fixing
 their types. Use `function set-signature` when the complete prototype is known.
 
-Use `function get --with-signature` to inspect the current Program definition
-and its argument/return storage, including hidden arguments and
-indirect returns. Saved undefined parameter types can still be refined in
-decompiler output.
+`function get --with-signature` reads the Program prototype and ABI storage,
+including hidden arguments and indirect returns; decompiler output can still
+refine saved undefined parameter types.
 
 `function edit-var` selects a local variable or parameter by exact name;
 ambiguous names return candidates. `before` describes the decompiler's variable,
@@ -36,8 +35,6 @@ database type undefined so the decompiler continues inferring it.
 ## Comments
 
 `comment list` includes comments on external functions and unmapped addresses.
-`comment delete ADDRESS --comment-type pre` removes one comment type.
-Use `--all` to remove EOL, PRE, POST, and PLATE comments together.
 
 Use stdin or a file to preserve comment text containing shell metacharacters:
 
@@ -104,9 +101,6 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
-`enum member delete` selects an exact member name; other names with the same value
-remain available.
-
 ### Recovering unions
 
 ```bash
@@ -119,11 +113,9 @@ ghidra-cli type field set Payload --ordinal 1 --comment 'Used when tag == 2'
 ghidra-cli type field delete Payload --ordinal 0
 ```
 
-Union members all overlap at offset zero. Use the zero-based `ordinal` from
-`type get` to edit a member, including an unnamed one. Named members can also be
-selected with `--field NAME`; removing a member renumbers later ordinals. The
-union's size follows its members and packing/alignment, so changing its largest
-member can change the layout of containing types.
+Use the zero-based `ordinal` from `type get` to select unnamed union members,
+or `--field NAME` for named members. Deletion renumbers later ordinals.
+Changing the largest member can change the layout of containing types.
 
 ### Growing recovered structures
 
@@ -136,8 +128,7 @@ ghidra-cli type field clear Manager --offset 0x1c
 
 `field set`, `field clear`, and `field delete` select a struct field by its exact
 starting byte offset or `--field NAME`. In `field set`, omitted attributes keep
-their current values; `--name` sets the new name. At an offset in undefined space,
-`--type` is required and `--name` is optional. An empty comment clears it.
+their current values. At an offset in undefined space, supply `--type`.
 
 Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field.

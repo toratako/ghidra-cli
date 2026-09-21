@@ -17,10 +17,9 @@ literal text. Inside double quotes, backslashes escape `"`, `\`, `$`, and backti
 Variables, command substitutions, and wildcards are never expanded. Empty lines
 and lines starting with `#` are ignored.
 
-Selected lines and their nested batch files are checked before execution.
-Validation failures execute no commands.
-Function/type existence and other Program-dependent checks
-occur during execution; nested batches inherit `--on-error` unless overridden.
+Selected lines and nested files are validated before any command runs;
+Program-dependent checks, such as function/type existence, occur during execution.
+Nested batches inherit `--on-error` unless overridden.
 
 ## Dependent edits
 
@@ -39,7 +38,7 @@ ghidra-cli batch ./edits.ghidra --on-error stop --project target --program targe
 ## Resuming
 
 After a stopped command has rolled back, fix its line in the original file and
-start there, including that line:
+resume from that line without replaying completed edits:
 
 ```bash
 ghidra-cli batch ./edits.ghidra --from-line 45 --on-error stop --project target --program target.bin
@@ -63,5 +62,4 @@ For import inputs and program export destinations, see
 In JSON output, `.[0].results` contains attempted commands in execution order.
 Each result's `line` is the one-based source line number. The report's
 `commands_executed` includes failed attempts; counts cover the selected range.
-Nested batch reports identify their source file and appear within
-the containing command's result or error detail.
+Nested batch reports appear within the containing command's result or error detail.

@@ -20,16 +20,12 @@ candidates; use an address to select one.
 `--format c` prints decompiled code without JSON escaping. Use JSON when you
 need the accompanying variable/parameter metadata.
 
-Check `warnings` when assessing recovered control flow or calling conventions.
-`source: c_comment` identifies a warning in the C comments, which may include
-user-written notes; `source: decompiler` identifies an API diagnostic.
-`entry_memory` describes the function's entry block, not every body range; null
-means no block covers that address. `is_external` identifies Ghidra external
-functions, not local thunks that call them.
+In `warnings`, `source: c_comment` may include user-written notes;
+`source: decompiler` identifies an API diagnostic. `entry_memory` describes only
+the entry block, not every body range.
 
 `basic_block_count` counts optimized decompiler blocks. Jump tables contain
-only recovered destinations; an empty result does not rule out an indirect
-branch. Use `is_default` to identify default destinations.
+only recovered destinations; an empty result does not rule out an indirect branch.
 
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
@@ -119,11 +115,10 @@ ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project ta
 select a containing component and retain its `parents`; overlapping union
 members remain alternative interpretations. Pointers are not followed.
 
-`memory info` reports file provenance. `memory read --source original` reads
-preserved import bytes, useful when relocations or patches changed current
-memory. It does not reopen the executable on disk, and fails if the requested
-range lacks a supported file mapping. The returned mappings identify each
-source span; original bytes are not decoded as current-memory pointer targets.
+Use `memory info` to check file provenance and `memory read --source original`
+to compare current memory with preserved import bytes before relocations or
+patches. This requires a file mapping for the whole range; it does not reopen
+the executable on disk or decode original bytes as current-memory pointers.
 
 For byte edits, see [patching](low-level.md#patching).
 
