@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0-rc.1] - 2026-09-21
+
 ### Added
 
 - Add `batch --from-line N` to resume an edited source file without replaying
@@ -118,6 +120,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Sorting, counts and unsupported filters retain complete-input processing.
 - Restore macOS release binaries for Intel and Apple Silicon, with macOS ARM64
   included in the full test suite that gates release artifacts.
+- Mark GitHub releases from prerelease version tags as prereleases.
 - Skip Ghidra integration CI for Markdown-only changes while retaining unit and
   CLI checks. Run infrastructure suites in separate daemon and project jobs;
   documentation pushes no longer cancel running Ghidra tests for code changes.
@@ -989,7 +992,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.6.1...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...HEAD
+[0.7.0-rc.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/toratako/ghidra-cli/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/toratako/ghidra-cli/compare/v0.4.0...v0.5.0

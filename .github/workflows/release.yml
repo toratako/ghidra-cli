@@ -182,6 +182,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: artifacts/**/*
           fail_on_unmatched_files: true
         env:

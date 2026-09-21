@@ -1,6 +1,6 @@
 [package]
 name = "ghidra-cli"
-version = "0.6.1"
+version = "0.7.0-rc.1"
 edition = "2021"
 authors = ["Alexander Kiselev", "toratako"]
 description = "CLI for AI agents automating native-binary reverse engineering with Ghidra"
