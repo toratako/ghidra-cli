@@ -299,6 +299,8 @@ fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     } else {
                         parts.push(format!("\"{}\"", v));
                     }
+                } else if let Some(v) = map.get("value") {
+                    parts.push(format!("value={}", format_json_value(v)));
                 }
 
                 // If we only have unknown fields, render as key=value pairs
@@ -643,6 +645,22 @@ mod tests {
             .format(&data, OutputFormat::Minimal)
             .unwrap();
         assert_eq!(result, "0x1000\nhelper\n3\n");
+    }
+
+    #[test]
+    fn compact_preserves_typed_option_values_beside_their_names() {
+        let data = [
+            json!({"name": "Switch", "value": false}),
+            json!({"name": "Limit", "value": 17}),
+            json!({"name": "Empty", "value": null}),
+        ];
+        let output = DefaultFormatter
+            .format(&data, OutputFormat::Compact)
+            .unwrap();
+        assert_eq!(
+            output,
+            "Switch  value=false\nLimit  value=17\nEmpty  value=null\n"
+        );
     }
 
     #[test]
