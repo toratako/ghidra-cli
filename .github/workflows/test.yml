@@ -6,20 +6,39 @@ on:
   pull_request:
     branches: [main, master]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   CARGO_TERM_COLOR: always
 
 # macOS jobs are paused while decompiler and fixture symbol failures are investigated.
 jobs:
-  # Job 1: Unit tests and CLI tests (no Ghidra or JDK installation needed) - ~2 min
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      integration: ${{ steps.filter.outputs.integration }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # Compare pushes to the previous commit on either supported branch.
+          # Pull requests use their full changed-file list from the GitHub API.
+          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          filters: |
+            integration:
+              - '!**/*.md'
+
+  # Unit tests and CLI tests (no Ghidra or JDK installation needed).
   # Doctor success is checked by command_tests in readonly-integration.
   unit-and-cli:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-unit-and-cli-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -49,11 +68,17 @@ jobs:
       - name: Run CLI tests
         run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 
-  # Job 2: Ghidra setup - installs Ghidra to seed installation caches.
+  # Ghidra setup - installs Ghidra to seed installation caches.
   # This runs once per OS, then test jobs use the cached artifacts.
+  # Job-level cancellation lets documentation pushes leave code tests running.
   ghidra-setup:
+    needs: changes
+    if: ${{ needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-ghidra-setup-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -105,12 +130,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Job 3: Read-only integration tests (one bridge)
+  # Read-only integration tests (one bridge).
   readonly-integration:
-    needs: ghidra-setup
-    if: ${{ !cancelled() }}
+    needs: [changes, ghidra-setup]
+    if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-readonly-integration-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -172,12 +200,15 @@ jobs:
         env:
           RUST_LOG: info
 
-  # Job 4: Mutation tests (parallel with job 3)
+  # Mutation tests run in parallel with read-only integration tests.
   mutation-integration:
-    needs: ghidra-setup
-    if: ${{ !cancelled() }}
+    needs: [changes, ghidra-setup]
+    if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-mutation-integration-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -239,16 +270,25 @@ jobs:
         env:
           RUST_LOG: info
 
-  # Job 5: Infrastructure tests (parallel with jobs 3+4)
+  # Infrastructure suites run in two independent jobs per OS.
   infrastructure:
-    needs: ghidra-setup
-    if: ${{ !cancelled() }}
+    needs: [changes, ghidra-setup]
+    if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-infrastructure-${{ github.ref }}-${{ matrix.os }}-${{ matrix.suite }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        suite: [daemon, project]
+        include:
+          - suite: daemon
+            tests: --test daemon_tests
+          - suite: project
+            tests: --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests
 
     steps:
       - uses: actions/checkout@v7
@@ -301,7 +341,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run infrastructure tests
-        run: cargo xtask test --test daemon_tests --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests --verbose -- --nocapture
+        run: cargo xtask test ${{ matrix.tests }} --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

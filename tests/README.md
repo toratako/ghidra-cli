@@ -56,6 +56,11 @@ snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask
 tests, and the generated command tree check on Linux and Windows. See
 [the test workflow](../.github/workflows/test.yml) for suite groupings.
 
+Markdown-only changes skip Ghidra setup and integration jobs; unit/CLI tests,
+the command tree check, and lint still run. Other changes run every suite on
+Linux and Windows. Infrastructure tests run in two parallel groups per OS:
+`daemon_tests`, and the project/bootstrap/reliability/fixture suites.
+
 `readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial
 locks; domain modules under `readonly/` and `daemon/` remain in those executables.
 Keep snapshot assertions at their original source/module path to preserve Insta
