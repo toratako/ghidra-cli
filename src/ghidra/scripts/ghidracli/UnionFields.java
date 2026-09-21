@@ -13,6 +13,8 @@ import ghidra.program.model.data.Union;
 import ghidra.program.model.symbol.SymbolUtilities;
 import java.util.Objects;
 
+import static ghidracli.StructureFields.describe;
+
 /** Ordinal-based union edits validated before changing the program database. */
 final class UnionFields {
     private UnionFields() {}
@@ -25,12 +27,6 @@ final class UnionFields {
         if (JsonProtocol.getArgString(args, "ordinal") == null)
             throw new IllegalArgumentException("Union member ordinal is required; use --ordinal from type get");
         return JsonProtocol.getNonnegativeIntArg(args, "ordinal", 0);
-    }
-
-    static JsonObject describe(DataTypeComponent field) {
-        JsonObject result = StructureFields.describe(field);
-        if (result != null) result.addProperty("ordinal", field.getOrdinal());
-        return result;
     }
 
     private static DataTypeComponent target(Union union, int ordinal) {

@@ -453,7 +453,10 @@ fn offset_field_size_is_honored_or_rejected_before_changing_the_structure() {
     assert_eq!(same["status"], "unchanged");
     assert_eq!(same["changed"], false);
     let saved = definition(&name);
-    assert_eq!(field(&saved, "bounded"), field(&after, "bounded"));
+    // Shrinking the earlier field adds four undefined byte components before bounded.
+    let mut bounded = field(&after, "bounded").clone();
+    bounded["ordinal"] = json!(bounded["ordinal"].as_u64().unwrap() + 4);
+    assert_eq!(field(&saved, "bounded"), &bounded);
     assert_eq!(field(&saved, "anchor"), field(&before, "anchor"));
     let client = harness().client().unwrap();
     client.program_close().unwrap();
@@ -527,8 +530,12 @@ fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() 
     assert!(cleared["after"].is_null());
     let after = definition(&name);
     assert_eq!(after["size"], 21);
-    assert_eq!(field(&after, "later"), field(&original, "later"));
-    assert_eq!(field(&after, "appended"), field(&original, "appended"));
+    // Clearing one eight-byte field creates eight undefined byte components.
+    for name in ["later", "appended"] {
+        let mut expected = field(&original, name).clone();
+        expected["ordinal"] = json!(expected["ordinal"].as_u64().unwrap() + 7);
+        assert_eq!(field(&after, name), &expected);
+    }
     for offset in ["0", "8"] {
         let unchanged = success(clear(&name, offset));
         assert_eq!(unchanged["status"], "unchanged");

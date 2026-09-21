@@ -116,7 +116,7 @@ final class TypeCommands {
             typeInfo.addProperty("packing_enabled", union.isPackingEnabled());
             JsonArray components = new JsonArray();
             for (DataTypeComponent comp : union.getComponents()) {
-                components.add(UnionFields.describe(comp));
+                components.add(StructureFields.describe(comp));
             }
             typeInfo.add("components", components);
         } else if (dataType instanceof ghidra.program.model.data.Enum) {

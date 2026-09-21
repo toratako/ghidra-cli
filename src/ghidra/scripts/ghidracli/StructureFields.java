@@ -3,6 +3,7 @@ package ghidracli;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.database.data.DataTypeUtilities;
@@ -38,15 +39,26 @@ final class StructureFields {
 
     static JsonObject describe(DataTypeComponent field) {
         if (field == null) return null;
+        DataType type = field.getDataType();
+        BitFieldDataType bitfield = type instanceof BitFieldDataType
+            ? (BitFieldDataType) type : null;
+        DataType baseType = bitfield == null ? null : bitfield.getBaseDataType();
         JsonObject result = new JsonObject();
+        result.addProperty("ordinal", field.getOrdinal());
         result.addProperty("name", field.getFieldName());
         result.addProperty("display_name", field.getFieldName() != null
             ? field.getFieldName() : field.getDefaultFieldName());
-        result.addProperty("type", field.getDataType().getName());
-        result.addProperty("type_path", field.getDataType().getPathName());
+        result.addProperty("type", type.getName());
+        result.addProperty("type_path", type.getPathName());
         result.addProperty("offset", field.getOffset());
         result.addProperty("size", field.getLength());
         result.addProperty("comment", field.getComment());
+        result.addProperty("is_bitfield", bitfield != null);
+        // Native bit offsets are right shifts within the component's minimal byte storage.
+        result.addProperty("bit_offset", bitfield == null ? null : bitfield.getBitOffset());
+        result.addProperty("bit_size", bitfield == null ? null : bitfield.getBitSize());
+        result.addProperty("base_type", baseType == null ? null : baseType.getName());
+        result.addProperty("base_type_path", baseType == null ? null : baseType.getPathName());
         return result;
     }
 
