@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-22
+
+This stable release includes all changes from
+[0.7.0-rc.1](https://github.com/toratako/ghidra-cli/releases/tag/v0.7.0-rc.1)
+plus the changes below.
+
 ### Added
 
 - Detect Ghidra through PATH and known Linux/macOS package layouts when no
@@ -1009,7 +1015,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...v0.7.0
 [0.7.0-rc.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/toratako/ghidra-cli/compare/v0.5.0...v0.6.0
