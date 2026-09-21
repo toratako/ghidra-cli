@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashSet;
 
 #[test]
 #[serial]
@@ -147,4 +148,70 @@ public class CheckImportRollbackFixture extends GhidraScript {
         }
     }
     client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn test_type_import_c_category_keeps_existing_same_named_types() {
+    require_ghidra!();
+    let harness = harness();
+
+    let suffix = unique_suffix();
+    let type_name = format!("CatIsoType_{}", suffix);
+    let category_a = format!("/cat_a_{}", suffix);
+    let category_b = format!("/cat_b_{}", suffix);
+    let def_a = format!("struct {} {{ int a; }};", type_name);
+    let def_b = format!("struct {} {{ int b; }};", type_name);
+
+    ghidra(harness)
+        .arg("type")
+        .arg("import-c")
+        .arg("--category")
+        .arg(&category_a)
+        .arg(&def_a)
+        .with_project(test_project(), TEST_PROGRAM)
+        .run()
+        .assert_success();
+
+    ghidra(harness)
+        .arg("type")
+        .arg("import-c")
+        .arg("--category")
+        .arg(&category_b)
+        .arg(&def_b)
+        .with_project(test_project(), TEST_PROGRAM)
+        .run()
+        .assert_success();
+
+    let list_result = ghidra(harness)
+        .arg("type")
+        .arg("list")
+        .arg("--filter")
+        .arg(format!("name={type_name}"))
+        .with_project(test_project(), TEST_PROGRAM)
+        .json_format()
+        .run();
+
+    list_result.assert_success();
+    let listed_types: Vec<serde_json::Value> = list_result.json();
+
+    let categories: HashSet<String> = listed_types
+        .iter()
+        .filter(|item| item.get("name").and_then(|v| v.as_str()) == Some(type_name.as_str()))
+        .filter_map(|item| item.get("category").and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
+        .collect();
+
+    assert!(
+        categories.contains(&category_a),
+        "Expected {} to remain after second import. Seen categories: {:?}",
+        category_a,
+        categories
+    );
+    assert!(
+        categories.contains(&category_b),
+        "Expected {} after second import. Seen categories: {:?}",
+        category_b,
+        categories
+    );
 }

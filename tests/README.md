@@ -61,8 +61,10 @@ the command tree check, and lint still run. Other changes run every suite on
 Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel groups
 per OS: `daemon_tests`, and the project/bootstrap/reliability/fixture suites.
 
-`readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial
-locks; domain modules under `readonly/` and `daemon/` remain in those executables.
+Suite roots own their fixtures and serial locks; domain modules remain in the
+original test executables. `routing_tests.rs` owns the recorded bridge shared by
+`routing/`, and `output_format_integration.rs` keeps presentation tests alongside
+the configuration, installation, project, and validation modules in `output/`.
 Keep snapshot assertions at their original source/module path to preserve Insta
 identity. Filter a domain with, for example,
 `cargo test --test daemon_tests program_session::`.
@@ -98,7 +100,12 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [readonly/decompile_details.rs](readonly/decompile_details.rs), [readonly/function_details.rs](readonly/function_details.rs) | Recovered jump tables, decompiler block counts, disjoint body ranges, calling conventions, and Program signature/storage reads including auto-parameters and thunks |
 | [readonly/bookmarks.rs](readonly/bookmarks.rs), [readonly/memory_info.rs](readonly/memory_info.rs), [readonly/program_metadata.rs](readonly/program_metadata.rs) | Bookmark preservation, address classification, relocation evidence, and original executable hashes |
 | [daemon/analysis.rs](daemon/analysis.rs) | Native option types/defaults/choices, settings-only edits versus full reanalysis, rollback and reopen persistence |
+| [bootstrap/imports.rs](bootstrap/imports.rs), [bootstrap/analysis.rs](bootstrap/analysis.rs) | Import names, collisions and durable failure checkpoints; analysis settings and completion flags across startup routes |
+| [readonly/functions.rs](readonly/functions.rs), [readonly/decompile_cli.rs](readonly/decompile_cli.rs), [readonly/disassembly.rs](readonly/disassembly.rs) | Function-list schemas and filters, decompiler targets/timeouts, and whole-body/ranged disassembly with query and output options |
+| [patch/define_code.rs](patch/define_code.rs) | Bounded code definitions, rollback/persistence, Thumb context and MIPS delay slots |
 | [patch/memory_write.rs](patch/memory_write.rs) | Preserved component settings and instructions, pointer references across widths/byte orders, string storage, shared memory, overlays and delay slots |
+| [symbols/targets.rs](symbols/targets.rs), [symbols/deletion.rs](symbols/deletion.rs) | Exact mutation targets and namespace revalidation; thunk/dynamic symbols and transactional deletion |
+| [scripts/source.rs](scripts/source.rs), [scripts/artifacts.rs](scripts/artifacts.rs) | Java source/package resolution from files and stdin; artifact validation and failure diagnostics |
 | [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion; return edits preserving inferred/explicit parameters and ABI storage, compiler-specific calling convention validation |
 | [readonly/calls.rs](readonly/calls.rs), [readonly/relationships.rs](readonly/relationships.rs) | Call resolution through thunks/pointers, undefined endpoints and reference evidence; real graph nodes/edges |
 | [readonly/query.rs](readonly/query.rs) | Server pages versus full rows, Unicode/Turkish locale, tags/comments, bounds beyond Java `int` |
