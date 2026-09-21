@@ -1,5 +1,5 @@
 use super::{batch_arguments, RecordedBridge};
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[test]
 fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
@@ -13,6 +13,19 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
             vec!["memory", "read", "blob", "16"],
             "read_memory",
             json!({"address":"blob", "size":16, "source":"memory"}),
+        ),
+        (
+            vec![
+                "data",
+                "read",
+                "record",
+                "--max-depth",
+                "3",
+                "--max-elements",
+                "7",
+            ],
+            "data_read",
+            json!({"target":"record", "max_depth":3, "max_elements":7}),
         ),
     ] {
         let bridge = RecordedBridge::new();
@@ -41,5 +54,69 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
             assert_eq!(domain[domain.len() - 2]["command"], "open_program");
             assert_eq!(domain[domain.len() - 2]["args"]["program"], "B");
         }
+    }
+}
+
+#[test]
+fn typed_data_selection_precedes_paging_and_preserves_object_components() {
+    let bridge = RecordedBridge::new();
+    for batched in [false, true] {
+        for (args, expected, expected_limit) in [
+            (
+                vec!["data", "list"],
+                json!([{"name":"zeta","address":"0x3000","type":"Record","size":16}]),
+                json!(1),
+            ),
+            (
+                vec![
+                    "data",
+                    "list",
+                    "--filter",
+                    "type=Record",
+                    "--sort",
+                    "name",
+                    "--offset",
+                    "1",
+                    "--fields",
+                    "name",
+                ],
+                json!([{"name":"zeta"}]),
+                Value::Null,
+            ),
+            (vec!["data", "list", "--count"], json!(3), Value::Null),
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let value = if batched {
+                std::fs::write(bridge.root.path().join("data.txt"), batch_arguments(&args))
+                    .unwrap();
+                let report = bridge.run(&["batch", "data.txt"]);
+                report[0]["results"][0]["result"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            let value = if batched && args.len() == 2 {
+                value["items"].clone()
+            } else {
+                value
+            };
+            assert_eq!(value, expected, "{args:?}, batch={batched}");
+            let requests = bridge.requests.lock().unwrap();
+            let request = requests
+                .iter()
+                .find(|r| r["command"] == "data_list")
+                .unwrap();
+            assert_eq!(request["args"]["limit"], expected_limit);
+        }
+        let args = ["data", "read", "record", "--fields", "components"];
+        let value = if batched {
+            std::fs::write(bridge.root.path().join("data.txt"), batch_arguments(&args)).unwrap();
+            bridge.run(&["batch", "data.txt"])[0]["results"][0]["result"].clone()
+        } else {
+            bridge.run(&args)
+        };
+        assert_eq!(
+            value,
+            json!([{"components":[{"name":"flags","value":"3"},{"name":"count","value":"7"}]}])
+        );
     }
 }

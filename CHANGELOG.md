@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `data list` and bounded `data read TARGET` for applied data types and
+  their values, including structures, arrays, pointers, and interior components.
 - Add `memory read --source original` for preserved import bytes and file
   provenance in `memory info`; current-memory reads remain the default.
 

@@ -8,6 +8,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Function(_)
             | Commands::Strings(_)
             | Commands::Memory(_)
+            | Commands::Data(_)
             | Commands::XRef(_)
             | Commands::Symbol(_)
             | Commands::Type(_)
@@ -54,6 +55,10 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::MemoryCommands::Info(args) => args.options.project.clone(),
             cli::MemoryCommands::Read(args) => args.options.project.clone(),
             cli::MemoryCommands::Write(args) => args.project.clone(),
+        },
+        Commands::Data(cmd) => match cmd {
+            cli::DataCommands::List(opts) => opts.project.clone(),
+            cli::DataCommands::Read(args) => args.options.project.clone(),
         },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.project.clone(),
@@ -189,6 +194,10 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::MemoryCommands::Info(args) => args.options.program.clone(),
             cli::MemoryCommands::Read(args) => args.options.program.clone(),
             cli::MemoryCommands::Write(args) => args.program.clone(),
+        },
+        Commands::Data(cmd) => match cmd {
+            cli::DataCommands::List(opts) => opts.program.clone(),
+            cli::DataCommands::Read(args) => args.options.program.clone(),
         },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.program.clone(),
@@ -341,6 +350,10 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::MemoryCommands::Read(args) => Some((&args.options).into()),
             _ => None,
         },
+        Commands::Data(cmd) => match cmd {
+            cli::DataCommands::List(opts) => Some(opts.clone()),
+            cli::DataCommands::Read(args) => Some((&args.options).into()),
+        },
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => Some(args.options.clone()),
             cli::XRefCommands::From(args) => Some(args.options.clone()),
@@ -425,6 +438,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             | cli::FindCommands::Constant(_),
         ) => Limit,
         Commands::Disasm(_) => Limit,
+        Commands::Data(cli::DataCommands::List(_)) => Limit,
         _ => Client,
     }
 }

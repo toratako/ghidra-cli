@@ -118,6 +118,7 @@ fn response_array_key(obj: &serde_json::Map<String, serde_json::Value>) -> Optio
     // Known array keys from bridge responses
     const ARRAY_KEYS: &[&str] = &[
         "options",
+        "items",
         "functions",
         "strings",
         "externals",

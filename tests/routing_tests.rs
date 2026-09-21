@@ -221,6 +221,22 @@ impl RecordedBridge {
                         }
                         result
                     }
+                    "data_list" => {
+                        let mut rows = vec![
+                            json!({"name":"zeta", "address":"0x3000", "type":"Record", "size":16}),
+                            json!({"name":"alpha", "address":"0x1000", "type":"Record", "size":8}),
+                            json!({"name":"beta", "address":"0x2000", "type":"int", "size":4}),
+                        ];
+                        if let Some(limit) = args["limit"].as_u64().filter(|n| *n != 0) {
+                            rows.truncate(limit as usize);
+                        }
+                        json!({"count":rows.len(), "items":rows})
+                    }
+                    "data_read" => json!({
+                        "address":"0x1000", "name":"record", "type":"Record", "kind":"struct",
+                        "state":"available", "target_address":"0x1000", "target_offset":0,
+                        "components":[{"name":"flags", "value":"3"}, {"name":"count", "value":"7"}],
+                    }),
                     "memory_info" => json!({
                         "address": "0x1000", "kind": "instruction",
                         "instruction": {"address": "0x1000", "end": "0x1001", "size": 2, "offset": 0, "mnemonic": "MOV"},

@@ -207,7 +207,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run read-only integration tests
-        run: cargo xtask test --no-fail-fast --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test readonly_tests --test memory_tests --test data_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

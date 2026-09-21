@@ -54,6 +54,9 @@ ghidra-cli
 │   ├── info
 │   ├── read
 │   └── write
+├── data
+│   ├── list
+│   └── read
 ├── xref
 │   ├── to
 │   └── from
@@ -140,4 +143,4 @@ ghidra-cli
 └── setup
 ```
 
-128 command nodes (excluding the root), 0 aliases.
+131 command nodes (excluding the root), 0 aliases.

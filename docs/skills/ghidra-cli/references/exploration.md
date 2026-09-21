@@ -111,7 +111,15 @@ ghidra-cli memory map --project target
 ghidra-cli memory info 0x401003 --project target
 ghidra-cli memory read 0x401000 64 --project target
 ghidra-cli memory read 0x401000 64 --source original --project target
+ghidra-cli data list --filter 'type=Header' --fields name,address,type,size --project target
+ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project target
 ```
+
+`data read` interprets current memory using its applied type. Interior targets
+select a containing component and retain its `parents`; overlapping union
+members remain alternative interpretations. Integers use decimal strings to
+preserve precision. Check `state` and `truncated` before treating the value as
+available or the component tree as complete; pointers are not followed.
 
 `memory info` reports file provenance. `memory read --source original` reads
 preserved import bytes, useful when relocations or patches changed current

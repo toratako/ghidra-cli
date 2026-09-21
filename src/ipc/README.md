@@ -148,6 +148,16 @@ for the complete requested range and return source `mappings` instead of pointer
 candidates. Each mapping includes its address/end/size and file provenance.
 Indirect bit/byte mappings are explicitly unsupported; host files are not read.
 
+`data_list` takes `limit` and returns `{items, count}` for top-level defined
+data; filtering, sorting and offset remain in Rust. `data_read` takes `target`,
+`max_depth` (default 2), and `max_elements` (default 100). It returns the selected
+typed object with parent metadata for interior targets. Expanded components
+share one element budget; zero means no expansion, not unlimited. Scalar
+`state` distinguishes available/unavailable values; aggregates contain
+`components`. Integers are decimal strings with bit width and signedness;
+pointer values retain address-space identity. `truncated` propagates to the root
+and local `truncation_reasons` explain omitted content.
+
 Function detail (`get_function`) includes inclusive `body_ranges` without
 adding them to function lists. Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming

@@ -120,6 +120,7 @@ another consumer or terminate its checkout.
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
 | `MemoryInfoCommands`, `MemorySources` | Listing classification and preserved FileBytes provenance/reads |
+| `DataCommands` | Applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
@@ -191,6 +192,12 @@ and cancellation; this helper owns no transactions or saves.
 only for original-file provenance; reads use the relative FileBytes offset.
 It rejects indirect bit/byte mappings instead of assuming a 1:1 correspondence.
 Original reads must map the complete requested range and never consult host files.
+
+`DataCommands` reads through applied `Data` instances so component settings and
+bitfield layouts stay native. Interior lookup stops at overlapping components;
+unions expose alternative members. Depth and a shared element budget bound
+expansion, while scalar/string materialization has a byte cap. Unreadable values
+remain unavailable and exact integers are serialized as decimal strings.
 
 Export success
 requires completed file writes and a true Ghidra exporter result; exporter logs

@@ -199,6 +199,19 @@ pub(super) fn execute_via_bridge(
                 ),
             }
         }
+        Commands::Data(cmd) => match cmd {
+            cli::DataCommands::List(_) => {
+                client.send_command("data_list", Some(json!({"limit": list_limit})))
+            }
+            cli::DataCommands::Read(args) => client.send_command(
+                "data_read",
+                Some(json!({
+                    "target": args.target,
+                    "max_depth": args.max_depth,
+                    "max_elements": args.max_elements,
+                })),
+            ),
+        },
         Commands::XRef(cmd) => {
             use cli::XRefCommands;
             match cmd {

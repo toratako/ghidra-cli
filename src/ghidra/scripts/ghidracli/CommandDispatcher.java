@@ -22,6 +22,7 @@ final class CommandDispatcher {
     private final GraphCommands graphCommands;
     private final MemoryCommands memoryCommands;
     private final MemoryInfoCommands memoryInfoCommands;
+    private final DataCommands dataCommands;
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
     private final FunctionSignatureCommands functionSignatureCommands;
@@ -52,6 +53,7 @@ final class CommandDispatcher {
         graphCommands = new GraphCommands(session, functionQueries);
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
+        dataCommands = new DataCommands(session, addressResolver);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
 
@@ -73,6 +75,8 @@ final class CommandDispatcher {
             case "symbol_entry_points":    return listingCommands.handleSymbolEntryPoints(args);
             case "memory_map":      return listingCommands.handleMemoryMap();
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
+            case "data_list":       return dataCommands.handleList(args);
+            case "data_read":       return dataCommands.handleRead(args);
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
             case "import":          return programCommands.handleImport(args);

@@ -5,6 +5,7 @@ mod analysis;
 mod annotations;
 mod automation;
 mod configuration;
+mod data;
 mod function;
 mod inspection;
 mod management;
@@ -20,6 +21,7 @@ pub use analysis::*;
 pub use annotations::*;
 pub use automation::*;
 pub use configuration::*;
+pub use data::*;
 pub use function::*;
 pub use inspection::*;
 pub use management::*;
@@ -96,6 +98,10 @@ pub enum Commands {
     /// Memory operations
     #[command(subcommand)]
     Memory(MemoryCommands),
+
+    /// Inspect defined data and read typed values
+    #[command(subcommand)]
+    Data(DataCommands),
 
     /// Cross-reference operations
     #[command(subcommand, name = "xref")]
