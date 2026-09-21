@@ -28,7 +28,7 @@ final class XrefCommands {
         this.functionQueries = functionQueries;
     }
 
-    JsonObject handleXrefsTo(JsonObject args) {
+    JsonObject handleXrefsTo(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -50,9 +50,12 @@ final class XrefCommands {
         Set<String> seen = new HashSet<>();
 
         for (Address addr : targetAddrs) {
+            session.monitor().checkCancelled();
             for (Reference ref : refMgr.getReferencesTo(addr)) {
+                session.monitor().checkCancelled();
                 Address fromAddr = ref.getFromAddress();
-                String dedupKey = fromAddr + "|" + addr + "|" + ref.getReferenceType();
+                String dedupKey = AddressCodec.format(fromAddr) + "|" + AddressCodec.format(addr)
+                    + "|" + ref.getOperandIndex() + "|" + ref.getReferenceType();
                 if (!seen.add(dedupKey)) continue;
 
                 Function fromFunc = fm.getFunctionContaining(fromAddr);
@@ -62,6 +65,7 @@ final class XrefCommands {
                 xrefData.addProperty("from", AddressCodec.format(fromAddr));
                 xrefData.addProperty("to", AddressCodec.format(addr));
                 xrefData.addProperty("ref_type", ref.getReferenceType().toString());
+                addReferenceMetadata(xrefData, ref);
                 if (fromFunc != null) {
                     xrefData.addProperty("from_function", fromFunc.getName());
                 } else {
@@ -126,9 +130,16 @@ final class XrefCommands {
             row.addProperty("from", AddressCodec.format(address));
             row.addProperty("to", AddressCodec.format(destination));
             row.addProperty("ref_type", reference.getReferenceType().toString());
+            addReferenceMetadata(row, reference);
             row.addProperty("from_function", fromFunction == null ? null : fromFunction.getName());
             row.addProperty("to_function", toFunction == null ? null : toFunction.getName());
             xrefs.add(row);
         }
+    }
+
+    private static void addReferenceMetadata(JsonObject row, Reference reference) {
+        row.addProperty("operand_index", reference.getOperandIndex());
+        row.addProperty("source", reference.getSource().name());
+        row.addProperty("primary", reference.isPrimary());
     }
 }

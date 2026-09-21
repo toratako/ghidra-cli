@@ -126,6 +126,78 @@ fn test_xref_to_external_import_resolves_thunk() {
     panic!("fixture has no imported symbol with incoming references");
 }
 
+#[test]
+#[serial]
+fn xref_metadata_preserves_operand_distinct_references_in_both_directions() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let program = format!("xref-metadata-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("CreateXrefMetadataFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&program).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        use serde_json::{json, Value};
+        let normalize = |result: &Value| {
+            let mut rows = result["xrefs"].as_array().unwrap().clone();
+            assert_eq!(result["count"], rows.len());
+            rows.sort_by_key(|row| row["operand_index"].as_i64().unwrap());
+            rows
+        };
+        let incoming = normalize(&client.xrefs_to("xref_target".to_owned()).unwrap());
+        let expected: Vec<_> = [
+            (-1, "IMPORTED", true),
+            (0, "USER_DEFINED", false),
+            (1, "ANALYSIS", true),
+        ]
+        .into_iter()
+        .map(|(operand, source, primary)| {
+            json!({
+                "from":"0x00001000", "to":"0x00002000", "ref_type":"DATA",
+                "from_function":"xref_source", "to_function":"xref_target",
+                "operand_index":operand, "source":source, "primary":primary,
+            })
+        })
+        .collect();
+        assert_eq!(incoming, expected);
+        assert_eq!(
+            normalize(&client.xrefs_to("0x2000".to_owned()).unwrap()),
+            incoming
+        );
+        for (target, function) in [("0x1000", false), ("xref_source", false), ("0x1002", true)] {
+            assert_eq!(
+                normalize(&client.xrefs_from(target.to_owned(), function).unwrap()),
+                incoming
+            );
+        }
+        for args in [
+            vec!["xref", "to", "xref_target", "--limit", "0"],
+            vec!["xref", "from", "xref_source", "--function", "--limit", "0"],
+        ] {
+            let result = ghidra(harness)
+                .args(args)
+                .with_project(test_project(), &program)
+                .arg("--json")
+                .run();
+            result.assert_success();
+            let mut rows: Vec<Value> = result.json();
+            rows.sort_by_key(|row| row["operand_index"].as_i64().unwrap());
+            assert_eq!(rows, expected);
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 // Graph Tests
 
 #[test]
