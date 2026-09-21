@@ -76,6 +76,7 @@ identity. Filter a domain with, for example,
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding, original file bytes versus edits, source mappings and reopen persistence |
 | `data_tests` | Applied data values, interior components, exact scalars and bounded aggregate expansion |
+| `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |
 | `address_tests` | Strict address syntax, exact-name collisions, rejected mutations, and address output round trips |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |

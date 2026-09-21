@@ -172,6 +172,10 @@ pub(super) fn execute_via_bridge(
                 FunctionCommands::SetNoReturn(args) => {
                     client.function_set_noreturn(&args.target, args.value)
                 }
+                FunctionCommands::SetStackPurge(args) => client.send_command(
+                    "function_set_stack_purge",
+                    Some(json!({"target": args.target, "bytes": args.bytes, "unknown": args.unknown})),
+                ),
             }
         }
         Commands::Strings(cmd) => {

@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `function set-stack-purge TARGET --bytes N | --unknown` and expose
+  known, unknown, and invalid stack-purge states in function queries.
 - Add `data list` and bounded `data read TARGET` for applied data types and
   their values, including structures, arrays, pointers, and interior components.
 - Add `memory read --source original` for preserved import bytes and file

@@ -13,6 +13,7 @@ ghidra-cli function edit-var parse_header --var local_10 \
 ghidra-cli function set-return-type abort_path --type void --project target
 ghidra-cli function list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
+ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
 ghidra-cli function set-noreturn abort_path --project target
 ```
 

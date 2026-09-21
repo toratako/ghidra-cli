@@ -131,6 +131,7 @@ final class CommandDispatcher {
             case "function_set_signature": return functionSignatureCommands.handleFunctionSetSignature(args);
             case "function_set_return_type": return functionSignatureCommands.handleFunctionSetReturnType(args);
             case "function_set_calling_convention": return functionSignatureCommands.handleFunctionSetCallingConvention(args);
+            case "function_set_stack_purge": return functionSignatureCommands.handleFunctionSetStackPurge(args);
             case "function_set_noreturn": return functionSignatureCommands.handleFunctionSetNoReturn(args);
             case "function_edit_var": return functionSignatureCommands.handleFunctionEditVar(args);
             // PCode commands

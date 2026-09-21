@@ -158,6 +158,12 @@ share one element budget; zero means no expansion, not unlimited. Scalar
 pointer values retain address-space identity. `truncated` propagates to the root
 and local `truncation_reasons` explain omitted content.
 
+`function_set_stack_purge` takes `target` and either integer `bytes` or
+`unknown: true`. Function queries and edit receipts use
+`stack_purge: {state: "known" | "unknown" | "invalid", bytes: integer | null}`.
+The edit receipt returns the resulting value and identifies a thunk's effective
+metadata owner when different from the requested function.
+
 Function detail (`get_function`) includes inclusive `body_ranges` without
 adding them to function lists. Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming

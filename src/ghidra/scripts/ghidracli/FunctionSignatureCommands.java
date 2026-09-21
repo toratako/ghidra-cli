@@ -180,6 +180,61 @@ final class FunctionSignatureCommands {
         }
     }
 
+    JsonObject handleFunctionSetStackPurge(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        String target = getArgString(args, "target");
+        if (target == null || target.isBlank()) return errorResult("target required");
+
+        try {
+            boolean unknown = false;
+            if (args.has("unknown") && !args.get("unknown").isJsonNull()) {
+                var value = args.get("unknown");
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+                    return errorResult("unknown must be a boolean");
+                }
+                unknown = value.getAsBoolean();
+            }
+            boolean hasBytes = args.has("bytes") && !args.get("bytes").isJsonNull();
+            if (hasBytes == unknown) return errorResult("Exactly one of bytes or unknown=true is required");
+            int bytes = unknown ? Function.UNKNOWN_STACK_DEPTH_CHANGE : stackPurgeBytes(args);
+
+            Function func = functionQueries.findFunctionByNameOrAddress(target);
+            if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+            // Ghidra stores a thunk's signature metadata on its ultimate target.
+            Function effective = func.isThunk() ? func.getThunkedFunction(true) : func;
+            effective.setStackPurgeSize(bytes);
+
+            JsonObject result = new JsonObject();
+            result.addProperty("status", "stack_purge_set");
+            result.addProperty("function", func.getName());
+            result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
+            result.add("stack_purge", functionQueries.stackPurgeToJson(func));
+            if (!effective.equals(func)) {
+                result.addProperty("effective_function", effective.getName());
+                result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+            }
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to set stack purge: " + e.getMessage(), e);
+        }
+    }
+
+    private static int stackPurgeBytes(JsonObject args) {
+        var value = args.get("bytes");
+        try {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                int bytes = value.getAsBigDecimal().intValueExact();
+                // FunctionDB considers values above this range invalid; its
+                // unknown/invalid sentinels must never be accepted as byte counts.
+                if (bytes <= 0xffffff) return bytes;
+            }
+        } catch (ArithmeticException | NumberFormatException e) {
+            // Reject fractions and overflow instead of narrowing them before mutation.
+        }
+        throw new IllegalArgumentException("bytes must be an integer from "
+            + Integer.MIN_VALUE + " to " + 0xffffff);
+    }
+
     JsonObject handleFunctionEditVar(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String funcTarget = getArgString(args, "target");

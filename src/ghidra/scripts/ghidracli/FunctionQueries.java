@@ -52,6 +52,7 @@ final class FunctionQueries {
 
         funcData.addProperty("calling_convention", func.getCallingConventionName());
         funcData.addProperty("no_return", func.hasNoReturn());
+        funcData.add("stack_purge", stackPurgeToJson(func));
 
         String comment = func.getComment();
         if (comment != null) {
@@ -61,6 +62,22 @@ final class FunctionQueries {
         }
 
         return funcData;
+    }
+
+    JsonObject stackPurgeToJson(Function func) {
+        int bytes = func.getStackPurgeSize();
+        JsonObject result = new JsonObject();
+        if (bytes == Function.UNKNOWN_STACK_DEPTH_CHANGE) {
+            result.addProperty("state", "unknown");
+            result.add("bytes", JsonNull.INSTANCE);
+        } else if (!func.isStackPurgeSizeValid()) {
+            result.addProperty("state", "invalid");
+            result.add("bytes", JsonNull.INSTANCE);
+        } else {
+            result.addProperty("state", "known");
+            result.addProperty("bytes", bytes);
+        }
+        return result;
     }
 
     JsonObject functionDetailToJson(Function func) throws ghidra.util.exception.CancelledException {

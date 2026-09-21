@@ -5,6 +5,16 @@ use serde_json::{json, Value};
 fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
     for (args, command, expected) in [
         (
+            vec!["function", "set-stack-purge", "callee", "--bytes", "-4"],
+            "function_set_stack_purge",
+            json!({"target":"callee", "bytes":-4, "unknown":false}),
+        ),
+        (
+            vec!["function", "set-stack-purge", "callee", "--unknown"],
+            "function_set_stack_purge",
+            json!({"target":"callee", "bytes":null, "unknown":true}),
+        ),
+        (
             vec!["memory", "read", "blob", "16", "--source", "original"],
             "read_memory",
             json!({"address":"blob", "size":16, "source":"original"}),

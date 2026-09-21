@@ -26,6 +26,8 @@ pub enum FunctionCommands {
     SetReturnType(SetReturnTypeArgs),
     /// Set function calling convention
     SetCallingConvention(SetCallingConventionArgs),
+    /// Set or clear the function's stack pointer change after return
+    SetStackPurge(SetStackPurgeArgs),
     /// Rename and/or retype a local variable or parameter
     EditVar(EditVarArgs),
     /// Mark a function as never returning to its call site (fixes bogus
@@ -149,6 +151,24 @@ pub struct SetCallingConventionArgs {
     /// Calling convention name (e.g., "__cdecl", "__stdcall", "__fastcall")
     #[arg(long)]
     pub convention: String,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("stack_purge").required(true).args(["bytes", "unknown"])))]
+pub struct SetStackPurgeArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Signed stack pointer change in bytes, excluding the normal return-address pop
+    #[arg(long, allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(..=0xffffff))]
+    pub bytes: Option<i32>,
+    /// Clear the explicit stack purge value without changing the calling convention
+    #[arg(long)]
+    pub unknown: bool,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
