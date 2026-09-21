@@ -19,23 +19,44 @@ pub enum TypeCommands {
     Delete(TypeDeleteArgs),
     /// Rename a data type
     Rename(TypeRenameArgs),
-    /// Append a field to a struct or union type
-    AddField(TypeAddFieldArgs),
-    /// Edit a struct field by offset or a union member by ordinal
-    SetField(TypeSetFieldArgs),
-    /// Clear a field to undefined bytes, preserving structure size and offsets
-    ClearField(TypeClearFieldArgs),
-    /// Remove a field from a struct or union type
-    DelField(TypeDelFieldArgs),
+    /// Edit struct and union fields
+    #[command(subcommand)]
+    Field(TypeFieldCommands),
+    /// Edit enum definitions
+    #[command(subcommand)]
+    Enum(TypeEnumCommands),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeFieldCommands {
+    /// Append a field using the type's packing and alignment
+    Append(TypeFieldAppendArgs),
+    /// Update a field, or create one at a struct offset in undefined space
+    Set(TypeFieldSetArgs),
+    /// Replace a struct field with undefined bytes, preserving size and later offsets
+    Clear(TypeFieldClearArgs),
+    /// Delete a field; shifts later struct fields or renumbers union members
+    Delete(TypeFieldDeleteArgs),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeEnumCommands {
+    /// Edit named enum members
+    #[command(subcommand)]
+    Member(TypeEnumMemberCommands),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeEnumMemberCommands {
     /// Remove one enum member by exact name
-    DelEnumMember(TypeDelEnumMemberArgs),
+    Delete(TypeEnumMemberDeleteArgs),
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum TypeCreateCommands {
-    /// Create an empty struct; add fields with `type set-field` or `type add-field`
+    /// Create an empty struct; add fields with `type field set` or `type field append`
     Struct(CreateStructArgs),
-    /// Create an empty union; add members with `type add-field`
+    /// Create an empty union; add members with `type field append`
     Union(CreateUnionArgs),
     /// Create an enum type
     Enum(CreateEnumArgs),
@@ -53,8 +74,8 @@ pub struct TypeGetArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct CreateStructArgs {
     /// Bare identifier for the new (empty) struct type -- NOT a C-style
-    /// struct definition. Build fields afterward with `type set-field` or
-    /// `type add-field`; use `type import-c` to parse C declarations.
+    /// struct definition. Build fields afterward with `type field set` or
+    /// `type field append`; use `type import-c` to parse C declarations.
     #[arg(value_name = "NAME")]
     pub name: String,
     #[arg(long)]
@@ -158,7 +179,7 @@ pub struct TypedefArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct TypeAddFieldArgs {
+pub struct TypeFieldAppendArgs {
     /// Struct or union name or full type path
     pub type_name: String,
     /// Field name
@@ -177,16 +198,11 @@ pub struct TypeAddFieldArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-#[command(group(clap::ArgGroup::new("field_selector").required(true).args(["name", "ordinal"])))]
-pub struct TypeDelFieldArgs {
+pub struct TypeFieldDeleteArgs {
     /// Struct or union name or full type path
     pub type_name: String,
-    /// Exact field name to remove
-    #[arg(long)]
-    pub name: Option<String>,
-    /// Union member's zero-based ordinal from `type get`
-    #[arg(long, value_parser = clap::value_parser!(i32).range(0..))]
-    pub ordinal: Option<i32>,
+    #[command(flatten)]
+    pub selector: TypeFieldSelector,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
@@ -194,7 +210,7 @@ pub struct TypeDelFieldArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct TypeDelEnumMemberArgs {
+pub struct TypeEnumMemberDeleteArgs {
     /// Enum name or full type path
     pub type_name: String,
     /// Exact member name to remove
@@ -224,16 +240,11 @@ fn parse_field_offset(value: &str) -> Result<i32, String> {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[command(group(clap::ArgGroup::new("field_edit").required(true).multiple(true).args(["name", "field_type", "comment"])))]
-#[command(group(clap::ArgGroup::new("field_selector").required(true).args(["offset", "ordinal"])))]
-pub struct TypeSetFieldArgs {
+pub struct TypeFieldSetArgs {
     /// Struct or union name or full type path
     pub type_name: String,
-    /// Struct field's starting byte offset, in decimal or 0x hexadecimal
-    #[arg(long, value_parser = parse_field_offset)]
-    pub offset: Option<i32>,
-    /// Existing union member's zero-based ordinal from `type get`
-    #[arg(long, value_parser = clap::value_parser!(i32).range(0..))]
-    pub ordinal: Option<i32>,
+    #[command(flatten)]
+    pub selector: TypeFieldSelector,
     /// New field name; omit to preserve an existing name
     #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub name: Option<String>,
@@ -253,14 +264,32 @@ pub struct TypeSetFieldArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct TypeClearFieldArgs {
+#[command(group(clap::ArgGroup::new("field_selector").required(true).args(["offset", "field"])))]
+pub struct TypeFieldClearArgs {
     /// Structure name or full type path
     pub type_name: String,
     /// Field starting byte offset, in decimal or 0x hexadecimal
     #[arg(long, value_parser = parse_field_offset)]
-    pub offset: i32,
+    pub offset: Option<i32>,
+    /// Exact existing field name (not its generated display name)
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub field: Option<String>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[group(id = "field_selector", required = true, multiple = false)]
+pub struct TypeFieldSelector {
+    /// Struct field's starting byte offset, in decimal or 0x hexadecimal
+    #[arg(long, value_parser = parse_field_offset)]
+    pub offset: Option<i32>,
+    /// Union member's zero-based ordinal from `type get`
+    #[arg(long, value_parser = clap::value_parser!(i32).range(0..))]
+    pub ordinal: Option<i32>,
+    /// Exact existing field name (not its generated display name)
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub field: Option<String>,
 }

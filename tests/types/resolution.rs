@@ -99,7 +99,9 @@ fn arrays_and_pointers_use_the_selected_program_width() {
         for (name, expression) in [("hooks", "/Recovered/Hook *[8]"), ("matrix", "byte[2][3]")] {
             type_command(
                 &program,
-                &["add-field", "Holder", "--name", name, "--type", expression],
+                &[
+                    "field", "append", "Holder", "--name", name, "--type", expression,
+                ],
             )
             .assert_success();
         }
@@ -147,7 +149,9 @@ fn invalid_arrays_fail_before_registering_types_or_growing_structures() {
     let program = create_program(64);
     type_command(
         &program,
-        &["add-field", "Holder", "--name", "anchor", "--type", "byte"],
+        &[
+            "field", "append", "Holder", "--name", "anchor", "--type", "byte",
+        ],
     )
     .assert_success();
     let before = get_type(&program, "Holder");
@@ -172,13 +176,7 @@ fn invalid_arrays_fail_before_registering_types_or_growing_structures() {
         let failed = type_command(
             &program,
             &[
-                "set-field",
-                "Holder",
-                "--name",
-                "invalid",
-                "--type",
-                expression,
-                "--offset",
+                "field", "set", "Holder", "--name", "invalid", "--type", expression, "--offset",
                 "4096",
             ],
         );
@@ -243,11 +241,13 @@ public class CreateAmbiguousTypes extends GhidraScript {
     for args in [
         vec!["get", "Shared"],
         vec!["get", "Shared *[2]"],
-        vec!["add-field", "Holder", "--name", "bad", "--type", "Shared"],
+        vec![
+            "field", "append", "Holder", "--name", "bad", "--type", "Shared",
+        ],
         vec!["create", "typedef", "AmbiguousAlias", "Shared"],
         vec!["rename", "Shared", "Renamed"],
         vec!["delete", "Shared"],
-        vec!["del-field", "Shared", "--name", "missing"],
+        vec!["field", "delete", "Shared", "--field", "missing"],
         vec!["apply", "0x1000", "Shared", "--force"],
     ] {
         let failed = type_command(&program, &args);
@@ -284,7 +284,8 @@ public class CreateAmbiguousTypes extends GhidraScript {
     type_command(
         &program,
         &[
-            "add-field",
+            "field",
+            "append",
             "Holder",
             "--name",
             "chosen",
@@ -504,7 +505,9 @@ fn append_field_size_is_honored_or_rejected_before_changing_the_structure() {
     let program = create_program(64);
     type_command(
         &program,
-        &["add-field", "Holder", "--name", "anchor", "--type", "byte"],
+        &[
+            "field", "append", "Holder", "--name", "anchor", "--type", "byte",
+        ],
     )
     .assert_success();
     let client = harness().client().unwrap();
@@ -530,14 +533,7 @@ public class SetAnchorFormat extends GhidraScript {
     type_command(
         &program,
         &[
-            "add-field",
-            "Holder",
-            "--name",
-            "sized",
-            "--type",
-            "string",
-            "--size",
-            "8",
+            "field", "append", "Holder", "--name", "sized", "--type", "string", "--size", "8",
         ],
     )
     .assert_success();
@@ -571,14 +567,7 @@ public class CheckAnchorFormat extends GhidraScript {
         type_command(
             &program,
             &[
-                "add-field",
-                "Holder",
-                "--name",
-                "invalid",
-                "--type",
-                "byte",
-                "--size",
-                size,
+                "field", "append", "Holder", "--name", "invalid", "--type", "byte", "--size", size,
             ],
         )
         .assert_failure()

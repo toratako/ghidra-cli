@@ -1,7 +1,6 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.DataType;
@@ -68,8 +67,9 @@ final class StructureFields {
         return new JsonProtocol.CommandException(message, detail);
     }
 
-    private static DataTypeComponent target(Structure struct, int offset) {
+    static DataTypeComponent target(Structure struct, int offset) {
         if (offset < 0) throw new IllegalArgumentException("Offset must be nonnegative");
+        DataTypeComponent target = null;
         for (DataTypeComponent field : struct.getDefinedComponents()) {
             if (field.getOffset() == offset ||
                     (field.getOffset() < offset && offset <= field.getEndOffset())) {
@@ -77,10 +77,12 @@ final class StructureFields {
                     throw conflict("Bit-fields and zero-length fields are not supported by offset edits", field);
                 if (field.getOffset() != offset)
                     throw conflict("Offset is inside a field; use its starting offset " + field.getOffset(), field);
-                return field;
+                // Check every overlapping component: a later zero-length or
+                // bit-field component can make the same byte offset ambiguous.
+                target = field;
             }
         }
-        return null;
+        return target;
     }
 
     static Plan set(Structure struct, int offset, String name, DataType type,
@@ -209,16 +211,7 @@ final class StructureFields {
             JsonObject previous = describe(before);
             JsonObject next = describe(after);
             changed = !Objects.equals(previous, next) || length(original) != length(staged);
-            result = new JsonObject();
-            result.addProperty("status", changed ? action : "unchanged");
-            result.addProperty("changed", changed);
-            result.addProperty("struct", original.getName());
-            result.addProperty("path", original.getPathName());
-            result.addProperty("offset", offset);
-            result.addProperty("size_before", length(original));
-            result.addProperty("size_after", length(staged));
-            result.add("before", previous == null ? JsonNull.INSTANCE : previous);
-            result.add("after", next == null ? JsonNull.INSTANCE : next);
+            result = TypeFields.result(original, length(original), length(staged), previous, next, action);
         }
 
         JsonObject apply(Structure original) throws Exception {

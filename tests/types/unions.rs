@@ -1,7 +1,7 @@
 //! Union members share an offset and are edited by ordinal without losing settings.
 
 use super::common::helpers::GhidraResult;
-use super::{create_type_edit_program, harness, type_command, TEST_PROGRAM};
+use super::{assert_field_receipt, create_type_edit_program, harness, type_command, TEST_PROGRAM};
 use serde_json::{json, Value};
 use serial_test::serial;
 
@@ -15,7 +15,7 @@ fn definition(program: &str, name: &str) -> Value {
 }
 
 fn set(program: &str, name: &str, ordinal: &str, attributes: &[&str]) -> GhidraResult {
-    let mut args = vec!["set-field", name, "--ordinal", ordinal];
+    let mut args = vec!["field", "set", name, "--ordinal", ordinal];
     args.extend_from_slice(attributes);
     type_command(program, &args)
 }
@@ -32,26 +32,17 @@ fn union_creation_member_edits_and_deletions_persist() {
     let added = success(type_command(
         &program,
         &[
-            "add-field",
-            "Payload",
-            "--name",
-            "integer",
-            "--type",
-            "uint32_t",
+            "field", "append", "Payload", "--name", "integer", "--type", "uint32_t",
         ],
     ));
-    assert_eq!(added["ordinal"], 0);
+    assert_field_receipt(&added, "union", "Payload", "appended");
+    assert_eq!(added["after"]["ordinal"], 0);
     assert_eq!(added["size_before"], 0);
     assert_eq!(added["size_after"], 4);
     success(type_command(
         &program,
         &[
-            "add-field",
-            "Payload",
-            "--name",
-            "bytes",
-            "--type",
-            "byte[16]",
+            "field", "append", "Payload", "--name", "bytes", "--type", "byte[16]",
         ],
     ));
     let before = definition(&program, "Payload");
@@ -73,6 +64,7 @@ fn union_creation_member_edits_and_deletions_persist() {
             "linked payload",
         ],
     ));
+    assert_field_receipt(&edited, "union", "Payload", "updated");
     assert_eq!(edited["before"], before["components"][1]);
     assert_eq!(edited["after"]["type_path"], "/Payload *");
     assert_eq!(edited["after"]["size"], 8);
@@ -82,34 +74,55 @@ fn union_creation_member_edits_and_deletions_persist() {
     assert_eq!(saved["components"][0], before["components"][0]);
     assert_eq!(saved["components"][1]["name"], "next");
     assert_eq!(saved["components"][1]["comment"], "linked payload");
-    let unchanged = success(set(
+    let unchanged = success(type_command(
         &program,
-        "Payload",
-        "1",
-        &["--comment", "linked payload"],
+        &[
+            "field",
+            "set",
+            "Payload",
+            "--field",
+            "next",
+            "--comment",
+            "linked payload",
+        ],
     ));
+    assert_field_receipt(&unchanged, "union", "Payload", "unchanged");
     assert_eq!(unchanged["status"], "unchanged");
     assert_eq!(unchanged["changed"], false);
     harness().client().unwrap().program_close().unwrap();
     assert_eq!(definition(&program, "Payload"), saved);
-    let cleared = success(set(&program, "Payload", "1", &["--comment", ""]));
+    let cleared = success(type_command(
+        &program,
+        &[
+            "field",
+            "set",
+            "Payload",
+            "--field",
+            "next",
+            "--comment",
+            "",
+        ],
+    ));
     assert!(cleared["after"]["comment"].is_null());
     assert_eq!(cleared["after"]["name"], "next");
 
     let deleted = success(type_command(
         &program,
-        &["del-field", "Payload", "--name", "integer"],
+        &["field", "delete", "Payload", "--field", "integer"],
     ));
-    assert_eq!(deleted["ordinal"], 0);
+    assert_field_receipt(&deleted, "union", "Payload", "deleted");
+    assert_eq!(deleted["before"]["ordinal"], 0);
     assert!(deleted["after"].is_null());
     assert_eq!(
         definition(&program, "Payload")["components"][0]["name"],
         "next"
     );
-    success(type_command(
+    let emptied = success(type_command(
         &program,
-        &["del-field", "Payload", "--ordinal", "0"],
+        &["field", "delete", "Payload", "--ordinal", "0"],
     ));
+    assert_field_receipt(&emptied, "union", "Payload", "deleted");
+    assert_eq!(emptied["size_after"], 0);
     harness().client().unwrap().program_close().unwrap();
     let empty = definition(&program, "Payload");
     assert_eq!(empty["size"], 0);
@@ -139,16 +152,17 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
     let before = definition(&program, name);
     for (args, message) in [
         (
-            vec!["set-field", name, "--offset", "0", "--name", "wrong"],
+            vec!["field", "set", name, "--offset", "0", "--name", "wrong"],
             "require --ordinal",
         ),
         (
-            vec!["set-field", name, "--ordinal", "2", "--type", "byte"],
+            vec!["field", "set", name, "--ordinal", "2", "--type", "byte"],
             "outside the union",
         ),
         (
             vec![
-                "set-field",
+                "field",
+                "set",
                 name,
                 "--ordinal",
                 "0",
@@ -161,7 +175,8 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
         ),
         (
             vec![
-                "set-field",
+                "field",
+                "set",
                 name,
                 "--ordinal",
                 "0",
@@ -174,7 +189,8 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
         ),
         (
             vec![
-                "set-field",
+                "field",
+                "set",
                 name,
                 "--ordinal",
                 "0",
@@ -186,29 +202,32 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
             "cannot honor --size",
         ),
         (
-            vec!["add-field", name, "--name", "tag", "--type", "byte"],
+            vec!["field", "append", name, "--name", "tag", "--type", "byte"],
             "already exists",
         ),
         (
-            vec!["add-field", name, "--name", "invalid", "--type", "void"],
+            vec![
+                "field", "append", name, "--name", "invalid", "--type", "void",
+            ],
             "fixed positive size",
         ),
         (
             vec![
-                "add-field",
-                name,
-                "--name",
-                "invalid",
-                "--type",
-                "byte",
-                "--size",
-                "0",
+                "field", "append", name, "--name", "invalid", "--type", "byte", "--size", "0",
             ],
             "must be positive",
         ),
         (
-            vec!["del-field", name, "--name", "absent"],
+            vec!["field", "delete", name, "--field", "absent"],
             "Field not found",
+        ),
+        (
+            vec!["field", "set", name, "--field", "absent", "--type", "byte"],
+            "Field not found",
+        ),
+        (
+            vec!["field", "clear", name, "--field", "tag"],
+            "not a struct",
         ),
     ] {
         let result = type_command(&program, &args);
@@ -218,9 +237,9 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
         assert_eq!(definition(&program, name), before);
     }
     let holder = definition(&program, "/Recovered/Holder");
-    for command in ["set-field", "del-field"] {
-        let mut args = vec![command, "/Recovered/Holder", "--ordinal", "0"];
-        if command == "set-field" {
+    for command in ["set", "delete"] {
+        let mut args = vec!["field", command, "/Recovered/Holder", "--ordinal", "0"];
+        if command == "set" {
             args.extend(["--name", "wrong"]);
         }
         type_command(&program, &args).assert_failure();
@@ -229,27 +248,27 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
     let client = harness().client().unwrap();
     for (command, args, message) in [
         (
-            "type_set_field",
+            "type_field_set",
             json!({"type_name": name, "ordinal": 0, "offset": 0, "field_name": "wrong"}),
-            "require --ordinal",
+            "Exactly one",
         ),
         (
-            "type_set_field",
+            "type_field_set",
             json!({"type_name": name, "ordinal": 0.5, "field_name": "wrong"}),
             "ordinal must be an integer",
         ),
         (
-            "type_del_field",
+            "type_field_delete",
             json!({"type_name": name, "ordinal": 4294967296_u64}),
             "ordinal must be an integer",
         ),
         (
-            "type_del_field",
-            json!({"type_name": name, "ordinal": 1, "field_name": "tag"}),
-            "exactly one",
+            "type_field_delete",
+            json!({"type_name": name, "ordinal": 1, "field": "tag"}),
+            "Exactly one",
         ),
         (
-            "type_set_field",
+            "type_field_set",
             json!({"type_name": name, "ordinal": 0, "size": 2, "field_name": "wrong"}),
             "--size requires --type",
         ),
@@ -272,7 +291,9 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
     assert_eq!(text["after"]["name"], "raw");
     let pointer = success(type_command(
         &program,
-        &["add-field", name, "--name", "pointer", "--type", "void *"],
+        &[
+            "field", "append", name, "--name", "pointer", "--type", "void *",
+        ],
     ));
     assert_eq!(pointer["after"]["size"], 4);
     client.open_program(TEST_PROGRAM).unwrap();
@@ -372,6 +393,19 @@ public class CreateUnionSettings extends GhidraScript {
             .as_str()
             .unwrap()
             .is_empty());
+        type_command(
+            &program,
+            &[
+                "field",
+                "delete",
+                name,
+                "--field",
+                initial["components"][1]["display_name"].as_str().unwrap(),
+            ],
+        )
+        .assert_failure()
+        .assert_stderr_contains("Field not found");
+        assert_eq!(definition(&program, name), initial);
         let holder = definition(&program, &format!("{name}Holder"));
         let renamed = success(set(&program, name, "1", &["--name", "narrow"]));
         assert_eq!(renamed["after"]["comment"], "unnamed comment");
@@ -386,12 +420,12 @@ public class CreateUnionSettings extends GhidraScript {
         assert_saved_settings(&program, name, &["wide", "narrow"]);
         success(type_command(
             &program,
-            &["add-field", name, "--name", "extra", "--type", "byte"],
+            &["field", "append", name, "--name", "extra", "--type", "byte"],
         ));
         assert_saved_settings(&program, name, &["wide", "narrow"]);
         success(type_command(
             &program,
-            &["del-field", name, "--ordinal", "0"],
+            &["field", "delete", name, "--ordinal", "0"],
         ));
         assert_eq!(
             definition(&program, name)["components"][0]["name"],
@@ -419,7 +453,14 @@ fn union_bitfield_targets_are_rejected_and_other_members_remain_editable() {
     let before = definition(&program, "Flags");
     for result in [
         set(&program, "Flags", "0", &["--name", "renamed"]),
-        type_command(&program, &["del-field", "Flags", "--ordinal", "0"]),
+        type_command(&program, &["field", "delete", "Flags", "--ordinal", "0"]),
+        type_command(
+            &program,
+            &[
+                "field", "set", "Flags", "--field", "bits", "--name", "renamed",
+            ],
+        ),
+        type_command(&program, &["field", "delete", "Flags", "--field", "bits"]),
     ] {
         result
             .assert_failure()

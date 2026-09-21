@@ -59,6 +59,36 @@ fn type_command(program: &str, args: &[&str]) -> common::helpers::GhidraResult {
         .run()
 }
 
+fn assert_field_receipt(value: &serde_json::Value, kind: &str, name: &str, status: &str) {
+    let keys: Vec<_> = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "after",
+            "before",
+            "changed",
+            "kind",
+            "name",
+            "path",
+            "size_after",
+            "size_before",
+            "status"
+        ]
+    );
+    assert_eq!(value["kind"], kind);
+    assert_eq!(value["name"], name);
+    assert_eq!(value["path"], format!("/{name}"));
+    assert_eq!(value["status"], status);
+    assert_eq!(value["changed"], status != "unchanged");
+    assert!(value["size_before"].is_u64());
+    assert!(value["size_after"].is_u64());
+}
+
 fn create_type_edit_program(language: &str) -> String {
     let program = format!("type-edits-{}", unique_suffix());
     harness()
@@ -100,7 +130,7 @@ fn test_signed_char_alias_preserves_signedness_on_unsigned_char_abi() {
     for (name, ty) in [("signed_value", "signed char"), ("plain_value", "char")] {
         type_command(
             &program,
-            &["add-field", "Holder", "--name", name, "--type", ty],
+            &["field", "append", "Holder", "--name", name, "--type", ty],
         )
         .assert_success();
     }
@@ -736,7 +766,7 @@ fn test_type_apply_force_on_function_entry_warns() {
 
 #[test]
 #[serial]
-fn test_type_set_field_places_at_exact_offset() {
+fn test_type_field_set_places_at_exact_offset() {
     require_ghidra!();
     let _harness = harness();
 
@@ -772,7 +802,7 @@ fn test_type_set_field_places_at_exact_offset() {
     for (name, offset) in [("field_a", 36), ("field_b", 40), ("field_c", 60)] {
         assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("type")
-            .arg("set-field")
+            .args(["field", "set"])
             .arg("OffsetPlacementStruct")
             .arg("--name")
             .arg(name)
@@ -832,7 +862,7 @@ fn test_type_set_field_places_at_exact_offset() {
 
 #[test]
 #[serial]
-fn test_type_add_field_accepts_common_c_type_names() {
+fn test_type_field_append_accepts_common_c_type_names() {
     require_ghidra!();
     let _harness = harness();
 
@@ -864,7 +894,7 @@ fn test_type_add_field_accepts_common_c_type_names() {
     ] {
         assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
             .arg("type")
-            .arg("add-field")
+            .args(["field", "append"])
             .arg("CTypeNameStruct")
             .arg("--name")
             .arg(field)

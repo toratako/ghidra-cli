@@ -51,7 +51,10 @@ public class SetEnumMetadata extends GhidraScript {
         )
         .unwrap();
 
-    let deleted = type_command(&program, &["del-enum-member", "Mode", "--name", "Remove"]);
+    let deleted = type_command(
+        &program,
+        &["enum", "member", "delete", "Mode", "--name", "Remove"],
+    );
     deleted.assert_success();
     let deleted: Value = deleted.json();
     assert_eq!(deleted[0]["path"], "/Mode");
@@ -66,7 +69,10 @@ public class SetEnumMetadata extends GhidraScript {
         .iter()
         .any(|member| { member["name"] == "Keep" && member["value"] == 1 }));
 
-    let missing = type_command(&program, &["del-enum-member", "Mode", "--name", "Remove"]);
+    let missing = type_command(
+        &program,
+        &["enum", "member", "delete", "Mode", "--name", "Remove"],
+    );
     missing
         .assert_failure()
         .assert_stderr_contains("Enum member not found");
@@ -97,7 +103,11 @@ public class CheckEnumMetadata extends GhidraScript {
         )
         .unwrap();
     for member in ["Keep", "Negative"] {
-        type_command(&program, &["del-enum-member", "Mode", "--name", member]).assert_success();
+        type_command(
+            &program,
+            &["enum", "member", "delete", "Mode", "--name", member],
+        )
+        .assert_success();
     }
     client.program_close().unwrap();
     let empty = definition(&program, "Mode");
@@ -118,14 +128,19 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
     type_command(&program, &["create", "struct", "Holder"]).assert_success();
     type_command(
         &program,
-        &["add-field", "Holder", "--name", "Remove", "--type", "byte"],
+        &[
+            "field", "append", "Holder", "--name", "Remove", "--type", "byte",
+        ],
     )
     .assert_success();
     let first = definition(&program, "/First/Mode");
     let second = definition(&program, "/Second/Mode");
     let holder = definition(&program, "Holder");
     for (name, message) in [("Mode", "Ambiguous"), ("Holder", "not an enum")] {
-        let result = type_command(&program, &["del-enum-member", name, "--name", "Remove"]);
+        let result = type_command(
+            &program,
+            &["enum", "member", "delete", name, "--name", "Remove"],
+        );
         result.assert_failure().assert_stderr_contains(message);
         let error: Value = serde_json::from_str(&result.stderr).unwrap();
         assert_eq!(error["detail"]["rolled_back"], true, "{error}");
@@ -135,7 +150,14 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
     assert_eq!(definition(&program, "Holder"), holder);
     type_command(
         &program,
-        &["del-enum-member", "/First/Mode", "--name", "Remove"],
+        &[
+            "enum",
+            "member",
+            "delete",
+            "/First/Mode",
+            "--name",
+            "Remove",
+        ],
     )
     .assert_success();
     harness().client().unwrap().program_close().unwrap();

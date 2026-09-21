@@ -53,10 +53,10 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 ```bash
 ghidra-cli type get Header --project target
 ghidra-cli type create struct Header --project target
-ghidra-cli type add-field Header --name magic --type uint --project target
-ghidra-cli type del-field Header --name magic --project target
+ghidra-cli type field append Header --name magic --type uint --project target
+ghidra-cli type field delete Header --field magic --project target
 ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
-ghidra-cli type del-enum-member Mode --name Unknown --project target
+ghidra-cli type enum member delete Mode --name Unknown --project target
 ghidra-cli type create typedef HeaderAlias Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
@@ -76,7 +76,7 @@ ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 ```
 
 `type create struct` accepts a bare name and creates an empty struct; use
-`set-field`, `add-field`, or `import-c` for its definition.
+`field set`, `field append`, or `import-c` for its definition.
 
 `type apply --force` clears conflicting code or data units, including instructions,
 before applying the type.
@@ -94,56 +94,57 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
-`del-enum-member` selects an exact member name; other names with the same value
+`enum member delete` selects an exact member name; other names with the same value
 remain available.
 
 ### Recovering unions
 
 ```bash
 ghidra-cli type create union Payload
-ghidra-cli type add-field Payload --name integer --type uint32_t
-ghidra-cli type add-field Payload --name bytes --type 'byte[8]'
+ghidra-cli type field append Payload --name integer --type uint32_t
+ghidra-cli type field append Payload --name bytes --type 'byte[8]'
 ghidra-cli type get Payload
-ghidra-cli type set-field Payload --ordinal 1 --type 'Header *' --name header
-ghidra-cli type set-field Payload --ordinal 1 --comment 'Used when tag == 2'
-ghidra-cli type del-field Payload --ordinal 0
+ghidra-cli type field set Payload --ordinal 1 --type 'Header *' --name header
+ghidra-cli type field set Payload --ordinal 1 --comment 'Used when tag == 2'
+ghidra-cli type field delete Payload --ordinal 0
 ```
 
 Union members all overlap at offset zero. Use the zero-based `ordinal` from
-`type get` to edit a member, including an unnamed one. Deletion also accepts
-`--name`; removing a member renumbers later ordinals. The union's size follows
-its members and packing/alignment, so changing its largest member can change
-the layout of containing types.
+`type get` to edit a member, including an unnamed one. Named members can also be
+selected with `--field NAME`; removing a member renumbers later ordinals. The
+union's size follows its members and packing/alignment, so changing its largest
+member can change the layout of containing types.
 
 ### Growing recovered structures
 
 ```bash
-ghidra-cli type set-field Manager --offset 0x1c --name hook --type 'Hook *'
-ghidra-cli type set-field Manager --offset 0x1c --comment 'Called during shutdown'
-ghidra-cli type set-field Manager --offset 0x1c --comment ''
-ghidra-cli type clear-field Manager --offset 0x1c
+ghidra-cli type field set Manager --offset 0x1c --name hook --type 'Hook *'
+ghidra-cli type field set Manager --field hook --comment 'Called during shutdown'
+ghidra-cli type field set Manager --field hook --comment ''
+ghidra-cli type field clear Manager --offset 0x1c
 ```
 
-`set-field` selects a field by its exact starting byte offset; omitted attributes
-keep their current values. In undefined space, `--type` is required and `--name`
-is optional. An empty comment clears it.
+`field set`, `field clear`, and `field delete` select a struct field by its exact
+starting byte offset or `--field NAME`. In `field set`, omitted attributes keep
+their current values; `--name` sets the new name. At an offset in undefined space,
+`--type` is required and `--name` is optional. An empty comment clears it.
 
 Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field.
-`add-field` appends. For fixed byte spans, use an array type such as `byte[8]`.
+For fixed byte spans, use an array type such as `byte[8]`.
 For types that need an explicit length, use `--type string --size 8` with
-`add-field` or `set-field`.
+`field append` or `field set`.
 
-`clear-field` replaces the field with undefined bytes and preserves structure
-size and later offsets. `del-field --name NAME` removes bytes and shifts later
-fields.
+`field clear` replaces the field with undefined bytes and preserves structure
+size and later offsets, though component ordinals can change. `field delete`
+removes bytes and shifts later fields.
 
-Layout changes require packing to be disabled. Packed structures allow
-name/comment edits, but reject type changes and clearing defined fields.
-Bit-fields and zero-length fields cannot be edited with these offset commands.
+`field append` uses the structure's packing and alignment. Packed structures also
+allow name/comment edits, but reject field type changes and clearing defined
+fields. Bit-fields and zero-length fields cannot be edited with offset commands.
 
 In `type get`, an unnamed field has `name: null`; `display_name` gives its
-generated name.
+generated name, which cannot be used with `--field`.
 
 ## Function tags
 

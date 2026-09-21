@@ -24,12 +24,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   including analyzer enablement, nested options, defaults and enum choices.
   Setting values saves without running analysis.
 - Add `type create union` and union member addition, deletion, and editing through
-  `type add-field`, `type del-field`, and `type set-field --ordinal`.
-- Add `type del-enum-member TYPE --name MEMBER` to remove one named enum member.
+  `type field append`, `type field delete`, and `type field set --ordinal`.
+- Add `type enum member delete TYPE --name MEMBER` to remove one named enum member.
 - Add `find constant VALUE` and inclusive `--min`/`--max` searches over numeric
   instruction operands, with optional bit-width and address bounds.
 
 ### Changed
+
+- Group field operations under `type field append/set/clear/delete` and enum
+  member deletion under `type enum member delete`. Select existing fields with
+  `--field NAME`, struct `--offset`, or union `--ordinal`; `--name` sets a field's
+  new name. Struct deletion now accepts an exact starting offset, including for
+  unnamed fields. Named struct bit-field and zero-length field deletion remains
+  available; clear still preserves structure size and later offsets.
+- Return a common struct/union field receipt with canonical type identity,
+  `changed`, containing-type sizes, and component snapshots in `before`/`after`.
+  Appending reports `appended`; set, clear, and delete retain distinct actions.
 
 - Move binary import to `program import` and use `--name` for the saved program
   name. Import still creates projects as needed and runs analysis by default.
@@ -60,8 +70,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   destination/type, and depth in a common `calls` array. Keep undefined endpoints
   and calls into function interiors; only recursive expansion needs a function.
   Whole-program graph edges carry the same call details alongside `from`/`to`.
-- Make `type add-field` append-only. Use `type set-field --offset` for creating
-  or updating a field at a specific position. `set-field` now accepts `--size`
+- Make `type field append` append-only. Use `type field set --offset` for creating
+  or updating a field at a specific position. `field set` now accepts `--size`
   with `--type`, preserving explicit-length field placement and returning
   created/updated/unchanged receipts with before/after definitions.
 - Ordinary single-program commands now commit only on success and roll back the

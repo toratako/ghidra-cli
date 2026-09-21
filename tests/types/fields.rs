@@ -1,7 +1,7 @@
 //! Offset field edits preserve recovered layouts and reject destructive guesses.
 
 use super::common::helpers::GhidraResult;
-use super::{ghidra, harness, test_project, unique_suffix, TEST_PROGRAM};
+use super::{assert_field_receipt, ghidra, harness, test_project, unique_suffix, TEST_PROGRAM};
 use serde_json::{json, Value};
 use serial_test::serial;
 
@@ -35,13 +35,13 @@ fn create_struct() -> String {
 }
 
 fn set(name: &str, offset: &str, attributes: &[&str]) -> GhidraResult {
-    let mut args = vec!["set-field", name, "--offset", offset];
+    let mut args = vec!["field", "set", name, "--offset", offset];
     args.extend_from_slice(attributes);
     command(&args)
 }
 
 fn clear(name: &str, offset: &str) -> GhidraResult {
-    command(&["clear-field", name, "--offset", offset])
+    command(&["field", "clear", name, "--offset", offset])
 }
 
 fn field<'a>(definition: &'a Value, name: &str) -> &'a Value {
@@ -141,6 +141,21 @@ public class CreateFieldSettings extends GhidraScript {
         assert_saved_field_settings(&name, &["0", tail]);
         success(set(&name, "0", &["--name", "renamed"]));
         assert_saved_field_settings(&name, &["0", tail]);
+        let before = definition(&name);
+        let appended = success(command(&[
+            "field", "append", &name, "--name", "extra", "--type", "byte",
+        ]));
+        assert_field_receipt(&appended, "struct", &name, "appended");
+        assert_eq!(appended["size_before"], before["size"]);
+        assert!(appended["before"].is_null());
+        let after = definition(&name);
+        assert_eq!(appended["after"], *field(&after, "extra"));
+        assert_eq!(appended["size_after"], after["size"]);
+        assert_eq!(after["packing_enabled"], before["packing_enabled"]);
+        assert_saved_field_settings(&name, &["0", tail]);
+        success(command(&["field", "delete", &name, "--field", "extra"]));
+        assert_eq!(definition(&name), before);
+        assert_saved_field_settings(&name, &["0", tail]);
     }
     let name = format!("{prefix}Unpacked");
     success(set(
@@ -183,9 +198,9 @@ fn set_field_preserves_attributes_and_offsets_while_shrinking_and_growing() {
     ));
     assert_eq!(created["status"], "created");
     assert_eq!(created["changed"], true);
-    assert_eq!(created["struct"], name);
+    assert_eq!(created["name"], name);
     assert_eq!(created["path"], format!("/{name}"));
-    assert_eq!(created["offset"], 16);
+    assert_eq!(created["after"]["offset"], 16);
     assert_eq!(created["size_before"], 0);
     assert_eq!(created["size_after"], 24);
     assert!(created["before"].is_null());
@@ -366,7 +381,7 @@ fn validation_rejects_interior_overlap_collision_and_invalid_sizes_without_chang
     let client = harness().client().unwrap();
     assert!(client
         .send_command(
-            "type_set_field",
+            "type_field_set",
             Some(json!({"type_name": name, "offset": 4}))
         )
         .is_err());
@@ -481,17 +496,17 @@ fn field_sizes_require_a_type_and_valid_integer_before_mutation() {
     let client = harness().client().unwrap();
     for (command, args, message) in [
         (
-            "type_set_field",
+            "type_field_set",
             json!({"type_name": name, "offset": 0, "field_name": "renamed", "size": 2}),
             "--size requires --type",
         ),
         (
-            "type_set_field",
+            "type_field_set",
             json!({"type_name": name, "offset": 0, "field_type": "byte", "size": 4294967297_u64}),
             "size must be an integer",
         ),
         (
-            "type_add_field",
+            "type_field_append",
             json!({"type_name": name, "field_name": "invalid", "field_type": "byte", "size": 1.5}),
             "size must be an integer",
         ),
@@ -504,7 +519,7 @@ fn field_sizes_require_a_type_and_valid_integer_before_mutation() {
 
 #[test]
 #[serial]
-fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() {
+fn clear_preserves_size_and_offsets_while_delete_compacts() {
     require_ghidra!();
     let name = create_struct();
     for (offset, field_name, field_type) in
@@ -516,7 +531,10 @@ fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() 
             &["--name", field_name, "--type", field_type],
         ));
     }
-    command(&["add-field", &name, "--name", "appended", "--type", "byte"]).assert_success();
+    command(&[
+        "field", "append", &name, "--name", "appended", "--type", "byte",
+    ])
+    .assert_success();
     let original = definition(&name);
     assert_eq!(original["size"], 21);
     assert_eq!(field(&original, "appended")["offset"], 20);
@@ -553,12 +571,122 @@ fn clear_field_preserves_size_and_offsets_while_del_field_still_removes_bytes() 
         .is_empty());
     assert_eq!(unnamed["size_after"], 21);
 
-    command(&["del-field", &name, "--name", "later"]).assert_success();
+    command(&["field", "delete", &name, "--field", "later"]).assert_success();
     let deleted = definition(&name);
     assert_eq!(deleted["size"], 17);
     assert_eq!(field(&deleted, "appended")["offset"], 16);
     harness().client().unwrap().program_close().unwrap();
     assert_eq!(definition(&name), deleted);
+}
+
+#[test]
+#[serial]
+fn named_edits_and_offset_deletion_return_consistent_field_receipts() {
+    require_ghidra!();
+    let name = create_struct();
+    let created = success(set(&name, "0", &["--type", "byte[4]"]));
+    assert_field_receipt(&created, "struct", &name, "created");
+    assert!(created["after"]["name"].is_null());
+    let appended = success(command(&[
+        "field", "append", &name, "--name", "tail", "--type", "byte[4]",
+    ]));
+    assert_field_receipt(&appended, "struct", &name, "appended");
+    assert_eq!(appended["after"]["offset"], 4);
+
+    let deleted = success(command(&["field", "delete", &name, "--offset", "0x0"]));
+    assert_field_receipt(&deleted, "struct", &name, "deleted");
+    assert_eq!(deleted["before"], created["after"]);
+    assert!(deleted["after"].is_null());
+    assert_eq!(deleted["size_before"], 8);
+    assert_eq!(deleted["size_after"], 4);
+    assert_eq!(field(&definition(&name), "tail")["offset"], 0);
+
+    let renamed = success(command(&[
+        "field",
+        "set",
+        &name,
+        "--field",
+        "tail",
+        "--name",
+        "renamed",
+        "--comment",
+        "recovered",
+    ]));
+    assert_field_receipt(&renamed, "struct", &name, "updated");
+    assert_eq!(renamed["before"]["name"], "tail");
+    assert_eq!(renamed["after"]["name"], "renamed");
+    let unchanged = success(command(&[
+        "field",
+        "set",
+        &name,
+        "--field",
+        "renamed",
+        "--comment",
+        "recovered",
+    ]));
+    assert_field_receipt(&unchanged, "struct", &name, "unchanged");
+    assert_eq!(unchanged["before"], renamed["after"]);
+    assert_eq!(unchanged["after"], renamed["after"]);
+
+    let cleared = success(command(&["field", "clear", &name, "--field", "renamed"]));
+    assert_field_receipt(&cleared, "struct", &name, "cleared");
+    assert_eq!(cleared["before"], renamed["after"]);
+    assert!(cleared["after"].is_null());
+    assert_eq!(cleared["size_before"], 4);
+    assert_eq!(cleared["size_after"], 4);
+    let unchanged = success(clear(&name, "0"));
+    assert_field_receipt(&unchanged, "struct", &name, "unchanged");
+    assert!(unchanged["before"].is_null());
+    assert!(unchanged["after"].is_null());
+    let saved = definition(&name);
+    harness().client().unwrap().program_close().unwrap();
+    assert_eq!(definition(&name), saved);
+}
+
+#[test]
+#[serial]
+fn field_selectors_reject_missing_ambiguous_and_interior_targets_without_mutation() {
+    require_ghidra!();
+    let name = create_struct();
+    let unnamed = success(set(&name, "4", &["--type", "byte[4]"]));
+    success(set(&name, "12", &["--name", "tail", "--type", "byte[4]"]));
+    let before = definition(&name);
+    for (offset, message) in [
+        ("0", "No defined field"),
+        ("5", "inside a field"),
+        ("16", "No defined field"),
+    ] {
+        rejected_unchanged(
+            &name,
+            &before,
+            command(&["field", "delete", &name, "--offset", offset]),
+            message,
+        );
+    }
+    let display_name = unnamed["after"]["display_name"].as_str().unwrap();
+    for action in ["set", "clear", "delete"] {
+        for selector in ["missing", display_name] {
+            let mut args = vec!["field", action, &name, "--field", selector];
+            if action == "set" {
+                args.extend(["--name", "renamed"]);
+            }
+            rejected_unchanged(&name, &before, command(&args), "Field not found");
+        }
+    }
+    let client = harness().client().unwrap();
+    for args in [
+        json!({"type_name": name}),
+        json!({"type_name": name, "field": "tail", "offset": 4}),
+        json!({"type_name": name, "field": "tail", "ordinal": 0}),
+    ] {
+        let error = client
+            .send_command("type_field_delete", Some(args))
+            .unwrap_err();
+        assert!(error.to_string().contains("Exactly one"), "{error:#}");
+        assert_eq!(definition(&name), before);
+    }
+    client.program_close().unwrap();
+    assert_eq!(definition(&name), before);
 }
 
 #[test]
@@ -636,7 +764,7 @@ public class CreateSpecialFieldFixtures extends GhidraScript {
     rejected_unchanged(
         &packed,
         &packed_before,
-        clear(&packed, &value_offset),
+        command(&["field", "clear", &packed, "--field", "renamed"]),
         "packing disabled",
     );
     rejected_unchanged(
@@ -663,9 +791,28 @@ public class CreateSpecialFieldFixtures extends GhidraScript {
             set(&name, &offset, &["--comment", "changed"]),
             set(&name, &offset, &["--type", "byte"]),
             clear(&name, &offset),
+            command(&["field", "delete", &name, "--offset", &offset]),
+            command(&[
+                "field",
+                "set",
+                &name,
+                "--field",
+                field_name,
+                "--comment",
+                "changed",
+            ]),
+            command(&["field", "clear", &name, "--field", field_name]),
         ] {
             let error = rejected_unchanged(&name, &before, result, "not supported by offset edits");
             assert_eq!(error["detail"]["field"]["name"], field_name);
         }
+        let deleted = success(command(&["field", "delete", &name, "--field", field_name]));
+        assert_field_receipt(&deleted, "struct", &name, "deleted");
+        assert_eq!(deleted["before"], *target);
+        assert!(!definition(&name)["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field["name"] == field_name));
     }
 }
