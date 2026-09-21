@@ -237,7 +237,7 @@ public class CheckProgramIdentity extends GhidraScript {
     project.ok(&["bridge", "stop"]);
     project.ok(&["bridge", "start", "--program", "raw-name"]);
     project.assert_program_identity("raw-name");
-    let receipt = project.ok(&["define-code", "0x8000", "--end", "0x8002"]);
+    let receipt = project.ok(&["listing", "define-code", "0x8000", "--end", "0x8002"]);
     assert_eq!(receipt[0]["landed"], true);
     let disassembly = project.ok(&["disassemble", "0x8000", "--limit", "2"]);
     assert_eq!(disassembly[0]["mnemonic"], "XOR");

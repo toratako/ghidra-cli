@@ -156,7 +156,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
 
         // An unmapped address is syntactically valid but cannot produce an instruction.
         let failed = ghidra(harness)
-            .args(["--json", "define-code", "0x8000"])
+            .args(["--json", "listing", "define-code", "0x8000"])
             .run();
         assert_eq!(failed.exit_code, 1, "{failed:?}");
         assert!(failed.stdout.is_empty(), "{failed:?}");
@@ -178,7 +178,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let batch = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
             batch.path(),
-            "define-code 0x8000\ncomment set 0x1000 must-not-run\n",
+            "listing define-code 0x8000\ncomment set 0x1000 must-not-run\n",
         )
         .unwrap();
         let failed_batch = ghidra(harness)
@@ -200,8 +200,11 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let cleared = ghidra(harness)
             .args([
                 "--json",
-                "clear",
-                "0x1000:0x1000",
+                "listing",
+                "undefine",
+                "0x1000",
+                "--end",
+                "0x1000",
                 "--disassemble-at",
                 "0x8000",
             ])
@@ -283,7 +286,14 @@ fn check_define_code_ranges(
     );
 
     let result = ghidra(harness)
-        .args(["--json", "define-code", "code_start", "--end", "code_end"])
+        .args([
+            "--json",
+            "listing",
+            "define-code",
+            "code_start",
+            "--end",
+            "code_end",
+        ])
         .with_project(test_project(), program)
         .run();
     result.assert_success();
@@ -301,14 +311,18 @@ fn check_define_code_ranges(
     assert_eq!(repeated["changed"], false);
     assert_eq!(repeated["status"], "unchanged");
 
-    client.clear_range("0x2000", "0x2014", None).unwrap();
+    ghidra(harness)
+        .args(["listing", "undefine", "0x2000", "--end", "0x2014"])
+        .with_project(test_project(), program)
+        .run()
+        .assert_success();
     let config_dir = tempfile::tempdir().unwrap();
     let config = config_dir.path().join("config.yaml");
     let mut test_config = ghidra_cli::config::Config::load().unwrap();
     test_config.default_limit = Some(12);
     std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
     let result = ghidra(harness)
-        .args(["--json", "define-code", "0x2000"])
+        .args(["--json", "listing", "define-code", "0x2000"])
         .with_project(test_project(), program)
         .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
         .run();

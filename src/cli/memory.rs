@@ -97,39 +97,3 @@ pub struct DisasmArgs {
     #[command(flatten)]
     pub options: QueryOptions,
 }
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct DefineCodeArgs {
-    /// Exact symbol name or explicit 0x-prefixed start address
-    #[arg(value_name = "TARGET")]
-    pub target: String,
-    /// Inclusive end of the permitted instruction-definition range.
-    /// Without this bound, follow code flow without an explicit range restriction.
-    #[arg(long)]
-    pub end: Option<String>,
-    /// Target program
-    #[arg(long)]
-    pub program: Option<String>,
-    /// Project name
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct ClearArgs {
-    /// Explicit address range START:END, e.g. 0x401000:0x40101f.
-    ///
-    /// Use overlay:0x1000:0x1010 to inherit the start space, or qualify both endpoints.
-    /// Fully qualify segmented endpoints, e.g. ram:0x1234:0x0:ram:0x1234:0x8.
-    /// Ambiguous splits are rejected; qualify both endpoints to disambiguate.
-    /// The legacy :: spelling is rejected.
-    pub range: String,
-    /// Re-disassemble at an explicit 0x-prefixed address or exact symbol name after clearing.
-    /// Failure or cancellation rolls back both clearing and redisassembly.
-    #[arg(long = "disassemble-at")]
-    pub disasm_at: Option<String>,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}

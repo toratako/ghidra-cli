@@ -516,7 +516,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             "main",
         ),
         (
-            vec!["define-code", "0x1000", "--end", "0x1010"],
+            vec!["listing", "define-code", "0x1000", "--end", "0x1010"],
             "define_code",
             "target",
             "0x1000",
@@ -1084,95 +1084,128 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
 }
 
 #[test]
-fn clear_routes_only_the_requested_clear_and_optional_redisassembly() {
-    let bridge = RecordedBridge::new();
+fn listing_undefine_preserves_targets_and_atomic_redisassembly_in_standalone_and_batch() {
+    let outer = RecordedBridge::new();
+    let selected = RecordedBridge::new();
     for disasm_at in [None, Some("0x1000")] {
-        bridge.requests.lock().unwrap().clear();
-        let mut args = vec!["clear", "0x1000:0x1010"];
+        let mut args = vec![
+            "listing",
+            "undefine",
+            "0x1000",
+            "--end",
+            "0x1010",
+            "--project",
+            selected.project.to_str().unwrap(),
+            "--program",
+            "B",
+        ];
         if let Some(address) = disasm_at {
             args.extend(["--disassemble-at", address]);
         }
-        bridge.run(&args);
-        let requests = bridge.requests.lock().unwrap();
-        let clear = requests
-            .iter()
-            .find(|r| r["command"] == "clear_range")
-            .unwrap();
-        assert_eq!(
-            clear["args"],
-            json!({"start": "0x1000", "end": "0x1010", "disasm_at": disasm_at})
-        );
-        assert_eq!(
-            requests
+        for batch in [false, true] {
+            outer.requests.lock().unwrap().clear();
+            selected.requests.lock().unwrap().clear();
+            let receipt = if batch {
+                std::fs::write(outer.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                let report = outer.run(&["batch", "batch.txt"]);
+                assert_eq!(report[0]["failed"], 0, "{report}");
+                report[0]["results"][0]["result"].clone()
+            } else {
+                outer.run(&args)[0].clone()
+            };
+            assert_eq!(receipt["observed_program"], "B");
+            assert!(outer
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|request| request["command"] == "bridge_info"));
+            let requests = selected.requests.lock().unwrap();
+            let domain: Vec<_> = requests
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
-                .count(),
-            1,
-            "clear must not dispatch a separate data creation or disassembly command"
-        );
+                .collect();
+            assert_eq!(domain.len(), 2, "{requests:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"]["program"], "B");
+            assert_eq!(domain[1]["command"], "clear_range");
+            assert_eq!(
+                domain[1]["args"],
+                json!({"start": "0x1000", "end": "0x1010", "disasm_at": disasm_at})
+            );
+        }
     }
 }
 
 #[test]
-fn explicit_address_clear_ranges_preserve_spaces_and_segments() {
+fn listing_undefine_preserves_independently_qualified_addresses() {
     let bridge = RecordedBridge::new();
-    for (range, start, end) in [
-        (
-            "overlay:0x1000:overlay:0x1010",
-            "overlay:0x1000",
-            "overlay:0x1010",
-        ),
-        ("overlay:0x1000:0x1010", "overlay:0x1000", "overlay:0x1010"),
-        (
-            "overlay:0x1000:other:0x1010",
-            "overlay:0x1000",
-            "other:0x1010",
-        ),
-        (
-            "ram:0x1234:0x0005:ram:0x1234:0x0008",
-            "ram:0x1234:0x0005",
-            "ram:0x1234:0x0008",
-        ),
+    for (start, end) in [
+        ("overlay:0x1000", "overlay:0x1010"),
+        ("overlay:0x1000", "0x1010"),
+        ("ram:0x1234:0x0005", "ram:0x1234:0x0008"),
+        ("0x1234:0x10", "0x1234:0x20"),
+        ("word:0x1000.1", "word:0x1001.0"),
     ] {
         bridge.requests.lock().unwrap().clear();
-        bridge.run(&["clear", range]);
+        bridge.run(&["listing", "undefine", start, "--end", end]);
         let requests = bridge.requests.lock().unwrap();
         let edits: Vec<_> = requests
             .iter()
             .filter(|request| request["command"] != "bridge_info")
             .collect();
-        assert_eq!(edits.len(), 1, "{range}: {requests:?}");
+        assert_eq!(edits.len(), 1, "{start} --end {end}: {requests:?}");
         assert_eq!(edits[0]["command"], "clear_range");
         assert_eq!(
             edits[0]["args"],
             json!({"start": start, "end": end, "disasm_at": null}),
-            "{range}"
+            "{start} --end {end}"
         );
     }
+}
 
-    for range in [
-        "1000:1010",
-        "overlay::1000:1010",
-        "overlay:1000:overlay:1010",
-        "0x1234:0x0005:0x0008",
+#[test]
+fn listing_undefine_rejects_invalid_or_missing_bounds_before_dispatch() {
+    let bridge = RecordedBridge::new();
+    for (bounds, message, exit) in [
+        (vec!["entry", "--end", "0x1010"], "Invalid START address", 1),
+        (
+            vec!["0x1000", "--end", "overlay:1010"],
+            "Invalid --end address",
+            1,
+        ),
+        (vec!["0x1000"], "--end <END>", 2),
     ] {
-        bridge.requests.lock().unwrap().clear();
-        let output = bridge.command().args(["clear", range]).output().unwrap();
-        assert!(!output.status.success(), "{range}: {output:?}");
-        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        let args: Vec<_> = ["listing", "undefine", "--program", "must-not-open"]
+            .into_iter()
+            .chain(bounds)
+            .collect();
+        let output = bridge.command().args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(exit), "{args:?}: {output:?}");
         assert!(
-            error["message"]
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{output:?}"
+        );
+
+        std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+        let output = bridge
+            .command()
+            .args(["batch", "batch.txt"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report[0]["commands_executed"], 0);
+        assert_eq!(report[0]["validation_failed"], true);
+        assert!(
+            report[0]["validation_errors"][0]["error"]
                 .as_str()
                 .unwrap()
-                .contains("Invalid or ambiguous range"),
-            "{range}: {error}"
+                .contains(message),
+            "{report}"
         );
-        assert!(bridge
-            .requests
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|request| request["command"] == "bridge_info"));
+        assert!(bridge.requests.lock().unwrap().is_empty());
     }
 }
 
@@ -1458,7 +1491,7 @@ fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
             (vec![], Value::Null),
             (vec!["--end", "0x1010"], json!("0x1010")),
         ] {
-            let args: Vec<_> = ["define-code", "0x1000", "--program", "B"]
+            let args: Vec<_> = ["listing", "define-code", "0x1000", "--program", "B"]
                 .into_iter()
                 .chain(flags)
                 .collect();
@@ -2346,7 +2379,7 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
         // Nested files use the invocation's cwd, including names containing an apostrophe.
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            "function list --filter invalid\nsymbol delete existing --filter invalid\nsymbol rename existing renamed --filter invalid\nsymbol delete existing --address invalid\ngraph callers main --depth 2147483648\nclear 0x1000\nbatch \"scripts/./batch.txt\"\nbatch \"nested valid's.txt\"\nprogram import generated.bin --loader-option malformed\nprogram import generated.bin --base-address invalid\nscript run generated.java --expect results.jsonl:9223372036854775808\n",
+            "function list --filter invalid\nsymbol delete existing --filter invalid\nsymbol rename existing renamed --filter invalid\nsymbol delete existing --address invalid\ngraph callers main --depth 2147483648\nlisting undefine 0x1000 --end invalid\nbatch \"scripts/./batch.txt\"\nbatch \"nested valid's.txt\"\nprogram import generated.bin --loader-option malformed\nprogram import generated.bin --base-address invalid\nscript run generated.java --expect results.jsonl:9223372036854775808\n",
         )
         .unwrap();
         std::fs::write(
@@ -2381,7 +2414,7 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
             ("nested.txt", 3, "invalid --filter expression"),
             ("nested.txt", 4, "Invalid --address"),
             ("nested.txt", 5, "--depth must be between"),
-            ("nested.txt", 6, "Invalid or ambiguous range"),
+            ("nested.txt", 6, "Invalid --end address"),
             ("nested.txt", 7, "Batch include cycle"),
             ("nested.txt", 9, "Invalid --loader-option"),
             ("nested.txt", 10, "Invalid base address"),
@@ -3527,7 +3560,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     ];
     let mut lines: Vec<_> = [
         "function delete main",
-        "define-code 0x1000",
+        "listing define-code 0x1000",
         "comment delete 0x1000 --all",
         "memory read 0x1000 8",
         "program info",

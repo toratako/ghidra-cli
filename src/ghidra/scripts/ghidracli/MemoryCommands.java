@@ -227,7 +227,7 @@ final class MemoryCommands {
                 if (owner != null) {
                     result.addProperty("hint", "Address falls inside existing function "
                         + owner.getName() + "@" + AddressCodec.format(owner.getEntryPoint())
-                        + "; stale/overlapping instructions may be blocking disassembly. Try `ghidra-cli clear` first.");
+                        + "; stale/overlapping instructions may be blocking disassembly. Try `ghidra-cli listing undefine START --end END` first.");
                 }
             }
             return result;

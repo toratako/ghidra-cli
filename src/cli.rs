@@ -8,6 +8,7 @@ mod configuration;
 mod data;
 mod function;
 mod inspection;
+mod listing;
 mod management;
 mod memory;
 mod options;
@@ -24,6 +25,7 @@ pub use configuration::*;
 pub use data::*;
 pub use function::*;
 pub use inspection::*;
+pub use listing::*;
 pub use management::*;
 pub use memory::*;
 pub use options::{ObjectOptions, QueryOptions};
@@ -103,6 +105,10 @@ pub enum Commands {
     #[command(subcommand)]
     Data(DataCommands),
 
+    /// Instruction and data definitions in the listing
+    #[command(subcommand)]
+    Listing(ListingCommands),
+
     /// Cross-reference operations
     #[command(subcommand, name = "xref")]
     XRef(XRefCommands),
@@ -145,15 +151,6 @@ pub enum Commands {
     /// Show existing instructions from a name or address, optionally through --end
     #[command(name = "disassemble")]
     Disasm(DisasmArgs),
-
-    /// Define instructions in Ghidra by following code flow from a name or address.
-    /// Returns a change receipt; use disassemble to read the instructions.
-    #[command(name = "define-code")]
-    DefineCode(DefineCodeArgs),
-
-    /// Clear code units in a range (undoes auto-analysis that mis-disassembled
-    /// through inline data), optionally re-disassembling at a precise address
-    Clear(ClearArgs),
 
     /// Script execution
     #[command(subcommand)]

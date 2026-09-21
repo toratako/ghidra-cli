@@ -74,7 +74,7 @@ residual selection still requests all matches.
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before
 filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.
-`define-code` returns a mutation receipt: `--end` bounds instruction creation,
+`listing define-code` returns a mutation receipt: `--end` bounds instruction creation,
 and `default_limit` does not apply. Use `disassemble` for subsequent reads.
 
 ## Boundaries and validation

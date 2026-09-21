@@ -58,6 +58,9 @@ ghidra-cli
 ├── data
 │   ├── list
 │   └── read
+├── listing
+│   ├── define-code
+│   └── undefine
 ├── xref
 │   ├── to
 │   └── from
@@ -119,8 +122,6 @@ ghidra-cli
 │   └── callees
 ├── decompile
 ├── disassemble
-├── define-code
-├── clear
 ├── script
 │   ├── run
 │   └── list
@@ -144,4 +145,4 @@ ghidra-cli
 └── setup
 ```
 
-132 command nodes (excluding the root), 0 aliases.
+133 command nodes (excluding the root), 0 aliases.

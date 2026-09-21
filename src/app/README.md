@@ -28,7 +28,7 @@ so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work. Single-object commands use `ObjectOptions`,
 converted to projection-only `QueryOptions` for shared output; nested memory
 bytes and pointers are not result rows. Function/comment deletion and
-`define-code` return receipts without row-query options.
+`listing define-code` return receipts without row-query options.
 `connect_program_bridge(port)` requires `bridge_info.explicit_addresses: true`,
 `auto_save: true`, and `atomic_edits: true` before program dispatch.
 Missing support fails with explicit restart guidance;
@@ -51,12 +51,11 @@ does nothing for a stopped bridge; deletion treats `--program` as a file target
 without opening it as a selection/startup program.
 
 `src/address.rs` validates explicit address syntax for client-side selectors,
-import base addresses, and `clear START:END`; Ghidra validates the selected
-address space and numeric bounds. Every numeric colon component requires
-`0x`/`0X`. `clear` can inherit the start space for an unqualified end, requires
-complete segmented endpoints, and rejects ambiguous splits.
-Fully qualify both endpoints to disambiguate a range, for example
-`ram:0x1234:0x0:ram:0x1234:0x8`; the delimiter remains a single colon.
+import base addresses, and `listing undefine START --end END`; Ghidra validates
+the selected address spaces and numeric bounds. Every numeric colon component
+requires `0x`/`0X`. `listing undefine` validates each endpoint independently before
+bridge work; qualify overlay and segmented endpoints with their space names,
+for example `ram:0x1234:0x0 --end ram:0x1234:0x8`.
 Name-or-address operations keep exact names such as `dead` and `FUN_...`; they
 never derive a numeric address from them. Offsets and byte patterns are separate.
 Client-side comparisons read canonical segmented addresses with a space name;

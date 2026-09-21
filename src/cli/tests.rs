@@ -109,12 +109,12 @@ fn disassembly_uses_limit_and_count() {
 fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
     for target in ["entry", "0x1000"] {
         for end in [None, Some("0x2000")] {
-            let mut args = vec!["ghidra-cli", "define-code", target];
+            let mut args = vec!["ghidra-cli", "listing", "define-code", target];
             if let Some(end) = end {
                 args.extend(["--end", end]);
             }
             let cli = Cli::try_parse_from(args).unwrap();
-            let Commands::DefineCode(args) = cli.command else {
+            let Commands::Listing(ListingCommands::DefineCode(args)) = cli.command else {
                 panic!("expected define-code")
             };
             assert_eq!(args.target, target);
@@ -132,7 +132,7 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
         vec!["--format", "asm"],
     ] {
         assert!(Cli::try_parse_from(
-            ["ghidra-cli", "define-code", "0x1000"]
+            ["ghidra-cli", "listing", "define-code", "0x1000"]
                 .into_iter()
                 .chain(flags)
         )
@@ -144,7 +144,7 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
 fn targets_require_one_positional() {
     for command in [
         vec!["function", "delete"],
-        vec!["define-code"],
+        vec!["listing", "define-code"],
         vec![
             "function",
             "set-signature",
@@ -183,7 +183,9 @@ fn targets_require_one_positional() {
                 Commands::Function(FunctionCommands::Delete(args)) => {
                     (args.target, args.program, args.project)
                 }
-                Commands::DefineCode(args) => (args.target, args.program, args.project),
+                Commands::Listing(ListingCommands::DefineCode(args)) => {
+                    (args.target, args.program, args.project)
+                }
                 Commands::Function(FunctionCommands::SetSignature(args)) => {
                     (args.target, args.program, args.project)
                 }
@@ -416,17 +418,25 @@ fn program_export_formats_accept_supported_spellings() {
 }
 
 #[test]
-fn clear_accepts_optional_disassembly() {
+fn listing_undefine_accepts_explicit_bounds_and_optional_disassembly() {
     for disasm_at in [None, Some("0x1000")] {
-        let mut command = vec!["ghidra-cli", "clear", "0x1000:0x1010"];
+        let mut command = vec![
+            "ghidra-cli",
+            "listing",
+            "undefine",
+            "0x1000",
+            "--end",
+            "0x1010",
+        ];
         if let Some(address) = disasm_at {
             command.extend(["--disassemble-at", address]);
         }
         let cli = Cli::try_parse_from(&command).unwrap();
-        let Commands::Clear(args) = cli.command else {
-            panic!("expected clear");
+        let Commands::Listing(ListingCommands::Undefine(args)) = cli.command else {
+            panic!("expected listing undefine");
         };
-        assert_eq!(args.range, "0x1000:0x1010");
+        assert_eq!(args.start, "0x1000");
+        assert_eq!(args.end, "0x1010");
         assert_eq!(args.disasm_at.as_deref(), disasm_at);
     }
 }
@@ -712,7 +722,7 @@ fn canonical_commands_parse() {
         vec!["string", "refs", "hello"],
         vec!["disassemble", "main"],
         vec!["function", "disassemble", "main"],
-        vec!["define-code", "0x1000"],
+        vec!["listing", "define-code", "0x1000"],
         vec!["find", "string", "hello"],
         vec!["graph", "callers", "main"],
         vec!["graph", "callees", "main"],

@@ -21,8 +21,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Find(_)
             | Commands::Script(_)
             | Commands::Disasm(_)
-            | Commands::DefineCode(_)
-            | Commands::Clear(_)
+            | Commands::Listing(_)
             | Commands::Batch(_)
             | Commands::Program(_)
     )
@@ -66,8 +65,10 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::XRefCommands::From(args) => args.options.project.clone(),
         },
         Commands::Disasm(args) => args.options.project.clone(),
-        Commands::DefineCode(args) => args.project.clone(),
-        Commands::Clear(args) => args.project.clone(),
+        Commands::Listing(cmd) => match cmd {
+            cli::ListingCommands::DefineCode(args) => args.project.clone(),
+            cli::ListingCommands::Undefine(args) => args.project.clone(),
+        },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.project.clone(),
             cli::FindCommands::Text(args) => args.options.project.clone(),
@@ -206,8 +207,10 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::XRefCommands::From(args) => args.options.program.clone(),
         },
         Commands::Disasm(args) => args.options.program.clone(),
-        Commands::DefineCode(args) => args.program.clone(),
-        Commands::Clear(args) => args.program.clone(),
+        Commands::Listing(cmd) => match cmd {
+            cli::ListingCommands::DefineCode(args) => args.program.clone(),
+            cli::ListingCommands::Undefine(args) => args.program.clone(),
+        },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.program.clone(),
             cli::FindCommands::Text(args) => args.options.program.clone(),

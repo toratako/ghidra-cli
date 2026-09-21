@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Group instruction definition and range clearing under `listing define-code`
+  and `listing undefine START --end END`. Undefine requires an inclusive end
+  address; each endpoint is specified independently. Remove the top-level
+  `define-code` and `clear` commands.
+
 ## [0.7.0-rc.1] - 2026-09-21
 
 ### Added

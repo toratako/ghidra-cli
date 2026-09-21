@@ -40,8 +40,14 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::Clear(args) = command {
-        parse_clear_range(&args.range)?;
+    if let Commands::Listing(cli::ListingCommands::Undefine(args)) = command {
+        for (label, value) in [("START", &args.start), ("--end", &args.end)] {
+            anyhow::ensure!(
+                crate::address::ExplicitAddress::parse_canonical(value).is_some(),
+                "Invalid {label} address '{value}': use a 0x-prefixed address, \
+                 qualifying overlay and segmented addresses with their space name"
+            );
+        }
     }
     let selector = match command {
         Commands::Symbol(cli::SymbolCommands::Rename(args)) => {
@@ -59,17 +65,6 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         scripts::validate_expect_specs(&args.expect)?;
     }
     Ok(())
-}
-
-fn parse_clear_range(range: &str) -> anyhow::Result<(String, String)> {
-    split_range(range).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Invalid or ambiguous range '{}': use 0x-prefixed START:END, \
-             e.g. 0x1000:0x1010 or overlay:0x1000:overlay:0x1010; \
-             specify both segment components for segmented endpoints",
-            range
-        )
-    })
 }
 
 /// Execute a command via the bridge client.
@@ -454,11 +449,16 @@ pub(super) fn execute_via_bridge(
             Some(end) => client.disasm_range(&args.target, end, list_limit),
             None => client.disasm(&args.target, list_limit),
         },
-        Commands::DefineCode(args) => client.define_code(&args.target, args.end.as_deref()),
-        Commands::Clear(args) => {
-            let (start, end) = parse_clear_range(&args.range)?;
-            client.clear_range(&start, &end, args.disasm_at.as_deref())
-        }
+        Commands::Listing(cmd) => match cmd {
+            cli::ListingCommands::DefineCode(args) => {
+                client.define_code(&args.target, args.end.as_deref())
+            }
+            cli::ListingCommands::Undefine(args) => client.clear_range(
+                args.start.trim(),
+                args.end.trim(),
+                args.disasm_at.as_deref(),
+            ),
+        },
         Commands::Pcode(cmd) => {
             use cli::PcodeCommands;
             match cmd {
@@ -477,102 +477,5 @@ pub(super) fn execute_via_bridge(
             }
         }
         _ => anyhow::bail!("Command not supported"),
-    }
-}
-
-/// Require one unambiguous split into two explicit addresses. An unqualified
-/// end inherits the start's space; segmented endpoints require a space name.
-fn split_range(range: &str) -> Option<(String, String)> {
-    let mut result = None;
-    for (i, _) in range.match_indices(':') {
-        let (start, end) = (&range[..i], &range[i + 1..]);
-        let (Some(start_address), Some(end_address)) = (
-            crate::address::ExplicitAddress::parse_canonical(start),
-            crate::address::ExplicitAddress::parse_canonical(end),
-        ) else {
-            continue;
-        };
-        if result.is_some() {
-            return None;
-        }
-        let end = match (start_address.space, end_address.space) {
-            (Some(space), None) => format!("{space}:{}", end.trim()),
-            _ => end.trim().to_owned(),
-        };
-        result = Some((start.trim().to_owned(), end));
-    }
-    result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn split_range_plain_addresses() {
-        assert_eq!(
-            split_range("0x0bf3:0x0bfa"),
-            Some(("0x0bf3".to_string(), "0x0bfa".to_string()))
-        );
-    }
-
-    #[test]
-    fn split_range_overlay_start_bare_end_inherits_space() {
-        assert_eq!(
-            split_range("rom1:0x5512:0x551d"),
-            Some(("rom1:0x5512".to_string(), "rom1:0x551d".to_string()))
-        );
-    }
-
-    #[test]
-    fn split_range_overlay_both_sides_qualified() {
-        assert_eq!(
-            split_range("rom1:0x5512:rom1:0x551d"),
-            Some(("rom1:0x5512".to_string(), "rom1:0x551d".to_string()))
-        );
-    }
-
-    #[test]
-    fn split_range_overlay_end_in_different_space() {
-        assert_eq!(
-            split_range("rom1:0x5512:rom2:0x551d"),
-            Some(("rom1:0x5512".to_string(), "rom2:0x551d".to_string()))
-        );
-    }
-
-    #[test]
-    fn split_range_missing_colon_is_none() {
-        for invalid in [
-            "rom1:0x5512",
-            "0x0bf3",
-            "0bf3:0bfa",
-            "rom1::5512:551d",
-            "0x1234:0x0:0x8",
-            "0x1234:0x1000:0x100010",
-            "0x1000:",
-            ":0x1000",
-        ] {
-            assert_eq!(split_range(invalid), None, "{invalid}");
-        }
-    }
-
-    #[test]
-    fn split_range_preserves_segmented_endpoints() {
-        assert_eq!(
-            split_range("ram:0x1234:0x0:ram:0x1234:0x8"),
-            Some(("ram:0x1234:0x0".into(), "ram:0x1234:0x8".into()))
-        );
-    }
-
-    #[test]
-    fn split_range_numeric_space_names_do_not_become_segments() {
-        assert_eq!(
-            split_range("0x1234:0x1000.0:0x1234:0x100010.0"),
-            Some(("0x1234:0x1000.0".into(), "0x1234:0x100010.0".into()))
-        );
-        assert_eq!(
-            split_range("rom:0x10000:0x1234:0x0005"),
-            Some(("rom:0x10000".into(), "0x1234:0x0005".into()))
-        );
     }
 }
