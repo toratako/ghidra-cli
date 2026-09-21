@@ -6,10 +6,12 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
-# macOS jobs are paused while decompiler and fixture symbol failures are investigated.
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -42,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -82,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -130,6 +132,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+
+      - name: Inspect macOS native tools
+        if: runner.os == 'macOS'
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import subprocess
+
+          subprocess.run(["uname", "-m"], check=True)
+          subprocess.run(["sw_vers"], check=True)
+          root = Path.home() / "Library/Application Support/ghidra-cli/ghidra"
+          for install in sorted(root.glob("ghidra_*")):
+              print(f"Ghidra installation: {install.name}", flush=True)
+              for module in ["Ghidra/Features/Decompiler", "GPL/DemanglerGnu"]:
+                  paths = sorted((install / module / "os").glob("mac_*/*"))
+                  if not paths:
+                      print(f"No macOS native files: {module}", flush=True)
+                  for path in paths:
+                      print(f"{path.relative_to(install)} executable={os.access(path, os.X_OK)}", flush=True)
+                      subprocess.run(["file", str(path)], check=True)
+
   # Read-only integration tests (one bridge).
   readonly-integration:
     needs: [changes, ghidra-setup]
@@ -142,7 +166,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -195,7 +219,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run read-only integration tests
-        run: cargo xtask test --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -212,7 +236,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -265,7 +289,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run mutation integration tests
-        run: cargo xtask test --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -282,7 +306,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
         suite: [daemon, project]
         include:
           - suite: daemon
@@ -341,7 +365,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run infrastructure tests
-        run: cargo xtask test ${{ matrix.tests }} --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast ${{ matrix.tests }} --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
