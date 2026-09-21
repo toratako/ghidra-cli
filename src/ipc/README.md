@@ -63,6 +63,21 @@ respectively.
 `BridgeClient::find_string_page` exposes filter/offset/limit, while
 `find_string` and `find_string_with_limit` retain their existing defaults.
 
+`analysis_run` uses the long-operation wait and performs full analysis with the
+Program's saved settings. `analysis_option_list` returns `{options, count}`;
+`analysis_option_get` takes an exact string `name` and returns one option.
+Each option has `name`, native `type`, `value`, `default`, `description`, and
+`settable`; enums also have `choices` containing constant names. Numeric and
+boolean values are JSON numbers/booleans; strings, file paths and enum constants
+are strings. Other native types use Ghidra's string representation and are not
+settable. Defaults/descriptions can be null for unregistered saved options.
+`analysis_option_set` takes string `name` and string `value`, parses the value
+using the existing option type, saves without analyzing, and returns the option
+with `status: "set"`. Integers are decimal, floats must be finite, booleans are
+true/false, enums must match a choice exactly, and file paths must be absolute
+because the JVM's working directory can differ from the caller's. List queries
+run in Rust; get/set output only supports projection and format controls.
+
 `tag_get` accepts an exact, case-sensitive `name` and returns one tag object:
 `{name, comment, use_count}`. `use_count` is Ghidra's total usage, including
 external functions when present. Membership queries use `list_functions` with
@@ -130,7 +145,7 @@ Ordinary requests are atomic: error or cancellation rolls back all their Program
 changes and adds `detail.rolled_back: true`; cancellation also adds
 `detail.cancelled: true`. Earlier requests remain intact, including earlier lines
 in a batch. Rollback does not flush pending edits from an earlier save failure.
-The non-atomic exceptions are `analyze`, `script_run`, `import`, `program_export`,
+The non-atomic exceptions are `analysis_run`, `script_run`, `import`, `program_export`,
 `open_program`, `program_close`, `program_save`, and `program_delete`. Errors from
 those requests can include `detail.partial_changes_saved: true` when retained
 Program changes were saved; external project/file effects are outside rollback.

@@ -102,46 +102,6 @@ public class CreateMixedProjectFiles extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_analyzer_enable_disable_in_bridge() {
-    require_ghidra!();
-    ensure_test_project(test_project(), TEST_PROGRAM);
-    let harness = start_daemon();
-    let client = harness.client().expect("bridge client");
-    let listing = client.analyzer_list().expect("list analyzers");
-    let analyzer = listing["analyzers"]
-        .as_array()
-        .expect("analyzer array")
-        .first()
-        .expect("fixture must have analyzers");
-    let name = analyzer["name"].as_str().expect("analyzer name");
-    let original = analyzer["enabled"].as_bool().expect("enabled flag");
-
-    // Exercise both explicit values and verify actual Ghidra state, not only
-    // the command's response. End with the original setting restored.
-    for enabled in [!original, original] {
-        assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-            .args([
-                "analyzer",
-                "set",
-                name,
-                if enabled { "true" } else { "false" },
-            ])
-            .args(["--project", test_project(), "--program", TEST_PROGRAM])
-            .assert()
-            .success();
-        let updated = client.analyzer_list().expect("list updated analyzers");
-        let actual = updated["analyzers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|row| row["name"].as_str() == Some(name))
-            .expect("analyzer still exists");
-        assert_eq!(actual["enabled"].as_bool(), Some(enabled));
-    }
-}
-
-#[test]
-#[serial]
 fn test_failed_mutation_preserves_prior_edits_after_restart() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
@@ -293,7 +253,7 @@ public class CopyBridgeProgram extends GhidraScript {
     client.open_program(&alternate).unwrap();
     client
         .send_command(
-            "analyze",
+            "analysis_run",
             Some(serde_json::json!({"program": TEST_PROGRAM})),
         )
         .unwrap();

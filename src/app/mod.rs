@@ -159,7 +159,7 @@ fn execute_bridge_command(cli: &Cli) -> anyhow::Result<CommandResult> {
                     .clone()
                     .or_else(|| config.default_program.clone())
             };
-            // For all bridge commands (including Analyze), ensure bridge is running
+            // For all bridge commands (including analysis run), ensure bridge is running
             let client = if let Some(port) = bridge::is_bridge_running(&project_path) {
                 // bridge_info is a responsive control request, including while
                 // analysis or another program job is running.

@@ -5,6 +5,8 @@
 mod common;
 use common::{test_project, DaemonTestHarness};
 
+#[path = "daemon/analysis.rs"]
+mod analysis;
 #[path = "daemon/decompiler.rs"]
 mod decompiler;
 #[path = "daemon/deletion.rs"]

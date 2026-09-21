@@ -87,6 +87,7 @@ fn check_dotnet_decompile_warning(command: &Commands, result: &serde_json::Value
 fn response_array_key(obj: &serde_json::Map<String, serde_json::Value>) -> Option<&'static str> {
     // Known array keys from bridge responses
     const ARRAY_KEYS: &[&str] = &[
+        "options",
         "functions",
         "strings",
         "externals",

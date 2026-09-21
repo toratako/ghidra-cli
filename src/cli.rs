@@ -1,6 +1,7 @@
 use clap::{ArgAction, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+mod analysis;
 mod annotations;
 mod automation;
 mod configuration;
@@ -15,6 +16,7 @@ mod types;
 
 // Keep command types available through crate::cli while their definitions
 // live with the command family that owns them.
+pub use analysis::*;
 pub use annotations::*;
 pub use automation::*;
 pub use configuration::*;
@@ -111,9 +113,9 @@ pub enum Commands {
     #[command(subcommand)]
     Pcode(PcodeCommands),
 
-    /// List and configure analyzers; use `analyze` to run analysis
+    /// Run analysis and configure program analysis settings
     #[command(subcommand)]
-    Analyzer(AnalyzerCommands),
+    Analysis(AnalysisCommands),
 
     /// Comment operations
     #[command(subcommand)]
@@ -163,9 +165,6 @@ pub enum Commands {
 
     /// Import a binary into a project
     Import(ImportArgs),
-
-    /// Analyze or reanalyze the entire program using its current analyzer settings
-    Analyze(AnalyzeArgs),
 
     /// Bridge lifecycle and health
     #[command(subcommand)]

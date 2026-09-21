@@ -37,9 +37,22 @@ ghidra-cli symbol entry-points --sort name --limit 0
 
 ## Import and reanalysis
 
-`analyze --project target --program target.bin` analyzes the entire program
-using its current options. `analyzer list` and `analyzer set` inspect or change
-those options without running analysis.
+`analysis run --project target --program target.bin` analyzes the entire program
+using its saved settings. To configure the first analysis, import with
+`--no-analyze`, change the options, then run analysis:
+
+```bash
+ghidra-cli import ./target.bin --project target --no-analyze
+ghidra-cli analysis option list --project target --filter 'name~"ASCII Strings"'
+ghidra-cli analysis option get "ASCII Strings.Minimum String Length" --project target
+ghidra-cli analysis option set "ASCII Strings.Minimum String Length" LEN_10 --project target
+ghidra-cli analysis run --project target --program target.bin
+```
+
+Use the option's exact `name`; for enums, select a constant from `choices`.
+Analyzer enablement is a boolean option, e.g. `analysis option set "ASCII Strings" false`.
+Setting an option saves it to the Program without running analysis.
+
 `import INPUT --program NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
 name (Ghidra may add a suffix on collision).

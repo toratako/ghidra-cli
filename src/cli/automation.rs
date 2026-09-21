@@ -2,35 +2,6 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum AnalyzerCommands {
-    /// List all analyzers and their enabled status
-    List(AnalyzerListArgs),
-    /// Enable or disable an analyzer; run `analyze` to apply the setting
-    Set(AnalyzerSetArgs),
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct AnalyzerListArgs {
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct AnalyzerSetArgs {
-    /// Analyzer name
-    pub name: String,
-    /// Enable (true) or disable (false)
-    #[arg(action = clap::ArgAction::Set)]
-    pub enabled: bool,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum ScriptCommands {
     /// Run a script file (pass "-" to read Java source from stdin instead of a path)
     Run(ScriptRunArgs),
@@ -83,12 +54,4 @@ pub struct BatchArgs {
 
     #[arg(long)]
     pub program: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct AnalyzeArgs {
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
 }

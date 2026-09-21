@@ -5,7 +5,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
     matches!(
         command,
         Commands::Import(_)
-            | Commands::Analyze(_)
             | Commands::Decompile(_)
             | Commands::Function(_)
             | Commands::Strings(_)
@@ -15,7 +14,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Type(_)
             | Commands::Tag(_)
             | Commands::Pcode(_)
-            | Commands::Analyzer(_)
+            | Commands::Analysis(_)
             | Commands::Comment(_)
             | Commands::Graph(_)
             | Commands::Find(_)
@@ -32,7 +31,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
 pub(super) fn extract_project_from_command(command: &Commands) -> Option<String> {
     match command {
         Commands::Import(args) => args.project.clone(),
-        Commands::Analyze(args) => args.project.clone(),
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.project.clone(),
@@ -123,9 +121,13 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::PcodeCommands::At(args) => args.project.clone(),
             cli::PcodeCommands::Function(args) => args.project.clone(),
         },
-        Commands::Analyzer(cmd) => match cmd {
-            cli::AnalyzerCommands::List(args) => args.project.clone(),
-            cli::AnalyzerCommands::Set(args) => args.project.clone(),
+        Commands::Analysis(cmd) => match cmd {
+            cli::AnalysisCommands::Run(args) => args.project.clone(),
+            cli::AnalysisCommands::Option(cmd) => match cmd {
+                cli::AnalysisOptionCommands::List(opts) => opts.project.clone(),
+                cli::AnalysisOptionCommands::Get(args) => args.options.project.clone(),
+                cli::AnalysisOptionCommands::Set(args) => args.options.project.clone(),
+            },
         },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.project.clone(),
@@ -152,7 +154,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
 /// program differs from the bridge's current program.
 pub(super) fn extract_program_from_command(command: &Commands) -> Option<String> {
     match command {
-        Commands::Analyze(args) => args.program.clone(),
         Commands::Decompile(args) => args.options.program.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.program.clone(),
@@ -243,9 +244,13 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::PcodeCommands::At(args) => args.program.clone(),
             cli::PcodeCommands::Function(args) => args.program.clone(),
         },
-        Commands::Analyzer(cmd) => match cmd {
-            cli::AnalyzerCommands::List(args) => args.program.clone(),
-            cli::AnalyzerCommands::Set(args) => args.program.clone(),
+        Commands::Analysis(cmd) => match cmd {
+            cli::AnalysisCommands::Run(args) => args.program.clone(),
+            cli::AnalysisCommands::Option(cmd) => match cmd {
+                cli::AnalysisOptionCommands::List(opts) => opts.program.clone(),
+                cli::AnalysisOptionCommands::Get(args) => args.options.program.clone(),
+                cli::AnalysisOptionCommands::Set(args) => args.options.program.clone(),
+            },
         },
         Commands::Script(cmd) => match cmd {
             cli::ScriptCommands::Run(args) => args.program.clone(),
@@ -270,6 +275,11 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
 /// Extract QueryOptions from a command, if it has them.
 pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> {
     match command {
+        Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => match cmd {
+            cli::AnalysisOptionCommands::List(opts) => Some(opts.clone()),
+            cli::AnalysisOptionCommands::Get(args) => Some((&args.options).into()),
+            cli::AnalysisOptionCommands::Set(args) => Some((&args.options).into()),
+        },
         Commands::Decompile(args) => Some(args.options.clone()),
         Commands::Disasm(args) => Some(args.options.clone()),
         Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {

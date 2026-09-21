@@ -1,9 +1,18 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+import ghidra.framework.options.OptionType;
+import ghidra.framework.options.Options;
+import ghidra.program.model.listing.Program;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Locale;
 import static ghidracli.JsonProtocol.errorResult;
-import static ghidracli.JsonProtocol.getArgString;
 
 final class AnalysisCommands {
     private final ProgramSession session;
@@ -12,61 +21,145 @@ final class AnalysisCommands {
         this.session = session;
     }
 
-    JsonObject handleAnalyzerList(JsonObject args) {
+    JsonObject handleOptionList(JsonObject args) throws Exception {
         if (session.program() == null) return errorResult("No program loaded");
-
-        try {
-            ghidra.framework.options.Options analysisOptions = session.program().getOptions("Analyzers");
-            JsonArray analyzers = new JsonArray();
-            for (String optionName : analysisOptions.getOptionNames()) {
-                if (optionName.contains(".")) continue;
-                try {
-                    boolean enabled = analysisOptions.getBoolean(optionName, false);
-                    JsonObject entry = new JsonObject();
-                    entry.addProperty("name", optionName);
-                    entry.addProperty("enabled", enabled);
-                    String description = analysisOptions.getDescription(optionName);
-                    if (description != null && !description.isEmpty()) {
-                        entry.addProperty("description", description);
-                    }
-                    analyzers.add(entry);
-                } catch (Exception ignored) {
-                    // Non-boolean analyzer options are not enable/disable switches.
-                }
-            }
-
-            JsonObject result = new JsonObject();
-            result.addProperty("count", analyzers.size());
-            result.add("analyzers", analyzers);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to list analyzers: " + e.getMessage());
+        Options options = session.program().getOptions(Program.ANALYSIS_PROPERTIES);
+        var names = new ArrayList<>(options.getOptionNames());
+        Collections.sort(names);
+        JsonArray rows = new JsonArray();
+        for (String name : names) {
+            session.monitor().checkCancelled();
+            rows.add(describe(options, name));
         }
+        JsonObject result = new JsonObject();
+        result.addProperty("count", rows.size());
+        result.add("options", rows);
+        return result;
     }
 
-    JsonObject handleAnalyzerSet(JsonObject args) {
+    JsonObject handleOptionGet(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
+        Options options = session.program().getOptions(Program.ANALYSIS_PROPERTIES);
+        return describe(options, requireName(options, args));
+    }
 
-        String name = getArgString(args, "name");
-        if (name == null || name.isEmpty()) return errorResult("analyzer name required");
-        if (!args.has("enabled")) return errorResult("enabled (true/false) required");
-        boolean enabled = args.get("enabled").getAsBoolean();
-
+    JsonObject handleOptionSet(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        Options options = session.program().getOptions(Program.ANALYSIS_PROPERTIES);
+        String name = requireName(options, args);
+        String text = requireString(args, "value");
+        OptionType type = options.getType(name);
+        Object value;
         try {
-            ghidra.framework.options.Options analysisOptions = session.program().getOptions("Analyzers");
-            if (!analysisOptions.getOptionNames().contains(name)) {
-                return errorResult("Unknown analyzer: " + name);
-            }
-
-            analysisOptions.setBoolean(name, enabled);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "set");
-            result.addProperty("name", name);
-            result.addProperty("enabled", enabled);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to set analyzer: " + e.getMessage());
+            value = parseValue(type, text, enumValues(options, name));
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Invalid value for analysis option '" + name
+                + "' (" + typeName(type) + "): " + error.getMessage());
         }
+        // Parse and validate before touching the Program. The session owns commit/save.
+        options.putObject(name, value);
+        JsonObject result = describe(options, name);
+        result.addProperty("status", "set");
+        return result;
+    }
+
+    private static String requireString(JsonObject args, String key) {
+        JsonElement value = args == null ? null : args.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(key + " must be a string");
+        }
+        return value.getAsString();
+    }
+
+    private static String requireName(Options options, JsonObject args) {
+        String name = requireString(args, "name");
+        if (name.isEmpty() || !options.getOptionNames().contains(name)) {
+            throw new IllegalArgumentException("Unknown analysis option: " + name);
+        }
+        return name;
+    }
+
+    private static String typeName(OptionType type) {
+        return type.name().replace("_TYPE", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static Enum<?>[] enumValues(Options options, String name) {
+        if (options.getType(name) != OptionType.ENUM_TYPE) return new Enum<?>[0];
+        Object value = options.getObject(name, options.getDefaultValue(name));
+        if (!(value instanceof Enum<?>)) value = options.getDefaultValue(name);
+        return value instanceof Enum<?> e ? e.getDeclaringClass().getEnumConstants() : new Enum<?>[0];
+    }
+
+    private static JsonObject describe(Options options, String name) {
+        OptionType type = options.getType(name);
+        Object defaultValue = options.getDefaultValue(name);
+        Enum<?>[] enums = enumValues(options, name);
+        JsonObject result = new JsonObject();
+        result.addProperty("name", name);
+        result.addProperty("type", typeName(type));
+        result.add("value", jsonValue(type, options.getObject(name, defaultValue)));
+        result.add("default", jsonValue(type, defaultValue));
+        result.addProperty("description", options.getDescription(name));
+        result.addProperty("settable", switch (type) {
+            case BOOLEAN_TYPE, INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE,
+                 STRING_TYPE, FILE_TYPE -> true;
+            case ENUM_TYPE -> enums.length != 0;
+            default -> false;
+        });
+        if (type == OptionType.ENUM_TYPE) {
+            JsonArray choices = new JsonArray();
+            for (Enum<?> value : enums) choices.add(value.name());
+            result.add("choices", choices);
+        }
+        return result;
+    }
+
+    private static JsonElement jsonValue(OptionType type, Object value) {
+        if (value == null) return JsonNull.INSTANCE;
+        if (value instanceof Boolean b) return new JsonPrimitive(b);
+        if (value instanceof Number n) return new JsonPrimitive(n);
+        if (value instanceof String s) return new JsonPrimitive(s);
+        if (value instanceof Enum<?> e) return new JsonPrimitive(e.name());
+        if (value instanceof File f) return new JsonPrimitive(f.getPath());
+        return new JsonPrimitive(type.convertObjectToString(value));
+    }
+
+    private static Object parseValue(OptionType type, String text, Enum<?>[] enums) {
+        return switch (type) {
+            case BOOLEAN_TYPE -> {
+                if (!text.equalsIgnoreCase("true") && !text.equalsIgnoreCase("false")) {
+                    throw new IllegalArgumentException("expected true or false");
+                }
+                yield Boolean.valueOf(text);
+            }
+            case INT_TYPE -> Integer.valueOf(text);
+            case LONG_TYPE -> Long.valueOf(text);
+            case FLOAT_TYPE -> {
+                float value = Float.parseFloat(text);
+                if (!Float.isFinite(value)) throw new IllegalArgumentException("expected a finite float");
+                yield value;
+            }
+            case DOUBLE_TYPE -> {
+                double value = Double.parseDouble(text);
+                if (!Double.isFinite(value)) throw new IllegalArgumentException("expected a finite double");
+                yield value;
+            }
+            case STRING_TYPE -> text;
+            case FILE_TYPE -> {
+                File value = new File(text);
+                // The persistent JVM may have a different working directory than the caller.
+                if (!value.isAbsolute()) throw new IllegalArgumentException("expected an absolute file path");
+                yield value;
+            }
+            case ENUM_TYPE -> {
+                Enum<?> selected = null;
+                for (Enum<?> value : enums) {
+                    if (value.name().equals(text)) selected = value;
+                }
+                if (selected == null) throw new IllegalArgumentException("expected an enum name from choices");
+                yield selected;
+            }
+            default -> throw new IllegalArgumentException("this option type cannot be set through the CLI");
+        };
     }
 }

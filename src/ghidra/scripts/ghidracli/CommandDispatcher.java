@@ -69,7 +69,7 @@ final class CommandDispatcher {
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
             case "import":          return programCommands.handleImport(args);
-            case "analyze":         return programCommands.handleAnalyze(args);
+            case "analysis_run":    return programCommands.handleAnalysisRun(args);
             case "list_programs":   return programCommands.handleListPrograms();
             case "open_program":    return programCommands.handleOpenProgram(args);
             case "program_close":   return programCommands.handleProgramClose();
@@ -126,8 +126,9 @@ final class CommandDispatcher {
             case "pcode_at":        return pcodeCommands.handlePcodeAt(args);
             case "pcode_function":  return pcodeCommands.handlePcodeFunction(args);
             // Analysis control
-            case "analyzer_list":   return analysisCommands.handleAnalyzerList(args);
-            case "analyzer_set":    return analysisCommands.handleAnalyzerSet(args);
+            case "analysis_option_list": return analysisCommands.handleOptionList(args);
+            case "analysis_option_get":  return analysisCommands.handleOptionGet(args);
+            case "analysis_option_set":  return analysisCommands.handleOptionSet(args);
             // Comment commands
             case "comment_list":    return commentCommands.handleCommentList(args);
             case "comment_get":     return commentCommands.handleCommentGet(args);

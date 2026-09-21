@@ -82,9 +82,12 @@ ghidra-cli
 ├── pcode
 │   ├── at
 │   └── function
-├── analyzer
-│   ├── list
-│   └── set
+├── analysis
+│   ├── run
+│   └── option
+│       ├── list
+│       ├── get
+│       └── set
 ├── comment
 │   ├── list
 │   ├── get
@@ -115,7 +118,6 @@ ghidra-cli
 │   └── reset
 ├── doctor
 ├── import
-├── analyze
 ├── bridge
 │   ├── start
 │   ├── stop
@@ -129,4 +131,4 @@ ghidra-cli
 └── setup
 ```
 
-117 command nodes (excluding the root), 0 aliases.
+119 command nodes (excluding the root), 0 aliases.

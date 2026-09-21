@@ -133,7 +133,7 @@ impl RecordedBridge {
                     }),
                     "job_status" => json!({
                         "found": true,
-                        "job": {"id": args["job_id"], "command": "analyze", "state": "complete"},
+                        "job": {"id": args["job_id"], "command": "analysis_run", "state": "complete"},
                     }),
                     "job_cancel" => json!({
                         "job_id": args["job_id"].as_u64().unwrap_or(7),
@@ -144,9 +144,20 @@ impl RecordedBridge {
                         json!({"program": program})
                     }
                     "import" => json!({"program": "imported"}),
-                    "analyze" => {
+                    "analysis_run" => {
                         json!({"status": "success", "program": program, "function_count": 3})
                     }
+                    "analysis_option_list" => json!({"count": 3, "options": [
+                        {"name": "Analyzer", "type": "boolean", "value": true},
+                        {"name": "Analyzer.Mode", "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"]},
+                        {"name": "Analyzer.Limit", "type": "int", "value": 10},
+                    ]}),
+                    "analysis_option_get" => json!({
+                        "name": args["name"], "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"],
+                    }),
+                    "analysis_option_set" => json!({
+                        "name": args["name"], "type": "string", "value": args["value"], "status": "set",
+                    }),
                     "decompile" => {
                         json!({"name": "main", "address": "0x1000", "code": "int main(void) {\n  return 0;\n}\n"})
                     }
@@ -579,22 +590,109 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
 }
 
 #[test]
-fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
+fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let cases = [
+        (
+            vec![
+                "analysis",
+                "option",
+                "list",
+                "--filter",
+                "name~\"Analyzer.\"",
+                "--sort",
+                "name",
+                "--offset",
+                "1",
+                "--limit",
+                "1",
+                "--fields",
+                "name,value",
+            ],
+            "analysis_option_list",
+            json!([{"name": "Analyzer.Mode", "value": "FAST"}]),
+        ),
+        (
+            vec!["analysis", "option", "get", "Analyzer.Mode"],
+            "analysis_option_get",
+            json!([{"name": "Analyzer.Mode", "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"]}]),
+        ),
+        (
+            vec![
+                "analysis",
+                "option",
+                "set",
+                "Analyzer.Path",
+                "path with spaces",
+                "--fields",
+                "name,value,status",
+            ],
+            "analysis_option_set",
+            json!([{"name": "Analyzer.Path", "value": "path with spaces", "status": "set"}]),
+        ),
+    ];
+    for (mut args, wire, expected) in cases {
+        args.extend(["--program", "B"]);
+        let batch = format!("{}\n", batch_arguments(&args));
+        std::fs::write(bridge.root.path().join("batch.txt"), batch).unwrap();
+        for batched in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let output = if batched {
+                bridge
+                    .command()
+                    .args(["batch", "batch.txt", "--program", "A"])
+                    .output()
+                    .unwrap()
+            } else {
+                bridge.command().args(&args).output().unwrap()
+            };
+            assert!(output.status.success(), "{args:?}: {output:?}");
+            let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+            if batched {
+                assert_eq!(result[0]["failed"], 0);
+                let actual = &result[0]["results"][0]["result"];
+                if wire == "analysis_option_get" {
+                    assert_eq!(actual, &expected[0]);
+                } else {
+                    assert_eq!(actual, &expected);
+                }
+            } else {
+                assert_eq!(result, expected);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            assert_eq!(requests.last().unwrap()["command"], wire);
+            assert_eq!(requests[requests.len() - 2]["command"], "open_program");
+            assert_eq!(requests[requests.len() - 2]["args"]["program"], "B");
+            if wire == "analysis_option_set" {
+                assert_eq!(
+                    requests.last().unwrap()["args"],
+                    json!({"name": "Analyzer.Path", "value": "path with spaces"})
+                );
+            }
+            assert!(!requests
+                .iter()
+                .any(|request| request["command"] == "analysis_run"));
+        }
+    }
+}
+
+#[test]
+fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     let expected = json!({
-        "command": "analyze", "status": "success",
+        "command": "analysis run", "status": "success",
         "data": {"status": "success", "program": "B", "function_count": 3},
     });
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        "analyze --program B\nanalyze\n",
+        "analysis run --program B\nanalysis run\n",
     )
     .unwrap();
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         bridge.requests.lock().unwrap().clear();
         let output = bridge
             .command()
-            .args(["analyze", "--program", "B"])
+            .args(["analysis", "run", "--program", "B"])
             .args(&flags)
             .output()
             .unwrap();
@@ -606,7 +704,7 @@ fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
         );
         let requests = bridge.requests.lock().unwrap().clone();
         assert_eq!(requests[requests.len() - 2]["command"], "open_program");
-        assert_eq!(requests.last().unwrap()["command"], "analyze");
+        assert_eq!(requests.last().unwrap()["command"], "analysis_run");
 
         bridge.requests.lock().unwrap().clear();
         let output = bridge
@@ -628,7 +726,7 @@ fn analyze_preserves_target_selection_and_results_in_standalone_and_batch() {
         assert_eq!(
             requests
                 .iter()
-                .filter(|r| r["command"] == "analyze")
+                .filter(|r| r["command"] == "analysis_run")
                 .count(),
             2
         );

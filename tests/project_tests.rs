@@ -105,7 +105,8 @@ fn test_analyze_program() {
     let status = common::run_cli_with_timeout(
         ghidra_bin,
         &[
-            "analyze",
+            "analysis",
+            "run",
             "--project",
             &project,
             "--program",

@@ -26,8 +26,9 @@ defaults. `project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work.
-`memory read`, `program info`, `program stats`, and `tag get` use `ObjectOptions` for target,
-field, and output selection. They reject filtering, sorting, pagination, and count
+`memory read`, `program info`, `program stats`, `tag get`, and
+`analysis option get/set` use `ObjectOptions` for target, field, and output
+selection. They reject filtering, sorting, pagination, and count
 flags during parsing. Convert these options to a projection-only `QueryOptions`
 for the shared output path; nested memory bytes and pointers are not result rows.
 `program export` requires `--output` during parsing for every export format.

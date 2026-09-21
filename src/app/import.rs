@@ -89,7 +89,7 @@ fn import_failure(
                 {
                     command.extend(["bridge".into(), "start".into()]);
                 } else {
-                    command.push("analyze".into());
+                    command.extend(["analysis".into(), "run".into()]);
                 }
                 command.extend([
                     "--project".into(),
@@ -197,7 +197,7 @@ fn run_import_steps(
     } else if !one_shot {
         progress.stage = "import.analysis";
         progress.analysis = "unknown";
-        let result = client.analyze()?;
+        let result = client.analysis_run()?;
         progress.analysis = "completed";
         result
     } else {
@@ -355,7 +355,7 @@ mod tests {
         };
         let timeout = import_failure(
             BridgeTimeoutError {
-                command: "analyze".into(),
+                command: "analysis_run".into(),
                 timeout_secs: 1,
             }
             .into(),

@@ -61,10 +61,10 @@ For headerless input, first choose the language and load parameters using
 ghidra-cli pcode at 0x401000 --project target
 ghidra-cli pcode function parse_header --project target
 ghidra-cli pcode function parse_header --high --project target
-ghidra-cli analyzer list --project target
-ghidra-cli analyzer set "ASCII Strings" false --project target
-ghidra-cli analyzer set "ASCII Strings" true --project target
-ghidra-cli analyze --project target --program target.bin
+ghidra-cli analysis option list --project target
+ghidra-cli analysis option set "ASCII Strings" false --project target
+ghidra-cli analysis option set "ASCII Strings" true --project target
+ghidra-cli analysis run --project target --program target.bin
 ```
 
 For analyzer settings and whole-program reanalysis, see

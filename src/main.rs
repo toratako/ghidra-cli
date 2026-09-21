@@ -241,7 +241,7 @@ mod tests {
             assert_eq!(code, 1);
             assert_eq!(value["detail"]["entry"], "00401000");
             let timeout = anyhow::Error::new(ipc::protocol::BridgeTimeoutError {
-                command: "analyze".to_string(),
+                command: "analysis_run".to_string(),
                 timeout_secs: 30,
             });
             let (code, text) = format_error(&timeout, output, 0);

@@ -50,17 +50,16 @@ pub(super) fn execute_via_bridge(
     let list_limit = fetch.limit;
 
     match command {
-        // Analyze shares the generic dispatch path with all query commands
-        Commands::Analyze(_) => {
+        Commands::Analysis(cli::AnalysisCommands::Run(_)) => {
             if !quiet {
                 eprintln!("Analyzing...");
             }
-            let result = client.analyze()?;
+            let result = client.analysis_run()?;
             if !quiet {
                 eprintln!("Analysis complete!");
             }
             Ok(json!({
-                "command": "analyze",
+                "command": "analysis run",
                 "status": "success",
                 "data": result
             }))
@@ -396,11 +395,14 @@ pub(super) fn execute_via_bridge(
                 PcodeCommands::Function(args) => client.pcode_function(&args.function, args.high),
             }
         }
-        Commands::Analyzer(cmd) => {
-            use cli::AnalyzerCommands;
+        Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => {
+            use cli::AnalysisOptionCommands;
             match cmd {
-                AnalyzerCommands::List(_) => client.analyzer_list(),
-                AnalyzerCommands::Set(args) => client.analyzer_set(&args.name, args.enabled),
+                AnalysisOptionCommands::List(_) => client.analysis_option_list(),
+                AnalysisOptionCommands::Get(args) => client.analysis_option_get(&args.name),
+                AnalysisOptionCommands::Set(args) => {
+                    client.analysis_option_set(&args.name, &args.value)
+                }
             }
         }
         _ => anyhow::bail!("Command not supported"),

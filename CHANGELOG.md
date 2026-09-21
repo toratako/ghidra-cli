@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `analysis option list/get/set` for typed Program analysis settings,
+  including analyzer enablement, nested options, defaults and enum choices.
+  Setting values saves without running analysis.
 - Add `type create union` and union member addition, deletion, and editing through
   `type add-field`, `type del-field`, and `type set-field --ordinal`.
 - Add `type del-enum-member TYPE --name MEMBER` to remove one named enum member.
@@ -15,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Replace top-level `analyze` with `analysis run` and remove `analyzer list/set`
+  in favor of `analysis option`. Analysis runs with saved Program settings.
 - Reuse the native decompiler across decompile, high P-code and variable edits
   while the selected Program is unchanged. Reopen after Program changes and
   release it on decompilation failure, cancellation, Program switch or close.

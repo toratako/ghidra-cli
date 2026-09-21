@@ -47,14 +47,14 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
     let port = harness.port();
 
     let analysis =
-        std::thread::spawn(move || ghidra_cli::ipc::client::BridgeClient::new(port).analyze());
+        std::thread::spawn(move || ghidra_cli::ipc::client::BridgeClient::new(port).analysis_run());
 
     let control = harness.client().expect("control client");
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     let active_job_id = loop {
         let status = control.status().expect("status while analysis runs");
         if let Some(active) = status.get("active_job").filter(|v| !v.is_null()) {
-            if active.get("command").and_then(|v| v.as_str()) == Some("analyze") {
+            if active.get("command").and_then(|v| v.as_str()) == Some("analysis_run") {
                 break active
                     .get("id")
                     .and_then(|v| v.as_u64())
@@ -88,7 +88,7 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
             .get("job")
             .and_then(|v| v.get("command"))
             .and_then(|v| v.as_str()),
-        Some("analyze")
+        Some("analysis_run")
     );
 
     // Queue more program operations than the old connection pool's four core

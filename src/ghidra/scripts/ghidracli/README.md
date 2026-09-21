@@ -64,7 +64,7 @@ written. Ordinary handlers never start/end transactions or save. They report
 native false returns and cancellation as failures so the shared boundary can
 roll back compound edits such as clearing before redisassembly.
 
-The explicit non-atomic exceptions are `analyze`, `script_run`, `import`,
+The explicit non-atomic exceptions are `analysis_run`, `script_run`, `import`,
 `program_export`, `open_program`, `program_close`, `program_save`, and
 `program_delete`. Their analysis, arbitrary script, project, or filesystem effects
 can outlive failure or cancellation. Retained Program changes are saved through
@@ -257,11 +257,22 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--program`; supply the name to the importer.
 
-`analyze` is the sole explicit analysis command; `analyzer_list` and
-`analyzer_set` only inspect or change settings. Ghidra's `analyzeAll()` initializes
-options and schedules full reanalysis itself, so callers must not separately
-call `reAnalyzeAll(null)`. The CLI retains its `command/status/data` response
-with the saved program name and function count.
+`analysis_run` is the sole explicit analysis request. Ghidra's `analyzeAll()`
+initializes options and schedules full reanalysis itself, so callers must not
+separately call `reAnalyzeAll(null)`. The CLI's `analysis run` receipt retains
+`command/status/data` with the saved program name and function count.
+
+`AnalysisCommands` reads Program.ANALYSIS_PROPERTIES for `analysis_option_list`,
+`analysis_option_get`, and `analysis_option_set`. Names include dotted nested
+options and analyzer enablement switches. Settings use their existing native
+types, defaults and descriptions; enum choices use constant names, not display
+labels. Set validates the full input before `putObject`; unknown names never
+create options. Boolean, int, long, float, double, string, file and enum values
+are settable; other native types remain visible with `settable: false`.
+Numeric parsing rejects overflow and non-finite floating-point values. Settings
+use the ordinary atomic request/save boundary and never schedule analysis.
+Test coverage in `tests/daemon/analysis.rs` compares native values in a separate
+saved database, invalid-input preservation, and close/reopen persistence.
 
 `ProgramSession.analyzeAll()` and detached import analysis check cancellation
 before recording Ghidra's standard analyzed flag. The ordinary request/import

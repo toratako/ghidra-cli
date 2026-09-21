@@ -635,42 +635,25 @@ fn job_get_requires_an_id() {
 }
 
 #[test]
-fn analyzer_set_parses_explicit_boolean() {
-    for (value, expected) in [("true", true), ("false", false)] {
-        let cli = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings", value])
-            .expect("analyzer set should accept an explicit boolean");
+fn analysis_option_set_preserves_typed_input_for_bridge_validation() {
+    for value in ["false", "-12", "1.25", "FAST", "path with spaces", ""] {
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "analysis",
+            "option",
+            "set",
+            "Analyzer.Detail",
+            value,
+        ])
+        .expect("option value should reach the bridge unchanged");
         match cli.command {
-            Commands::Analyzer(AnalyzerCommands::Set(args)) => {
-                assert_eq!(args.name, "ASCII Strings");
-                assert_eq!(args.enabled, expected);
+            Commands::Analysis(AnalysisCommands::Option(AnalysisOptionCommands::Set(args))) => {
+                assert_eq!(args.name, "Analyzer.Detail");
+                assert_eq!(args.value, value);
             }
-            _ => panic!("expected analyzer set command"),
+            _ => panic!("expected analysis option set"),
         }
     }
-}
-
-#[test]
-fn analyzer_set_requires_valid_boolean() {
-    let missing = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings"])
-        .err()
-        .expect("expected argument error");
-    assert_eq!(
-        missing.kind(),
-        clap::error::ErrorKind::MissingRequiredArgument
-    );
-    let invalid = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "ASCII Strings", "maybe"])
-        .err()
-        .expect("expected argument error");
-    assert_eq!(invalid.kind(), clap::error::ErrorKind::InvalidValue);
-}
-
-#[test]
-fn analyzer_set_help_is_available() {
-    let help = Cli::try_parse_from(["ghidra-cli", "analyzer", "set", "--help"])
-        .err()
-        .expect("expected argument error");
-    assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
-    assert!(help.to_string().contains("<ENABLED>"));
 }
 
 #[test]
@@ -713,8 +696,8 @@ fn canonical_commands_parse() {
         vec!["function", "get", "main"],
         vec!["type", "delete", "Word"],
         vec!["tag", "rename", "old", "new"],
-        vec!["analyzer", "list"],
-        vec!["analyze"],
+        vec!["analysis", "option", "list"],
+        vec!["analysis", "run"],
         vec!["decompile", "main"],
     ] {
         Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args.iter().copied()))

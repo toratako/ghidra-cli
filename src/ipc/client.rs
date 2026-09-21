@@ -216,8 +216,8 @@ impl BridgeClient {
 
     /// Analyze the current program. Unbounded read timeout: full auto-analysis
     /// can exceed any fixed cap on large/complex binaries.
-    pub fn analyze(&self) -> Result<serde_json::Value> {
-        self.send_command_with_timeout("analyze", None, long_op_timeout())
+    pub fn analysis_run(&self) -> Result<serde_json::Value> {
+        self.send_command_with_timeout("analysis_run", None, long_op_timeout())
     }
 
     pub fn pcode_at(&self, address: &str) -> Result<serde_json::Value> {
@@ -233,14 +233,18 @@ impl BridgeClient {
         }
     }
 
-    pub fn analyzer_list(&self) -> Result<serde_json::Value> {
-        self.send_command("analyzer_list", None)
+    pub fn analysis_option_list(&self) -> Result<serde_json::Value> {
+        self.send_command("analysis_option_list", None)
     }
 
-    pub fn analyzer_set(&self, name: &str, enabled: bool) -> Result<serde_json::Value> {
+    pub fn analysis_option_get(&self, name: &str) -> Result<serde_json::Value> {
+        self.send_command("analysis_option_get", Some(json!({"name": name})))
+    }
+
+    pub fn analysis_option_set(&self, name: &str, value: &str) -> Result<serde_json::Value> {
         self.send_command(
-            "analyzer_set",
-            Some(json!({"name": name, "enabled": enabled})),
+            "analysis_option_set",
+            Some(json!({"name": name, "value": value})),
         )
     }
 

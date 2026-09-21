@@ -77,7 +77,7 @@ final class ProgramCommands {
         }
     }
 
-    JsonObject handleAnalyze(JsonObject args) {
+    JsonObject handleAnalysisRun(JsonObject args) {
         String programName = getArgString(args, "program");
         boolean selectProgram = programName != null && !programName.isEmpty();
         if (programName == null || programName.isEmpty()) {
