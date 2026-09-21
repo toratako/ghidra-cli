@@ -150,6 +150,20 @@ jobs:
         with:
           path: artifacts
 
+      - name: Package skills
+        shell: python
+        run: |
+          import os
+          import shutil
+          from pathlib import Path
+
+          output = Path("artifacts/skills")
+          output.mkdir(parents=True, exist_ok=True)
+          for manifest in sorted(Path("docs/skills").glob("*/SKILL.md")):
+              skill = manifest.parent
+              archive = output / f"{skill.name}-{os.environ['GITHUB_REF_NAME']}-skill"
+              shutil.make_archive(str(archive), "zip", root_dir=skill.parent, base_dir=skill.name)
+
       - name: Extract release notes
         shell: python
         run: |
