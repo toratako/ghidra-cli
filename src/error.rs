@@ -101,6 +101,15 @@ pub(crate) fn diagnostic_detail(error: &anyhow::Error) -> serde_json::Value {
         .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
         .map(|error| error.detail.clone())
         .unwrap_or_else(|| serde_json::json!({}));
+    if error
+        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+        .is_some()
+        || error
+            .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+            .is_some()
+    {
+        detail["outcome_unknown"] = serde_json::json!(true);
+    }
     for cause in error.chain() {
         if let Some(GhidraError::PathIo {
             stage,

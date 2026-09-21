@@ -76,6 +76,21 @@ impl std::fmt::Display for BridgeTimeoutError {
 
 impl std::error::Error for BridgeTimeoutError {}
 
+/// A request was sent, but no trustworthy command response was received.
+/// Retrying could replay an already committed edit.
+#[derive(Debug)]
+pub struct BridgeOutcomeUnknownError {
+    pub command: String,
+}
+
+impl std::fmt::Display for BridgeOutcomeUnknownError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The command outcome is unknown for '{}'; changes may already have been applied and saved. Check `ghidra-cli bridge status`, `ghidra-cli job list`, and the program state before repeating it.", self.command)
+    }
+}
+
+impl std::error::Error for BridgeOutcomeUnknownError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

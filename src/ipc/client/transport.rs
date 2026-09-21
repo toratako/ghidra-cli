@@ -1,7 +1,10 @@
 //! Connection retry, socket timeouts, and request/response transport.
 
 use super::BridgeClient;
-use crate::ipc::protocol::{BridgeCommandError, BridgeRequest, BridgeResponse, BridgeTimeoutError};
+use crate::ipc::protocol::{
+    BridgeCommandError, BridgeOutcomeUnknownError, BridgeRequest, BridgeResponse,
+    BridgeTimeoutError,
+};
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
@@ -224,78 +227,96 @@ impl BridgeClient {
         debug!("Sending: {}", request_json);
 
         let wire = format!("{request_json}\n");
-        let mut pending = wire.as_bytes();
-        while !pending.is_empty() {
-            stream
-                .set_write_timeout(remaining_timeout(deadline, Some(Duration::from_secs(30)))?)?;
-            let written = stream.write(pending)?;
-            anyhow::ensure!(written > 0, "Bridge closed while writing request");
-            pending = &pending[written..];
-        }
-
-        let mut reader = BufReader::new(&stream);
-        let mut response_line = String::new();
-        let read_result = if deadline.is_some() {
-            // Refresh the remaining budget on every receive, so a partial reply
-            // cannot extend the shutdown deadline by trickling bytes.
-            let mut bytes = Vec::new();
-            (|| -> std::io::Result<usize> {
-                loop {
-                    stream.set_read_timeout(remaining_timeout(deadline, read_timeout)?)?;
-                    let available = reader.fill_buf()?;
-                    if available.is_empty() {
-                        break;
-                    }
-                    let count = available
-                        .iter()
-                        .position(|byte| *byte == b'\n')
-                        .map_or(available.len(), |index| index + 1);
-                    let complete = available[count - 1] == b'\n';
-                    bytes.extend_from_slice(&available[..count]);
-                    reader.consume(count);
-                    if complete {
-                        break;
-                    }
-                }
-                let count = bytes.len();
-                response_line = String::from_utf8(bytes)
-                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-                Ok(count)
-            })()
-        } else {
-            reader.read_line(&mut response_line)
-        };
-        match read_result {
-            // EOF before any response: bridge closed the socket without replying.
-            Ok(0) => anyhow::bail!(
-                "Bridge closed the connection without responding to '{}' \
-                 (it may have crashed or been restarted). The command outcome is unknown; \
-                 changes may already have been applied and saved. Check `ghidra-cli bridge status`, \
-                 `ghidra-cli job list`, and the program state before deciding whether to repeat it.",
-                command
-            ),
-            Ok(_) => {}
-            // A read timeout here means the bridge is up (we connected) but hasn't
-            // reached our queued request in time — almost always because it is busy
-            // serving another agent. Surface that plainly, with the knob to wait longer.
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                return Err(BridgeTimeoutError {
-                    command: command.to_string(),
-                    timeout_secs: timeout_description.map(|d| d.as_secs()).unwrap_or(0),
-                }
-                .into())
+        // From the first write onward, a transport/protocol failure cannot prove
+        // that the bridge did not execute the command. Never replay it.
+        let response = (|| -> Result<BridgeResponse> {
+            let mut pending = wire.as_bytes();
+            while !pending.is_empty() {
+                stream.set_write_timeout(remaining_timeout(
+                    deadline,
+                    Some(Duration::from_secs(30)),
+                )?)?;
+                let written = stream.write(pending)?;
+                anyhow::ensure!(written > 0, "Bridge closed while writing request");
+                pending = &pending[written..];
             }
-            Err(e) => return Err(e.into()),
-        }
 
-        debug!("Received: {}", response_line.trim());
+            let mut reader = BufReader::new(&stream);
+            let mut response_line = String::new();
+            let read_result = if deadline.is_some() {
+                // Refresh the remaining budget on every receive, so a partial reply
+                // cannot extend the shutdown deadline by trickling bytes.
+                let mut bytes = Vec::new();
+                (|| -> std::io::Result<usize> {
+                    loop {
+                        stream.set_read_timeout(remaining_timeout(deadline, read_timeout)?)?;
+                        let available = reader.fill_buf()?;
+                        if available.is_empty() {
+                            break;
+                        }
+                        let count = available
+                            .iter()
+                            .position(|byte| *byte == b'\n')
+                            .map_or(available.len(), |index| index + 1);
+                        let complete = available[count - 1] == b'\n';
+                        bytes.extend_from_slice(&available[..count]);
+                        reader.consume(count);
+                        if complete {
+                            break;
+                        }
+                    }
+                    let count = bytes.len();
+                    response_line = String::from_utf8(bytes).map_err(|error| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
+                    })?;
+                    Ok(count)
+                })()
+            } else {
+                reader.read_line(&mut response_line)
+            };
+            match read_result {
+                // EOF before any response: bridge closed the socket without replying.
+                Ok(0) => {
+                    anyhow::bail!("Bridge closed the connection without responding to '{command}'")
+                }
+                Ok(_) => {}
+                // A read timeout here means the bridge is up (we connected) but hasn't
+                // reached our queued request in time — almost always because it is busy
+                // serving another agent. Surface that plainly, with the knob to wait longer.
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    return Err(BridgeTimeoutError {
+                        command: command.to_string(),
+                        timeout_secs: timeout_description.map(|d| d.as_secs()).unwrap_or(0),
+                    }
+                    .into())
+                }
+                Err(e) => return Err(e.into()),
+            }
 
-        let response: BridgeResponse = serde_json::from_str(&response_line)?;
+            debug!("Received: {}", response_line.trim());
+
+            let response: BridgeResponse = serde_json::from_str(&response_line)?;
+            anyhow::ensure!(
+                matches!(response.status.as_str(), "success" | "error" | "shutdown"),
+                "Invalid bridge response status: '{}'",
+                response.status
+            );
+            Ok(response)
+        })()
+        .map_err(|error| {
+            if error.downcast_ref::<BridgeTimeoutError>().is_some() {
+                error
+            } else {
+                error.context(BridgeOutcomeUnknownError {
+                    command: command.to_owned(),
+                })
+            }
+        })?;
 
         match response.status.as_str() {
             "success" => Ok(response.data.unwrap_or(json!({}))),
@@ -313,7 +334,7 @@ impl BridgeClient {
                 }
             }
             "shutdown" => Ok(json!({"status": "shutdown"})),
-            status => anyhow::bail!("Invalid bridge response status: '{}'", status),
+            _ => unreachable!("response status was validated before dispatch"),
         }
     }
 }
@@ -369,12 +390,16 @@ mod tests {
             match expected {
                 Some(expected) => assert_eq!(result.unwrap(), expected),
                 None => {
-                    let message = result.unwrap_err().to_string();
+                    let error = result.unwrap_err();
+                    let message = error.to_string();
                     if status == "error" {
                         assert_eq!(message, "Request failed");
                     } else {
+                        assert!(error
+                            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+                            .is_some());
                         assert_eq!(
-                            message,
+                            error.root_cause().to_string(),
                             format!("Invalid bridge response status: '{status}'")
                         );
                     }
@@ -615,11 +640,40 @@ mod tests {
             .send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)))
             .unwrap_err();
         server.join().unwrap();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+            .is_some());
         let message = error.to_string();
         assert!(message.contains("outcome is unknown"), "{message}");
         assert!(message.contains("applied and saved"), "{message}");
         assert!(message.contains("program state"), "{message}");
         assert!(!message.contains("Retry"), "{message}");
+    }
+
+    #[test]
+    fn truncated_reply_retains_parse_failure_and_unknown_outcome() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            assert!(request.contains("comment_set"));
+            stream
+                .write_all(b"{\"status\":\"success\",\"data\":")
+                .unwrap();
+        });
+        let error = client
+            .send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)))
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+            .is_some());
+        assert!(error.downcast_ref::<serde_json::Error>().is_some());
     }
 
     #[test]
