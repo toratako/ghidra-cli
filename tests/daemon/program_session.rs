@@ -107,13 +107,8 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().expect("function address");
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address.as_str();
     let text = format!("persist-before-failure-{}", uuid::Uuid::new_v4());
     client.comment_set(address, &text, Some("EOL")).unwrap();
     assert_saved_comment(&client, address, &text);
@@ -212,13 +207,8 @@ public class CopyBridgeProgram extends GhidraScript {
     assert_eq!(current.len(), 1);
     assert_eq!(current[0]["path"], deeper_alternate);
     client.open_program(&alternate).unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().unwrap();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address.as_str();
     let marker = format!("alternate-only-{}", uuid::Uuid::new_v4());
     client.comment_set(address, &marker, Some("EOL")).unwrap();
     assert_saved_comment(&client, address, &marker);
@@ -361,13 +351,8 @@ fn test_failed_script_saves_partial_changes() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().unwrap();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address.as_str();
     let text = format!("failed-script-autosave-{}", uuid::Uuid::new_v4());
     let error = client
         .script_run_source(

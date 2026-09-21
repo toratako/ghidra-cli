@@ -516,13 +516,9 @@ fn run_transaction_probe(mode: &str) {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
-    let address = function["address"].as_str().unwrap().to_owned();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address;
+    let original_name = function.name;
     let folder = format!("transaction-{}", uuid::Uuid::new_v4());
     let result = client
         .script_run_source(
@@ -561,7 +557,7 @@ fn run_transaction_probe(mode: &str) {
             Some(serde_json::json!({"address": address})),
         )
         .unwrap();
-    assert_eq!(function["name"], "add_numbers");
+    assert_eq!(function["name"], original_name);
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
 }

@@ -53,13 +53,13 @@ INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
 
 These fail until reviewed snapshots are added; normal schema tests need no
 snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
-tests, and the generated command tree check on Linux and Windows. See
-[the test workflow](../.github/workflows/test.yml) for suite groupings.
+tests, and the generated command tree check on Linux, Windows, and macOS 26 ARM64.
+See [the test workflow](../.github/workflows/test.yml) for suite groupings.
 
 Markdown-only changes skip Ghidra setup and integration jobs; unit/CLI tests,
 the command tree check, and lint still run. Other changes run every suite on
-Linux and Windows. Infrastructure tests run in two parallel groups per OS:
-`daemon_tests`, and the project/bootstrap/reliability/fixture suites.
+Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel groups
+per OS: `daemon_tests`, and the project/bootstrap/reliability/fixture suites.
 
 `readonly_tests.rs` and `daemon_tests.rs` own their suite fixtures and serial
 locks; domain modules under `readonly/` and `daemon/` remain in those executables.
@@ -123,6 +123,8 @@ retains function symbols and exercises exports, but strips debug information to
 avoid standard-library DWARF analysis. No binary fixture or manual build is needed.
 The first suite needing analysis uses the one-shot importer and waits for save/exit;
 each suite receives an isolated copy. Setup starts no bridge; suite harnesses own startup.
+Fixture symbols can have platform prefixes; use the common fixture lookup helpers
+and preserve the discovered name when checking renames or rollback.
 CLI import/analysis tests still use new projects and real commands. Setup/import
 failures fail the tests; see [publication and lifecycle boundaries](common/README.md#lifecycle-boundaries).
 

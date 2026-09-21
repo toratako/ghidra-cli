@@ -31,6 +31,8 @@ public class DecompilerSessionProbe extends GhidraScript {
     private String fault;
     private boolean failSave;
     private String address;
+    private String otherAddress;
+    private String originalName;
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new IllegalStateException(message);
@@ -149,7 +151,7 @@ public class DecompilerSessionProbe extends GhidraScript {
         DecompInterface shared = engine();
         DecompileProcess nativeProcess = process(shared);
         check(initial.equals(decompile()), "Repeated decompile changed output");
-        success(command("decompile", args("address", "multiply")));
+        success(command("decompile", args("address", otherAddress)));
         JsonObject high = args("function", address);
         high.addProperty("high", true);
         check(success(command("pcode_function", high)).get("count").getAsInt() > 0,
@@ -178,7 +180,7 @@ public class DecompilerSessionProbe extends GhidraScript {
                 function, 0);
             transientEngine = engine();
         } finally { sessionCall("finishRequest", new Class<?>[] { boolean.class }, false); }
-        check(decompile().get("name").getAsString().equals("add_numbers"), "Rolled-back name leaked");
+        check(decompile().get("name").getAsString().equals(originalName), "Rolled-back name leaked");
         check(engine() != transientEngine && transientEngine.getProgram() == null,
             "Rollback retained the transient decompiler");
     }
@@ -208,7 +210,7 @@ public class DecompilerSessionProbe extends GhidraScript {
 
         // A failed durable save must keep the selected Program and its live
         // decompiler available. Only a successful close may release them.
-        success(command("rename_function", args("old_name", "add_numbers", "new_name", "saved_name")));
+        success(command("rename_function", args("old_name", originalName, "new_name", "saved_name")));
         int transaction = real.startTransaction("pending edit");
         try {
             real.getFunctionManager().getFunctionAt(real.getAddressFactory().getAddress(address))
@@ -231,6 +233,9 @@ public class DecompilerSessionProbe extends GhidraScript {
         real = (Program) first.getDomainObject(owner, true, false, monitor);
         try {
             address = getScriptArgs()[1];
+            otherAddress = getScriptArgs()[2];
+            originalName = real.getFunctionManager()
+                .getFunctionAt(real.getAddressFactory().getAddress(address)).getName();
             configure();
             reuseAndChanges();
             failures();
@@ -241,7 +246,7 @@ public class DecompilerSessionProbe extends GhidraScript {
                 "Switch retained the previous Program in the decompiler");
             check(nativeProcess.getDisposeState() != DecompileProcess.DisposeState.NOT_DISPOSED,
                 "Switch left the native process running");
-            check(decompile().get("name").getAsString().equals("add_numbers"),
+            check(decompile().get("name").getAsString().equals(originalName),
                 "Same-named Program switch returned the first Program's result");
             previous = engine();
             success(command("program_close", new JsonObject()));
@@ -268,18 +273,15 @@ fn test_decompiler_reuse_invalidation_and_recovery() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
-    let function = client
-        .send_command(
-            "get_function",
-            Some(serde_json::json!({"address": "add_numbers"})),
-        )
-        .unwrap();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let other = crate::common::helpers::get_fixture_function(&client, "multiply");
     let result = client
         .script_run_source(
             DECOMPILER_PROBE,
             &[
                 format!("decompiler-{}", uuid::Uuid::new_v4()),
-                function["address"].as_str().unwrap().to_owned(),
+                function.address,
+                other.address,
             ],
             &[],
             false,

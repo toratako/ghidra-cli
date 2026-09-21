@@ -110,6 +110,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Fix the macOS doctor loopback check by restoring blocking mode on the accepted
+  socket, and restore macOS ARM64 CI with native Ghidra tools and portable fixtures.
 - Preserve references from distinct operands to the same destination in `xref to`.
 - Report Ghidra diagnostics instead of inferring .NET code from bad-instruction
   output. C-only output sends diagnostics absent from its comments to stderr.

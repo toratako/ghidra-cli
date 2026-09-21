@@ -381,8 +381,8 @@ fn comment_terminal_stdin_explains_eof_even_when_quiet() {
                 &mut master,
                 &mut slave,
                 std::ptr::null_mut(),
-                std::ptr::null(),
-                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         },
         0

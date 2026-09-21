@@ -285,6 +285,21 @@ pub fn find_fixture_function<'a>(functions: &'a [Function], name: &str) -> Optio
         .or_else(|| functions.iter().find(|f| f.name.contains(name)))
 }
 
+/// Resolve a fixture symbol without switching the bridge's selected program.
+pub fn get_fixture_function(
+    client: &ghidra_cli::ipc::client::BridgeClient,
+    name: &str,
+) -> Function {
+    let result = client
+        .list_functions(Some(0), Some(name.to_owned()), &[], false, None)
+        .expect("List fixture functions");
+    let functions: Vec<Function> =
+        serde_json::from_value(result["functions"].clone()).expect("Decode fixture functions");
+    find_fixture_function(&functions, name)
+        .unwrap_or_else(|| panic!("Fixture function {name:?} not found: {functions:?}"))
+        .clone()
+}
+
 /// Get the first N function addresses from the test binary.
 pub fn get_function_addresses(
     harness: &DaemonTestHarness,

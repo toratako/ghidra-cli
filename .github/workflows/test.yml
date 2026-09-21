@@ -6,10 +6,12 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
-# macOS jobs are paused while decompiler and fixture symbol failures are investigated.
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -42,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -66,7 +68,7 @@ jobs:
         run: cargo xtask gen-tree --check
 
       - name: Run CLI tests
-        run: cargo test --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
+        run: cargo test --no-fail-fast --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 
   # Ghidra setup - installs Ghidra to seed installation caches.
   # This runs once per OS, then test jobs use the cached artifacts.
@@ -82,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -110,8 +112,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          # v6 installations preserve archive times; v5 can recompile shared languages.
-          key: ghidra-${{ matrix.os }}-v6
+          # v6 preserves archive times; macOS v7 also caches built native tools.
+          key: ghidra-${{ matrix.os }}-${{ runner.os == 'macOS' && 'v7-native' || 'v6' }}
 
       - name: Build
         run: cargo build --verbose
@@ -130,6 +132,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build macOS native Ghidra tools
+        if: runner.os == 'macOS'
+        run: python3 .github/scripts/build-ghidra-natives.py
+        timeout-minutes: 15
+
   # Read-only integration tests (one bridge).
   readonly-integration:
     needs: [changes, ghidra-setup]
@@ -142,7 +149,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -169,8 +176,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          # v6 installations preserve archive times; v5 can recompile shared languages.
-          key: ghidra-${{ matrix.os }}-v6
+          # v6 preserves archive times; macOS v7 also caches built native tools.
+          key: ghidra-${{ matrix.os }}-${{ runner.os == 'macOS' && 'v7-native' || 'v6' }}
 
       - name: Build
         run: cargo build --verbose
@@ -189,13 +196,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build macOS native Ghidra tools
+        if: runner.os == 'macOS'
+        run: python3 .github/scripts/build-ghidra-natives.py
+        timeout-minutes: 15
+
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
         run: cargo run -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run read-only integration tests
-        run: cargo xtask test --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test readonly_tests --test memory_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -212,7 +224,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
 
     steps:
       - uses: actions/checkout@v7
@@ -239,8 +251,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          # v6 installations preserve archive times; v5 can recompile shared languages.
-          key: ghidra-${{ matrix.os }}-v6
+          # v6 preserves archive times; macOS v7 also caches built native tools.
+          key: ghidra-${{ matrix.os }}-${{ runner.os == 'macOS' && 'v7-native' || 'v6' }}
 
       - name: Build
         run: cargo build --verbose
@@ -259,13 +271,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build macOS native Ghidra tools
+        if: runner.os == 'macOS'
+        run: python3 .github/scripts/build-ghidra-natives.py
+        timeout-minutes: 15
+
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
         run: cargo run -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run mutation integration tests
-        run: cargo xtask test --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -282,7 +299,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-26]
         suite: [daemon, project]
         include:
           - suite: daemon
@@ -315,8 +332,8 @@ jobs:
             ~/Library/Preferences/ghidra-cli
             ~/AppData/Local/ghidra-cli
             ~/AppData/Roaming/ghidra-cli
-          # v6 installations preserve archive times; v5 can recompile shared languages.
-          key: ghidra-${{ matrix.os }}-v6
+          # v6 preserves archive times; macOS v7 also caches built native tools.
+          key: ghidra-${{ matrix.os }}-${{ runner.os == 'macOS' && 'v7-native' || 'v6' }}
 
       - name: Build
         run: cargo build --verbose
@@ -335,13 +352,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build macOS native Ghidra tools
+        if: runner.os == 'macOS'
+        run: python3 .github/scripts/build-ghidra-natives.py
+        timeout-minutes: 15
+
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
         run: cargo run -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run infrastructure tests
-        run: cargo xtask test ${{ matrix.tests }} --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast ${{ matrix.tests }} --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

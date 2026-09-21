@@ -695,7 +695,7 @@ fn closed_stdout_pipe_does_not_panic() {
 #[test]
 fn terminal_defaults_and_explicit_json_and_quiet() {
     use std::io::Read;
-    use std::os::fd::FromRawFd;
+    use std::os::fd::{AsRawFd, FromRawFd};
     use std::process::{Command, Stdio};
     let temp = tempfile::tempdir().unwrap();
     for flags in [vec![], vec!["--json"], vec!["--pretty"], vec!["--quiet"]] {
@@ -708,8 +708,8 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
                     &mut master,
                     &mut slave,
                     std::ptr::null_mut(),
-                    std::ptr::null(),
-                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
                 )
             },
             0
@@ -725,14 +725,20 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
             .stdout(Stdio::from(slave))
             .stderr(Stdio::piped());
         let child = command.spawn().unwrap();
-        drop(command); // Close the parent's copy of the slave so reads see EOF.
+        // Keep the parent's slave open: macOS discards unread output on final close.
         let output = child.wait_with_output().unwrap();
         assert!(output.status.success(), "{output:?}");
+        // The child has exited; drain its output without waiting for slave EOF.
+        let mut nonblocking: libc::c_int = 1;
+        assert_eq!(
+            unsafe { libc::ioctl(master.as_raw_fd(), libc::FIONBIO, &mut nonblocking) },
+            0
+        );
         let mut stdout = String::new();
-        // Linux signals the final PTY close with EIO rather than EOF.
         if let Err(error) = master.read_to_string(&mut stdout) {
-            assert_eq!(error.raw_os_error(), Some(libc::EIO));
+            assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
         }
+        drop(command);
         if flags == ["--json"] || flags == ["--pretty"] {
             serde_json::from_str::<serde_json::Value>(&stdout).unwrap();
             assert!(output.stderr.is_empty());
