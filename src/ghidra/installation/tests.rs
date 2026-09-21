@@ -351,13 +351,10 @@ fn duplicate_roots_and_dot_aliases_do_not_create_ambiguity() {
 
 #[cfg(unix)]
 #[test]
-fn explicit_os_paths_preserve_non_utf8_and_backslashes() {
-    use std::os::unix::ffi::OsStringExt;
+fn explicit_os_paths_preserve_backslashes() {
     let temp = tempfile::tempdir().unwrap();
     let root = distribution(
-        &temp
-            .path()
-            .join(OsString::from_vec(b"Ghidra \\ \xff".to_vec())),
+        &temp.path().join(r"Ghidra \ path"),
         Platform::native(),
         "12.1",
     );
@@ -367,10 +364,27 @@ fn explicit_os_paths_preserve_non_utf8_and_backslashes() {
     })
     .unwrap();
     assert_eq!(selected.path, root);
-    assert_eq!(
-        serde_json::to_value(&selected).unwrap()["path"],
-        root.to_string_lossy().as_ref()
+}
+
+// APFS rejects invalid UTF-8 filenames, so creating this fixture requires Linux.
+#[cfg(target_os = "linux")]
+#[test]
+fn explicit_os_paths_preserve_non_utf8() {
+    use std::os::unix::ffi::OsStringExt;
+    let temp = tempfile::tempdir().unwrap();
+    let root = distribution(
+        &temp
+            .path()
+            .join(OsString::from_vec(b"Ghidra \xff".to_vec())),
+        Platform::native(),
+        "12.1",
     );
+    let selected = resolve_inputs(Inputs {
+        environment: Some(root.clone().into_os_string()),
+        ..inputs()
+    })
+    .unwrap();
+    assert_eq!(selected.path, root);
     let error = resolve_inputs(Inputs {
         environment: Some(root.join("missing").into_os_string()),
         ..inputs()
@@ -380,6 +394,28 @@ fn explicit_os_paths_preserve_non_utf8_and_backslashes() {
         crate::error::diagnostic_detail(&error.into())["installation"]["status"],
         "invalid"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_paths_serialize_without_filesystem_access() {
+    use std::os::unix::ffi::OsStringExt;
+    let installation = Installation {
+        path: OsString::from_vec(b"Ghidra \xff".to_vec()).into(),
+        version: "12.1".into(),
+        source: "GHIDRA_INSTALL_DIR".into(),
+    };
+    let checked = CheckedPath {
+        path: installation.path.clone(),
+        source: installation.source.clone(),
+        message: "Invalid installation".into(),
+    };
+    for value in [
+        serde_json::to_value(&installation).unwrap(),
+        serde_json::to_value(&checked).unwrap(),
+    ] {
+        assert_eq!(value["path"], "Ghidra \u{fffd}");
+    }
 }
 
 #[test]
