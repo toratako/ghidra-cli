@@ -215,6 +215,47 @@ pub enum BookmarkCommands {
     List(QueryOptions),
     /// Get bookmarks at an address
     Get(BookmarkGetArgs),
+    /// Set the text of one exact address/type/category bookmark
+    Set(BookmarkSetArgs),
+    /// Delete one exact address/type/category bookmark
+    Delete(BookmarkDeleteArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct BookmarkSetArgs {
+    /// Explicit address; no function-start normalization is performed
+    pub address: String,
+    /// Bookmark text; an empty string leaves an empty bookmark
+    #[arg(required_unless_present_any = ["stdin", "text_file"])]
+    pub text: Option<String>,
+    /// Read bookmark text from stdin
+    #[arg(long, conflicts_with_all = ["text", "text_file"])]
+    pub stdin: bool,
+    /// Read bookmark text from a UTF-8 file
+    #[arg(long, conflicts_with = "text")]
+    pub text_file: Option<std::path::PathBuf>,
+    /// Exact, case-sensitive bookmark type
+    #[arg(long = "type", default_value = "Note")]
+    pub bookmark_type: String,
+    /// Exact, case-sensitive bookmark category
+    #[arg(long)]
+    pub category: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct BookmarkDeleteArgs {
+    /// Explicit address; no function-start normalization is performed
+    pub address: String,
+    /// Exact, case-sensitive bookmark type
+    #[arg(long = "type", default_value = "Note")]
+    pub bookmark_type: String,
+    /// Exact, case-sensitive bookmark category
+    #[arg(long)]
+    pub category: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

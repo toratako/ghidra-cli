@@ -46,7 +46,9 @@ impl ResultShape {
             }
             Commands::Comment(CommentCommands::List(_)) => Self::rows("comments"),
             Commands::Comment(CommentCommands::Get(_)) => Self::context("comments", &["address"]),
-            Commands::Bookmark(_) => Self::rows("bookmarks"),
+            Commands::Bookmark(BookmarkCommands::List(_) | BookmarkCommands::Get(_)) => {
+                Self::rows("bookmarks")
+            }
             Commands::Graph(GraphCommands::Calls(_)) => Self::Graph,
             Commands::Graph(GraphCommands::Callers(_) | GraphCommands::Callees(_)) => {
                 Self::context("calls", &["target"])
@@ -75,6 +77,7 @@ impl ResultShape {
             | Commands::Symbol(_)
             | Commands::XRef(_)
             | Commands::Equate(_)
+            | Commands::Bookmark(_)
             | Commands::Memory(_)
             | Commands::Data(_)
             | Commands::Listing(_)

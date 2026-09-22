@@ -169,9 +169,11 @@ final class CommandDispatcher {
             case "comment_get":     return commentCommands.handleCommentGet(args);
             case "comment_set":     return commentCommands.handleCommentSet(args);
             case "comment_delete":  return commentCommands.handleCommentDelete(args);
-            // Bookmark queries
+            // Bookmarks
             case "bookmark_list":   return bookmarkCommands.handleList();
             case "bookmark_get":    return bookmarkCommands.handleGet(args);
+            case "bookmark_set": return bookmarkCommands.handleSet(args);
+            case "bookmark_delete": return bookmarkCommands.handleDelete(args);
             // Graph commands
             case "graph_calls":     return graphCommands.handleGraphCalls(args);
             case "graph_callers":   return graphCommands.handleGraphCallers(args);

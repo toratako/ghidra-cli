@@ -4,21 +4,20 @@ mod symbols;
 use crate::cli::{self, Commands};
 use crate::ipc::client::BridgeClient;
 
-/// Resolve `comment set`'s text from `--stdin`, `--text-file`, or the TEXT
-/// positional (in that priority order; clap already rejects combining them).
-/// Reading from stdin/a file bypasses the shell entirely, so callers building
-/// comment text programmatically never risk the metacharacter-expansion
-/// corruption a shell argument is exposed to (e.g. backticks silently running
-/// as command substitution before ghidra-cli ever sees the string).
-fn resolve_comment_text(args: &cli::CommentSetArgs) -> anyhow::Result<String> {
-    if args.stdin {
-        crate::terminal::read_stdin("comment text")
-    } else if let Some(path) = &args.text_file {
+/// Read free-form annotation text without changing whitespace or line endings.
+fn resolve_annotation_text(
+    text: &Option<String>,
+    stdin: bool,
+    text_file: Option<&std::path::Path>,
+    description: &str,
+) -> anyhow::Result<String> {
+    if stdin {
+        crate::terminal::read_stdin(description)
+    } else if let Some(path) = text_file {
         std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read --text-file {}: {}", path.display(), e))
     } else {
-        args.text
-            .clone()
+        text.clone()
             .ok_or_else(|| anyhow::anyhow!("TEXT argument required (or use --stdin / --text-file)"))
     }
 }
@@ -59,6 +58,8 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         Commands::Equate(cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args)) => {
             vec![&args.address]
         }
+        Commands::Bookmark(cli::BookmarkCommands::Set(args)) => vec![&args.address],
+        Commands::Bookmark(cli::BookmarkCommands::Delete(args)) => vec![&args.address],
         _ => vec![],
     };
     for address in edit_addresses {
@@ -435,6 +436,15 @@ pub(super) fn execute_via_bridge(
         Commands::Bookmark(cmd) => match cmd {
             cli::BookmarkCommands::List(_) => client.bookmark_list(),
             cli::BookmarkCommands::Get(args) => client.bookmark_get(&args.address),
+            cli::BookmarkCommands::Set(args) => client.send_command(
+                "bookmark_set", Some(json!({"address": args.address, "type": args.bookmark_type,
+                    "category": args.category,
+                    "text": resolve_annotation_text(&args.text, args.stdin, args.text_file.as_deref(), "bookmark text")?})),
+            ),
+            cli::BookmarkCommands::Delete(args) => client.send_command(
+                "bookmark_delete", Some(json!({"address": args.address, "type": args.bookmark_type,
+                    "category": args.category})),
+            ),
         },
         Commands::Comment(cmd) => {
             use cli::CommentCommands;
@@ -444,7 +454,7 @@ pub(super) fn execute_via_bridge(
                 }
                 CommentCommands::Get(args) => client.comment_get(&args.address),
                 CommentCommands::Set(args) => {
-                    let text = resolve_comment_text(args)?;
+                    let text = resolve_annotation_text(&args.text, args.stdin, args.text_file.as_deref(), "comment text")?;
                     client.comment_set(&args.address, &text, args.comment_type.as_deref())
                 }
                 CommentCommands::Delete(args) => {

@@ -91,6 +91,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Bookmark(cmd) => match cmd {
             cli::BookmarkCommands::List(opts) => opts.project.clone(),
             cli::BookmarkCommands::Get(args) => args.options.project.clone(),
+            cli::BookmarkCommands::Set(args) => args.options.project.clone(),
+            cli::BookmarkCommands::Delete(args) => args.options.project.clone(),
         },
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => opts.project.clone(),
@@ -256,6 +258,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Bookmark(cmd) => match cmd {
             cli::BookmarkCommands::List(opts) => opts.program.clone(),
             cli::BookmarkCommands::Get(args) => args.options.program.clone(),
+            cli::BookmarkCommands::Set(args) => args.options.program.clone(),
+            cli::BookmarkCommands::Delete(args) => args.options.program.clone(),
         },
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => opts.program.clone(),
@@ -452,6 +456,8 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Bookmark(cmd) => match cmd {
             cli::BookmarkCommands::List(opts) => Some(opts.clone()),
             cli::BookmarkCommands::Get(args) => Some(args.options.clone()),
+            cli::BookmarkCommands::Set(args) => Some((&args.options).into()),
+            cli::BookmarkCommands::Delete(args) => Some((&args.options).into()),
         },
         Commands::Comment(cmd) => match cmd {
             cli::CommentCommands::List(opts) => Some(opts.clone()),

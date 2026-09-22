@@ -126,7 +126,9 @@ ghidra-cli
 │   └── delete
 ├── bookmark
 │   ├── list
-│   └── get
+│   ├── get
+│   ├── set
+│   └── delete
 ├── find
 │   ├── string
 │   ├── text
@@ -162,4 +164,4 @@ ghidra-cli
 └── setup
 ```
 
-150 command nodes (excluding the root), 0 aliases.
+152 command nodes (excluding the root), 0 aliases.
