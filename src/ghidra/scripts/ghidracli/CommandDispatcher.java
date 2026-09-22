@@ -9,6 +9,8 @@ final class CommandDispatcher {
     private final ProgramSession session;
     private final FunctionCommands functionCommands;
     private final ProgramCommands programCommands;
+    private final ProgramContextCommands programContextCommands;
+    private final ProgramRebaseCommands programRebaseCommands;
     private final ProgramExportCommands programExportCommands;
     private final ListingCommands listingCommands;
     private final XrefCommands xrefCommands;
@@ -41,6 +43,8 @@ final class CommandDispatcher {
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
+        programContextCommands = new ProgramContextCommands(session);
+        programRebaseCommands = new ProgramRebaseCommands(session);
         programExportCommands = new ProgramExportCommands(session);
         listingCommands = new ListingCommands(session, stringQueries);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
@@ -63,6 +67,11 @@ final class CommandDispatcher {
         if (command == null) return null;
         switch (command) {
             case "program_info":    return programCommands.handleProgramInfo();
+            case "program_context_list": return programContextCommands.handleList(args);
+            case "program_context_get": return programContextCommands.handleGet(args);
+            case "program_context_set": return programContextCommands.handleSet(args);
+            case "program_context_clear": return programContextCommands.handleClear(args);
+            case "program_rebase": return programRebaseCommands.handleRebase(args);
             case "program_list_relocations": return programCommands.handleListRelocations();
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);

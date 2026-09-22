@@ -240,6 +240,22 @@ pub(super) fn execute_via_bridge(
                     client.program_delete(program)
                 }
                 ProgramCommands::Info(_) => client.program_info(),
+                ProgramCommands::Context(cmd) => match cmd {
+                    cli::ProgramContextCommands::List(_) => client.program_context_list(),
+                    cli::ProgramContextCommands::Get(args) => {
+                        client.program_context_get(&args.register, &args.start, args.end.as_deref())
+                    }
+                    cli::ProgramContextCommands::Set(args) => client.program_context_set(
+                        &args.register,
+                        &args.value,
+                        &args.start,
+                        &args.end,
+                    ),
+                    cli::ProgramContextCommands::Clear(args) => {
+                        client.program_context_clear(&args.register, &args.start, &args.end)
+                    }
+                },
+                ProgramCommands::Rebase(args) => client.program_rebase(&args.base),
                 ProgramCommands::Stats(_) => client.stats(),
                 ProgramCommands::ListRelocations(_) => client.program_list_relocations(),
                 ProgramCommands::Export(args) => {

@@ -22,6 +22,12 @@ ghidra-cli
 │   ├── info
 │   ├── stats
 │   ├── list-relocations
+│   ├── context
+│   │   ├── list
+│   │   ├── get
+│   │   ├── set
+│   │   └── clear
+│   ├── rebase
 │   ├── import
 │   ├── export
 │   └── save
@@ -145,4 +151,4 @@ ghidra-cli
 └── setup
 ```
 
-133 command nodes (excluding the root), 0 aliases.
+139 command nodes (excluding the root), 0 aliases.

@@ -34,6 +34,8 @@ mod management;
 mod output;
 #[path = "routing/program.rs"]
 mod program;
+#[path = "routing/program_analysis.rs"]
+mod program_analysis;
 #[path = "routing/queries.rs"]
 mod queries;
 #[path = "routing/rollout.rs"]
@@ -244,6 +246,46 @@ impl RecordedBridge {
                         }
                         result
                     }
+                    "program_context_list" => json!({"count": 3, "registers": [
+                        {"name": "ITState", "bit_length": 8},
+                        {"name": "TMode", "bit_length": 1},
+                        {"name": "contextreg", "bit_length": 32},
+                    ]}),
+                    "program_context_get" | "program_context_set" | "program_context_clear" => {
+                        let command = request["command"].as_str().unwrap();
+                        let end = args.get("end").unwrap_or(&args["start"]);
+                        let cleared = command == "program_context_clear";
+                        let stored = if cleared {
+                            json!({"value": "0x0", "mask": "0x0"})
+                        } else {
+                            json!({"value": "0x1", "mask": "0x1"})
+                        };
+                        let default = json!({"value": "0x0", "mask": "0x1"});
+                        let effective = if cleared { &default } else { &stored };
+                        let ranges = if command == "program_context_get" && end != &args["start"] {
+                            json!([
+                                {"start": args["start"], "end": "overlay:0x1003", "stored": stored, "default": default, "effective": effective},
+                                {"start": "overlay:0x1004", "end": "overlay:0x1007", "stored": {"value": "0x0", "mask": "0x0"}, "default": default, "effective": default},
+                                {"start": "overlay:0x1008", "end": end, "stored": stored, "default": default, "effective": effective},
+                            ])
+                        } else {
+                            json!([{"start": args["start"], "end": end, "stored": stored, "default": default, "effective": effective}])
+                        };
+                        let mut result = json!({
+                            "register": args["register"], "bit_length": 1,
+                            "start": args["start"], "end": end, "ranges": ranges,
+                        });
+                        if command != "program_context_get" {
+                            result["status"] = json!(if cleared { "cleared" } else { "set" });
+                        }
+                        result
+                    }
+                    "program_rebase" => json!({
+                        "old_base": "0x00001000", "new_base": "0x80000000",
+                        "delta_bytes": "2147479552",
+                        "moved_blocks": [{"name": "code", "old_start": "0x00001000", "old_end": "0x00001fff", "new_start": "0x80000000", "new_end": "0x80000fff"}],
+                        "unchanged_blocks": [{"name": "overlay", "start": "overlay:0x00001000", "end": "overlay:0x000010ff", "reason": "overlay"}],
+                    }),
                     "analysis_option_list" => json!({"count": 3, "options": [
                         {"name": "Analyzer", "type": "boolean", "value": true},
                         {"name": "Analyzer.Mode", "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"]},

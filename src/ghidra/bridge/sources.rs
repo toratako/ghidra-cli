@@ -153,6 +153,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/ProgramCommands.java"),
     ),
     (
+        "ghidracli/ProgramContextCommands.java",
+        include_str!("../scripts/ghidracli/ProgramContextCommands.java"),
+    ),
+    (
+        "ghidracli/ProgramRebaseCommands.java",
+        include_str!("../scripts/ghidracli/ProgramRebaseCommands.java"),
+    ),
+    (
         "ghidracli/ProgramExportCommands.java",
         include_str!("../scripts/ghidracli/ProgramExportCommands.java"),
     ),

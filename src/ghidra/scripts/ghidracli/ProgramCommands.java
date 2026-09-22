@@ -50,6 +50,8 @@ final class ProgramCommands {
             result.add("compiler", JsonNull.INSTANCE);
         }
         result.addProperty("language", session.program().getLanguage().toString());
+        result.addProperty("language_id", session.program().getLanguageID().toString());
+        result.addProperty("compiler_spec_id", session.program().getCompilerSpec().getCompilerSpecID().toString());
         result.addProperty("image_base", AddressCodec.format(session.program().getImageBase()));
         result.addProperty("min_address", AddressCodec.format(session.program().getMinAddress()));
         result.addProperty("max_address", AddressCodec.format(session.program().getMaxAddress()));

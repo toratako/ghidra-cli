@@ -55,6 +55,12 @@ impl ResultShape {
                 Self::context("programs", &["has_current_program", "current_program_name"])
             }
             Commands::Program(ProgramCommands::ListRelocations(_)) => Self::rows("relocations"),
+            Commands::Program(ProgramCommands::Context(ProgramContextCommands::List(_))) => {
+                Self::rows("registers")
+            }
+            Commands::Program(ProgramCommands::Context(ProgramContextCommands::Get(_))) => {
+                Self::context("ranges", &["register", "bit_length", "start", "end"])
+            }
             Commands::Script(ScriptCommands::List) => Self::rows("scripts"),
             Commands::Project(args) if matches!(args.command, ProjectCommands::List) => {
                 Self::Rows {

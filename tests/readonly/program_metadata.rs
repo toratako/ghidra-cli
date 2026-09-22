@@ -21,6 +21,8 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
     client.open_program(&name).unwrap();
     let checked = std::panic::catch_unwind(|| {
         let info = client.program_info().unwrap();
+        assert_eq!(info["language_id"], "x86:LE:64:default");
+        assert_eq!(info["compiler_spec_id"], "gcc");
         assert_eq!(info.get("executable_md5"), Some(&Value::Null));
         assert_eq!(info.get("executable_sha256"), Some(&Value::Null));
 

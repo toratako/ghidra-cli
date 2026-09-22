@@ -55,6 +55,56 @@ impl BridgeClient {
         self.send_command_with_timeout("analysis_run", Some(args.into()), long_op_timeout())
     }
 
+    pub fn program_context_list(&self) -> Result<serde_json::Value> {
+        self.send_command("program_context_list", None)
+    }
+
+    pub fn program_context_get(
+        &self,
+        register: &str,
+        start: &str,
+        end: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut args = json!({"register": register, "start": start});
+        if let Some(end) = end {
+            args["end"] = json!(end);
+        }
+        self.send_command("program_context_get", Some(args))
+    }
+
+    pub fn program_context_set(
+        &self,
+        register: &str,
+        value: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "program_context_set",
+            Some(json!({"register": register, "value": value, "start": start, "end": end})),
+        )
+    }
+
+    pub fn program_context_clear(
+        &self,
+        register: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "program_context_clear",
+            Some(json!({"register": register, "start": start, "end": end})),
+        )
+    }
+
+    pub fn program_rebase(&self, base: &str) -> Result<serde_json::Value> {
+        self.send_command_with_timeout(
+            "program_rebase",
+            Some(json!({"base": base})),
+            long_op_timeout(),
+        )
+    }
+
     pub fn analysis_option_list(&self) -> Result<serde_json::Value> {
         self.send_command("analysis_option_list", None)
     }

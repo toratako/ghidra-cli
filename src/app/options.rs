@@ -150,6 +150,13 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
+            cli::ProgramCommands::Context(cmd) => match cmd {
+                cli::ProgramContextCommands::List(opts) => opts.project.clone(),
+                cli::ProgramContextCommands::Get(args) => args.options.project.clone(),
+                cli::ProgramContextCommands::Set(args) => args.options.project.clone(),
+                cli::ProgramContextCommands::Clear(args) => args.options.project.clone(),
+            },
+            cli::ProgramCommands::Rebase(args) => args.options.project.clone(),
             cli::ProgramCommands::Import(args) => args.project.clone(),
             cli::ProgramCommands::ListRelocations(opts) => opts.project.clone(),
             cli::ProgramCommands::List(args) => args.project.clone(),
@@ -292,6 +299,13 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ScriptCommands::List => None,
         },
         Commands::Program(cmd) => match cmd {
+            cli::ProgramCommands::Context(cmd) => match cmd {
+                cli::ProgramContextCommands::List(opts) => opts.program.clone(),
+                cli::ProgramContextCommands::Get(args) => args.options.program.clone(),
+                cli::ProgramContextCommands::Set(args) => args.options.program.clone(),
+                cli::ProgramContextCommands::Clear(args) => args.options.program.clone(),
+            },
+            cli::ProgramCommands::Rebase(args) => args.options.program.clone(),
             cli::ProgramCommands::Import(_) => None,
             cli::ProgramCommands::ListRelocations(opts) => opts.program.clone(),
             cli::ProgramCommands::List(args) => args.program.clone(),
@@ -312,6 +326,13 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
 /// Extract QueryOptions from a command, if it has them.
 pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> {
     match command {
+        Commands::Program(cli::ProgramCommands::Context(cmd)) => match cmd {
+            cli::ProgramContextCommands::List(opts) => Some(opts.clone()),
+            cli::ProgramContextCommands::Get(args) => Some(args.options.clone()),
+            cli::ProgramContextCommands::Set(args) => Some((&args.options).into()),
+            cli::ProgramContextCommands::Clear(args) => Some((&args.options).into()),
+        },
+        Commands::Program(cli::ProgramCommands::Rebase(args)) => Some((&args.options).into()),
         Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => match cmd {
             cli::AnalysisOptionCommands::List(opts) => Some(opts.clone()),
             cli::AnalysisOptionCommands::Get(args) => Some((&args.options).into()),

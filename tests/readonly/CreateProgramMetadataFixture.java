@@ -1,5 +1,6 @@
 import ghidra.app.script.GhidraScript;
 import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.reloc.Relocation.Status;
 import ghidra.program.util.DefaultLanguageService;
@@ -8,7 +9,8 @@ public class CreateProgramMetadataFixture extends GhidraScript {
     public void run() throws Exception {
         var language = DefaultLanguageService.getLanguageService()
             .getLanguage(new LanguageID("x86:LE:64:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language, language.getDefaultCompilerSpec(), this);
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getCompilerSpecByID(new CompilerSpecID("gcc")), this);
         try {
             int transaction = program.startTransaction("program metadata fixture");
             try {

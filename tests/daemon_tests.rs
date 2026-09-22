@@ -12,6 +12,8 @@ use common::{test_project, DaemonTestHarness};
 mod analysis;
 #[path = "daemon/analysis_modes.rs"]
 mod analysis_modes;
+#[path = "daemon/context.rs"]
+mod context;
 #[path = "daemon/decompiler.rs"]
 mod decompiler;
 #[path = "daemon/deletion.rs"]
@@ -24,6 +26,8 @@ mod lifecycle;
 mod output;
 #[path = "daemon/program_session.rs"]
 mod program_session;
+#[path = "daemon/rebase.rs"]
+mod rebase;
 #[path = "daemon/transaction.rs"]
 mod transaction;
 
