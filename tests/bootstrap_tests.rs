@@ -13,6 +13,8 @@ mod common;
 
 #[path = "bootstrap/analysis.rs"]
 mod analysis;
+#[path = "bootstrap/compilation.rs"]
+mod compilation;
 #[path = "bootstrap/imports.rs"]
 mod imports;
 

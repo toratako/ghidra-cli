@@ -2,6 +2,7 @@
 
 use super::sources;
 use anyhow::Result;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{info, warn};
@@ -70,15 +71,30 @@ pub fn compile_check(
         return Err("No Ghidra jars found to compile against".to_string());
     }
 
-    let out = std::process::Command::new(&javac)
-        .arg("-proc:none")
-        .arg("-cp")
-        .arg(&classpath)
-        .arg("-d")
-        .arg(tmp.path().join("out"))
-        .arg("-sourcepath")
-        .arg(&source_dir)
-        .args(&sources)
+    // The classpath and source paths together can exceed Windows' command-line
+    // limit. Keep them in a javac argument file on every platform.
+    let mut arguments = String::new();
+    for argument in [
+        "-proc:none",
+        "-cp",
+        &classpath,
+        "-d",
+        &tmp.path().join("out").to_string_lossy(),
+        "-sourcepath",
+        &source_dir.to_string_lossy(),
+    ] {
+        append_javac_argument(&mut arguments, argument);
+    }
+    for source in &sources {
+        append_javac_argument(&mut arguments, &source.to_string_lossy());
+    }
+    let argument_file = tmp.path().join("javac.args");
+    std::fs::write(&argument_file, arguments)
+        .map_err(|e| format!("Failed to write javac argument file: {e}"))?;
+    let mut argument = OsString::from("@");
+    argument.push(&argument_file);
+    let out = Command::new(&javac)
+        .arg(argument)
         .output()
         .map_err(|e| format!("Failed to run javac: {}", e))?;
 
@@ -100,6 +116,21 @@ pub fn compile_check(
             Err(errs.join("\n"))
         }
     }
+}
+
+fn append_javac_argument(arguments: &mut String, value: &str) {
+    // javac's argument-file parser interprets backslash escapes inside quotes.
+    arguments.push('"');
+    for character in value.chars() {
+        match character {
+            '\\' => arguments.push_str("\\\\"),
+            '"' => arguments.push_str("\\\""),
+            '\n' => arguments.push_str("\\n"),
+            '\r' => arguments.push_str("\\r"),
+            _ => arguments.push(character),
+        }
+    }
+    arguments.push_str("\"\n");
 }
 
 /// Detect the OSGi script compile/load failure signature in Ghidra output and
