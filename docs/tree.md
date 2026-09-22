@@ -97,8 +97,8 @@ ghidra-cli
 │   ├── delete
 │   ├── rename
 │   ├── set-comment
-│   ├── add
-│   └── remove
+│   ├── attach
+│   └── detach
 ├── pcode
 │   ├── at
 │   └── function

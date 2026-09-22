@@ -99,45 +99,45 @@ fn test_tag_create_existing_reports_existed() {
 
 #[test]
 #[serial]
-fn test_tag_add_reports_created_and_already_present() {
+fn test_tag_attach_reports_attached_and_already_present() {
     require_ghidra!();
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt3_pre");
-    cleanup_tag(harness, "tt3_auto");
+    cleanup_tag(harness, "tt3_other");
 
     tag_json(harness, &["tag", "create", "tt3_pre"]);
+    tag_json(harness, &["tag", "create", "tt3_other"]);
 
-    let rows = tag_json(harness, &["tag", "add", &addr, "tt3_pre", "tt3_auto"]);
+    let rows = tag_json(harness, &["tag", "attach", &addr, "tt3_pre", "tt3_other"]);
     let row = &rows;
-    assert_eq!(row["status"], "tagged");
-    assert_eq!(str_items(&row["added"]), vec!["tt3_pre", "tt3_auto"]);
-    assert_eq!(str_items(&row["created"]), vec!["tt3_auto"]);
+    assert_eq!(row["status"], "attached");
+    assert_eq!(str_items(&row["attached"]), vec!["tt3_pre", "tt3_other"]);
     assert!(str_items(&row["already_present"]).is_empty());
 
     // Idempotency: re-run reports already_present, not an error.
-    let rows = tag_json(harness, &["tag", "add", &addr, "tt3_pre", "tt3_auto"]);
-    assert!(str_items(&rows["added"]).is_empty());
+    let rows = tag_json(harness, &["tag", "attach", &addr, "tt3_pre", "tt3_other"]);
+    assert!(str_items(&rows["attached"]).is_empty());
     assert_eq!(
         str_items(&rows["already_present"]),
-        vec!["tt3_pre", "tt3_auto"]
+        vec!["tt3_pre", "tt3_other"]
     );
 
     cleanup_tag(harness, "tt3_pre");
-    cleanup_tag(harness, "tt3_auto");
+    cleanup_tag(harness, "tt3_other");
 }
 
 #[test]
 #[serial]
-fn test_tag_add_dedupes_argv() {
+fn test_tag_attach_dedupes_argv() {
     require_ghidra!();
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt4_dup");
+    tag_json(harness, &["tag", "create", "tt4_dup"]);
 
-    let rows = tag_json(harness, &["tag", "add", &addr, "tt4_dup", "tt4_dup"]);
-    assert_eq!(str_items(&rows["added"]), vec!["tt4_dup"]);
-    assert_eq!(str_items(&rows["created"]), vec!["tt4_dup"]);
+    let rows = tag_json(harness, &["tag", "attach", &addr, "tt4_dup", "tt4_dup"]);
+    assert_eq!(str_items(&rows["attached"]), vec!["tt4_dup"]);
 
     cleanup_tag(harness, "tt4_dup");
 }
@@ -164,7 +164,7 @@ fn test_tag_get_details_track_membership() {
     );
 
     for addr in &addrs {
-        tag_json(harness, &["tag", "add", addr, "tt5_member"]);
+        tag_json(harness, &["tag", "attach", addr, "tt5_member"]);
     }
     expected["use_count"] = serde_json::json!(2);
     assert_eq!(
@@ -179,7 +179,7 @@ fn test_tag_get_details_track_membership() {
     let tags = tag_json(harness, &["tag", "list", "--function", &addrs[0]]);
     assert!(tags.as_array().unwrap().contains(&expected));
 
-    tag_json(harness, &["tag", "remove", &addrs[0], "tt5_member"]);
+    tag_json(harness, &["tag", "detach", &addrs[0], "tt5_member"]);
     expected["use_count"] = serde_json::json!(1);
     assert_eq!(tag_json(harness, &["tag", "get", "tt5_member"]), expected);
 
@@ -195,9 +195,14 @@ fn test_function_list_tag_filter_and_semantics() {
     assert!(addrs.len() >= 2, "need two functions for AND test");
     cleanup_tag(harness, "tt6_both");
     cleanup_tag(harness, "tt6_only1");
+    tag_json(harness, &["tag", "create", "tt6_both"]);
+    tag_json(harness, &["tag", "create", "tt6_only1"]);
 
-    tag_json(harness, &["tag", "add", &addrs[0], "tt6_both", "tt6_only1"]);
-    tag_json(harness, &["tag", "add", &addrs[1], "tt6_both"]);
+    tag_json(
+        harness,
+        &["tag", "attach", &addrs[0], "tt6_both", "tt6_only1"],
+    );
+    tag_json(harness, &["tag", "attach", &addrs[1], "tt6_both"]);
 
     let rows = tag_json(
         harness,
@@ -270,8 +275,9 @@ fn test_function_list_untagged() {
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt8_tagged");
+    tag_json(harness, &["tag", "create", "tt8_tagged"]);
 
-    tag_json(harness, &["tag", "add", &addr, "tt8_tagged"]);
+    tag_json(harness, &["tag", "attach", &addr, "tt8_tagged"]);
 
     let rows = tag_json(harness, &["function", "list", "--untagged", "--limit", "0"]);
     assert!(
@@ -288,23 +294,34 @@ fn test_function_list_untagged() {
 
 #[test]
 #[serial]
-fn test_tag_remove_and_all() {
+fn test_tag_detach_and_all() {
     require_ghidra!();
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt9_a");
     cleanup_tag(harness, "tt9_b");
+    cleanup_tag(harness, "tt9_unattached");
+    for name in ["tt9_a", "tt9_b", "tt9_unattached"] {
+        tag_json(harness, &["tag", "create", name]);
+    }
 
-    tag_json(harness, &["tag", "add", &addr, "tt9_a", "tt9_b"]);
+    tag_json(harness, &["tag", "attach", &addr, "tt9_a", "tt9_b"]);
 
-    // Remove one present + one absent: absent is reported, not an error.
-    let rows = tag_json(harness, &["tag", "remove", &addr, "tt9_a", "tt9_zzz"]);
-    assert_eq!(str_items(&rows["removed"]), vec!["tt9_a"]);
-    assert_eq!(str_items(&rows["not_present"]), vec!["tt9_zzz"]);
+    // Known definitions that are not attached are successful no-ops.
+    let rows = tag_json(
+        harness,
+        &["tag", "detach", &addr, "tt9_a", "tt9_unattached"],
+    );
+    assert_eq!(rows["status"], "detached");
+    assert_eq!(str_items(&rows["detached"]), vec!["tt9_a"]);
+    assert_eq!(str_items(&rows["not_present"]), vec!["tt9_unattached"]);
 
     // --all clears the rest
-    let rows = tag_json(harness, &["tag", "remove", &addr, "--all"]);
-    assert_eq!(str_items(&rows["removed"]), vec!["tt9_b"]);
+    let rows = tag_json(harness, &["tag", "detach", &addr, "--all"]);
+    assert_eq!(str_items(&rows["detached"]), vec!["tt9_b"]);
+    for name in ["tt9_a", "tt9_b", "tt9_unattached"] {
+        assert_eq!(tag_json(harness, &["tag", "get", name])["use_count"], 0);
+    }
 
     let tags = tag_json(harness, &["tag", "list", "--function", &addr]);
     assert!(
@@ -313,11 +330,12 @@ fn test_tag_remove_and_all() {
             .unwrap()
             .iter()
             .any(|t| t["name"] == "tt9_a" || t["name"] == "tt9_b"),
-        "function should have no tt9 tags after remove --all"
+        "function should have no tt9 tags after detach --all"
     );
 
     cleanup_tag(harness, "tt9_a");
     cleanup_tag(harness, "tt9_b");
+    cleanup_tag(harness, "tt9_unattached");
 }
 
 #[test]
@@ -388,15 +406,27 @@ fn test_tag_set_comment_and_clear() {
 fn test_tag_delete_reports_counts_then_get_errors() {
     require_ghidra!();
     let harness = harness();
-    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
+    assert_eq!(addrs.len(), 2);
     cleanup_tag(harness, "tt12_del");
+    tag_json(harness, &["tag", "create", "tt12_del"]);
 
-    tag_json(harness, &["tag", "add", &addr, "tt12_del"]);
+    for addr in &addrs {
+        tag_json(harness, &["tag", "attach", addr, "tt12_del"]);
+    }
 
     let rows = tag_json(harness, &["tag", "delete", "tt12_del"]);
     assert_eq!(rows["status"], "deleted");
-    assert_eq!(rows["use_count"], 1);
-    assert_eq!(rows["functions_affected"], 1);
+    assert_eq!(rows["use_count"], 2);
+    assert_eq!(rows["functions_affected"], 2);
+    for addr in &addrs {
+        let tags = tag_json(harness, &["tag", "list", "--function", addr]);
+        assert!(!tags
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag["name"] == "tt12_del"));
+    }
 
     let result = ghidra(harness)
         .args(["tag", "get", "tt12_del"])
@@ -408,26 +438,80 @@ fn test_tag_delete_reports_counts_then_get_errors() {
 
 #[test]
 #[serial]
-fn test_tag_add_no_create_errors_without_mutating() {
+fn test_tag_attach_unknown_definition_errors_without_mutating() {
     require_ghidra!();
     let harness = harness();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-    cleanup_tag(harness, "tt13_nc");
+    cleanup_tag(harness, "tt13_known");
+    cleanup_tag(harness, "tt13_unknown");
+    tag_json(harness, &["tag", "create", "tt13_known"]);
+    let before = tag_json(harness, &["tag", "list", "--function", &addr]);
 
     let result = ghidra(harness)
-        .args(["tag", "add", &addr, "tt13_nc", "--no-create"])
+        .args(["tag", "attach", &addr, "tt13_known", "tt13_unknown"])
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_failure();
-    result.assert_stderr_contains("no-create");
+    result.assert_stderr_contains("No tag named 'tt13_unknown'");
 
-    // Tag must not have been created, function must not have been tagged.
+    assert_eq!(
+        tag_json(harness, &["tag", "list", "--function", &addr]),
+        before
+    );
     let tags = tag_json(harness, &["tag", "list"]);
     assert!(!tags
         .as_array()
         .unwrap()
         .iter()
-        .any(|t| t["name"] == "tt13_nc"));
+        .any(|t| t["name"] == "tt13_unknown"));
+    cleanup_tag(harness, "tt13_known");
+}
+
+#[test]
+#[serial]
+fn test_tag_wire_preflights_definition_names_and_detach_scope() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
+    for name in ["tt17_attached", "tt17_unattached", "tt17_unknown"] {
+        cleanup_tag(harness, name);
+    }
+    for name in ["tt17_attached", "tt17_unattached"] {
+        tag_json(harness, &["tag", "create", name]);
+    }
+    tag_json(harness, &["tag", "attach", &addr, "tt17_attached"]);
+    let before = tag_json(harness, &["tag", "list", "--function", &addr]);
+    let definitions = tag_json(harness, &["tag", "list"]);
+
+    for (command, args, message) in [
+        (
+            "tag_attach",
+            serde_json::json!({"function": addr, "tags": ["tt17_unattached", "tt17_unknown"]}),
+            "No tag named 'tt17_unknown'",
+        ),
+        (
+            "tag_detach",
+            serde_json::json!({"function": addr, "tags": ["tt17_attached", "tt17_unknown"]}),
+            "No tag named 'tt17_unknown'",
+        ),
+        (
+            "tag_detach",
+            serde_json::json!({"function": addr, "tags": ["tt17_attached"], "all": true}),
+            "exactly one",
+        ),
+    ] {
+        let error = client.send_command(command, Some(args)).unwrap_err();
+        assert!(error.to_string().contains(message), "{command}: {error}");
+        assert_eq!(
+            tag_json(harness, &["tag", "list", "--function", &addr]),
+            before
+        );
+        assert_eq!(tag_json(harness, &["tag", "list"]), definitions);
+    }
+    for name in ["tt17_attached", "tt17_unattached"] {
+        cleanup_tag(harness, name);
+    }
 }
 
 #[test]
@@ -454,8 +538,9 @@ fn test_tag_case_sensitivity() {
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt14_Case");
     cleanup_tag(harness, "tt14_case");
+    tag_json(harness, &["tag", "create", "tt14_Case"]);
 
-    tag_json(harness, &["tag", "add", &addr, "tt14_Case"]);
+    tag_json(harness, &["tag", "attach", &addr, "tt14_Case"]);
 
     // Server-side --tag is exact: wrong case errors (tag does not exist).
     let result = ghidra(harness)
@@ -511,8 +596,10 @@ fn test_function_outputs_include_tags_field() {
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt15_b");
     cleanup_tag(harness, "tt15_a");
+    tag_json(harness, &["tag", "create", "tt15_b"]);
+    tag_json(harness, &["tag", "create", "tt15_a"]);
 
-    tag_json(harness, &["tag", "add", &addr, "tt15_b", "tt15_a"]);
+    tag_json(harness, &["tag", "attach", &addr, "tt15_b", "tt15_a"]);
 
     // function get carries tags, sorted alphabetically
     let row = tag_json(harness, &["function", "get", &addr]);
@@ -547,8 +634,10 @@ fn test_csv_tags_join_with_semicolon() {
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     cleanup_tag(harness, "tt16_x");
     cleanup_tag(harness, "tt16_y");
+    tag_json(harness, &["tag", "create", "tt16_x"]);
+    tag_json(harness, &["tag", "create", "tt16_y"]);
 
-    tag_json(harness, &["tag", "add", &addr, "tt16_x", "tt16_y"]);
+    tag_json(harness, &["tag", "attach", &addr, "tt16_x", "tt16_y"]);
 
     // Fields chosen to exclude `signature`, whose own commas are a
     // pre-existing, out-of-scope CSV wart.
@@ -592,26 +681,26 @@ fn test_csv_tags_join_with_semicolon() {
 // --- clap-level grammar tests (no Ghidra required) ---
 
 #[test]
-fn test_clap_tag_add_requires_tags() {
-    // `tag add f` must be a parse error, not TARGET-consumed-as-tag.
+fn test_clap_tag_attach_requires_tags() {
+    // `tag attach f` must be a parse error, not TARGET-consumed-as-tag.
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .args(["tag", "add", "some_func"])
+        .args(["tag", "attach", "some_func"])
         .assert()
         .failure()
         .code(2);
 }
 
 #[test]
-fn test_clap_tag_remove_all_conflicts_with_tags() {
+fn test_clap_tag_detach_all_conflicts_with_tags() {
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .args(["tag", "remove", "some_func", "--all", "extra_tag"])
+        .args(["tag", "detach", "some_func", "--all", "extra_tag"])
         .assert()
         .failure()
         .code(2);
 
     // Neither tags nor --all is also a parse error
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .args(["tag", "remove", "some_func"])
+        .args(["tag", "detach", "some_func"])
         .assert()
         .failure()
         .code(2);

@@ -153,8 +153,8 @@ generated name, which cannot be used with `--field`.
 ghidra-cli tag list                        # All tags (name, comment, use count)
 ghidra-cli tag get <name>                  # Tag details
 ghidra-cli tag create <name> --comment "…" # Create a tag (comment optional)
-ghidra-cli tag add <func> <tag>...         # Attach tags (auto-creates missing ones)
-ghidra-cli tag remove <func> <tag>...      # Detach tags (--all clears every tag)
+ghidra-cli tag attach <func> <tag>...      # Attach existing tags
+ghidra-cli tag detach <func> <tag>...      # Detach tags (--all clears every tag)
 ghidra-cli tag rename <old> <new>          # Rename everywhere it is used
 ghidra-cli tag set-comment <name> "…"      # Set/clear a tag's comment
 ghidra-cli tag delete <name>               # Delete tag, detaching from all functions

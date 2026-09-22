@@ -375,16 +375,15 @@ pub(super) fn execute_via_bridge(
                     "tag_set_comment",
                     Some(json!({"name": args.name, "comment": args.comment})),
                 ),
-                TagCommands::Add(args) => client.send_command(
-                    "tag_add",
+                TagCommands::Attach(args) => client.send_command(
+                    "tag_attach",
                     Some(json!({
                         "function": args.target,
                         "tags": args.tags,
-                        "no_create": args.no_create,
                     })),
                 ),
-                TagCommands::Remove(args) => client.send_command(
-                    "tag_remove",
+                TagCommands::Detach(args) => client.send_command(
+                    "tag_detach",
                     Some(json!({
                         "function": args.target,
                         "tags": args.tags,

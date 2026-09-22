@@ -21,6 +21,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rename `tag add/remove` to `tag attach/detach`. Attach requires existing tag
+  definitions; remove automatic creation and `--no-create`. Detach rejects
+  undefined names while leaving known, unattached tags unchanged.
 - Unify normal JSON as `data` with optional nonempty `meta`, including management
   commands and batch reports. Standalone results and batch entries now match;
   lists retain context and effective paging metadata through field projection.

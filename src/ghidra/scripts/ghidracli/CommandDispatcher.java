@@ -136,8 +136,8 @@ final class CommandDispatcher {
             case "tag_delete":      return tagCommands.handleTagDelete(args);
             case "tag_rename":      return tagCommands.handleTagRename(args);
             case "tag_set_comment": return tagCommands.handleTagSetComment(args);
-            case "tag_add":         return tagCommands.handleTagAdd(args);
-            case "tag_remove":      return tagCommands.handleTagRemove(args);
+            case "tag_attach":      return tagCommands.handleTagAttach(args);
+            case "tag_detach":      return tagCommands.handleTagDetach(args);
             // Function signature commands
             case "function_set_signature": return functionSignatureCommands.handleFunctionSetSignature(args);
             case "function_set_return_type": return functionSignatureCommands.handleFunctionSetReturnType(args);

@@ -105,10 +105,10 @@ pub enum TagCommands {
     Rename(TagRenameArgs),
     /// Set or clear a tag's comment ("" clears)
     SetComment(TagSetCommentArgs),
-    /// Attach tags to a function (auto-creates missing tags)
-    Add(TagAttachArgs),
+    /// Attach existing tags to a function
+    Attach(TagAttachArgs),
     /// Detach tags from a function
-    Remove(TagDetachArgs),
+    Detach(TagDetachArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -182,13 +182,10 @@ pub struct TagAttachArgs {
     pub target: String,
     /// One or more tag names to attach
     // `required = true` is mandatory: num_args = 1.. alone does NOT make a
-    // positional required — `ghidra-cli tag add crypto` would parse with the tag
+    // positional required — `ghidra-cli tag attach crypto` would parse with the tag
     // name consumed as TARGET and an empty tag list.
     #[arg(value_name = "TAG", required = true, num_args = 1..)]
     pub tags: Vec<String>,
-    /// Error instead of auto-creating tags that don't exist yet
-    #[arg(long)]
-    pub no_create: bool,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

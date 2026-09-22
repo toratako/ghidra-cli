@@ -130,8 +130,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::TagCommands::Delete(args) => args.project.clone(),
             cli::TagCommands::Rename(args) => args.project.clone(),
             cli::TagCommands::SetComment(args) => args.project.clone(),
-            cli::TagCommands::Add(args) => args.project.clone(),
-            cli::TagCommands::Remove(args) => args.project.clone(),
+            cli::TagCommands::Attach(args) => args.project.clone(),
+            cli::TagCommands::Detach(args) => args.project.clone(),
         },
         Commands::Pcode(cmd) => match cmd {
             cli::PcodeCommands::At(args) => args.project.clone(),
@@ -279,8 +279,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::TagCommands::Delete(args) => args.program.clone(),
             cli::TagCommands::Rename(args) => args.program.clone(),
             cli::TagCommands::SetComment(args) => args.program.clone(),
-            cli::TagCommands::Add(args) => args.program.clone(),
-            cli::TagCommands::Remove(args) => args.program.clone(),
+            cli::TagCommands::Attach(args) => args.program.clone(),
+            cli::TagCommands::Detach(args) => args.program.clone(),
         },
         Commands::Pcode(cmd) => match cmd {
             cli::PcodeCommands::At(args) => args.program.clone(),

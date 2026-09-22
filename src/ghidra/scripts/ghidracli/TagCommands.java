@@ -191,66 +191,60 @@ final class TagCommands {
         }
     }
 
-    JsonObject handleTagAdd(JsonObject args) {
+    JsonObject handleTagAttach(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String target = getArgString(args, "function");
         String[] rawTags = getArgStringArray(args, "tags");
-        boolean noCreate = getArgBool(args, "no_create", false);
         if (target == null || rawTags.length == 0)
             return errorResult("function and tags are required");
 
         try {
-            // Dedupe argv up front: `tag add f crypto crypto` must not double-report.
+            // Dedupe argv up front: repeated names must not double-report.
             LinkedHashSet<String> tagNames = new LinkedHashSet<>(Arrays.asList(rawTags));
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
             FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
+            for (String name : tagNames) {
+                session.monitor().checkCancelled();
+                if (tm.getFunctionTag(name) == null)
+                    return errorResult(TagSupport.tagNotFoundError(name, tm));
+            }
             Set<String> current = new HashSet<>();
             for (FunctionTag t : func.getTags()) current.add(t.getName());
 
-            List<String> toCreate = new ArrayList<>();
-            for (String name : tagNames) {
-                if (tm.getFunctionTag(name) != null) continue;  // existing: any name attachable
-                String err = TagSupport.validateTagName(name);             // validate only names we'd CREATE
-                if (err != null) return errorResult(err);
-                toCreate.add(name);
-            }
-            if (noCreate && !toCreate.isEmpty())
-                return errorResult("Tags do not exist (--no-create): " + String.join(", ", toCreate));
-
-            JsonArray added = new JsonArray(), created = new JsonArray(), already = new JsonArray();
+            JsonArray attached = new JsonArray(), already = new JsonArray();
             for (String name : tagNames) {
                 session.monitor().checkCancelled();
                 if (current.contains(name)) { already.add(name); continue; }
                 if (!func.addTag(name)) {
-                    return errorResult("Failed to add tag '" + name + "' to function "
+                    return errorResult("Failed to attach tag '" + name + "' to function "
                         + func.getName());
                 }
-                added.add(name);
-                if (toCreate.contains(name)) created.add(name);
+                attached.add(name);
             }
 
             JsonObject result = new JsonObject();
-            result.addProperty("status", "tagged");
+            result.addProperty("status", "attached");
             result.addProperty("function", func.getName());
             result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-            result.add("added", added);
-            result.add("created", created);
+            result.add("attached", attached);
             result.add("already_present", already);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to add tags: " + e.getMessage());
+            return errorResult("Failed to attach tags: " + e.getMessage());
         }
     }
 
-    JsonObject handleTagRemove(JsonObject args) {
+    JsonObject handleTagDetach(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String target = getArgString(args, "function");
         String[] rawTags = getArgStringArray(args, "tags");
         boolean all = getArgBool(args, "all", false);
         if (target == null || (rawTags.length == 0 && !all))
             return errorResult("function and tags (or all) are required");
+        if (all && rawTags.length > 0)
+            return errorResult("Specify exactly one of tags or all");
 
         try {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
@@ -266,26 +260,33 @@ final class TagCommands {
                 ? new LinkedHashSet<>(currentNames)
                 : new LinkedHashSet<>(Arrays.asList(rawTags));
 
-            JsonArray removed = new JsonArray(), notPresent = new JsonArray();
+            FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
+            for (String name : tagNames) {
+                session.monitor().checkCancelled();
+                if (tm.getFunctionTag(name) == null)
+                    return errorResult(TagSupport.tagNotFoundError(name, tm));
+            }
+
+            JsonArray detached = new JsonArray(), notPresent = new JsonArray();
             for (String name : tagNames) {
                 session.monitor().checkCancelled();
                 if (current.contains(name)) {
                     func.removeTag(name);   // void; silent — membership pre-checked
-                    removed.add(name);
+                    detached.add(name);
                 } else {
                     notPresent.add(name);
                 }
             }
 
             JsonObject result = new JsonObject();
-            result.addProperty("status", "untagged");
+            result.addProperty("status", "detached");
             result.addProperty("function", func.getName());
             result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-            result.add("removed", removed);
+            result.add("detached", detached);
             result.add("not_present", notPresent);
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to remove tags: " + e.getMessage());
+            return errorResult("Failed to detach tags: " + e.getMessage());
         }
     }
 
