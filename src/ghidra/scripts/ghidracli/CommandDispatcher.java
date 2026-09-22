@@ -33,6 +33,7 @@ final class CommandDispatcher {
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
     private final FunctionSignatureCommands functionSignatureCommands;
+    private final FunctionBodyCommands functionBodyCommands;
     private final FunctionVariableCommands functionVariableCommands;
     private final TypeImportCommands typeImportCommands;
 
@@ -46,6 +47,7 @@ final class CommandDispatcher {
         functionCommands = new FunctionCommands(session, addressResolver, functionQueries);
         decompileCommands = new DecompileCommands(session, functionQueries);
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
+        functionBodyCommands = new FunctionBodyCommands(session, functionQueries);
         functionVariableCommands = new FunctionVariableCommands(session, functionQueries, typeResolver);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
@@ -176,6 +178,7 @@ final class CommandDispatcher {
             case "function_set_calling_convention": return functionSignatureCommands.handleFunctionSetCallingConvention(args);
             case "function_set_stack_purge": return functionSignatureCommands.handleFunctionSetStackPurge(args);
             case "function_set_noreturn": return functionSignatureCommands.handleFunctionSetNoReturn(args);
+            case "function_set_body": return functionBodyCommands.handleSet(args);
             case "function_var_list": return functionVariableCommands.handleFunctionVarList(args);
             case "function_var_get": return functionVariableCommands.handleFunctionVarGet(args);
             case "function_var_set": return functionVariableCommands.handleFunctionVarSet(args);

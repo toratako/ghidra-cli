@@ -43,6 +43,7 @@ ghidra-cli
 │   ├── set-return-type
 │   ├── set-calling-convention
 │   ├── set-stack-purge
+│   ├── set-body
 │   ├── var
 │   │   ├── list
 │   │   ├── get
@@ -181,4 +182,4 @@ ghidra-cli
 └── setup
 ```
 
-169 command nodes (excluding the root), 0 aliases.
+170 command nodes (excluding the root), 0 aliases.

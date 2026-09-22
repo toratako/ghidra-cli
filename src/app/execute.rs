@@ -41,6 +41,18 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Function(cli::FunctionCommands::SetBody(args)) = command {
+        anyhow::ensure!(
+            !args.ranges.is_empty() && args.ranges.len().is_multiple_of(2),
+            "--range requires START END pairs"
+        );
+        for address in &args.ranges {
+            anyhow::ensure!(
+                crate::address::ExplicitAddress::parse(address).is_some(),
+                "Invalid --range address '{address}': use an explicit 0x-prefixed address"
+            );
+        }
+    }
     if let Commands::Memory(command) = command {
         memory::validate(command)?;
     }

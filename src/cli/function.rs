@@ -28,6 +28,8 @@ pub enum FunctionCommands {
     SetCallingConvention(SetCallingConventionArgs),
     /// Set or clear the function's stack pointer change after return
     SetStackPurge(SetStackPurgeArgs),
+    /// Replace the whole function body with inclusive address ranges
+    SetBody(SetBodyArgs),
     /// Inspect and edit decompiler variables
     #[command(subcommand)]
     Var(FunctionVarCommands),
@@ -189,6 +191,19 @@ pub struct SetStackPurgeArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SetBodyArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Inclusive range; repeat to replace the body with a disjoint union.
+    /// Shrinking may delete labels and stack/register references outside the new body.
+    #[arg(long = "range", required = true, num_args = 2, value_names = ["START", "END"], action = clap::ArgAction::Append)]
+    pub ranges: Vec<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]

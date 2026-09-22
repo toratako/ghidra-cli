@@ -67,6 +67,13 @@ pub(super) fn execute(
                 "convention": args.convention,
             })),
         ),
+        FunctionCommands::SetBody(args) => client.send_command(
+            "function_set_body",
+            Some(
+                json!({"target": args.target, "ranges": args.ranges.chunks_exact(2)
+                .map(|range| json!({"start": range[0], "end": range[1]})).collect::<Vec<_>>()}),
+            ),
+        ),
         FunctionCommands::Var(cmd) => match cmd {
             cli::FunctionVarCommands::List(args) => client.function_var_list(&args.target),
             cli::FunctionVarCommands::Get(args) => {

@@ -272,17 +272,34 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
 #[test]
 fn function_body_and_call_signature_preserve_scope_and_options_in_batches() {
     let bridge = RecordedBridge::new();
-    for (args, wire, expected) in [(
-        vec![
-            "function",
-            "get",
-            "caller",
-            "--with-frame",
-            "--with-signature",
-        ],
-        "get_function",
-        json!({"address": "caller", "with_frame": true, "with_signature": true}),
-    )] {
+    for (args, wire, expected) in [
+        (
+            vec![
+                "function",
+                "get",
+                "caller",
+                "--with-frame",
+                "--with-signature",
+            ],
+            "get_function",
+            json!({"address": "caller", "with_frame": true, "with_signature": true}),
+        ),
+        (
+            vec![
+                "function",
+                "set-body",
+                "caller",
+                "--range",
+                "overlay:0x1000",
+                "overlay:0x101f",
+                "--range",
+                "overlay:0x2000",
+                "overlay:0x200f",
+            ],
+            "function_set_body",
+            json!({"target": "caller", "ranges": [{"start": "overlay:0x1000", "end": "overlay:0x101f"}, {"start": "overlay:0x2000", "end": "overlay:0x200f"}]}),
+        ),
+    ] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
             let mut args = args.clone();
@@ -461,10 +478,20 @@ fn variable_selection_requires_exactly_one_same_name_candidate_before_mutation()
 #[test]
 fn function_edit_selectors_are_validated_before_program_selection_and_batch_execution() {
     let bridge = RecordedBridge::new();
-    for args in [vec![
-        "function", "var", "set", "main", "--var", "value", "--filter", "invalid", "--name",
-        "length",
-    ]] {
+    for args in [
+        vec![
+            "function",
+            "set-body",
+            "main",
+            "--range",
+            "0x1000",
+            "overlay:1010",
+        ],
+        vec![
+            "function", "var", "set", "main", "--var", "value", "--filter", "invalid", "--name",
+            "length",
+        ],
+    ] {
         let mut args = args;
         args.extend(["--program", "must-not-open"]);
         let output = bridge.command().args(&args).output().unwrap();
