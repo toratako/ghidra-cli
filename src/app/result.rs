@@ -329,7 +329,7 @@ mod tests {
             let result =
                 CommandOutput::prepare(value.clone(), ResultShape::Value, None, None).unwrap();
             assert!(!result.is_list);
-            assert_eq!(result.rows(), &[value.clone()]);
+            assert_eq!(result.rows(), std::slice::from_ref(&value));
             assert_eq!(
                 serde_json::to_value(result).unwrap(),
                 json!({"data": value})
