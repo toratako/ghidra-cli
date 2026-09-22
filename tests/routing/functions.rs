@@ -299,6 +299,60 @@ fn function_body_and_call_signature_preserve_scope_and_options_in_batches() {
             "function_set_body",
             json!({"target": "caller", "ranges": [{"start": "overlay:0x1000", "end": "overlay:0x101f"}, {"start": "overlay:0x2000", "end": "overlay:0x200f"}]}),
         ),
+        (
+            vec![
+                "function",
+                "call-signature",
+                "get",
+                "caller",
+                "--at",
+                "ram:0x1234:0x10",
+            ],
+            "function_call_signature_get",
+            json!({"target": "caller", "at": "ram:0x1234:0x10"}),
+        ),
+        (
+            vec![
+                "function",
+                "call-signature",
+                "set",
+                "caller",
+                "--at",
+                "0x1010",
+                "--signature",
+                "int callback(char *, ...)",
+                "--convention",
+                "__cdecl",
+            ],
+            "function_call_signature_set",
+            json!({"target": "caller", "at": "0x1010", "signature": "int callback(char *, ...)", "convention": "__cdecl"}),
+        ),
+        (
+            vec![
+                "function",
+                "call-signature",
+                "set",
+                "caller",
+                "--at",
+                "0x1010",
+                "--signature",
+                "void callback(void)",
+            ],
+            "function_call_signature_set",
+            json!({"target": "caller", "at": "0x1010", "signature": "void callback(void)", "convention": null}),
+        ),
+        (
+            vec![
+                "function",
+                "call-signature",
+                "clear",
+                "caller",
+                "--at",
+                "0x1010",
+            ],
+            "function_call_signature_clear",
+            json!({"target": "caller", "at": "0x1010"}),
+        ),
     ] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
@@ -486,6 +540,14 @@ fn function_edit_selectors_are_validated_before_program_selection_and_batch_exec
             "--range",
             "0x1000",
             "overlay:1010",
+        ],
+        vec![
+            "function",
+            "call-signature",
+            "clear",
+            "main",
+            "--at",
+            "1010",
         ],
         vec![
             "function", "var", "set", "main", "--var", "value", "--filter", "invalid", "--name",

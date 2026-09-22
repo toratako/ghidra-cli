@@ -74,6 +74,21 @@ pub(super) fn execute(
                 .map(|range| json!({"start": range[0], "end": range[1]})).collect::<Vec<_>>()}),
             ),
         ),
+        FunctionCommands::CallSignature(cmd) => match cmd {
+            cli::CallSignatureCommands::Get(args) => client.send_command(
+                "function_call_signature_get",
+                Some(json!({"target": args.target, "at": args.at})),
+            ),
+            cli::CallSignatureCommands::Set(args) => client.send_command(
+                "function_call_signature_set",
+                Some(json!({"target": args.target, "at": args.at,
+                    "signature": args.signature, "convention": args.convention})),
+            ),
+            cli::CallSignatureCommands::Clear(args) => client.send_command(
+                "function_call_signature_clear",
+                Some(json!({"target": args.target, "at": args.at})),
+            ),
+        },
         FunctionCommands::Var(cmd) => match cmd {
             cli::FunctionVarCommands::List(args) => client.function_var_list(&args.target),
             cli::FunctionVarCommands::Get(args) => {

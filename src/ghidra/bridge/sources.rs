@@ -97,6 +97,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/FunctionBodyCommands.java"),
     ),
     (
+        "ghidracli/FunctionCallSignatureCommands.java",
+        include_str!("../scripts/ghidracli/FunctionCallSignatureCommands.java"),
+    ),
+    (
+        "ghidracli/FunctionSignatureSupport.java",
+        include_str!("../scripts/ghidracli/FunctionSignatureSupport.java"),
+    ),
+    (
         "ghidracli/FunctionVariableCommands.java",
         include_str!("../scripts/ghidracli/FunctionVariableCommands.java"),
     ),

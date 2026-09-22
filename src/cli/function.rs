@@ -30,6 +30,9 @@ pub enum FunctionCommands {
     SetStackPurge(SetStackPurgeArgs),
     /// Replace the whole function body with inclusive address ranges
     SetBody(SetBodyArgs),
+    /// Read and edit a prototype override at one call site
+    #[command(subcommand)]
+    CallSignature(CallSignatureCommands),
     /// Inspect and edit decompiler variables
     #[command(subcommand)]
     Var(FunctionVarCommands),
@@ -202,6 +205,62 @@ pub struct SetBodyArgs {
     /// Shrinking may delete labels and stack/register references outside the new body.
     #[arg(long = "range", required = true, num_args = 2, value_names = ["START", "END"], action = clap::ArgAction::Append)]
     pub ranges: Vec<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum CallSignatureCommands {
+    /// Read a saved prototype override, including one outside the current body
+    Get(CallSignatureGetArgs),
+    /// Set a prototype at one current call instruction; leaves the callee unchanged
+    Set(CallSignatureSetArgs),
+    /// Remove a saved prototype override, even if the call no longer exists
+    Clear(CallSignatureGetArgs),
+}
+
+impl CallSignatureCommands {
+    pub fn options(&self) -> &ObjectOptions {
+        match self {
+            Self::Get(args) | Self::Clear(args) => &args.options,
+            Self::Set(args) => &args.options,
+        }
+    }
+
+    pub fn at(&self) -> &str {
+        match self {
+            Self::Get(args) | Self::Clear(args) => &args.at,
+            Self::Set(args) => &args.at,
+        }
+    }
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct CallSignatureGetArgs {
+    /// Exact caller function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Explicit 0x-prefixed call-site address
+    #[arg(long, value_name = "ADDRESS")]
+    pub at: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct CallSignatureSetArgs {
+    /// Exact caller function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Explicit 0x-prefixed address of the call instruction
+    #[arg(long, value_name = "ADDRESS")]
+    pub at: String,
+    /// C-style prototype; its function name does not rename a symbol
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub signature: String,
+    /// Supported calling convention; omitted uses the Program default
+    #[arg(long, value_name = "NAME", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub convention: Option<String>,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

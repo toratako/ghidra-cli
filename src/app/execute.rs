@@ -66,6 +66,7 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         }
     }
     let edit_addresses: Vec<&str> = match command {
+        Commands::Function(cli::FunctionCommands::CallSignature(cmd)) => vec![cmd.at()],
         Commands::Listing(cli::ListingCommands::Flow(cmd)) => {
             let mut addresses = vec![cmd.address()];
             if let cli::ListingFlowCommands::Set(args) = cmd {

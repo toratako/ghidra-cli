@@ -46,6 +46,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetCallingConvention(args) => args.project.clone(),
             cli::FunctionCommands::SetStackPurge(args) => args.project.clone(),
             cli::FunctionCommands::SetBody(args) => args.options.project.clone(),
+            cli::FunctionCommands::CallSignature(cmd) => cmd.options().project.clone(),
             cli::FunctionCommands::Var(cmd) => match cmd {
                 cli::FunctionVarCommands::List(args) => args.options.project.clone(),
                 cli::FunctionVarCommands::Get(args) => args.options.project.clone(),
@@ -228,6 +229,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FunctionCommands::SetCallingConvention(args) => args.program.clone(),
             cli::FunctionCommands::SetStackPurge(args) => args.program.clone(),
             cli::FunctionCommands::SetBody(args) => args.options.program.clone(),
+            cli::FunctionCommands::CallSignature(cmd) => cmd.options().program.clone(),
             cli::FunctionCommands::Var(cmd) => match cmd {
                 cli::FunctionVarCommands::List(args) => args.options.program.clone(),
                 cli::FunctionVarCommands::Get(args) => args.options.program.clone(),
@@ -436,6 +438,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::FunctionCommands::ListCallingConventions(opts) => Some(opts.clone()),
             cli::FunctionCommands::Get(args) => Some((&args.options).into()),
             cli::FunctionCommands::SetBody(args) => Some((&args.options).into()),
+            cli::FunctionCommands::CallSignature(cmd) => Some(cmd.options().into()),
             cli::FunctionCommands::Var(cmd) => match cmd {
                 cli::FunctionVarCommands::List(args) => Some(args.options.clone()),
                 cli::FunctionVarCommands::Get(args) => Some((&args.options).into()),
