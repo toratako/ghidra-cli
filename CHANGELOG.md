@@ -10,6 +10,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add `memory file-mappings` to list preserved-file mapping intervals and find
   every direct mapping of `--file-offset`, with `--source-at` selecting one
   saved input and metadata identifying excluded indirect mappings.
+- Add `memory block create/rename/set-permissions/set-volatile/move/delete`,
+  with exact block-start targets, explicit initialization and permissions, and
+  named overlay spaces. Memory queries expose block type, spaces, and volatility.
 - Add `xref create memory`, `delete`, and `set-primary` with explicit operand
   selection, source checks, and conflict preservation.
 - Add Equate definitions with `equate create/list/get/delete` and exact operand

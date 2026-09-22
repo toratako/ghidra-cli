@@ -28,6 +28,7 @@ final class CommandDispatcher {
     private final MemoryCommands memoryCommands;
     private final MemoryInfoCommands memoryInfoCommands;
     private final FileMappingCommands fileMappingCommands;
+    private final MemoryBlockCommands memoryBlockCommands;
     private final DataCommands dataCommands;
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
@@ -65,6 +66,7 @@ final class CommandDispatcher {
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
         fileMappingCommands = new FileMappingCommands(session);
+        memoryBlockCommands = new MemoryBlockCommands(session);
         dataCommands = new DataCommands(session, addressResolver);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
@@ -93,6 +95,12 @@ final class CommandDispatcher {
             case "memory_map":      return listingCommands.handleMemoryMap();
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
             case "memory_file_mappings": return fileMappingCommands.handleFileMappings(args);
+            case "memory_block_create": return memoryBlockCommands.handleCreate(args);
+            case "memory_block_rename": return memoryBlockCommands.handleRename(args);
+            case "memory_block_set_permissions": return memoryBlockCommands.handleSetPermissions(args);
+            case "memory_block_set_volatile": return memoryBlockCommands.handleSetVolatile(args);
+            case "memory_block_move": return memoryBlockCommands.handleMove(args);
+            case "memory_block_delete": return memoryBlockCommands.handleDelete(args);
             case "data_list":       return dataCommands.handleList(args);
             case "data_read":       return dataCommands.handleRead(args);
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);

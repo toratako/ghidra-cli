@@ -72,6 +72,13 @@ ghidra-cli
 ├── memory
 │   ├── map
 │   ├── file-mappings
+│   ├── block
+│   │   ├── create
+│   │   ├── rename
+│   │   ├── set-permissions
+│   │   ├── set-volatile
+│   │   ├── move
+│   │   └── delete
 │   ├── info
 │   ├── read
 │   └── write
@@ -171,4 +178,4 @@ ghidra-cli
 └── setup
 ```
 
-159 command nodes (excluding the root), 0 aliases.
+166 command nodes (excluding the root), 0 aliases.

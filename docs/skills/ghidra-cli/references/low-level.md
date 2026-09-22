@@ -103,6 +103,32 @@ ghidra-cli analysis run --project target --program target.bin
 For analyzer settings and full, range, or pending analysis, see
 [import and reanalysis](programs.md#import-and-reanalysis).
 
+## Memory layout
+
+```bash
+ghidra-cli memory block create .ram ram:0x20000000 65536 --uninitialized --permissions rw
+ghidra-cli memory block create .mmio ram:0x40000000 4096 --uninitialized --permissions rw --volatile
+ghidra-cli memory block create .bank1 ram:0x1000 8192 --overlay bank1 --fill 0xff --permissions rx
+ghidra-cli memory block create .bank1_data bank1:0x4000 256 --uninitialized --permissions rw
+ghidra-cli memory block move ram:0x20000000 ram:0x21000000
+```
+
+Uninitialized RAM/MMIO represents unknown values; `--fill` creates actual bytes.
+MMIO volatility and permissions guide analysis but do not emulate device behavior.
+`memory write` requires initialized memory, so choose fill when populating known
+bytes after creation.
+
+Block edits select the exact start returned by `memory map`. Preserve the address
+space qualifier; block names need not be unique. Overlay names identify separate
+address spaces, and renaming a block leaves its space name intact.
+
+Moving one block leaves the image base unchanged and does not fix embedded
+pointer values. Inspect outside incoming references afterward: native move/delete
+can leave them targeting the old address. Deleting a block also removes analysis
+in its range and can remove a whole function whose body crosses that range.
+Use `memory map`, `memory info`, and xrefs to check the result before choosing
+whether to run analysis. For whole-image relocation, use `program rebase`.
+
 ## Patching
 
 ```bash

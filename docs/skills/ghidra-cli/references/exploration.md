@@ -130,7 +130,8 @@ anchor until the layout changes. Filenames alone do not distinguish saved inputs
 Inspect `meta.unsupported_mappings`: excluded indirect mappings mean that an
 empty result proves only the absence of a direct mapping.
 
-For byte edits, see [patching](low-level.md#patching).
+For changing RAM/MMIO or overlays, see [memory layout](low-level.md#memory-layout);
+for byte edits, see [patching](low-level.md#patching).
 
 ## Analysis diagnostics
 

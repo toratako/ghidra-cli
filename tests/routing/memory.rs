@@ -37,6 +37,25 @@ pub(super) fn file_mappings_fixture(args: &Value, program: &str) -> Value {
     result
 }
 
+pub(super) fn block_receipt_fixture(command: &str, args: &Value, program: &str) -> Value {
+    let before = json!({"name": ".ram", "start": args["block_start"], "permissions": "rw"});
+    let after = json!({
+        "name": args.get("name").cloned().unwrap_or(json!(".ram")),
+        "start": args.get("start").unwrap_or(&args["block_start"]),
+        "permissions": args.get("permissions").cloned().unwrap_or(json!("rw")),
+    });
+    let mut result = json!({
+        "changed": true,
+        "before": if command == "memory_block_create" { Value::Null } else { before },
+        "after": if command == "memory_block_delete" { Value::Null } else { after },
+        "observed_program": program,
+    });
+    if command == "memory_block_delete" {
+        result["overlay_removed"] = json!(true);
+    }
+    result
+}
+
 fn run(bridge: &RecordedBridge, args: &[&str], batched: bool) -> Value {
     let output = if batched {
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(args)).unwrap();
@@ -58,6 +77,154 @@ fn run(bridge: &RecordedBridge, args: &[&str], batched: bool) -> Value {
         result["data"]["results"][0]["result"].clone()
     } else {
         result
+    }
+}
+
+#[test]
+fn memory_commands_route_exact_targets_and_receipts_in_standalone_and_batch() {
+    let first = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    for (mut args, wire, expected_args, is_list) in [
+        (
+            vec!["memory", "file-mappings"],
+            "memory_file_mappings",
+            json!({}),
+            true,
+        ),
+        (
+            vec![
+                "memory",
+                "file-mappings",
+                "--file-offset",
+                "0x205",
+                "--source-at",
+                "bank1:0x1005",
+            ],
+            "memory_file_mappings",
+            json!({"file_offset": "0x205", "source_at": "bank1:0x1005"}),
+            true,
+        ),
+        (
+            vec![
+                "memory",
+                "block",
+                "create",
+                ".mmio",
+                "ram:0x40000000",
+                "4096",
+                "--uninitialized",
+                "--permissions",
+                "wr",
+                "--volatile",
+            ],
+            "memory_block_create",
+            json!({"name": ".mmio", "start": "ram:0x40000000", "size": 4096, "uninitialized": true, "permissions": "rw", "volatile": true}),
+            false,
+        ),
+        (
+            vec![
+                "memory",
+                "block",
+                "create",
+                ".bank",
+                "ram:0x1000",
+                "256",
+                "--fill",
+                "0xff",
+                "--permissions",
+                "rx",
+                "--overlay",
+                "bank1",
+            ],
+            "memory_block_create",
+            json!({"name": ".bank", "start": "ram:0x1000", "size": 256, "uninitialized": false, "fill": 255, "permissions": "rx", "volatile": false, "overlay": "bank1"}),
+            false,
+        ),
+        (
+            vec!["memory", "block", "rename", "bank1:0x1000", ".renamed"],
+            "memory_block_rename",
+            json!({"block_start": "bank1:0x1000", "name": ".renamed"}),
+            false,
+        ),
+        (
+            vec!["memory", "block", "set-permissions", "bank1:0x1000", "none"],
+            "memory_block_set_permissions",
+            json!({"block_start": "bank1:0x1000", "permissions": "none"}),
+            false,
+        ),
+        (
+            vec![
+                "memory",
+                "block",
+                "set-volatile",
+                "bank1:0x1000",
+                "--value",
+                "false",
+            ],
+            "memory_block_set_volatile",
+            json!({"block_start": "bank1:0x1000", "value": false}),
+            false,
+        ),
+        (
+            vec![
+                "memory",
+                "block",
+                "move",
+                "ram:0x1234:0x10",
+                "ram:0x1234:0x20",
+            ],
+            "memory_block_move",
+            json!({"block_start": "ram:0x1234:0x10", "start": "ram:0x1234:0x20"}),
+            false,
+        ),
+        (
+            vec!["memory", "block", "delete", "word:0x1000.1"],
+            "memory_block_delete",
+            json!({"block_start": "word:0x1000.1"}),
+            false,
+        ),
+    ] {
+        args.extend([
+            "--project",
+            selected.project.to_str().unwrap(),
+            "--program",
+            "B",
+        ]);
+        let mut standalone = Value::Null;
+        for batched in [false, true] {
+            first.requests.lock().unwrap().clear();
+            selected.requests.lock().unwrap().clear();
+            let result = run(&first, &args, batched);
+            assert_eq!(result["data"].is_array(), is_list, "{args:?}: {result}");
+            if !is_list {
+                assert_eq!(result["data"]["changed"], true);
+                assert_eq!(result["data"]["observed_program"], "B");
+                assert!(result["data"].get("before").is_some());
+                assert!(result["data"].get("after").is_some());
+                assert!(result.get("meta").is_none());
+            }
+            if batched {
+                assert_eq!(result, standalone, "{args:?}");
+            } else {
+                standalone = result;
+            }
+            assert!(first
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|r| r["command"] == "bridge_info"));
+            let requests = selected.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{requests:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"], json!({"program": "B"}));
+            assert_eq!(domain[1]["command"], wire);
+            assert_eq!(domain[1]["args"], expected_args);
+        }
     }
 }
 
@@ -146,5 +313,53 @@ fn file_mapping_queries_preserve_exclusions_after_projection_paging_and_count() 
                 .all(|key| key == "file_offset" || key == "source_at"),
             "{request}"
         );
+    }
+}
+
+#[test]
+fn invalid_memory_addresses_fail_before_program_selection_including_batch_preflight() {
+    let bridge = RecordedBridge::new();
+    for args in [
+        vec!["memory", "file-mappings", "--source-at", "main"],
+        vec![
+            "memory",
+            "block",
+            "create",
+            ".ram",
+            "ram:1000",
+            "16",
+            "--fill",
+            "0",
+            "--permissions",
+            "rw",
+        ],
+        vec!["memory", "block", "rename", ".ram", ".renamed"],
+        vec!["memory", "block", "move", "ram:0x1000", "entry"],
+    ] {
+        let args: Vec<_> = args
+            .into_iter()
+            .chain(["--program", "must-not-open"])
+            .collect();
+        let output = bridge.command().args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("Invalid address"),
+            "{output:?}"
+        );
+        std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+        let output = bridge
+            .command()
+            .args(["batch", "batch.txt"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["commands_executed"], 0);
+        assert_eq!(report["validation_failed"], true);
+        assert!(report["validation_errors"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid address"));
+        assert!(bridge.requests.lock().unwrap().is_empty());
     }
 }

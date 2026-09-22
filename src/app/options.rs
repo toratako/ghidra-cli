@@ -55,6 +55,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Memory(cmd) => match cmd {
             cli::MemoryCommands::Map(opts) => opts.project.clone(),
             cli::MemoryCommands::FileMappings(args) => args.options.project.clone(),
+            cli::MemoryCommands::Block(cmd) => cmd.options().project.clone(),
             cli::MemoryCommands::Info(args) => args.options.project.clone(),
             cli::MemoryCommands::Read(args) => args.options.project.clone(),
             cli::MemoryCommands::Write(args) => args.project.clone(),
@@ -230,6 +231,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Memory(cmd) => match cmd {
             cli::MemoryCommands::Map(opts) => opts.program.clone(),
             cli::MemoryCommands::FileMappings(args) => args.options.program.clone(),
+            cli::MemoryCommands::Block(cmd) => cmd.options().program.clone(),
             cli::MemoryCommands::Info(args) => args.options.program.clone(),
             cli::MemoryCommands::Read(args) => args.options.program.clone(),
             cli::MemoryCommands::Write(args) => args.program.clone(),
@@ -442,6 +444,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Memory(cmd) => match cmd {
             cli::MemoryCommands::Map(opts) => Some(opts.clone()),
             cli::MemoryCommands::FileMappings(args) => Some(args.options.clone()),
+            cli::MemoryCommands::Block(cmd) => Some(cmd.options().into()),
             cli::MemoryCommands::Info(args) => Some((&args.options).into()),
             cli::MemoryCommands::Read(args) => Some((&args.options).into()),
             _ => None,

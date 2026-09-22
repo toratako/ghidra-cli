@@ -104,12 +104,8 @@ final class ListingCommands {
         Memory memory = session.program().getMemory();
 
         for (MemoryBlock block : memory.getBlocks()) {
-            JsonObject blockData = MemoryBlockInfo.summary(block);
-            blockData.addProperty("start", AddressCodec.format(block.getStart()));
-            blockData.addProperty("end", AddressCodec.format(block.getEnd()));
-            blockData.addProperty("size", block.getSize());
-            blockData.addProperty("is_initialized", block.isInitialized());
-            blockData.addProperty("is_loaded", block.isLoaded());
+            JsonObject blockData = MemoryBlockInfo.describe(block);
+            blockData.add("is_initialized", blockData.remove("initialized"));
             blocks.add(blockData);
         }
 

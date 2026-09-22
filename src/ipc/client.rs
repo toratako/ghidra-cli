@@ -16,6 +16,8 @@ mod scripts;
 mod search;
 mod transport;
 
+pub use memory::MemoryBlockCreateRequest;
+
 /// Client for communicating with the Ghidra Java bridge.
 pub struct BridgeClient {
     port: u16,

@@ -2,6 +2,17 @@ use super::BridgeClient;
 use anyhow::Result;
 use serde_json::json;
 
+pub struct MemoryBlockCreateRequest<'a> {
+    pub name: &'a str,
+    pub start: &'a str,
+    pub size: i64,
+    pub uninitialized: bool,
+    pub fill: Option<u8>,
+    pub permissions: &'a str,
+    pub volatile: bool,
+    pub overlay: Option<&'a str>,
+}
+
 impl BridgeClient {
     /// Get memory map.
     pub fn memory_map(&self) -> Result<serde_json::Value> {
@@ -22,6 +33,70 @@ impl BridgeClient {
             args["source_at"] = json!(source_at);
         }
         self.send_command("memory_file_mappings", Some(args))
+    }
+
+    pub fn memory_block_create(
+        &self,
+        args: MemoryBlockCreateRequest<'_>,
+    ) -> Result<serde_json::Value> {
+        let mut request = json!({
+            "name": args.name,
+            "start": args.start,
+            "size": args.size,
+            "uninitialized": args.uninitialized,
+            "permissions": args.permissions,
+            "volatile": args.volatile,
+        });
+        if let Some(fill) = args.fill {
+            request["fill"] = json!(fill);
+        }
+        if let Some(overlay) = args.overlay {
+            request["overlay"] = json!(overlay);
+        }
+        self.send_command("memory_block_create", Some(request))
+    }
+
+    pub fn memory_block_rename(&self, block_start: &str, name: &str) -> Result<serde_json::Value> {
+        self.send_command(
+            "memory_block_rename",
+            Some(json!({"block_start": block_start, "name": name})),
+        )
+    }
+
+    pub fn memory_block_set_permissions(
+        &self,
+        block_start: &str,
+        permissions: &str,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "memory_block_set_permissions",
+            Some(json!({"block_start": block_start, "permissions": permissions})),
+        )
+    }
+
+    pub fn memory_block_set_volatile(
+        &self,
+        block_start: &str,
+        value: bool,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "memory_block_set_volatile",
+            Some(json!({"block_start": block_start, "value": value})),
+        )
+    }
+
+    pub fn memory_block_move(&self, block_start: &str, start: &str) -> Result<serde_json::Value> {
+        self.send_command(
+            "memory_block_move",
+            Some(json!({"block_start": block_start, "start": start})),
+        )
+    }
+
+    pub fn memory_block_delete(&self, block_start: &str) -> Result<serde_json::Value> {
+        self.send_command(
+            "memory_block_delete",
+            Some(json!({"block_start": block_start})),
+        )
     }
 
     /// Get instruction, data, function, and memory details at a target.

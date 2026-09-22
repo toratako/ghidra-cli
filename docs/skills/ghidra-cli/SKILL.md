@@ -119,7 +119,7 @@ A timeout is reported with exit 75, distinct from a command failure.
 | -------------------------------------------------------------------------- | ------------------------------------------------ |
 | Check decompiler metadata, file mappings, search modes, graphs, or result limits | [Exploration](references/exploration.md)         |
 | Refine names, types, namespaces, references, constants, or annotations    | [Refinement](references/refinement.md)           |
-| Inspect instructions or PCode, fix decoding context or boundaries, or patch code | [Low-level analysis](references/low-level.md) |
+| Inspect instructions or PCode, fix decoding context, model RAM/MMIO/overlays, or patch code | [Low-level analysis](references/low-level.md) |
 | Run custom Java processing and validate its artifacts                      | [Scripting](references/scripting.md)             |
 | Import or rebase programs, choose reanalysis scope, manage projects, or export | [Programs and artifacts](references/programs.md) |
 | Check batch quoting, target inheritance, nesting, or result structure      | [Batch](references/batch.md)                     |

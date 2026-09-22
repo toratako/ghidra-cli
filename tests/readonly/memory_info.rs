@@ -44,7 +44,9 @@ fn memory_info_classifies_listing_and_preserves_object_and_address_space_boundar
             entry["memory"],
             json!({
                 "name": "code", "permissions": "rx", "start": "0x00001000",
-                "end": "0x000011ff", "initialized": true
+                "end": "0x000011ff", "size": 512, "initialized": true,
+                "is_loaded": true, "address_space": "ram", "overlay": false,
+                "base_space": null, "type": "default", "volatile": false
             })
         );
         assert!(entry["data"].is_null());

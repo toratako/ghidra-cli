@@ -77,6 +77,7 @@ identity. Filter a domain with, for example,
 | `reliability_tests`, `project_tests` | Restart/stale-state recovery and project management |
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding, original file bytes versus edits, mapping intervals/reverse lookup, source identity, cancellation and reopen persistence |
+| `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |
 | `data_tests` | Applied data values, interior components, exact scalars and bounded aggregate expansion |
 | `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |
 | `export_coverage_tests` | Export artifacts, C declaration limits, initialized binary ranges and XML sidecars |

@@ -8,6 +8,9 @@ pub enum MemoryCommands {
     Map(QueryOptions),
     /// List direct file mapping intervals, optionally matching an original-file offset
     FileMappings(MemoryFileMappingsArgs),
+    /// Create, edit, move, or delete memory blocks
+    #[command(subcommand)]
+    Block(MemoryBlockCommands),
     /// Show the instruction, data, function, and memory block at a target
     Info(MemoryInfoArgs),
     /// Read memory
@@ -26,6 +29,114 @@ pub struct MemoryFileMappingsArgs {
     pub source_at: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum MemoryBlockCommands {
+    /// Create a block with explicit initialization and permissions
+    Create(MemoryBlockCreateArgs),
+    /// Change a block's display name, preserving its address space
+    Rename(MemoryBlockRenameArgs),
+    /// Replace all read, write, and execute permissions
+    SetPermissions(MemoryBlockPermissionsArgs),
+    /// Set or clear a block's volatile attribute
+    SetVolatile(MemoryBlockVolatileArgs),
+    /// Move a whole block and its analysis within the same address space
+    Move(MemoryBlockMoveArgs),
+    /// Delete a block and its associated analysis
+    Delete(MemoryBlockDeleteArgs),
+}
+
+impl MemoryBlockCommands {
+    pub fn options(&self) -> &ObjectOptions {
+        match self {
+            Self::Create(args) => &args.options,
+            Self::Rename(args) => &args.options,
+            Self::SetPermissions(args) => &args.options,
+            Self::SetVolatile(args) => &args.options,
+            Self::Move(args) => &args.options,
+            Self::Delete(args) => &args.options,
+        }
+    }
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("initialization").required(true).args(["uninitialized", "fill"])))]
+pub struct MemoryBlockCreateArgs {
+    /// Block display name
+    pub name: String,
+    /// Explicit start address, qualified with the space name for an existing overlay
+    pub start: String,
+    /// Positive size in decimal bytes
+    #[arg(value_parser = parse_block_size)]
+    pub size: i64,
+    /// Create memory without known byte values
+    #[arg(long)]
+    pub uninitialized: bool,
+    /// Initialize every byte to this decimal or 0x byte value
+    #[arg(long, value_name = "BYTE", value_parser = parse_fill_byte)]
+    pub fill: Option<u8>,
+    /// Combination of r, w, x, or none
+    #[arg(long, value_parser = parse_permissions)]
+    pub permissions: String,
+    /// Mark the block volatile, as for MMIO
+    #[arg(long)]
+    pub volatile: bool,
+    /// Create a new overlay space with this name over START's physical space
+    #[arg(long, value_name = "NAME")]
+    pub overlay: Option<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryBlockRenameArgs {
+    /// Exact block start as an explicit address, including its space when needed
+    pub block_start: String,
+    /// New block display name
+    pub name: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryBlockPermissionsArgs {
+    /// Exact block start as an explicit address, including its space when needed
+    pub block_start: String,
+    /// Replacement combination of r, w, x, or none
+    #[arg(value_parser = parse_permissions)]
+    pub permissions: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryBlockVolatileArgs {
+    /// Exact block start as an explicit address, including its space when needed
+    pub block_start: String,
+    /// Whether the block is volatile
+    #[arg(long, required = true, action = clap::ArgAction::Set)]
+    pub value: bool,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryBlockMoveArgs {
+    /// Exact block start as an explicit address, including its space when needed
+    pub block_start: String,
+    /// New explicit start address in the same address space
+    pub start: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryBlockDeleteArgs {
+    /// Exact block start as an explicit address, including its space when needed
+    pub block_start: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 fn parse_nonnegative_long(value: &str) -> Result<i64, String> {
@@ -48,6 +159,38 @@ fn parse_nonnegative_long(value: &str) -> Result<i64, String> {
 fn parse_file_offset(value: &str) -> Result<String, String> {
     parse_nonnegative_long(value)?;
     Ok(value.to_owned())
+}
+
+fn parse_block_size(value: &str) -> Result<i64, String> {
+    if value.is_empty() || !value.bytes().all(|c| c.is_ascii_digit()) {
+        return Err("use a positive decimal byte count".into());
+    }
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|size| *size > 0)
+        .ok_or_else(|| format!("size must be between 1 and {} bytes", i64::MAX))
+}
+
+fn parse_fill_byte(value: &str) -> Result<u8, String> {
+    u8::try_from(parse_nonnegative_long(value)?)
+        .map_err(|_| "fill byte must be between 0 and 255".into())
+}
+
+fn parse_permissions(value: &str) -> Result<String, String> {
+    if value == "none" {
+        return Ok(value.to_owned());
+    }
+    let mut permissions = String::new();
+    for flag in ['r', 'w', 'x'] {
+        if value.contains(flag) {
+            permissions.push(flag);
+        }
+    }
+    if permissions.is_empty() || permissions.len() != value.len() {
+        return Err("use a combination of r, w, x (each at most once), or none".into());
+    }
+    Ok(permissions)
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

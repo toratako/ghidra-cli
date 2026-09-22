@@ -124,7 +124,8 @@ another consumer or terminate its checkout.
 | `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
-| `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
+| `MemoryBlockInfo` | Small block summaries for function queries and full descriptions for memory queries/receipts |
+| `MemoryBlockCommands` | Exact-start block creation/attribute changes and native movement/deletion |
 | `MemoryInfoCommands`, `MemorySources`, `FileMappingCommands` | Listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
 | `DataCommands` | Applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
@@ -215,6 +216,17 @@ Each request builds its own interval snapshot and FileBytes-identity anchor inde
 never retain these across edits or program changes. `FileMappingCommands` lists
 whole source intervals, or one-byte intersections for an original-file offset.
 Excluded mappings remain response context even when there are no matches.
+
+`MemoryBlockCommands` resolves explicit addresses and requires equality with the
+block start before editing. Creation uses `Program.createOverlaySpace` for an
+explicit new overlay name, then creates the block inside that exact space.
+Movement stays in one space and uses `Memory.moveBlock`; deletion uses
+`Memory.removeBlock`, including native analysis effects and last-overlay removal.
+Both reject indirect-mapping backing intersections, including the move destination.
+Check cancellation after the native calls, which may return after partial work;
+`ProgramSession` owns rollback and saving. No handler reruns analysis or repairs
+embedded pointer bytes. Ghidra's outside incoming references can retain the old
+target, and deleting part of a function body can remove the entire function.
 
 `DataCommands` reads through applied `Data` instances so component settings and
 bitfield layouts stay native. Interior lookup stops at overlapping components;

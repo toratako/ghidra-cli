@@ -271,6 +271,23 @@ address/end/block_start/reason records, including when `source_at` is selected
 because indirect mappings cannot be classified as direct matches. Rust retains
 this context and supplied selectors in `meta`, and applies normal query paging.
 
+`memory_block_create` takes `name`, explicit `start`, byte `size`, `permissions`
+(`r`/`w`/`x` combinations or `none`), and exactly `uninitialized: true` or integer
+`fill` (0..255). Optional `volatile` defaults false; optional `overlay` names a new
+space over the physical start space. An existing overlay is selected in `start`.
+`memory_block_rename`, `memory_block_set_permissions`,
+`memory_block_set_volatile`, `memory_block_move`, and `memory_block_delete` take
+an exact explicit `block_start`; their new values are `name`, `permissions`,
+boolean `value`, or explicit `start`, respectively. Move stays in the same space;
+nonloaded overlays, such as overlays of `OTHER`, cannot be moved.
+Block edits return `{status, changed, before, after}` with nullable descriptions;
+delete also reports `overlay_removed`. Descriptions include name, bounds, byte
+size, permissions, initialized/loaded flags, address space, overlay/base space,
+native block type, and volatility. Map retains `is_initialized`; info and receipts
+use `initialized`. Mapped blocks cannot be edited, and move/delete cannot affect
+indirect-mapping backing ranges. These are ordinary atomic requests with no
+automatic reanalysis; move/delete use Ghidra's native analysis-update semantics.
+
 `data_list` takes `limit` and returns `{items, count}` for top-level defined
 data; filtering, sorting and offset remain in Rust. `data_read` takes `target`,
 `max_depth` (default 2), and `max_elements` (default 100). It returns the selected

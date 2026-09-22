@@ -67,10 +67,7 @@ final class MemoryInfoCommands {
 
         JsonObject memoryInfo = null;
         if (block != null) {
-            memoryInfo = MemoryBlockInfo.summary(block);
-            memoryInfo.addProperty("start", AddressCodec.format(block.getStart()));
-            memoryInfo.addProperty("end", AddressCodec.format(block.getEnd()));
-            memoryInfo.addProperty("initialized", block.isInitialized());
+            memoryInfo = MemoryBlockInfo.describe(block);
         }
         result.add("memory", memoryInfo == null ? JsonNull.INSTANCE : memoryInfo);
         result.add("file_mapping", MemorySources.describe(session, address));

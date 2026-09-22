@@ -453,6 +453,16 @@ impl RecordedBridge {
                         json!({key: rows, "count": rows.len()})
                     }
                     "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
+                    "memory_block_create"
+                    | "memory_block_rename"
+                    | "memory_block_set_permissions"
+                    | "memory_block_set_volatile"
+                    | "memory_block_move"
+                    | "memory_block_delete" => memory::block_receipt_fixture(
+                        request["command"].as_str().unwrap(),
+                        args,
+                        &program,
+                    ),
                     "string_refs" => {
                         let rows = if args["pattern"] == "absent" {
                             vec![]
