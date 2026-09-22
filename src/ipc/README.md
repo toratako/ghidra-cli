@@ -13,6 +13,12 @@ Typed adapters remain methods on `BridgeClient`, grouped under `client/`:
 symbols, types, tags, bookmarks and comments; `program.rs` owns program lifecycle
 and analysis; `search.rs` owns strings and searches; `scripts.rs` owns scripts.
 
+`graph_cfg` accepts positive `max_nodes` and `max_edges` within the signed
+32-bit range, defaulting to 1,000 and 4,000. Its structured payload carries
+result-scoped IDs, provenance, limit units and completion metadata. Edge limits
+apply across transitions, calls and boundaries. Omitted destinations remain
+distinguishable from unresolved ones.
+
 ## Connection and timeout boundaries
 
 Each request uses a fresh localhost TCP connection for one newline-terminated

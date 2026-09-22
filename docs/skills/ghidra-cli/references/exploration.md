@@ -27,6 +27,21 @@ the entry block, not every body range.
 `basic_block_count` counts optimized decompiler blocks. Jump tables contain
 only recovered destinations; an empty result does not rule out an indirect branch.
 
+Use `graph cfg` to choose instruction ranges around a branch or join, including
+unreachable instructions recorded in the function body:
+
+```bash
+ghidra-cli graph cfg parse_header --project target
+ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target
+```
+
+CFG blocks retain their native boundaries; `body_intersection` shows which part
+belongs to the function. Inspect `calls` separately from successor `edges`, and
+`boundaries` for unresolved transfers and body crossings. An unknown destination
+is different from one omitted by an output budget. If `completion.output.complete`
+is false, raise the indicated budget before treating missing edges as absent.
+Output budgets do not limit native analysis time; use job control for long work.
+
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 

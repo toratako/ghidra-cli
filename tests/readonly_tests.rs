@@ -18,6 +18,8 @@ mod bookmarks;
 mod byte_regex;
 #[path = "readonly/calls.rs"]
 mod calls;
+#[path = "readonly/cfg.rs"]
+mod cfg;
 #[path = "readonly/constants.rs"]
 mod constants;
 #[path = "readonly/decompile.rs"]

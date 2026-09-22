@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `graph cfg FUNCTION` for instruction blocks, control-flow edges, call
+  sites, and unresolved or out-of-body transitions, with explicit output budgets.
 - Add `project archive NAME --output FILE` and `project restore ARCHIVE NAME`
   for standard Ghidra GAR snapshots and restoration into new projects. Archive
   drains and saves a running bridge before stopping it; both operations refuse

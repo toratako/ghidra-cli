@@ -172,6 +172,7 @@ ghidra-cli
 │   ├── instruction
 │   └── constant
 ├── graph
+│   ├── cfg
 │   ├── calls
 │   ├── callers
 │   └── callees
@@ -200,4 +201,4 @@ ghidra-cli
 └── setup
 ```
 
-188 command nodes (excluding the root), 0 aliases.
+189 command nodes (excluding the root), 0 aliases.

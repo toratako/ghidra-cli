@@ -32,6 +32,17 @@ fn parse_decompile_timeout_secs(value: &str) -> Result<u32> {
         })
 }
 
+fn validate_flow_limits(max_nodes: u32, max_edges: u32) -> Result<()> {
+    for (name, value) in [("max_nodes", max_nodes), ("max_edges", max_edges)] {
+        anyhow::ensure!(
+            (1..=i32::MAX as u32).contains(&value),
+            "{name} must be an integer from 1 to {}",
+            i32::MAX
+        );
+    }
+    Ok(())
+}
+
 impl BridgeClient {
     /// List functions. `tags` restricts to functions carrying ALL of the given
     /// tags (server-side filter); `untagged` restricts to functions with no tags.
@@ -116,6 +127,19 @@ impl BridgeClient {
 
     pub fn graph_calls(&self, limit: Option<usize>) -> Result<serde_json::Value> {
         self.send_command("graph_calls", Some(json!({"limit": limit})))
+    }
+
+    pub fn graph_cfg(
+        &self,
+        function: &str,
+        max_nodes: u32,
+        max_edges: u32,
+    ) -> Result<serde_json::Value> {
+        validate_flow_limits(max_nodes, max_edges)?;
+        self.send_command(
+            "graph_cfg",
+            Some(json!({"function": function, "max_nodes": max_nodes, "max_edges": max_edges})),
+        )
     }
 
     pub fn graph_callers(

@@ -41,6 +41,18 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/AnalysisCommands.java"),
     ),
     (
+        "ghidracli/AnalysisContext.java",
+        include_str!("../scripts/ghidracli/AnalysisContext.java"),
+    ),
+    (
+        "ghidracli/AnalysisLimits.java",
+        include_str!("../scripts/ghidracli/AnalysisLimits.java"),
+    ),
+    (
+        "ghidracli/InstructionCfg.java",
+        include_str!("../scripts/ghidracli/InstructionCfg.java"),
+    ),
+    (
         "ghidracli/ArtifactManifest.java",
         include_str!("../scripts/ghidracli/ArtifactManifest.java"),
     ),

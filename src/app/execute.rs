@@ -464,6 +464,9 @@ pub(super) fn execute_via_bridge(
         Commands::Graph(cmd) => {
             use cli::GraphCommands;
             match cmd {
+                GraphCommands::Cfg(args) => {
+                    client.graph_cfg(&args.function, args.max_nodes, args.max_edges)
+                }
                 GraphCommands::Calls(_) => client.graph_calls(list_limit),
                 GraphCommands::Callers(args) => {
                     client.graph_callers(&args.target, args.depth, list_limit)

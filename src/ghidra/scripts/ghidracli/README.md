@@ -147,6 +147,8 @@ another consumer or terminate its checkout.
 | `FunctionVariableCommands` | Decompiler variable discovery, guarded single-target selection, and saved variable edits |
 | `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
+| `InstructionCfg` | Native instruction blocks, intrafunction edges, calls and body boundaries |
+| `AnalysisContext`, `AnalysisLimits` | Analysis provenance, result identity and shared output limits |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Small block summaries for function queries and full descriptions for memory queries/receipts |
 | `MemoryBlockCommands` | Exact-start block creation/attribute changes and native movement/deletion |
@@ -435,6 +437,11 @@ Failure or cancellation closes the interface. Switching/closing saves first,
 then synchronously closes the decompiler before releasing the Program;
 `dispose()` alone defers cleanup to Ghidra's disposer thread. A failed save retains
 the live session.
+
+`InstructionCfg` retains the full native blocks intersecting the function body,
+including delay slots, and records their body intersection separately. Calls and
+body crossings are distinct from intrafunction edges. Resolve destinations from
+reference addresses without invoking lazy block lookup with a dummy monitor.
 
 `ImportSupport` owns the loader's detached programs until save/release. Bootstrap
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge

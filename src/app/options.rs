@@ -94,6 +94,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Constant(args) => args.options.project.clone(),
         },
         Commands::Graph(cmd) => match cmd {
+            cli::GraphCommands::Cfg(args) => args.project.clone(),
             cli::GraphCommands::Calls(opts) => opts.project.clone(),
             cli::GraphCommands::Callers(args) => args.options.project.clone(),
             cli::GraphCommands::Callees(args) => args.options.project.clone(),
@@ -286,6 +287,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::FindCommands::Constant(args) => args.options.program.clone(),
         },
         Commands::Graph(cmd) => match cmd {
+            cli::GraphCommands::Cfg(args) => args.program.clone(),
             cli::GraphCommands::Calls(opts) => opts.program.clone(),
             cli::GraphCommands::Callers(args) => args.options.program.clone(),
             cli::GraphCommands::Callees(args) => args.options.program.clone(),
@@ -556,6 +558,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             _ => None,
         },
         Commands::Graph(cmd) => match cmd {
+            cli::GraphCommands::Cfg(_) => None,
             cli::GraphCommands::Calls(opts) => Some(opts.clone()),
             cli::GraphCommands::Callers(args) => Some(args.options.clone()),
             cli::GraphCommands::Callees(args) => Some(args.options.clone()),

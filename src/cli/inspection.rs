@@ -250,12 +250,30 @@ fn constant_number(value: &str) -> Result<i128, String> {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum GraphCommands {
+    /// Inspect instruction control flow within one function
+    Cfg(GraphCfgArgs),
     /// Call graph
     Calls(QueryOptions),
     /// List incoming call sites, resolving thunks and import pointers
     Callers(GraphFunctionArgs),
     /// List outgoing call sites, retaining destinations without a defined function
     Callees(GraphFunctionArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct GraphCfgArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    pub function: String,
+    /// Maximum returned blocks
+    #[arg(long, value_name = "N", default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    pub max_nodes: u32,
+    /// Maximum returned flow records, including calls and boundaries
+    #[arg(long, value_name = "N", default_value_t = 4000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    pub max_edges: u32,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

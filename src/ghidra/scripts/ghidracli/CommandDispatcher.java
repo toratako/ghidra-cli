@@ -28,6 +28,7 @@ final class CommandDispatcher {
     private final CommentCommands commentCommands;
     private final BookmarkCommands bookmarkCommands;
     private final GraphCommands graphCommands;
+    private final InstructionCfg instructionCfg;
     private final MemoryCommands memoryCommands;
     private final MemoryInfoCommands memoryInfoCommands;
     private final FileMappingCommands fileMappingCommands;
@@ -77,6 +78,7 @@ final class CommandDispatcher {
         commentCommands = new CommentCommands(session);
         bookmarkCommands = new BookmarkCommands(session);
         graphCommands = new GraphCommands(session, functionQueries);
+        instructionCfg = new InstructionCfg(session, functionQueries);
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
         fileMappingCommands = new FileMappingCommands(session);
@@ -224,6 +226,7 @@ final class CommandDispatcher {
             case "bookmark_delete": return bookmarkCommands.handleDelete(args);
             // Graph commands
             case "graph_calls":     return graphCommands.handleGraphCalls(args);
+            case "graph_cfg":       return instructionCfg.handle(args);
             case "graph_callers":   return graphCommands.handleGraphCallers(args);
             case "graph_callees":   return graphCommands.handleGraphCallees(args);
             // Memory writes

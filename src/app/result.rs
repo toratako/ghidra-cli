@@ -86,6 +86,7 @@ impl ResultShape {
                 }
             }
             Commands::Project(_)
+            | Commands::Graph(GraphCommands::Cfg(_))
             | Commands::Program(_)
             | Commands::Function(_)
             | Commands::Symbol(_)
