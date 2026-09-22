@@ -270,6 +270,46 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
 }
 
 #[test]
+fn function_body_and_call_signature_preserve_scope_and_options_in_batches() {
+    let bridge = RecordedBridge::new();
+    for (args, wire, expected) in [(
+        vec![
+            "function",
+            "get",
+            "caller",
+            "--with-frame",
+            "--with-signature",
+        ],
+        "get_function",
+        json!({"address": "caller", "with_frame": true, "with_signature": true}),
+    )] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = args.clone();
+            args.extend(["--program", "B", "--fields", "observed_program"]);
+            let receipt = if batch {
+                std::fs::write(
+                    bridge.root.path().join("functions.txt"),
+                    batch_arguments(&args),
+                )
+                .unwrap();
+                bridge.run(&["batch", "functions.txt"])["results"][0]["result"]["data"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(receipt, json!({"observed_program": "B"}));
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+            assert_eq!(operations.len(), 1, "{args:?}");
+            assert_eq!(operations[0]["args"], expected, "{args:?}");
+            assert!(requests
+                .iter()
+                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        }
+    }
+}
+
+#[test]
 fn variable_list_queries_preserve_context_and_filter_before_paging() {
     let bridge = RecordedBridge::new();
     let args = [

@@ -146,6 +146,10 @@ fn signature_details(program: &str, target: &str) -> Value {
     command(program, &["function", "get", target, "--with-signature"])
 }
 
+fn frame_details(program: &str, target: &str) -> Value {
+    command(program, &["function", "get", target, "--with-frame"])
+}
+
 fn signature_program_state() -> String {
     let result = harness().client().unwrap().script_run_source(r#"
 import ghidra.app.script.GhidraScript;
@@ -230,6 +234,8 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
             );
             let thunk = signature_details(&program, "method_thunk");
             let details = &thunk["signature_details"];
+            assert_eq!(details["thunk_function"], "method");
+            assert_eq!(details["thunk_address"], method["address"]);
             assert_eq!(details["effective_function"], "method");
             assert_eq!(details["effective_address"], method["address"]);
             assert_eq!(details["params"][0]["type"], "Wrapper *");
@@ -237,9 +243,18 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
             let thunk = signature_details(&program, "plain_thunk");
             let mut details = thunk["signature_details"].clone();
             let obj = details.as_object_mut().unwrap();
+            assert_eq!(obj.remove("thunk_function").unwrap(), "plain");
+            assert_eq!(obj.remove("thunk_address").unwrap(), plain["address"]);
             assert_eq!(obj.remove("effective_function").unwrap(), "plain");
             assert_eq!(obj.remove("effective_address").unwrap(), plain["address"]);
             assert_eq!(details, plain["signature_details"]);
+
+            let chained = signature_details(&program, "chained_thunk");
+            let details = &chained["signature_details"];
+            assert_eq!(details["thunk_function"], "plain_thunk");
+            assert_eq!(details["thunk_address"], thunk["address"]);
+            assert_eq!(details["effective_function"], "plain");
+            assert_eq!(details["effective_address"], plain["address"]);
 
             let custom = signature_details(&program, "custom");
             let details = &custom["signature_details"];
@@ -260,12 +275,89 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
             assert_eq!(external["is_external"], true);
             assert_eq!(external["signature_details"]["return"]["type"], "void");
 
+            let framed = frame_details(&program, "plain");
+            assert!(framed.get("signature_details").is_none());
+            assert_eq!(
+                framed["frame_details"],
+                json!({
+                    "effective_function":"plain", "effective_address":plain["address"],
+                    "frame_size":28, "local_size":20, "parameter_size":8,
+                    "parameter_offset":4, "return_address_offset":8, "grows_negative":true,
+                    "stack_variables":[
+                        {"name":"buffer", "kind":"local", "type":"int", "type_path":"/int",
+                         "size":4, "storage":"Stack[-0x10]:4", "stack_offset":-16,
+                         "stack_size":4, "source":"USER_DEFINED", "first_use_offset":0},
+                        {"name":"flag", "kind":"local", "type":"short", "type_path":"/short",
+                         "size":2, "storage":"Stack[-0x4]:2", "stack_offset":-4,
+                         "stack_size":2, "source":"ANALYSIS", "first_use_offset":0},
+                        {"name":"first", "kind":"parameter", "type":"int", "type_path":"/int",
+                         "size":4, "storage":"Stack[0x4]:4", "stack_offset":4,
+                         "stack_size":4, "source":"USER_DEFINED", "ordinal":0, "auto_parameter":null},
+                        {"name":"second", "kind":"parameter", "type":"int", "type_path":"/int",
+                         "size":4, "storage":"Stack[0x8]:4", "stack_offset":8,
+                         "stack_size":4, "source":"USER_DEFINED", "ordinal":1, "auto_parameter":null}
+                    ]
+                })
+            );
+            for target in ["plain_thunk", "chained_thunk"] {
+                let forwarded = frame_details(&program, target);
+                assert_eq!(forwarded["name"], target);
+                assert!(forwarded.get("signature_details").is_none());
+                assert_eq!(forwarded["frame_details"], framed["frame_details"]);
+            }
+            let framed_custom = frame_details(&program, "custom");
+            let frame = &framed_custom["frame_details"];
+            assert_eq!(frame["frame_size"], 20);
+            assert_eq!(frame["local_size"], 16);
+            assert_eq!(frame["parameter_size"], 4);
+            let variables = frame["stack_variables"].as_array().unwrap();
+            assert_eq!(variables.len(), 2);
+            assert_eq!(variables[0]["name"], "custom_local");
+            assert_eq!(variables[1]["name"], "on_stack");
+            assert_eq!(
+                frame_details(&program, "unassigned")["frame_details"]["stack_variables"],
+                json!([])
+            );
+            assert_eq!(
+                frame_details(&program, "outside")["frame_details"]["stack_variables"],
+                json!([])
+            );
+            for target in ["indirect", "method", "method_thunk"] {
+                let saved = signature_details(&program, target);
+                let frame = frame_details(&program, target);
+                let params = saved["signature_details"]["params"].as_array().unwrap();
+                for variable in frame["frame_details"]["stack_variables"]
+                    .as_array()
+                    .unwrap()
+                {
+                    let ordinal = variable["ordinal"].as_u64().unwrap() as usize;
+                    assert_eq!(variable["storage"], params[ordinal]["storage"]);
+                    assert_eq!(
+                        variable["auto_parameter"],
+                        params[ordinal]["auto_parameter"]
+                    );
+                }
+            }
+            let both = command(
+                &program,
+                &[
+                    "function",
+                    "get",
+                    "chained_thunk",
+                    "--with-signature",
+                    "--with-frame",
+                ],
+            );
+            assert_eq!(both["signature_details"], chained["signature_details"]);
+            assert_eq!(both["frame_details"], framed["frame_details"]);
+
             let listed = command(&program, &["function", "list", "--limit", "0"]);
             assert!(listed
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|row| row.get("signature_details").is_none()));
+                .all(|row| row.get("signature_details").is_none()
+                    && row.get("frame_details").is_none()));
             assert_eq!(
                 command(
                     &program,
@@ -307,11 +399,86 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
             client.open_program(&program).unwrap();
             assert_eq!(signature_details(&program, "plain"), plain);
             assert_eq!(signature_details(&program, "custom"), custom);
+            assert_eq!(frame_details(&program, "plain"), framed);
+            assert_eq!(frame_details(&program, "custom"), framed_custom);
+
+            let receipt = command(
+                &program,
+                &[
+                    "function",
+                    "set-signature",
+                    "chained_thunk",
+                    "--signature",
+                    "short plain(int replacement)",
+                ],
+            );
+            assert_eq!(receipt["effective_function"], "plain");
+            assert_eq!(receipt["effective_address"], plain["address"]);
+            let updated = signature_details(&program, "plain");
+            assert_eq!(updated["signature_details"]["return"]["type"], "short");
+            assert_eq!(
+                updated["signature_details"]["params"][0]["name"],
+                "replacement"
+            );
         });
         client.open_program(TEST_PROGRAM).unwrap();
         client.program_delete(&program).unwrap();
         if let Err(panic) = checked {
             std::panic::resume_unwind(panic);
         }
+    }
+}
+
+#[test]
+#[serial]
+fn frame_details_preserve_positive_growth_and_signed_stack_offsets() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("positive-frame-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("CreatePositiveFrameFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&program).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let before = signature_program_state();
+        let detail = frame_details(&program, "positive_frame");
+        let frame = &detail["frame_details"];
+        assert_eq!(frame["effective_function"], "positive_frame");
+        assert_eq!(frame["effective_address"], detail["address"]);
+        assert_eq!(frame["grows_negative"], false);
+        assert_eq!(frame["frame_size"], 13);
+        assert_eq!(frame["local_size"], 7);
+        assert_eq!(frame["parameter_size"], 6);
+        assert_eq!(frame["parameter_offset"], -2);
+        assert_eq!(frame["return_address_offset"], -2);
+        let variables = frame["stack_variables"].as_array().unwrap();
+        assert_eq!(variables.len(), 4);
+        for (row, (name, offset)) in
+            variables
+                .iter()
+                .zip([("split", -8), ("second", -6), ("first", -4), ("local", 4)])
+        {
+            assert_eq!(row["name"], name);
+            assert_eq!(row["stack_offset"], offset);
+            assert_eq!(row["stack_size"], 1);
+        }
+        assert_eq!(variables[0]["size"], 2);
+        assert_eq!(variables[0]["storage"], "ACC:1,Stack[-0x8]:1");
+        assert_eq!(variables[0]["ordinal"], 2);
+        assert_eq!(
+            signature_program_state(),
+            before,
+            "Frame inspection changed the Program"
+        );
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
     }
 }

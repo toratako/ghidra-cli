@@ -1,4 +1,4 @@
-use super::{format_json_value, signature};
+use super::{format_json_value, frame, signature};
 use crate::error::Result;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -168,6 +168,10 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 }
 
                 // General object: render primary fields in a compact line
+                if map.len() == 1 && map.contains_key("frame_details") {
+                    frame::format_details(&map["frame_details"], &mut result);
+                    continue;
+                }
                 if map.len() == 1 && map.contains_key("signature_details") {
                     signature::format_details(&map["signature_details"], &mut result);
                     continue;
@@ -208,7 +212,9 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 if parts.is_empty() {
                     let kv: Vec<String> = map
                         .iter()
-                        .filter(|(k, _)| k.as_str() != "signature_details")
+                        .filter(|(k, _)| {
+                            !matches!(k.as_str(), "signature_details" | "frame_details")
+                        })
                         .map(|(k, v)| format!("{}={}", k, format_json_value(v)))
                         .collect();
                     result.push_str(&kv.join("  "));
@@ -232,6 +238,7 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                                 | "code"
                                 | "signature"
                                 | "signature_details"
+                                | "frame_details"
                         )
                     })
                     .filter_map(|(k, v)| {
@@ -259,6 +266,9 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 result.push('\n');
                 if let Some(details) = map.get("signature_details") {
                     signature::format_details(details, &mut result);
+                }
+                if let Some(details) = map.get("frame_details") {
+                    frame::format_details(details, &mut result);
                 }
             }
             _ => {
@@ -315,6 +325,10 @@ pub(super) fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
                 for (key, val) in map {
                     if key == "signature_details" {
                         signature::format_details(val, &mut result);
+                        continue;
+                    }
+                    if key == "frame_details" {
+                        frame::format_details(val, &mut result);
                         continue;
                     }
                     let formatted = format_json_value(val);

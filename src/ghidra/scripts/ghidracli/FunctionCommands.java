@@ -99,6 +99,9 @@ final class FunctionCommands {
         if (getArgBool(args, "with_signature", false)) {
             result.add("signature_details", functionQueries.signatureDetailsToJson(func));
         }
+        if (getArgBool(args, "with_frame", false)) {
+            result.add("frame_details", functionQueries.frameDetailsToJson(func));
+        }
         return result;
     }
 

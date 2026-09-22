@@ -8,6 +8,12 @@ pub(super) fn format_details(details: &Value, output: &mut String) {
         text("storage_mode"),
         details["variadic"]
     ));
+    if let Some(target) = details["thunk_function"].as_str() {
+        output.push_str(&format!(
+            "  Direct thunk target: {target} ({})\n",
+            text("thunk_address")
+        ));
+    }
     if let Some(owner) = details["effective_function"].as_str() {
         output.push_str(&format!(
             "  Metadata owner: {owner} ({})\n",
@@ -62,6 +68,7 @@ mod tests {
         let details = json!({
             "source": "USER_DEFINED", "storage_mode": "dynamic", "variadic": false,
             "effective_function": "callee", "effective_address": "0x1000",
+            "thunk_function": "middle", "thunk_address": "0x2000",
             "return": {"type": "Result *", "size": 4, "storage": "EAX:4",
                 "forced_indirect": true, "formal_type_path": "/Recovered/Result"},
             "params": [{"ordinal": 0, "name": "__return_storage_ptr__", "type": "Result *",
@@ -77,6 +84,7 @@ mod tests {
                 assert!(output.contains(
                     "Program signature: source=USER_DEFINED storage=dynamic variadic=false"
                 ));
+                assert!(output.contains("Direct thunk target: middle (0x2000)"));
                 assert!(output.contains("Metadata owner: callee (0x1000)"));
                 assert!(output
                     .contains("Return: Result * (4 bytes; EAX:4) indirect from /Recovered/Result"));

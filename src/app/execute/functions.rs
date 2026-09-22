@@ -24,6 +24,7 @@ pub(super) fn execute(
             Some(json!({
                 "address": args.target,
                 "with_signature": args.with_signature,
+                "with_frame": args.with_frame,
             })),
         ),
         FunctionCommands::ListCallingConventions(_) => client.function_list_calling_conventions(),

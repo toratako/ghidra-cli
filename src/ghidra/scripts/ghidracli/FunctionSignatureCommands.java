@@ -69,6 +69,11 @@ final class FunctionSignatureCommands {
             if (newSig != null) {
                 result.addProperty("signature", newSig);
             }
+            if (func.isThunk()) {
+                Function effective = func.getThunkedFunction(true);
+                result.addProperty("effective_function", effective.getName());
+                result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+            }
             return result;
         } catch (Exception e) {
             return errorResult("Failed to set signature: " + e.getMessage());

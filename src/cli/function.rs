@@ -85,6 +85,9 @@ pub struct FunctionGetArgs {
     /// Include Program-defined parameter/return types and storage without decompiling
     #[arg(long)]
     pub with_signature: bool,
+    /// Include the saved stack frame and stack variables without decompiling
+    #[arg(long)]
+    pub with_frame: bool,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

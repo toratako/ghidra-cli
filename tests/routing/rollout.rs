@@ -7,12 +7,12 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
         (
             vec!["function", "get", "callee", "--with-signature"],
             "get_function",
-            json!({"address":"callee", "with_signature":true}),
+            json!({"address":"callee", "with_signature":true,"with_frame":false}),
         ),
         (
             vec!["function", "get", "callee"],
             "get_function",
-            json!({"address":"callee", "with_signature":false}),
+            json!({"address":"callee", "with_signature":false,"with_frame":false}),
         ),
         (
             vec!["function", "set-stack-purge", "callee", "--bytes", "-4"],

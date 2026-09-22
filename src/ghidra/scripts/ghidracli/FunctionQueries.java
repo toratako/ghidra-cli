@@ -9,6 +9,8 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Parameter;
+import ghidra.program.model.listing.StackFrame;
+import ghidra.program.model.listing.Variable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -116,10 +118,60 @@ final class FunctionQueries {
         }
         result.add("params", params);
         if (func.isThunk()) {
+            Function immediate = func.getThunkedFunction(false);
+            result.addProperty("thunk_function", immediate.getName());
+            result.addProperty("thunk_address", AddressCodec.format(immediate.getEntryPoint()));
             Function effective = func.getThunkedFunction(true);
             result.addProperty("effective_function", effective.getName());
             result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
         }
+        return result;
+    }
+
+    JsonObject frameDetailsToJson(Function func) throws ghidra.util.exception.CancelledException {
+        StackFrame frame = func.getStackFrame();
+        // FunctionDB forwards the frame through the entire thunk chain. Keep its
+        // owner explicit even when the caller did not request signature details.
+        Function effective = frame.getFunction();
+        JsonObject result = new JsonObject();
+        result.addProperty("effective_function", effective.getName());
+        result.addProperty("effective_address", AddressCodec.format(effective.getEntryPoint()));
+        result.addProperty("frame_size", frame.getFrameSize());
+        result.addProperty("local_size", frame.getLocalSize());
+        result.addProperty("parameter_size", frame.getParameterSize());
+        int parameterOffset = frame.getParameterOffset();
+        result.add("parameter_offset", parameterOffset == StackFrame.UNKNOWN_PARAM_OFFSET
+            ? JsonNull.INSTANCE : new com.google.gson.JsonPrimitive(parameterOffset));
+        result.addProperty("return_address_offset", frame.getReturnAddressOffset());
+        result.addProperty("grows_negative", frame.growsNegative());
+        JsonArray variables = new JsonArray();
+        for (Variable variable : frame.getStackVariables()) {
+            session.monitor().checkCancelled();
+            DataType type = variable.getDataType();
+            JsonObject row = new JsonObject();
+            row.addProperty("name", variable.getName());
+            row.addProperty("kind", variable instanceof Parameter ? "parameter" : "local");
+            row.addProperty("type", type.getName());
+            row.addProperty("type_path", type.getPathName());
+            row.addProperty("size", variable.getLength());
+            row.addProperty("storage", variable.getVariableStorage().toString());
+            // A compound variable can occupy both a register and the stack.
+            // Report the stack component separately from the full storage size.
+            var stack = variable.getFirstStorageVarnode();
+            if (!stack.getAddress().isStackAddress()) stack = variable.getLastStorageVarnode();
+            row.addProperty("stack_offset", variable.getVariableStorage().getStackOffset());
+            row.addProperty("stack_size", stack.getSize());
+            row.addProperty("source", variable.getSource().name());
+            if (variable instanceof Parameter parameter) {
+                row.addProperty("ordinal", parameter.getOrdinal());
+                row.addProperty("auto_parameter", parameter.getAutoParameterType() == null
+                    ? null : parameter.getAutoParameterType().name());
+            } else {
+                row.addProperty("first_use_offset", variable.getFirstUseOffset());
+            }
+            variables.add(row);
+        }
+        result.add("stack_variables", variables);
         return result;
     }
 
