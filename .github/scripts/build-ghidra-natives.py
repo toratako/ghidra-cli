@@ -11,7 +11,7 @@ def main():
     install = Path(json.loads(subprocess.check_output(
         ["cargo", "run", "--quiet", "--", "config", "get", "ghidra_install_dir", "--json"],
         text=True,
-    )))
+    ))["data"])
     native_platform = {"arm64": "mac_arm_64", "x86_64": "mac_x86_64"}[platform.machine()]
     required = [
         ("Ghidra/Features/Decompiler", "decompile"),
