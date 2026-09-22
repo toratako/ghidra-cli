@@ -80,6 +80,9 @@ identity. Filter a domain with, for example,
 | `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |
 | `data_tests` | Applied data values, interior components, exact scalars and bounded aggregate expansion |
 | `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |
+| `function_body_tests` | Disjoint body replacement, space-aware boundaries, native annotation/reference losses and rollback |
+| `call_signature_tests` | Caller/site ownership, shared override types, direct/indirect decompiler effects, stale cleanup and saved/rolled-back edits |
+| `listing_flow_tests` | Independent flow/fallthrough edits, native reference/decompiler effects, delay slots and atomic persistence |
 | `export_coverage_tests` | Export artifacts, C declaration limits, initialized binary ranges and XML sidecars |
 | `address_tests` | Strict address syntax, exact-name collisions, rejected mutations, and address output round trips |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
@@ -99,7 +102,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [daemon/transaction.rs](daemon/transaction.rs) | Late-error/cancellation rollback, pending edits after save failure, foreign/leaked transactions, preview isolation; test-owned Java failure probes, no production hooks |
 | [daemon/decompiler.rs](daemon/decompiler.rs) | Native process reuse, invalidation after save/rollback, cancellation/timeout recovery, monitor isolation and release |
 | [readonly/decompile.rs](readonly/decompile.rs) | Warning-comment provenance, API-message extraction, entry block permissions, external/unmapped functions, and unchanged function-list scope |
-| [readonly/decompile_details.rs](readonly/decompile_details.rs), [readonly/function_details.rs](readonly/function_details.rs) | Recovered jump tables, decompiler block counts, disjoint body ranges, calling conventions, and Program signature/storage reads including auto-parameters and thunks |
+| [readonly/decompile_details.rs](readonly/decompile_details.rs), [readonly/function_details.rs](readonly/function_details.rs) | Recovered jump tables, decompiler block counts, disjoint body ranges, calling conventions, and saved signature/storage/frame reads including automatic parameters and direct/final thunk owners |
 | [readonly/bookmarks.rs](readonly/bookmarks.rs), [readonly/memory_info.rs](readonly/memory_info.rs), [readonly/program_metadata.rs](readonly/program_metadata.rs) | Bookmark preservation, address classification, relocation evidence, and original executable hashes |
 | [daemon/analysis.rs](daemon/analysis.rs) | Native option types/defaults/choices, settings-only edits versus full reanalysis, rollback and reopen persistence |
 | [daemon/analysis_modes.rs](daemon/analysis_modes.rs) | Full/range/pending work, empty-range rejection, analysis beyond the seed range, completion flags, queue loss on reopen/cancellation and partial-change persistence |
@@ -113,6 +116,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [symbols/targets.rs](symbols/targets.rs), [symbols/deletion.rs](symbols/deletion.rs) | Exact mutation targets and namespace revalidation; thunk/dynamic symbols and transactional deletion |
 | [scripts/source.rs](scripts/source.rs), [scripts/artifacts.rs](scripts/artifacts.rs) | Java source/package resolution from files and stdin; artifact validation and failure diagnostics |
 | [types/](types/) | Field layouts/settings, union ordinals and packing, enum aliases, signed-char semantics, immutable types and alias-safe deletion; return edits preserving inferred/explicit parameters and ABI storage, compiler-specific calling convention validation |
+| [types/variables.rs](types/variables.rs) | Fresh decompiler candidates versus saved definitions, exact/guarded selection, name-only type preservation and automatic-parameter rejection |
 | [readonly/calls.rs](readonly/calls.rs), [readonly/relationships.rs](readonly/relationships.rs) | Call resolution through thunks/pointers, undefined endpoints and reference evidence; real graph nodes/edges |
 | [readonly/query.rs](readonly/query.rs) | Server pages versus full rows, Unicode/Turkish locale, tags/comments, bounds beyond Java `int` |
 | [readonly/strings.rs](readonly/strings.rs), [readonly/search.rs](readonly/search.rs) | Code-point versus occupied-byte lengths, defined strings versus encoded text, overlaps and encoding errors |

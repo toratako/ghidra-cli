@@ -56,6 +56,54 @@ Word-addressed values may include a byte remainder (`word:0x1000.1`).
 For headerless input, first choose the language and load parameters using
 [raw import](programs.md#raw-import).
 
+## Function bodies
+
+Use `function get` to inspect `body_ranges`, then replace the whole body when
+analysis assigned the wrong ranges:
+
+```bash
+ghidra-cli function get parse_header --project target
+ghidra-cli function set-body parse_header \
+  --range 0x401000 0x40107f --range 0x402000 0x40201f --project target
+```
+
+The repeated inclusive ranges form a union; gaps remain outside the function.
+Keep the entry point, include complete instructions, and resolve ownership by
+other functions before extending the body. This changes body membership without
+creating instructions or merging functions.
+
+Shrinking a body can delete its local labels and stack/register references, and
+detach variable references in the removed region. The receipt reports observed
+losses. Restoring the old ranges does not restore those annotations. Saved
+call-site overrides can survive outside the new body; inspect or clear them with
+`function call-signature get/clear` using the original caller.
+
+## Instruction flow
+
+Correct Ghidra's interpretation without changing instruction bytes:
+
+```bash
+ghidra-cli listing flow get 0x401234 --project target
+ghidra-cli listing flow set 0x401234 --override call --project target
+ghidra-cli listing flow set 0x401234 --fallthrough 0x401240 --project target
+ghidra-cli listing flow clear 0x401234 --override --fallthrough --project target
+```
+
+Targets must be instruction starts. An explicit fallthrough destination must
+already be an instruction start in the same address space; use
+`listing define-code` first if it is undefined. Flow override and fallthrough
+are independent: setting one preserves the other. `--no-fallthrough` removes
+the successor, while `clear --fallthrough` restores the default successor.
+
+`--no-fallthrough` can remove the Listing successor while decompiled C still
+continues after the call. To represent a caller returning after that call, use
+`--override call-return` and inspect `decompile`. Use `function set-noreturn`
+when the callee itself never returns.
+
+Flow edits can change reference types and graph/decompiler output, even though
+bytes stay the same. Inspect `listing flow get` and re-decompile; full analysis
+remains a separate `analysis run` operation.
+
 ## Processor context
 
 Processor context controls how Ghidra decodes an address range. For example,
@@ -99,6 +147,9 @@ ghidra-cli analysis option set "ASCII Strings" false --project target
 ghidra-cli analysis option set "ASCII Strings" true --project target
 ghidra-cli analysis run --project target --program target.bin
 ```
+
+Raw `pcode at` and `pcode function` omit instruction flow overrides. High PCode
+comes through the decompiler and can therefore differ after a flow edit.
 
 For analyzer settings and full, range, or pending analysis, see
 [import and reanalysis](programs.md#import-and-reanalysis).

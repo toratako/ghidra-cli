@@ -7,6 +7,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `function call-signature get/set/clear` for saved prototypes at one call
+  site, including overrides left stale by later instruction or body changes.
+- Add `function set-body` to replace a function's complete body with repeated
+  inclusive ranges and report native annotation/reference losses from shrinking.
+- Add `listing flow get/set/clear` for instruction flow overrides and independent
+  fallthrough control, preserving bytes and leaving full analysis explicit.
+- Add `function get --with-frame` for saved stack layout and expose both direct
+  thunk targets and final signature/frame owners.
 - Add `memory file-mappings` to list preserved-file mapping intervals and find
   every direct mapping of `--file-offset`, with `--source-at` selecting one
   saved input and metadata identifying excluded indirect mappings.
@@ -36,6 +44,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Replace `function edit-var` with `function var list/get/set`. Variable reads
+  expose decompiler candidates and saved definitions separately; exact-name
+  selection with optional filtering resolves one target before an edit.
 - Rename `tag add/remove` to `tag attach/detach`. Attach requires existing tag
   definitions; remove automatic creation and `--no-create`. Detach rejects
   undefined names while leaving known, unattached tags unchanged.

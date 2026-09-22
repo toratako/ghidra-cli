@@ -8,13 +8,15 @@ Re-decompile after type, name, or signature edits to inspect the updated output.
 ghidra-cli function rename FUN_00401000 parse_header --project target
 ghidra-cli function set-signature parse_header \
   --signature "int parse_header(char *buf, int len)" --project target
-ghidra-cli function edit-var parse_header --var local_10 \
+ghidra-cli function var list parse_header --filter 'kind=local' --project target
+ghidra-cli function var get parse_header --var local_10 --project target
+ghidra-cli function var set parse_header --var local_10 \
   --name header --type "Header *" --project target
 ghidra-cli function set-return-type abort_path --type void --project target
 ghidra-cli function list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
-ghidra-cli function get parse_header --with-signature --project target
+ghidra-cli function get parse_header --with-signature --with-frame --project target
 ghidra-cli function set-noreturn abort_path --project target
 ```
 
@@ -25,12 +27,56 @@ their types. Use `function set-signature` when the complete prototype is known.
 
 `function get --with-signature` reads the Program prototype and ABI storage,
 including hidden arguments and indirect returns; decompiler output can still
-refine saved undefined parameter types.
+refine saved undefined parameter types. For thunks, the immediate target and final
+signature owner can differ; signature edits affect the final owner.
+`--with-frame` reads saved stack layout, including ABI-reserved space. Its size
+is neither runtime stack usage nor stack purge; its owner identifies whose frame
+is shown when inspecting a thunk.
 
-`function edit-var` selects a local variable or parameter by exact name;
-ambiguous names return candidates. `before` describes the decompiler's variable,
-while `after` describes the updated database definition. A rename can leave the
-database type undefined so the decompiler continues inferring it.
+`function var list/get` read the decompiler's locals and parameters, including
+inferred variables that have no saved definition. `get` separates that view from
+the saved definition; `set` reports database changes separately from the selected
+decompiler variable. Renaming an inferred local saves an undefined type so the
+decompiler continues inferring it. Editing an inferred parameter can save the
+other inferred parameters, including their types and storage; inspect
+`function get --with-signature` afterward.
+
+`--var` selects the current exact name. If it is ambiguous, narrow the returned
+candidates with `--filter`, using their kind, storage, ordinal, or first use.
+The edit requires exactly one match after filtering; re-read candidates if
+decompilation changes their identity. For example:
+
+```bash
+ghidra-cli function var set parse_header --var value \
+  --filter 'kind=local AND first_use=0x00401234' --name length --project target
+```
+
+Automatic `this` parameters derive their type from the class namespace and
+calling convention. Inspect those before trying to edit `this` as an ordinary
+parameter; class membership changes can affect the native type.
+
+### One call site's prototype
+
+Use a call-site override when one indirect or variadic call needs a prototype
+that should not change the callee's declaration or other calls:
+
+```bash
+ghidra-cli function call-signature get dispatch --at 0x401234 --project target
+ghidra-cli function call-signature set dispatch --at 0x401234 \
+  --signature 'int handler(Context *, int)' --convention __cdecl --project target
+ghidra-cli decompile dispatch --project target
+ghidra-cli function call-signature clear dispatch --at 0x401234 --project target
+```
+
+The function target is the caller, and `--at` is the call instruction's start.
+The signature's function name does not rename or resolve its destination.
+Choose `--convention` from `function list-calling-conventions`; omission uses the
+Program default rather than inheriting a callee or decompiler guess.
+
+`get` reads the saved override. An absent override does not mean the decompiler
+has no inferred prototype. After patching or changing the body, an override may
+remain saved for a call that no longer exists; inspect its applicability and use
+`clear` with the original caller and address to remove it.
 
 ## Comments
 

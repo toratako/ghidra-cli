@@ -15,6 +15,7 @@ and target checks in `src/cli/tests.rs`.
 | `mod.rs` | Command routing, early filter validation, and bridge/program selection |
 | `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
+| `execute/functions.rs` | Function dispatch and guarded selection of one decompiler variable |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
@@ -46,6 +47,10 @@ Symbol deletion validates its target filter before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
+`function var list` applies ordinary list queries to decompiler rows. Get/set
+use `--filter` only to narrow the exact `--var` name to one candidate, then send
+its program/function/modification/row guard for bridge revalidation. Their
+projection-only output controls never change target selection or filter receipts.
 Decompilation diagnostics are result fields in JSON and human formats. C-only
 output retains the generated C and sends API diagnostics absent from its warning
 comments to stderr; field projection and quiet mode still apply.

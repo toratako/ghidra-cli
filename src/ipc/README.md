@@ -24,7 +24,7 @@ a sent mutation could duplicate it. Read waits include time in the program queue
 The write timeout is 30s; configurable read/connect/long-operation budgets are in
 [the runtime reference](../../docs/runtime.md). Decompiler execution timeout stays
 in the shared decompiler adapter because it is a Ghidra parameter, not a socket budget.
-`decompile`, high `pcode_function`, `function_edit_var`, and
+`decompile`, high `pcode_function`, `function_var_list/get/set`, and
 `function_set_return_type` share the native budget and long-operation socket wait.
 Their `timeout_secs` argument defaults to zero (unbounded); numeric integers
 through 2,147,483 seconds are accepted. Reject larger
@@ -234,6 +234,60 @@ Required decompilation or parameter preservation failures roll back the request;
 an explicit complete `function_set_signature` is the recovery path when the
 parameter definition cannot be inferred safely.
 
+`function_var_list` takes `target` and returns
+`{function, address, program, modification, variables}`. Rows describe the fresh
+decompiler view: `name`, `type`, `type_path`, `size`, `storage`, `kind`, plus
+parameter `ordinal` or local `first_use` (an absolute address or null).
+`function_var_get/set` take `target` and exact `var_name`; set also takes
+`new_name` and/or `type_name`. Get returns `{function, address, decompiler, database}`,
+with a nullable matching saved definition. Set returns `status: "updated"`,
+`function`, `address`, `kind`, the pre-edit `decompiler` row, and database
+`before`/`after`; `before` can be null. Database rows add `source` and parameter
+`auto_parameter`. These reads do not commit inferred variables.
+
+CLI get/set filters select from `function_var_list`, then pass a `selection`
+guard containing `program`, `function_address`, `modification`, and the complete
+selected `variable` row. The bridge verifies the current program/function and
+modification number, decompiles again, and requires the same unique row before
+reading or mutating. Without a guard, the exact name must itself be unique.
+No Rust filter is sent to Java; a filter is never applied to the edit receipt.
+
+`function_set_body` takes `target` and nonempty `ranges: [{start, end}, ...]`.
+The inclusive union replaces the complete selected body and retains its entry;
+it never follows a thunk target. Receipts contain `function`, `address`,
+`changed`, `before`/`after` with `body_ranges` and byte `size`, and `effects`:
+`deleted_labels`, `deleted_references`, `disassociated_variable_references`.
+Counts describe observed native changes. Reapplying the current union returns
+`changed: false` and zero counts.
+
+`function_call_signature_get/set/clear` take caller `target` and explicit `at`.
+Set also takes `signature` and optional `convention`; omission chooses the Program
+default and inline convention text is rejected. Every result identifies
+`function`, caller-entry `address`, `call_site`, `in_body`, `instruction_exists`,
+effective `call_count`, and nullable `call_kind` (`direct`/`indirect` for one call).
+Get adds nullable `override`; set/clear add `changed`, `before`, `after`, and
+`status: "call_signature_set"`/`"call_signature_cleared"`.
+An override contains `return`, `params`, `variadic`, `calling_convention`, and
+`no_return`. Return/parameter records include `type`, `type_path`, and byte `size`;
+parameters also include `ordinal` and `name`.
+Set requires an exact instruction start inside the caller with one effective
+`CALL` or `CALLIND`; get/clear can address a saved override after that call or
+body membership disappears. An absent override is null, and clearing it succeeds
+unchanged. Neither operation resolves the caller to a thunk's final owner.
+
+`listing_flow_get/set/clear` take explicit instruction `address`. Set accepts
+`override` (`branch`, `call`, `call-return`, or `return`) and/or `fallthrough`,
+or exclusive `no_fallthrough: true`. Clear takes boolean `override` and/or
+`fallthrough` selectors. Omitted dimensions remain unchanged. Get returns
+`address`, `instruction`, `raw_flow`, `effective_flow`, `override` (also `none`),
+`fallthrough: {raw, default, effective, overridden}`, `delay_slot_depth`,
+`in_delay_slot`, and `flow_references` with `to`, `type`, `operand`, `source`,
+and `primary`. `raw` comes from the instruction prototype; `default` includes
+flow override but excludes explicit fallthrough; `effective` includes both.
+Set/clear return `{address, changed, before, after}` with those snapshots.
+These edits and body/call-signature edits use the ordinary atomic save boundary
+and do not start full analysis.
+
 `memory_info` takes a name-or-address `address` and returns one object with the
 resolved `address` and `kind`: `instruction`, `data`, `undefined`, or `unmapped`.
 Nullable `instruction`/`data` describe the containing top-level code unit with
@@ -322,9 +376,22 @@ order including auto-parameters. Native `<VOID>`, `<UNASSIGNED>`, and `<BAD>`
 storage remain distinct. Dynamic storage and auto-parameters are computed from
 the Program definition and compiler specification, not decompiler inference.
 Custom storage does not retain auto-parameter classification. A thunk's details
-include `effective_function` and `effective_address` for its ultimate metadata
-owner; the parameter view still comes from the selected function so native
+include `thunk_function`/`thunk_address` for its immediate target and
+`effective_function`/`effective_address` for its ultimate metadata owner;
+the parameter view still comes from the selected function so native
 thunk-specific `this` types are retained. Without the flag the field is omitted.
+`function_set_signature` also identifies a thunk's ultimate owner with top-level
+`effective_function` and `effective_address`.
+
+Independent `with_frame: true` adds `frame_details` from the saved Function and
+StackFrame APIs. It contains `frame_size`, `local_size`, `parameter_size`,
+nullable `parameter_offset`, `return_address_offset`, `grows_negative`, and
+`stack_variables`. Sizes and offsets are bytes; local size can include the ABI's
+reserved prefix. `effective_function`/`effective_address` always identify the
+actual frame owner, including thunk forwarding. Stack variable rows contain
+`name`, `kind`, `type`, `type_path`, `size`, full `storage`, `stack_offset`,
+`stack_size`, and `source`; parameters add `ordinal`/`auto_parameter`, locals add
+`first_use_offset`. This is saved layout, not runtime stack consumption or purge.
 
 Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming

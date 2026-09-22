@@ -120,7 +120,10 @@ another consumer or terminate its checkout.
 | `ProgramExportCommands` | Native exporters, artifact receipts, and GZF publication |
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
-| `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, signature/variable changes, decompilation |
+| `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, whole-function signature changes, decompilation |
+| `FunctionBodyCommands` | Whole-body union validation and observed native annotation/reference effects |
+| `FunctionCallSignatureCommands`, `FunctionSignatureSupport` | Exact caller/site prototype overrides and shared signature parsing |
+| `FunctionVariableCommands` | Decompiler variable discovery, guarded single-target selection, and saved variable edits |
 | `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
@@ -133,6 +136,7 @@ another consumer or terminate its checkout.
 | `NamespaceCommands`, `NamespaceSupport` | Root-relative namespace lookup, creation, and shared identity serialization |
 | `EquateCommands` | Exact named constants, operand associations, and native dynamic-reference preservation |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
+| `ListingFlowCommands`, `InstructionFlow` | Flow/fallthrough edits and shared raw/effective instruction flow evidence |
 | `ConstantSearch` | Signed/unsigned value matching over existing instruction Scalar operands |
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
 | `StringQueries` | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
@@ -159,6 +163,48 @@ relax their types. Parameter conflicts fail the request without force-removing
 locals or renaming symbols; the GUI's commit helper permits both side effects.
 Existing explicit declarations, external functions, and undefined return types
 do not require decompilation; undefined return types do not raise signature source.
+
+`FunctionVariableCommands` uses the same decompiler symbol population for list,
+get, and set. Name matching and optional selection guards must resolve one fresh
+row; guards include program identity, function entry, modification number, and
+the complete row. Check them again on the program lane before any mutation.
+Database snapshots remain separate from decompiler inference. A rename retains
+an existing saved type; a newly saved inferred local uses sized undefined storage
+instead of locking the inferred type. If an inferred parameter lacks a matching
+saved slot, the native helper can commit all inferred input parameters with
+their types and storage. Reject unsupported automatic parameter
+edits without implicitly switching ABI storage to custom.
+
+`FunctionBodyCommands` validates mapped, same-space range unions, entry retention,
+other-function overlap, and complete instruction boundaries before `setBody`.
+It operates on the requested function, including a thunk's own body. Native body
+shrink removes direct local labels and stack/register references and can detach
+variable associations. Receipts compare actual pre/post state; do not substitute
+predicted counts. Nested namespaces, including call-site override markers, remain
+independent of body membership.
+
+`FunctionCallSignatureCommands` stores a prototype only at the selected caller's
+site. Set validates exactly one effective `CALL`/`CALLIND` from `InstructionFlow`,
+including flow overrides. Get/clear deliberately do not require current body
+membership or a current call. Remove only that owner/site marker and run native
+unused-override cleanup, preserving types shared by other sites. An unreadable
+saved marker is a get error with clear guidance, not an absent override.
+
+`ListingFlowCommands` preflights both requested dimensions before mutating.
+Flow override requires a raw branch/call/return; explicit fallthrough requires an
+instruction start in the same address space. Read raw flow from the prototype,
+default fallthrough from the override-aware native default, and effective flow
+and fallthrough from the current instruction. Native edits can change references;
+return actual before/after snapshots. Ghidra cannot retain explicit no-fallthrough
+on some instructions whose raw prototype has none, even if a flow override adds
+a default successor. Check the resulting state and reject an unrepresentable
+request atomically rather than report a suppression that did not persist.
+A representable explicit null fallthrough changes Listing metadata but can leave
+decompiled control flow unchanged: `InstructionPcodeOverride` exposes only
+nonnull fallthrough destinations. Keep native metadata assertions separate from
+decompiler effects; explicit target redirection and clearing are tested in both.
+These handlers use `ProgramSession`'s ordinary transaction/save boundary and do
+not invoke whole-program analysis.
 
 `AddressCodec` owns strict parsing and address serialization. The
 [wire address contract](../../../ipc/README.md#addresses-and-symbol-targets) covers space qualification, numeric-looking space names, and word remainders.
@@ -259,10 +305,13 @@ type before resolving its stored path; a matching path alone can name an unrelat
 user type. Rename success requires the actual name
 to match the request, since immutable Ghidra types can ignore `setName()`.
 
-Function signatures use `FunctionSignatureParser` with a missing space inserted
+`FunctionSignatureSupport` uses `FunctionSignatureParser` with a missing space inserted
 between a pointer return declarator and its function name. Explicit C type
 qualifiers are rejected before parsing because Ghidra function datatypes cannot
 retain them; switching to `CParser` would silently discard some qualifiers.
+Call-site signatures choose calling convention through a separate validated
+argument, defaulting to the Program convention; they discard the declaration's
+function name without renaming or resolving a callee.
 Persistence and qualifier rejection are covered in `tests/types/signatures.rs`.
 
 `FunctionQueries.functionContext` supplies `is_external` and `entry_memory` to
@@ -335,11 +384,11 @@ File declarations are parsed after the bundle build to preserve compile diagnost
 Decompiler parameters use `LocalSymbolMap.getParamSymbol(i)` order; `getSymbols()`
 is hash-ordered. All native decompiler callers share checked `timeout_secs` with
 zero as unlimited and a 2,147,483-second ceiling to avoid Ghidra's millisecond
-conversion overflow. High p-code and variable edits use the same CLI budget as
+conversion overflow. High p-code and variable reads/edits use the same CLI budget as
 ordinary decompilation.
 
 `ProgramSession` owns one lazy `DecompilerSession`, shared by decompilation,
-high p-code and variable edits on the program thread. Each call reads the current
+high p-code and variable reads/edits on the program thread. Each call reads the current
 Program and request monitor. Reuse requires the same Program object and modification
 number; any change, including saved edits or rollback, causes reopening on next use.
 Results are not retained. Ghidra flushes native function/symbol data after each
