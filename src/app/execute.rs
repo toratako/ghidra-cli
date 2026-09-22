@@ -66,6 +66,15 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         }
     }
     let edit_addresses: Vec<&str> = match command {
+        Commands::Listing(cli::ListingCommands::Flow(cmd)) => {
+            let mut addresses = vec![cmd.address()];
+            if let cli::ListingFlowCommands::Set(args) = cmd {
+                if let Some(address) = &args.fallthrough {
+                    addresses.push(address);
+                }
+            }
+            addresses
+        }
         Commands::XRef(cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args))) => {
             vec![&args.from, &args.to]
         }
@@ -467,6 +476,19 @@ pub(super) fn execute_via_bridge(
             None => client.disasm(&args.target, list_limit),
         },
         Commands::Listing(cmd) => match cmd {
+            cli::ListingCommands::Flow(cmd) => match cmd {
+                cli::ListingFlowCommands::Get(args) => client.send_command(
+                    "listing_flow_get", Some(json!({"address": args.address})),
+                ),
+                cli::ListingFlowCommands::Set(args) => client.send_command(
+                    "listing_flow_set", Some(json!({"address": args.address, "override": args.flow_override,
+                        "fallthrough": args.fallthrough, "no_fallthrough": args.no_fallthrough})),
+                ),
+                cli::ListingFlowCommands::Clear(args) => client.send_command(
+                    "listing_flow_clear", Some(json!({"address": args.address, "override": args.flow_override,
+                        "fallthrough": args.fallthrough})),
+                ),
+            },
             cli::ListingCommands::DefineCode(args) => {
                 client.define_code(&args.target, args.end.as_deref())
             }

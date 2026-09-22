@@ -35,6 +35,7 @@ final class CommandDispatcher {
     private final FunctionSignatureCommands functionSignatureCommands;
     private final FunctionBodyCommands functionBodyCommands;
     private final FunctionVariableCommands functionVariableCommands;
+    private final ListingFlowCommands listingFlowCommands;
     private final TypeImportCommands typeImportCommands;
 
     CommandDispatcher(ProgramSession session) {
@@ -49,6 +50,7 @@ final class CommandDispatcher {
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         functionBodyCommands = new FunctionBodyCommands(session, functionQueries);
         functionVariableCommands = new FunctionVariableCommands(session, functionQueries, typeResolver);
+        listingFlowCommands = new ListingFlowCommands(session);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
         programContextCommands = new ProgramContextCommands(session);
@@ -182,6 +184,9 @@ final class CommandDispatcher {
             case "function_var_list": return functionVariableCommands.handleFunctionVarList(args);
             case "function_var_get": return functionVariableCommands.handleFunctionVarGet(args);
             case "function_var_set": return functionVariableCommands.handleFunctionVarSet(args);
+            case "listing_flow_get": return listingFlowCommands.handleGet(args);
+            case "listing_flow_set": return listingFlowCommands.handleSet(args);
+            case "listing_flow_clear": return listingFlowCommands.handleClear(args);
             // PCode commands
             case "pcode_at":        return pcodeCommands.handlePcodeAt(args);
             case "pcode_function":  return pcodeCommands.handlePcodeFunction(args);

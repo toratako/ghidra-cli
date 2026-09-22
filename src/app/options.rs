@@ -83,6 +83,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Listing(cmd) => match cmd {
             cli::ListingCommands::DefineCode(args) => args.project.clone(),
             cli::ListingCommands::Undefine(args) => args.project.clone(),
+            cli::ListingCommands::Flow(cmd) => cmd.options().project.clone(),
         },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.project.clone(),
@@ -264,6 +265,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Listing(cmd) => match cmd {
             cli::ListingCommands::DefineCode(args) => args.program.clone(),
             cli::ListingCommands::Undefine(args) => args.program.clone(),
+            cli::ListingCommands::Flow(cmd) => cmd.options().program.clone(),
         },
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::String(args) => args.options.program.clone(),
@@ -421,6 +423,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         },
         Commands::Decompile(args) => Some((&args.options).into()),
         Commands::Disasm(args) => Some(args.options.clone()),
+        Commands::Listing(cli::ListingCommands::Flow(cmd)) => Some(cmd.options().into()),
         Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
             Some(opts.into())
         }

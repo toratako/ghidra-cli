@@ -91,7 +91,11 @@ ghidra-cli
 │   └── read
 ├── listing
 │   ├── define-code
-│   └── undefine
+│   ├── undefine
+│   └── flow
+│       ├── get
+│       ├── set
+│       └── clear
 ├── xref
 │   ├── to
 │   ├── from
@@ -182,4 +186,4 @@ ghidra-cli
 └── setup
 ```
 
-170 command nodes (excluding the root), 0 aliases.
+174 command nodes (excluding the root), 0 aliases.

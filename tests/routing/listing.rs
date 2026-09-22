@@ -324,3 +324,97 @@ fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
         }
     }
 }
+
+#[test]
+fn flow_edits_preserve_omission_clear_and_explicit_no_fallthrough_in_batches() {
+    let bridge = RecordedBridge::new();
+    for (operation, flags, expected) in [
+        ("get", vec![], json!({"address": "overlay:0x1000"})),
+        (
+            "set",
+            vec!["--override", "call-return"],
+            json!({"address": "overlay:0x1000", "override": "call-return", "fallthrough": null, "no_fallthrough": false}),
+        ),
+        (
+            "set",
+            vec!["--fallthrough", "overlay:0x1010"],
+            json!({"address": "overlay:0x1000", "override": null, "fallthrough": "overlay:0x1010", "no_fallthrough": false}),
+        ),
+        (
+            "set",
+            vec!["--override", "call", "--no-fallthrough"],
+            json!({"address": "overlay:0x1000", "override": "call", "fallthrough": null, "no_fallthrough": true}),
+        ),
+        (
+            "clear",
+            vec!["--override"],
+            json!({"address": "overlay:0x1000", "override": true, "fallthrough": false}),
+        ),
+        (
+            "clear",
+            vec!["--fallthrough"],
+            json!({"address": "overlay:0x1000", "override": false, "fallthrough": true}),
+        ),
+        (
+            "clear",
+            vec!["--override", "--fallthrough"],
+            json!({"address": "overlay:0x1000", "override": true, "fallthrough": true}),
+        ),
+    ] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let args: Vec<_> = [
+                "listing",
+                "flow",
+                operation,
+                "overlay:0x1000",
+                "--program",
+                "B",
+                "--fields",
+                "observed_program",
+            ]
+            .into_iter()
+            .chain(flags.iter().copied())
+            .collect();
+            let receipt = if batch {
+                std::fs::write(bridge.root.path().join("flow.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "flow.txt"])["results"][0]["result"]["data"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(receipt, json!({"observed_program": "B"}));
+            let requests = bridge.requests.lock().unwrap();
+            let wire = format!("listing_flow_{operation}");
+            let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+            assert_eq!(operations.len(), 1);
+            assert_eq!(operations[0]["args"], expected);
+        }
+    }
+}
+
+#[test]
+fn flow_inputs_fail_before_bridge_work() {
+    let bridge = RecordedBridge::new();
+    for args in [
+        vec!["set", "0x1000"],
+        vec!["clear", "0x1000"],
+        vec![
+            "set",
+            "0x1000",
+            "--fallthrough",
+            "0x1010",
+            "--no-fallthrough",
+        ],
+        vec!["set", "0x1000", "--fallthrough", "invalid"],
+        vec!["get", "1000"],
+    ] {
+        let args: Vec<_> = ["listing", "flow", "--program", "must-not-open"]
+            .into_iter()
+            .chain(args)
+            .collect();
+        let output = bridge.command().args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?}");
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
