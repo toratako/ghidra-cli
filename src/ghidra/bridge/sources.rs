@@ -53,6 +53,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/InstructionCfg.java"),
     ),
     (
+        "ghidracli/HighPcodeModel.java",
+        include_str!("../scripts/ghidracli/HighPcodeModel.java"),
+    ),
+    (
+        "ghidracli/HighPcodeOutput.java",
+        include_str!("../scripts/ghidracli/HighPcodeOutput.java"),
+    ),
+    (
         "ghidracli/ArtifactManifest.java",
         include_str!("../scripts/ghidracli/ArtifactManifest.java"),
     ),

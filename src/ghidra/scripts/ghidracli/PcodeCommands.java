@@ -11,9 +11,8 @@ import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.PcodeOp;
-import ghidra.program.model.pcode.PcodeOpAST;
 import ghidra.program.model.pcode.Varnode;
-import java.util.Iterator;
+import ghidra.util.exception.CancelledException;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getDecompileTimeoutArg;
@@ -57,7 +56,7 @@ final class PcodeCommands {
         }
     }
 
-    JsonObject handlePcodeFunction(JsonObject args) {
+    JsonObject handlePcodeFunction(JsonObject args) throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
         String target = getArgString(args, "function");
@@ -65,6 +64,7 @@ final class PcodeCommands {
         if (target == null || target.isEmpty()) return errorResult("function name or address required");
 
         try {
+            AnalysisLimits limits = highPcode ? AnalysisLimits.from(args) : null;
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
@@ -83,11 +83,9 @@ final class PcodeCommands {
                 if (highFunction == null) {
                     return errorResult("Decompiler returned no HighFunction for " + func.getName());
                 }
-                Iterator<PcodeOpAST> it = highFunction.getPcodeOps();
-                while (it.hasNext()) {
-                    session.monitor().checkCancelled();
-                    ops.add(pcodeOpToJson(it.next()));
-                }
+                HighPcodeModel model = HighPcodeModel.build(highFunction, session.monitor());
+                return new HighPcodeOutput(session, model, limits)
+                    .render(func, DecompileWarnings.collect(results));
             } else {
                 InstructionIterator instructions =
                     session.program().getListing().getInstructions(func.getBody(), true);
@@ -105,10 +103,12 @@ final class PcodeCommands {
             JsonObject result = new JsonObject();
             result.addProperty("function", func.getName());
             result.addProperty("address", AddressCodec.format(func.getEntryPoint()));
-            result.addProperty("level", highPcode ? "high" : "raw");
+            result.addProperty("level", "raw");
             result.addProperty("count", ops.size());
             result.add("pcode", ops);
             return result;
+        } catch (CancelledException e) {
+            throw e;
         } catch (Exception e) {
             return errorResult("Failed to get function PCode: " + e.getMessage());
         }

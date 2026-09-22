@@ -99,8 +99,8 @@ fn check(client: &BridgeClient, arguments: &[&str]) {
 
 fn check_calls(client: &BridgeClient, expected: &[usize]) {
     // Use the bridge's retained native decompiler so edits must invalidate its cache.
-    let pcode = client.pcode_function("caller", true).unwrap();
-    let arities: Vec<_> = pcode["pcode"]
+    let pcode = client.pcode_function("caller", true, None, None).unwrap();
+    let arities: Vec<_> = pcode["operations"]
         .as_array()
         .unwrap()
         .iter()

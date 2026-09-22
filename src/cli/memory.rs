@@ -238,7 +238,7 @@ pub struct MemWriteArgs {
 pub enum PcodeCommands {
     /// Get raw PCode at an address
     At(PcodeAtArgs),
-    /// Get PCode for an entire function
+    /// Inspect raw function P-code or structured decompiler values and control flow
     Function(PcodeFunctionArgs),
 }
 
@@ -256,9 +256,15 @@ pub struct PcodeAtArgs {
 pub struct PcodeFunctionArgs {
     /// Exact function name or explicit 0x-prefixed address
     pub function: String,
-    /// Use high PCode from decompiler (vs raw from listing)
+    /// Return structured High P-code with result-local IDs, def/use, and High CFG
     #[arg(long)]
     pub high: bool,
+    /// Maximum High IR entities: operations, values, blocks, variables, and symbols (default: 1000)
+    #[arg(long, value_name = "N", requires = "high", value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    pub max_nodes: Option<u32>,
+    /// Maximum High IR relationships (default: 4000)
+    #[arg(long, value_name = "N", requires = "high", value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    pub max_edges: Option<u32>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

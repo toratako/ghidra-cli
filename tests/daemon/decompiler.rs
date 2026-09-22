@@ -3,7 +3,8 @@ use crate::common::{ensure_test_project, test_project};
 use serial_test::serial;
 
 // Use a separate saved Program and the real dispatcher, as in transaction.rs.
-// Native callbacks inject cancellation/timeout without timing a large function.
+// Native callbacks and request monitors inject cancellation/timeout without
+// timing a large function or adding production failure hooks.
 const DECOMPILER_PROBE: &str = r#"
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
@@ -13,6 +14,7 @@ import ghidra.framework.model.DomainFile;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitorAdapter;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -29,6 +31,9 @@ public class DecompilerSessionProbe extends GhidraScript {
     private Method execute;
     private TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
     private String fault;
+    private String cancelClass;
+    private String cancelMethod;
+    private boolean cancelledInPhase;
     private boolean failSave;
     private String address;
     private String otherAddress;
@@ -65,7 +70,18 @@ public class DecompilerSessionProbe extends GhidraScript {
 
     private JsonObject command(String name, JsonObject args) throws Exception {
         // Match the scheduler's fresh monitor for every request.
-        requestMonitor = new TaskMonitorAdapter(true);
+        requestMonitor = new TaskMonitorAdapter(true) {
+            @Override public void checkCancelled() throws CancelledException {
+                if (cancelClass != null && StackWalker.getInstance().walk(frames ->
+                        frames.anyMatch(frame -> frame.getClassName().equals(cancelClass)
+                            && frame.getMethodName().equals(cancelMethod)))) {
+                    cancelClass = null;
+                    cancelledInPhase = true;
+                    cancel();
+                }
+                super.checkCancelled();
+            }
+        };
         return (JsonObject) execute.invoke(dispatcher, name, args);
     }
 
@@ -84,6 +100,18 @@ public class DecompilerSessionProbe extends GhidraScript {
         JsonObject args = args("address", address);
         args.addProperty("with_params", true);
         return success(command("decompile", args));
+    }
+
+    private JsonObject highArgs() {
+        JsonObject args = args("function", address);
+        args.addProperty("high", true);
+        return args;
+    }
+
+    private static void complete(JsonObject result) {
+        JsonObject completion = result.getAsJsonObject("completion");
+        check(completion.getAsJsonObject("scan").get("complete").getAsBoolean(), result.toString());
+        check(completion.getAsJsonObject("output").get("complete").getAsBoolean(), result.toString());
     }
 
     private void configure() throws Exception {
@@ -152,10 +180,27 @@ public class DecompilerSessionProbe extends GhidraScript {
         DecompileProcess nativeProcess = process(shared);
         check(initial.equals(decompile()), "Repeated decompile changed output");
         success(command("decompile", args("address", otherAddress)));
-        JsonObject high = args("function", address);
-        high.addProperty("high", true);
-        check(success(command("pcode_function", high)).get("count").getAsInt() > 0,
-            "High P-code is empty");
+        long modification = real.getModificationNumber();
+        JsonObject high = success(command("pcode_function", highArgs()));
+        JsonObject repeatedHigh = success(command("pcode_function", highArgs()));
+        check(high.getAsJsonArray("operations").size() > 0, "High P-code is empty");
+        complete(high);
+        complete(repeatedHigh);
+        check("result".equals(high.get("id_scope").getAsString()), high.toString());
+        check(!high.get("result_id").equals(repeatedHigh.get("result_id")),
+            "Repeated High results share a result identity");
+        check(high.get("modification").equals(repeatedHigh.get("modification"))
+            && high.get("modification").getAsString().equals(Long.toString(modification)),
+            "Read provenance changed between High results");
+        check(high.get("program").getAsString().equals(real.getDomainFile().getPathname()),
+            "High provenance does not identify the selected Program");
+        check(high.getAsJsonObject("project").equals(repeatedHigh.getAsJsonObject("project")),
+            "High results changed project identity");
+        JsonObject cfg = success(command("graph_cfg", args("function", address)));
+        check(cfg.getAsJsonArray("nodes").size() > 0, "Instruction CFG is empty");
+        complete(cfg);
+        check(real.getModificationNumber() == modification && !real.isChanged(),
+            "Read-only flow requests changed the Program");
         check(shared == engine() && nativeProcess == process(engine()),
             "Read-only requests restarted the decompiler");
 
@@ -183,6 +228,50 @@ public class DecompilerSessionProbe extends GhidraScript {
         check(decompile().get("name").getAsString().equals(originalName), "Rolled-back name leaked");
         check(engine() != transientEngine && transientEngine.getProgram() == null,
             "Rollback retained the transient decompiler");
+    }
+
+    private void cancelledRead(String commandName, JsonObject arguments, String className,
+            String methodName, String collection) throws Exception {
+        cancelClass = "ghidracli." + className;
+        cancelMethod = methodName;
+        cancelledInPhase = false;
+        JsonObject response = command(commandName, arguments);
+        check(cancelledInPhase && cancelClass == null,
+            "Cancellation did not reach " + className + "." + methodName);
+        check("error".equals(response.get("status").getAsString()), response.toString());
+        JsonObject detail = response.getAsJsonObject("detail");
+        check(detail.get("cancelled").getAsBoolean()
+            && detail.get("rolled_back").getAsBoolean(), response.toString());
+        check(detail.get("program").getAsString().equals(real.getDomainFile().getPathname()),
+            "Cancellation lost the selected Program identity");
+        check(!response.has("data"), "Cancelled read returned a partial success payload");
+        check(!real.isChanged(), "Cancelled flow read left pending Program changes");
+
+        TaskMonitorAdapter oldMonitor = requestMonitor;
+        JsonObject recovered = success(command(commandName, arguments));
+        check(recovered.getAsJsonArray(collection).size() > 0, recovered.toString());
+        complete(recovered);
+        decompile();
+        DecompInterface recoveredEngine = engine();
+        DecompileProcess recoveredProcess = process(recoveredEngine);
+        // Force a new cancellation notification from the old request monitor.
+        // Re-cancelling an already cancelled monitor would not notify listeners.
+        oldMonitor.clearCancelled();
+        oldMonitor.cancel();
+        complete(success(command(commandName, arguments)));
+        decompile();
+        check(recoveredEngine == engine() && recoveredProcess == process(engine()),
+            "Cancelled flow read retained a monitor listener across requests");
+    }
+
+    private void flowCancellationAndRecovery() throws Exception {
+        // These monitors cancel after native decompilation has completed, first
+        // while building def/use, then while serializing an operation's slots.
+        cancelledRead("pcode_function", highArgs(), "HighPcodeModel", "operation", "operations");
+        cancelledRead("pcode_function", highArgs(), "HighPcodeOutput", "operation", "operations");
+        // Block enumeration succeeds before this request is cancelled in flow collection.
+        cancelledRead("graph_cfg", args("function", address),
+            "InstructionCfg$Capture", "scan", "nodes");
     }
 
     private void failures() throws Exception {
@@ -238,6 +327,7 @@ public class DecompilerSessionProbe extends GhidraScript {
                 .getFunctionAt(real.getAddressFactory().getAddress(address)).getName();
             configure();
             reuseAndChanges();
+            flowCancellationAndRecovery();
             failures();
             DecompInterface previous = engine();
             DecompileProcess nativeProcess = process(previous);
@@ -256,6 +346,7 @@ public class DecompilerSessionProbe extends GhidraScript {
             println("decompiler-session-ok");
         } finally {
             fault = null;
+            cancelClass = null;
             failSave = false;
             requestMonitor.clearCancelled();
             try {

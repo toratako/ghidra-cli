@@ -34,6 +34,8 @@ mod disassembly;
 mod function_details;
 #[path = "readonly/functions.rs"]
 mod functions;
+#[path = "readonly/high_pcode.rs"]
+mod high_pcode;
 #[path = "readonly/memory_info.rs"]
 mod memory_info;
 #[path = "readonly/program.rs"]

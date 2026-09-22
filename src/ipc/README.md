@@ -13,11 +13,13 @@ Typed adapters remain methods on `BridgeClient`, grouped under `client/`:
 symbols, types, tags, bookmarks and comments; `program.rs` owns program lifecycle
 and analysis; `search.rs` owns strings and searches; `scripts.rs` owns scripts.
 
-`graph_cfg` accepts positive `max_nodes` and `max_edges` within the signed
-32-bit range, defaulting to 1,000 and 4,000. Its structured payload carries
-result-scoped IDs, provenance, limit units and completion metadata. Edge limits
-apply across transitions, calls and boundaries. Omitted destinations remain
-distinguishable from unresolved ones.
+`graph_cfg` and high `pcode_function` accept positive `max_nodes` and `max_edges`
+within the signed 32-bit range, defaulting to 1,000 and 4,000. Their structured
+payloads carry result-scoped IDs, provenance, limit units and completion metadata.
+Node and edge limits apply across the payload's collections; inverse High IR
+references share the underlying relationship's edge cost. Omitted references
+remain distinguishable from unresolved ones. Raw p-code keeps its instruction
+listing contract.
 
 ## Connection and timeout boundaries
 

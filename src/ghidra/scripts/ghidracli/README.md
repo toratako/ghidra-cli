@@ -148,6 +148,7 @@ another consumer or terminate its checkout.
 | `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `InstructionCfg` | Native instruction blocks, intrafunction edges, calls and body boundaries |
+| `HighPcodeModel`, `HighPcodeOutput` | Request-local High IR identities and bounded serialization of their relationships |
 | `AnalysisContext`, `AnalysisLimits` | Analysis provenance, result identity and shared output limits |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Small block summaries for function queries and full descriptions for memory queries/receipts |
@@ -442,6 +443,14 @@ the live session.
 including delay slots, and records their body intersection separately. Calls and
 body crossings are distinct from intrafunction edges. Resolve destinations from
 reference addresses without invoking lazy block lookup with a dummy monitor.
+
+High p-code indexes one decompilation by native object identity, then serializes
+selected nodes and relationships. Sequence identity is separate from block order;
+CFG connection indices retain phi-input meaning. Space operands and `INDIRECT`
+operation references are not ordinary values. IDs and native objects never survive
+the request. Both representations check the request monitor during traversal and
+serialization; cancellation follows the ordinary failed-request rollback path.
+Output limits bound serialized nodes and relationships, not native analysis cost.
 
 `ImportSupport` owns the loader's detached programs until save/release. Bootstrap
 analysis uses an owned `ProgramTransaction` and ends it before saving. Bridge

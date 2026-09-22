@@ -383,6 +383,10 @@ impl RecordedBridge {
                         }
                         json!({"target": args["function"], "count": calls.len(), "calls": calls})
                     }
+                    "graph_cfg" => functions::flow_fixture(false, &program),
+                    "pcode_function" if args["high"] == true => {
+                        functions::flow_fixture(true, &program)
+                    }
                     "graph_calls" => {
                         let mut graph = call_graph_fixture();
                         if let Some(limit) = args["limit"].as_u64().filter(|&n| n > 0) {

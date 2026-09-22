@@ -123,6 +123,11 @@ Receipts, nested fields, and warnings remain data. No result wrapper implies
 success: doctor and failed batches can print diagnostic results before exiting
 nonzero. Stderr errors keep their separate contract.
 
+Instruction CFG and High P-code are single structured values. Their node/edge
+budgets run in Java; Rust preserves their references, provenance and completion
+information unchanged in standalone and batch results. Do not apply the call
+graph's node queries to these structures.
+
 NDJSON renders list elements individually, other results as one JSON value,
 and empty lists as no output; it omits the outer wrapper and metadata. Batch
 NDJSON is one report value whose entries retain the common result envelopes.

@@ -1,6 +1,82 @@
 use super::*;
 
 #[test]
+fn cfg_and_high_pcode_accept_bounded_results_without_row_queries() {
+    for (command, high) in [
+        (vec!["ghidra-cli", "graph", "cfg", "main"], false),
+        (
+            vec!["ghidra-cli", "pcode", "function", "main", "--high"],
+            true,
+        ),
+    ] {
+        let parsed = Cli::try_parse_from(&command).unwrap();
+        match parsed.command {
+            Commands::Graph(GraphCommands::Cfg(args)) => {
+                assert_eq!(args.function, "main");
+                assert_eq!((args.max_nodes, args.max_edges), (1000, 4000));
+            }
+            Commands::Pcode(PcodeCommands::Function(args)) => {
+                assert!(args.high);
+                assert_eq!((args.max_nodes, args.max_edges), (None, None));
+            }
+            _ => panic!("expected flow command"),
+        }
+        let parsed = Cli::try_parse_from(command.iter().copied().chain([
+            "--max-nodes",
+            "1",
+            "--max-edges",
+            "2147483647",
+            "--program",
+            "sample",
+            "--project",
+            "project",
+        ]))
+        .unwrap();
+        let (nodes, edges, program, project) = match parsed.command {
+            Commands::Graph(GraphCommands::Cfg(args)) => {
+                (args.max_nodes, args.max_edges, args.program, args.project)
+            }
+            Commands::Pcode(PcodeCommands::Function(args)) => (
+                args.max_nodes.unwrap(),
+                args.max_edges.unwrap(),
+                args.program,
+                args.project,
+            ),
+            _ => panic!("expected flow command"),
+        };
+        assert_eq!((nodes, edges), (1, i32::MAX as u32));
+        assert_eq!(program.as_deref(), Some("sample"));
+        assert_eq!(project.as_deref(), Some("project"));
+        for flags in [
+            vec!["--filter", "id=b0"],
+            vec!["--fields", "nodes"],
+            vec!["--count"],
+        ] {
+            assert!(Cli::try_parse_from(command.iter().copied().chain(flags)).is_err());
+        }
+        for flag in ["--max-nodes", "--max-edges"] {
+            for invalid in ["0", "2147483648"] {
+                assert!(
+                    Cli::try_parse_from(command.iter().copied().chain([flag, invalid])).is_err()
+                );
+            }
+        }
+        if high {
+            let raw: Vec<_> = command
+                .iter()
+                .copied()
+                .filter(|arg| *arg != "--high")
+                .collect();
+            assert!(Cli::try_parse_from(&raw).is_ok());
+            for flag in ["--max-nodes", "--max-edges"] {
+                assert!(Cli::try_parse_from(raw.iter().copied().chain([flag, "1"])).is_err());
+            }
+        }
+    }
+    assert!(Cli::try_parse_from(["ghidra-cli", "graph", "cfg"]).is_err());
+}
+
+#[test]
 fn byte_search_accepts_regex_without_changing_literal_defaults() {
     for args in [
         vec!["ghidra-cli", "find", "bytes", "--regex", r"\x48\x8b.{4}"],

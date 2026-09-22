@@ -151,6 +151,18 @@ ghidra-cli analysis run --project target --program target.bin
 Raw `pcode at` and `pcode function` omit instruction flow overrides. High PCode
 comes through the decompiler and can therefore differ after a flow edit.
 
+High PCode connects operations to distinct values and their definition/use slots.
+Use value IDs to distinguish assignments sharing a register or stack location;
+names and storage alone do not identify a value. IDs belong to one `result_id`,
+including block and symbol IDs. The High CFG reflects decompiler optimization
+and can differ from the instruction CFG returned by `graph cfg`.
+
+For `MULTIEQUAL`, input slots correspond to incoming High CFG edge indices.
+Special inputs such as `INDIRECT`'s operation reference are not ordinary value
+dependencies. Check reference states and collection completeness before treating
+an empty use list as unused. Increase `--max-nodes` or `--max-edges` when output
+is incomplete; operation input slots retain their original positions.
+
 For analyzer settings and full, range, or pending analysis, see
 [import and reanalysis](programs.md#import-and-reanalysis).
 

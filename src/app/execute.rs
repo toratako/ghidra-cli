@@ -544,7 +544,12 @@ pub(super) fn execute_via_bridge(
             use cli::PcodeCommands;
             match cmd {
                 PcodeCommands::At(args) => client.pcode_at(&args.address),
-                PcodeCommands::Function(args) => client.pcode_function(&args.function, args.high),
+                PcodeCommands::Function(args) => client.pcode_function(
+                    &args.function,
+                    args.high,
+                    args.max_nodes,
+                    args.max_edges,
+                ),
             }
         }
         Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => {

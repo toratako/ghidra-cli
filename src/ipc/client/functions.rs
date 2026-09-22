@@ -103,11 +103,26 @@ impl BridgeClient {
         self.send_command("pcode_at", Some(json!({"address": address})))
     }
 
-    pub fn pcode_function(&self, function: &str, high: bool) -> Result<serde_json::Value> {
-        let args = json!({"function": function, "high": high});
+    pub fn pcode_function(
+        &self,
+        function: &str,
+        high: bool,
+        max_nodes: Option<u32>,
+        max_edges: Option<u32>,
+    ) -> Result<serde_json::Value> {
+        let mut args = json!({"function": function, "high": high});
         if high {
+            let max_nodes = max_nodes.unwrap_or(1000);
+            let max_edges = max_edges.unwrap_or(4000);
+            validate_flow_limits(max_nodes, max_edges)?;
+            args["max_nodes"] = json!(max_nodes);
+            args["max_edges"] = json!(max_edges);
             self.send_decompile_command("pcode_function", args)
         } else {
+            anyhow::ensure!(
+                max_nodes.is_none() && max_edges.is_none(),
+                "P-code output limits require --high"
+            );
             self.send_command("pcode_function", Some(args))
         }
     }
