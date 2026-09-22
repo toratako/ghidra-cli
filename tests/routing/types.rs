@@ -163,10 +163,10 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
                 std::fs::write(outer.root.path().join("batch.txt"), batch_arguments(&args))
                     .unwrap();
                 let report = outer.run(&["batch", "batch.txt"]);
-                assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
-                report[0]["results"][0]["result"].clone()
+                assert_eq!(report["failed"], 0, "{args:?}: {report}");
+                report["results"][0]["result"]["data"].clone()
             } else {
-                outer.run(&args)[0].clone()
+                outer.run(&args)
             };
             assert_eq!(result["observed_program"], "B", "{args:?}: {result}");
             let requests = selected.requests.lock().unwrap();

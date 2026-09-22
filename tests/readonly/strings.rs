@@ -80,7 +80,7 @@ fn defined_strings_share_lengths_and_page_after_both_predicates() {
                 .with_project(test_project(), &name)
                 .run();
             output.assert_success();
-            output.json()
+            output.data()
         };
         for command in [&["string", "list"][..], &["find", "string", ""][..]] {
             let flags = ["--filter", "char_length=1", "--limit", "0"];

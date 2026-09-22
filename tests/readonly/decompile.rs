@@ -91,7 +91,7 @@ fn command(args: &[&str]) -> crate::common::helpers::GhidraResult {
 fn row(args: &[&str]) -> Value {
     let result = command(args);
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
     require_ghidra!();
     let listed = command(&["function", "list", "--limit", "0"]);
     listed.assert_success();
-    let listed: Value = listed.json();
+    let listed: Value = listed.data();
     // Ghidra's existing memory-function iterator excludes external and unmapped entries.
     assert_eq!(listed.as_array().unwrap().len(), 6, "{listed}");
     assert!(!listed
@@ -110,7 +110,7 @@ fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
         .any(|f| f["name"] == "outside"));
     let memory = command(&["memory", "map", "--limit", "0"]);
     memory.assert_success();
-    let memory: Value = memory.json();
+    let memory: Value = memory.data();
     for (name, block) in [
         ("clean", "code"),
         ("warned", "code"),
@@ -212,9 +212,9 @@ fn completed_decompiles_retain_comment_warnings_and_failures_stay_errors() {
     }
     let bad = command(&["decompile", "bad"]);
     bad.assert_success();
-    let got: Value = bad.json();
+    let got: Value = bad.data();
     assert!(
-        got[0]["warnings"]
+        got["warnings"]
             .as_array()
             .unwrap()
             .iter()

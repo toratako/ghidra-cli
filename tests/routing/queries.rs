@@ -86,7 +86,7 @@ fn bounded_query_defaults_respect_count_and_explicit_unlimited() {
     assert_eq!(bridge.run(&["graph", "calls", "--count"]), 4);
     for limit in ["0", "2147483647"] {
         let result = bridge.run(&["graph", "calls", "--limit", limit]);
-        assert_eq!(result[0]["node_count"], 4);
+        assert_eq!(result["node_count"], 4);
     }
     // The list planner already supports checked 64-bit paging; keep that contract.
     bridge.run(&["function", "list", "--limit", "2147483648"]);
@@ -107,7 +107,7 @@ fn external_symbols_and_entry_points_paginate_after_fetching_for_queries_and_bat
         assert_eq!(bridge.run(&args), json!([{"name": "second"}]));
         std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
         assert_eq!(
-            bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"],
+            bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"],
             json!([{"name": "second"}])
         );
         assert_eq!(bridge.run(&[command, kind, "--count"]), json!(2));
@@ -151,7 +151,7 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
             bridge.requests.lock().unwrap().clear();
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
@@ -215,7 +215,7 @@ fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
             bridge.requests.lock().unwrap().clear();
             let actual = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
@@ -262,7 +262,7 @@ fn client_only_queries_apply_defaults_with_and_without_query_flags() {
             format!("default_limit: {configured}\n"),
         )
         .unwrap();
-        let (command, wire, key) = (vec!["memory", "map"], "memory_map", "blocks");
+        let (command, wire) = (vec!["memory", "map"], "memory_map");
         for (flags, count, first) in [
             (vec![], cap, "first"),
             (vec!["--json"], cap, "first"),
@@ -282,22 +282,14 @@ fn client_only_queries_apply_defaults_with_and_without_query_flags() {
                 let result = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                         .unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
                 if flags.contains(&"--count") {
                     assert_eq!(result, count);
                 } else {
-                    let no_query = flags.is_empty()
-                        || flags.contains(&"--json")
-                        || flags.contains(&"--format");
-                    let rows = if batch && no_query {
-                        assert_eq!(result["count"], count);
-                        &result[key]
-                    } else {
-                        &result
-                    };
+                    let rows = &result;
                     assert_eq!(
                         rows.as_array().unwrap().len(),
                         count,
@@ -336,7 +328,7 @@ fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
             "name",
         ),
     ] {
-        let (key, rows) = api_list_fixture(wire);
+        let (_key, rows) = api_list_fixture(wire);
         let filter = format!("{field}=beta");
         for (flags, expected) in [
             (vec![], json!([rows[0]])),
@@ -366,15 +358,11 @@ fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
                 let actual = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                         .unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
-                let expected = if batch && flags.is_empty() {
-                    json!({key: expected, "count": expected.as_array().unwrap().len()})
-                } else {
-                    expected.clone()
-                };
+                let expected = expected.clone();
                 assert_eq!(actual, expected, "{args:?}, batch={batch}");
                 let requests = bridge.requests.lock().unwrap();
                 let domain: Vec<_> = requests

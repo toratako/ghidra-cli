@@ -1,17 +1,16 @@
 mod planner;
 
-pub(crate) use planner::{FetchParams, FetchSupport, QueryPlan};
+pub(crate) use planner::{FetchParams, FetchSupport, Page, QueryPlan};
 
 use crate::cli::QueryOptions;
 use crate::error::Result;
 use crate::filter::Filter;
-use crate::format::{DefaultFormatter, Formatter, OutputFormat};
 use serde_json::Value as JsonValue;
 
+#[derive(Default)]
 pub struct Query {
     pub filter: Option<Filter>,
     pub fields: Option<FieldSelector>,
-    pub format: OutputFormat,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub sort: Option<Vec<SortKey>>,
@@ -20,7 +19,7 @@ pub struct Query {
 
 impl Query {
     /// Build a Query from CLI QueryOptions. Returns None if no query processing is needed.
-    pub fn from_options(opts: &QueryOptions, format: OutputFormat) -> Result<Option<Self>> {
+    pub fn from_options(opts: &QueryOptions) -> Result<Option<Self>> {
         let has_filter = opts.filter.is_some();
         let has_fields = opts.fields.is_some();
         let has_sort = opts.sort.is_some();
@@ -45,7 +44,6 @@ impl Query {
         Ok(Some(Self {
             filter,
             fields,
-            format,
             // QueryPlan removes any offset already applied by the bridge.
             limit: opts.limit,
             offset: opts.offset,
@@ -57,13 +55,13 @@ impl Query {
     /// Process query results from pre-fetched data.
     ///
     /// The caller owns fetching via IPC; this method filters, sorts, paginates,
-    /// selects output fields, and formats the resulting page.
-    pub fn process_results(&self, data: Vec<JsonValue>) -> Result<String> {
+    /// selects output fields, and returns the resulting JSON value.
+    pub fn apply(&self, data: Vec<JsonValue>) -> Result<JsonValue> {
         let paginated = self.select_rows(data)?;
 
         // Return count if requested
         if self.count_only {
-            return Ok(paginated.len().to_string());
+            return Ok(serde_json::json!(paginated.len()));
         }
 
         let selected = if let Some(fields) = &self.fields {
@@ -72,8 +70,7 @@ impl Query {
             paginated
         };
 
-        let formatter = DefaultFormatter;
-        formatter.format(&selected, self.format)
+        Ok(JsonValue::Array(selected))
     }
 
     /// Select rows before projection so structured responses can retain their relationships.
@@ -271,7 +268,6 @@ mod tests {
         Query {
             filter: None,
             fields: None,
-            format: OutputFormat::Json,
             limit: None,
             offset: None,
             sort: None,
@@ -356,18 +352,14 @@ mod tests {
                 limit: Some(1),
                 count: false,
             };
-            let mut query = Query::from_options(&opts, OutputFormat::JsonCompact)
-                .unwrap()
-                .unwrap();
-            let result: JsonValue =
-                serde_json::from_str(&query.process_results(data.clone()).unwrap()).unwrap();
+            let mut query = Query::from_options(&opts).unwrap().unwrap();
+            let result: JsonValue = query.apply(data.clone()).unwrap();
             assert_eq!(result, serde_json::json!([{"name": "z"}]), "{fields}");
             query.count_only = true;
-            assert_eq!(query.process_results(data.clone()).unwrap(), "1");
+            assert_eq!(query.apply(data.clone()).unwrap(), serde_json::json!(1));
             query.count_only = false;
             query.limit = Some(0);
-            let result: JsonValue =
-                serde_json::from_str(&query.process_results(data.clone()).unwrap()).unwrap();
+            let result: JsonValue = query.apply(data.clone()).unwrap();
             assert_eq!(
                 result,
                 serde_json::json!([{"name": "z"}, {"name": "medium"}])

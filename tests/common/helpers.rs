@@ -85,16 +85,20 @@ impl GhidraResult {
         })
     }
 
-    /// Parse stdout as JSON and validate against schema.
-    pub fn json_validated<T: DeserializeOwned + Validate>(&self) -> T {
-        let result: T = self.json();
-        result.assert_valid();
-        result
+    /// Read the required data field of a CLI JSON result.
+    pub fn data<T: DeserializeOwned>(&self) -> T {
+        #[derive(serde::Deserialize)]
+        struct ResultData<T> {
+            data: T,
+        }
+        self.json::<ResultData<T>>().data
     }
 
-    /// Try to parse stdout as JSON, returning None if it fails.
-    pub fn try_json<T: DeserializeOwned>(&self) -> Option<T> {
-        serde_json::from_str(&self.stdout).ok()
+    /// Parse stdout as JSON and validate against schema.
+    pub fn json_validated<T: DeserializeOwned + Validate>(&self) -> T {
+        let result: T = self.data();
+        result.assert_valid();
+        result
     }
 
     /// Get stdout lines as a vector.
@@ -257,7 +261,7 @@ pub fn get_function_address(
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
 
     find_fixture_function(&functions, name)
         .unwrap_or_else(|| {
@@ -318,7 +322,7 @@ pub fn get_function_addresses(
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     functions.into_iter().map(|f| f.address).collect()
 }
 

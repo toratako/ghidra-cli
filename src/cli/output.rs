@@ -10,7 +10,7 @@ pub enum OutputFormat {
     Minimal,
     Json,
     JsonCompact,
-    #[value(name = "ndjson", help = "One JSON object per line")]
+    #[value(name = "ndjson", help = "One JSON value per line")]
     #[serde(rename = "ndjson")]
     JsonStream,
     Csv,

@@ -109,7 +109,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                     .with_project(test_project(), &name)
                     .run();
                 output.assert_success();
-                assert_eq!(output.json::<Value>(), result["instructions"], "{target}");
+                assert_eq!(output.data::<Value>(), result["instructions"], "{target}");
             }
         }
         let all = client.function_disasm("long_case", Some(0)).unwrap()["instructions"].clone();
@@ -154,7 +154,7 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 .with_project(test_project(), &name)
                 .run();
             result.assert_success();
-            assert_eq!(result.json::<Value>(), expected);
+            assert_eq!(result.data::<Value>(), expected);
         }
         let asm = ghidra(harness)
             .args([
@@ -271,7 +271,7 @@ fn check_disasm_limits(
             .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
             .run();
         result.assert_success();
-        result.json()
+        result.data()
     };
     assert_eq!(cli(&[]), json!(&rows[..12]));
     assert_eq!(cli(&["--limit", "0"]), json!(rows));
@@ -354,7 +354,7 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
-    assert_eq!(result.json::<serde_json::Value>(), baseline["instructions"]);
+    assert_eq!(result.data::<serde_json::Value>(), baseline["instructions"]);
     let result = ghidra(harness)
         .args([
             "disassemble",
@@ -373,7 +373,7 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
         .run();
     result.assert_success();
     assert_eq!(
-        result.json::<serde_json::Value>(),
+        result.data::<serde_json::Value>(),
         serde_json::json!([{"address": instructions[4]["address"]}])
     );
 
@@ -460,7 +460,7 @@ fn test_disasm_at_main() {
 
     result.assert_success();
 
-    let disasm: DisasmResult = result.json();
+    let disasm: DisasmResult = result.data();
     assert!(
         !disasm.results.is_empty(),
         "Should have at least one instruction"
@@ -490,7 +490,7 @@ fn test_disasm_with_instruction_limit() {
 
     result.assert_success();
 
-    let disasm: DisasmResult = result.json();
+    let disasm: DisasmResult = result.data();
     assert!(
         disasm.results.len() <= limit,
         "Should return at most {} instructions, got {}",
@@ -521,7 +521,7 @@ fn test_disasm_small_limit() {
 
     result.assert_success();
 
-    let disasm: DisasmResult = result.json();
+    let disasm: DisasmResult = result.data();
     assert!(
         disasm.results.len() <= 1,
         "Should return at most 1 instruction, got {}",
@@ -548,7 +548,7 @@ fn test_disasm_instruction_fields() {
 
     result.assert_success();
 
-    let disasm: DisasmResult = result.json();
+    let disasm: DisasmResult = result.data();
     assert!(!disasm.results.is_empty(), "Should have instructions");
 
     let first = &disasm.results[0];
@@ -595,9 +595,8 @@ fn test_disasm_invalid_address() {
         .run();
 
     if result.exit_code == 0 {
-        if let Some(_disasm) = result.try_json::<DisasmResult>() {
-            // Empty results are acceptable for unmapped address
-        }
+        let disasm: DisasmResult = result.data();
+        assert!(disasm.results.is_empty());
     } else {
         assert!(
             !result.stderr.is_empty() || !result.stdout.is_empty(),

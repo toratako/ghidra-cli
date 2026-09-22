@@ -13,7 +13,7 @@ comment set 0x1000 'Header length includes the prefix'
     )
     .unwrap();
     let result = bridge.run(&["batch", "batch.txt"]);
-    assert_eq!(result[0]["commands_executed"], 3);
+    assert_eq!(result["commands_executed"], 3);
     let requests = bridge.requests.lock().unwrap();
     let edits: Vec<_> = requests
         .iter()
@@ -90,8 +90,8 @@ fn batch_reports_all_malformed_quoting_before_executing_any_lines() {
     assert!(!output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     assert!(error["detail"].get("results").is_none());
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let detail = &report[0];
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    let detail = &report;
     assert_eq!(detail["commands_parsed"], 4);
     assert_eq!(detail["commands_executed"], 0);
     assert_eq!(detail["failed"], 3);
@@ -148,8 +148,8 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(1), "{output:?}");
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        let report = &report[0];
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        let report = &report;
         assert_eq!(report["commands_parsed"], 4);
         assert_eq!(report["commands_executed"], 0);
         assert_eq!(report["not_executed"], 4);
@@ -200,8 +200,8 @@ fn batch_can_reuse_a_nested_file_after_its_previous_invocation_finishes() {
     )
     .unwrap();
     let report = bridge.run(&["batch", "scripts/batch.txt"]);
-    assert_eq!(report[0]["commands_executed"], 2);
-    assert_eq!(report[0]["failed"], 0);
+    assert_eq!(report["commands_executed"], 2);
+    assert_eq!(report["failed"], 0);
     assert_eq!(
         bridge
             .requests

@@ -196,7 +196,7 @@ fn applied_data_values_and_bounded_traversal() {
         .json_format()
         .run();
     list.assert_success();
-    let list: Value = list.json();
+    let list: Value = list.data();
     assert_eq!(list.as_array().unwrap().len(), 2);
     assert_eq!(list[0]["name"], "data_record");
     assert_eq!(list[1]["name"], "data_uninitialized");
@@ -205,8 +205,8 @@ fn applied_data_values_and_bounded_traversal() {
         .json_format()
         .run();
     output.assert_success();
-    let output: Value = output.json();
-    assert_eq!(output, json!([{"value":"0", "state":"available"}]));
+    let output: Value = output.data();
+    assert_eq!(output, json!({"value":"0", "state":"available"}));
 
     // Values come from current analysis memory; no reapplication of the type is needed.
     client

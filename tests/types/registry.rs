@@ -53,7 +53,7 @@ fn test_type_rename_rejects_immutable_types_and_persists_mutable_types() {
     type_command(&program, &["create", "struct", "Holder"]).assert_success();
     let before = type_command(&program, &["list", "--limit", "0"]);
     before.assert_success();
-    let before: serde_json::Value = before.json();
+    let before: serde_json::Value = before.data();
     for name in ["int", "/int", "byte[4]", "void *"] {
         let failed = type_command(&program, &["rename", name, "Renamed"]);
         failed
@@ -65,18 +65,18 @@ fn test_type_rename_rejects_immutable_types_and_persists_mutable_types() {
     }
     let after = type_command(&program, &["list", "--limit", "0"]);
     after.assert_success();
-    assert_eq!(after.json::<serde_json::Value>(), before);
+    assert_eq!(after.data::<serde_json::Value>(), before);
 
     let renamed = type_command(&program, &["rename", "Holder", "Renamed"]);
     renamed.assert_success();
-    let renamed: serde_json::Value = renamed.json();
-    assert_eq!(renamed[0]["path"], "/Renamed");
+    let renamed: serde_json::Value = renamed.data();
+    assert_eq!(renamed["path"], "/Renamed");
     let client = harness().client().unwrap();
     client.program_close().unwrap();
     let saved = type_command(&program, &["get", "/Renamed"]);
     saved.assert_success();
-    let saved: serde_json::Value = saved.json();
-    assert_eq!(saved[0]["name"], "Renamed");
+    let saved: serde_json::Value = saved.data();
+    assert_eq!(saved["name"], "Renamed");
     type_command(&program, &["get", "/Holder"]).assert_failure();
     client.open_program(TEST_PROGRAM).unwrap();
 }
@@ -125,13 +125,13 @@ public class RegisterTypesForDeletion extends GhidraScript {
     ];
     let listed = type_command(&program, &["list", "--limit", "0"]);
     listed.assert_success();
-    let listed: Vec<serde_json::Value> = listed.json();
+    let listed: Vec<serde_json::Value> = listed.data();
     for (name, path) in targets {
         assert!(listed.iter().any(|ty| ty["path"] == path), "{listed:?}");
         let deleted = type_command(&program, &["delete", name]);
         deleted.assert_success();
-        let deleted: serde_json::Value = deleted.json();
-        assert_eq!(deleted[0]["path"], path);
+        let deleted: serde_json::Value = deleted.data();
+        assert_eq!(deleted["path"], path);
         type_command(&program, &["delete", path])
             .assert_failure()
             .assert_stderr_contains("Type not found");
@@ -141,7 +141,7 @@ public class RegisterTypesForDeletion extends GhidraScript {
     type_command(&program, &["get", "byte[4]"]).assert_success();
     let saved = type_command(&program, &["list", "--limit", "0"]);
     saved.assert_success();
-    let saved: Vec<serde_json::Value> = saved.json();
+    let saved: Vec<serde_json::Value> = saved.data();
     for (_, path) in targets {
         assert!(!saved.iter().any(|ty| ty["path"] == path), "{saved:?}");
     }
@@ -157,7 +157,7 @@ public class RegisterTypesForDeletion extends GhidraScript {
     client.program_close().unwrap();
     let preserved = type_command(&program, &["get", "/dword"]);
     preserved.assert_success();
-    let preserved: serde_json::Value = preserved.json();
-    assert_eq!(preserved[0]["kind"], "struct");
+    let preserved: serde_json::Value = preserved.data();
+    assert_eq!(preserved["kind"], "struct");
     client.open_program(TEST_PROGRAM).unwrap();
 }

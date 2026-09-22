@@ -1,5 +1,8 @@
 //! Tests for comment operations.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use predicates::prelude::*;
 use serial_test::serial;
 use std::sync::OnceLock;
@@ -128,10 +131,10 @@ fn test_comment_delete() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let receipt: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(
         receipt,
-        serde_json::json!([{"status": "deleted", "address": comments["address"]}])
+        serde_json::json!({"status": "deleted", "address": comments["address"]})
     );
 
     assert!(client.comment_get(addr).unwrap()["comments"]
@@ -258,8 +261,9 @@ fn comment_delete_applies_fields_and_format_to_receipt() {
             .unwrap();
         assert!(output.status.success(), "{output:?}");
         if format == "json-compact" {
-            let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-            assert_eq!(receipt, serde_json::json!([{"status": "deleted"}]));
+            let receipt: serde_json::Value =
+                crate::json_output::from_slice(&output.stdout).unwrap();
+            assert_eq!(receipt, serde_json::json!({"status": "deleted"}));
         } else {
             let receipt = String::from_utf8(output.stdout).unwrap();
             assert_eq!(receipt.trim(), "status\ndeleted");
@@ -353,7 +357,7 @@ fn comment_stdin_preserves_multiline_text_without_prompting_pipelines() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert!(
         value
             .to_string()
@@ -528,7 +532,7 @@ public class CreateInteriorCommentFixture extends GhidraScript {
             .with_project(test_project(), &name)
             .run();
         output.assert_success();
-        assert_eq!(output.stdout.trim(), "4");
+        assert_eq!(output.data::<usize>(), 4);
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

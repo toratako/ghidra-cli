@@ -27,10 +27,10 @@ fn listing_undefine_preserves_targets_and_atomic_redisassembly_in_standalone_and
                 std::fs::write(outer.root.path().join("batch.txt"), batch_arguments(&args))
                     .unwrap();
                 let report = outer.run(&["batch", "batch.txt"]);
-                assert_eq!(report[0]["failed"], 0, "{report}");
-                report[0]["results"][0]["result"].clone()
+                assert_eq!(report["failed"], 0, "{report}");
+                report["results"][0]["result"]["data"].clone()
             } else {
-                outer.run(&args)[0].clone()
+                outer.run(&args)
             };
             assert_eq!(receipt["observed_program"], "B");
             assert!(outer
@@ -113,11 +113,11 @@ fn listing_undefine_rejects_invalid_or_missing_bounds_before_dispatch() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(1), "{output:?}");
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(report[0]["commands_executed"], 0);
-        assert_eq!(report[0]["validation_failed"], true);
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["commands_executed"], 0);
+        assert_eq!(report["validation_failed"], true);
         assert!(
-            report[0]["validation_errors"][0]["error"]
+            report["validation_errors"][0]["error"]
                 .as_str()
                 .unwrap()
                 .contains(message),
@@ -249,16 +249,12 @@ fn disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
                 bridge.requests.lock().unwrap().clear();
                 let result = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
                 // Batch commands without query flags retain the bridge envelope.
-                let expected_result = if batch && flags.is_empty() {
-                    json!({"instructions": expected, "count": expected.as_array().unwrap().len()})
-                } else {
-                    expected.clone()
-                };
+                let expected_result = expected.clone();
                 assert_eq!(result, expected_result, "{args:?}, batch={batch}");
                 let requests = bridge.requests.lock().unwrap();
                 let disassembly: Vec<_> = requests
@@ -303,9 +299,9 @@ fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
                 bridge.requests.lock().unwrap().clear();
                 let receipt = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
-                    bridge.run(&args)[0].clone()
+                    bridge.run(&args)
                 };
                 assert!(receipt.is_object(), "{receipt}");
                 assert_eq!(

@@ -243,7 +243,7 @@ fn handle_job_query(
         client.status()?
     };
     if output.json {
-        write_stdout(&output.json_string(&jobs)?)?;
+        output.result(&jobs, "")?;
     } else if let Some(job) = jobs.get("job") {
         write_stdout(&format_bridge_job("Job", job))?;
     } else if jobs.get("found").and_then(|v| v.as_bool()) == Some(false) {
@@ -323,7 +323,7 @@ fn handle_job_cancel(
     })?;
     let result = BridgeClient::new(port).cancel_job(job_id)?;
     if output.json {
-        write_stdout(&output.json_string(&result)?)?;
+        output.result(&result, "")?;
     } else {
         let id = result
             .get("job_id")

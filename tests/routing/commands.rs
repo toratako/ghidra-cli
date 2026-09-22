@@ -71,24 +71,15 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
         bridge.requests.lock().unwrap().clear();
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
         let report = bridge.run(&["batch", "batch.txt"]);
-        assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
+        assert_eq!(report["failed"], 0, "{args:?}: {report}");
         let requests = bridge.requests.lock().unwrap();
         let request = requests
             .iter()
             .find(|request| request["command"] == wire)
             .unwrap();
         assert_eq!(request["args"], standalone_request["args"], "{args:?}");
-        let result = &report[0]["results"][0]["result"];
-        // Mutations are wrapped as one receipt in standalone JSON output.
-        assert_eq!(
-            result,
-            if wire == "define_code" {
-                &standalone[0]
-            } else {
-                &standalone
-            },
-            "{args:?}"
-        );
+        let result = &report["results"][0]["result"]["data"];
+        assert_eq!(result, &standalone, "{args:?}");
     }
 }
 
@@ -187,7 +178,7 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
         bridge.requests.lock().unwrap().clear();
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
         let report = bridge.run(&["batch", "batch.txt"]);
-        assert_eq!(report[0]["failed"], 0, "{args:?}: {report}");
+        assert_eq!(report["failed"], 0, "{args:?}: {report}");
         let requests = bridge.requests.lock().unwrap();
         let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
         assert_eq!(operations.len(), 1, "{args:?}: {requests:?}");
@@ -238,8 +229,8 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    for result in report[0]["validation_errors"]
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    for result in report["validation_errors"]
         .as_array()
         .unwrap()
         .iter()
@@ -255,7 +246,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     }
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(error["detail"]["failed"], rejected);
-    assert_eq!(report[0]["commands_executed"], 0);
+    assert_eq!(report["commands_executed"], 0);
     assert!(bridge.requests.lock().unwrap().is_empty());
 }
 

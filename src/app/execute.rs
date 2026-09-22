@@ -54,7 +54,7 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
             Some((args.address.as_deref(), args.filter.as_deref()))
         }
         Commands::Symbol(cli::SymbolCommands::Delete(args)) => {
-            Some((args.address.as_deref(), args.options.filter.as_deref()))
+            Some((args.address.as_deref(), args.filter.as_deref()))
         }
         _ => None,
     };

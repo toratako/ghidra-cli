@@ -169,7 +169,7 @@ public class CreateSearchLimitFixture extends GhidraScript {
                 )
                 .run();
             output.assert_success();
-            output.json()
+            output.data()
         };
         let bytes = "4341505f4e4545444c455f"; // CAP_NEEDLE_
         for command in [
@@ -278,11 +278,11 @@ public class CreateSearchLimitFixture extends GhidraScript {
         let batch_path = temp.path().join("limits.txt");
         std::fs::write(&batch_path, "function list --filter name~password_case_\nfunction list --filter name~password_case_ --fields name\nfind bytes 4341505f4e4545444c455f --count\nfunction list --offset 100 --limit 0\n").unwrap();
         let batch = run(&["batch", batch_path.to_str().unwrap()]);
-        let results = &batch[0]["results"];
-        assert_eq!(results[0]["result"].as_array().unwrap().len(), 2);
-        assert_eq!(results[1]["result"].as_array().unwrap().len(), 2);
-        assert_eq!(results[2]["result"], 160);
-        assert_eq!(results[3]["result"].as_array().unwrap().len(), 60);
+        let results = &batch["results"];
+        assert_eq!(results[0]["result"]["data"].as_array().unwrap().len(), 2);
+        assert_eq!(results[1]["result"]["data"].as_array().unwrap().len(), 2);
+        assert_eq!(results[2]["result"]["data"], 160);
+        assert_eq!(results[3]["result"]["data"].as_array().unwrap().len(), 60);
 
         // A dense uncapped search cannot finish before cancellation is observed.
         // Its next request must get a fresh, non-cancelled monitor.

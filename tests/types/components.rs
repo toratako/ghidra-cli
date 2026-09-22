@@ -7,7 +7,7 @@ use serial_test::serial;
 fn definition(program: &str, name: &str) -> Value {
     let result = type_command(program, &["get", name]);
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 fn field<'a>(definition: &'a Value, name: &str) -> &'a Value {
@@ -99,7 +99,7 @@ public class CreateOrdinaryComponentMetadata extends GhidraScript {
     assert_eq!(union["components"][1]["offset"], 0);
     assert_eq!(union["components"][1]["name"], Value::Null);
 
-    // Query limits select the type row and keep every nested component intact.
+    // Field projection keeps every nested component intact.
     let projected = type_command(
         &program,
         &[
@@ -107,14 +107,12 @@ public class CreateOrdinaryComponentMetadata extends GhidraScript {
             "/Layout/OrdinaryStruct",
             "--fields",
             "name,components",
-            "--limit",
-            "1",
         ],
     );
     projected.assert_success();
     assert_eq!(
-        projected.json::<Value>(),
-        json!([{"name": "OrdinaryStruct", "components": structure["components"]}])
+        projected.data::<Value>(),
+        json!({"name": "OrdinaryStruct", "components": structure["components"]})
     );
     client.program_close().unwrap();
     assert_eq!(definition(&program, "/Layout/OrdinaryStruct"), structure);

@@ -29,7 +29,7 @@ fn command(program: &str, args: &[&str]) -> common::helpers::GhidraResult {
 fn function(program: &str, target: &str) -> Value {
     let result = command(program, &["function", "get", target, "--with-signature"]);
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 fn set_return(program: &str, target: &str, ty: &str) -> Value {
@@ -38,7 +38,7 @@ fn set_return(program: &str, target: &str, ty: &str) -> Value {
         &["function", "set-return-type", target, "--type", ty],
     );
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 fn decompile(target: &str) -> Value {

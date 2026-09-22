@@ -17,8 +17,8 @@ fn type_command(program: &str, args: &[&str]) -> GhidraResult {
 fn get_type(program: &str, name: &str) -> Value {
     let result = type_command(program, &["get", name]);
     result.assert_success();
-    let result: Value = result.json();
-    result[0].clone()
+    let result: Value = result.data();
+    result.clone()
 }
 
 fn create_program(bits: u32) -> String {
@@ -157,7 +157,7 @@ fn invalid_arrays_fail_before_registering_types_or_growing_structures() {
     let before = get_type(&program, "Holder");
     let listed = type_command(&program, &["list"]);
     listed.assert_success();
-    let types_before: Value = listed.json();
+    let types_before: Value = listed.data();
 
     for expression in [
         "byte[0]",
@@ -200,7 +200,7 @@ fn invalid_arrays_fail_before_registering_types_or_growing_structures() {
     assert_eq!(get_type(&program, "byte[2147483647]")["size"], i32::MAX);
     let listed = type_command(&program, &["list"]);
     listed.assert_success();
-    let types_after: Value = listed.json();
+    let types_after: Value = listed.data();
     harness()
         .client()
         .unwrap()
@@ -481,8 +481,8 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
         type_command(&program, &initial).assert_success();
         let result = type_command(&program, &args);
         result.assert_success();
-        let created: Value = result.json();
-        let created = &created[0];
+        let created: Value = result.data();
+        let created = &created;
         let registered_name = created["name"].as_str().unwrap();
         let path = created["path"].as_str().unwrap();
         assert_ne!(registered_name, name, "{created}");

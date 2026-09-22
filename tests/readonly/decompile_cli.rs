@@ -116,15 +116,15 @@ public class CreateOrderedParametersFixture extends GhidraScript {
             .with_project(test_project(), &program)
             .run();
         result.assert_success();
-        let output: Value = result.json();
-        let names: Vec<_> = output[0]["params"]
+        let output: Value = result.data();
+        let names: Vec<_> = output["params"]
             .as_array()
             .unwrap()
             .iter()
             .map(|parameter| parameter["name"].as_str().unwrap())
             .collect();
         assert_eq!(names, ["p0", "p1", "p2", "p3", "p4"], "{output}");
-        assert!(output[0]["signature"]
+        assert!(output["signature"]
             .as_str()
             .unwrap()
             .contains("int p0, int p1, int p2, int p3, int p4"));

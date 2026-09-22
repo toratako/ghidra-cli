@@ -133,11 +133,11 @@ public class CreateDisasmFailureFixture extends GhidraScript {
             .args(["--on-error", "stop"])
             .run();
         assert_eq!(failed_batch.exit_code, 1, "{failed_batch:?}");
-        let report: serde_json::Value = failed_batch.json();
-        assert_eq!(report[0]["commands_executed"], 1);
-        assert_eq!(report[0]["failed"], 1);
-        assert_eq!(report[0]["not_executed"], 1);
-        assert_eq!(report[0]["results"][0]["detail"]["landed"], false);
+        let report: serde_json::Value = failed_batch.data();
+        assert_eq!(report["commands_executed"], 1);
+        assert_eq!(report["failed"], 1);
+        assert_eq!(report["not_executed"], 1);
+        assert_eq!(report["results"][0]["detail"]["landed"], false);
         assert!(client.comment_get("0x1000").unwrap()["comments"]
             .as_array()
             .unwrap()
@@ -243,7 +243,7 @@ fn check_define_code_ranges(
         .with_project(test_project(), program)
         .run();
     result.assert_success();
-    let receipt = &result.json::<Value>()[0];
+    let receipt = &result.data::<Value>();
     assert_eq!(receipt["already_defined"], false);
     assert_eq!(receipt["landed"], true);
     assert_eq!(receipt["changed"], true);

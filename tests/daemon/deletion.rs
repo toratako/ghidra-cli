@@ -202,7 +202,7 @@ fn test_program_delete_from_stopped_bridge_and_empty_project() {
     // must not depend on a file that the headless analyzer can -process.
     let output = project_cli(&project, &["program", "list"]);
     assert!(output.status.success(), "{output:?}");
-    let programs: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let programs: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(programs, serde_json::json!([]));
     let port = ghidra_cli::ghidra::bridge::is_bridge_running(&project).unwrap();
     let client = ghidra_cli::ipc::client::BridgeClient::new(port);
@@ -266,9 +266,10 @@ public class ReleaseDeletionTarget extends GhidraScript {
     .unwrap();
     let output = project_cli(&project, &["batch", batch.path().to_str().unwrap()]);
     assert!(output.status.success(), "{output:?}");
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value[0]["failed"], 0);
-    assert_eq!(value[0]["results"][0]["result"]["status"], "deleted");
-    assert_eq!(value[0]["results"][1]["result"]["count"], 0);
+    let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["failed"], 0);
+    assert_eq!(value["results"][0]["result"]["data"]["status"], "deleted");
+    assert_eq!(value["results"][1]["result"]["data"], serde_json::json!([]));
+    assert_eq!(value["results"][1]["result"]["meta"]["returned"], 0);
     assert_eq!(client.bridge_info().unwrap()["has_current_program"], false);
 }

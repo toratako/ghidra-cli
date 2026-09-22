@@ -26,7 +26,7 @@ fn test_strings_list_schema_validation() {
 
     result.assert_success();
 
-    let strings: Vec<StringData> = result.json();
+    let strings: Vec<StringData> = result.data();
     assert!(!strings.is_empty(), "Should have at least one string");
 
     for s in &strings {
@@ -61,7 +61,7 @@ fn test_memory_map_schema_validation() {
 
     result.assert_success();
 
-    let blocks: Vec<MemoryBlock> = result.json();
+    let blocks: Vec<MemoryBlock> = result.data();
     assert!(
         !blocks.is_empty(),
         "Memory map should have at least one block"
@@ -124,7 +124,7 @@ fn test_symbol_externals_and_entry_points_match_bridge_rows() {
                 .json_format()
                 .run();
             result.assert_success();
-            result.json()
+            result.data()
         };
         assert_eq!(run(&["--limit", "0"]), all[key]);
         assert_eq!(run(&["--count"]), serde_json::json!(rows.len()));
@@ -181,21 +181,9 @@ fn test_stats_has_all_fields() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
 
-    // Stats may be returned as flat object or wrapped: [{"stats": {...}}]
-    let obj = if let Some(obj) = json.as_object() {
-        obj.clone()
-    } else if let Some(arr) = json.as_array() {
-        arr.first()
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("stats"))
-            .and_then(|v| v.as_object())
-            .expect("Expected stats object in array wrapper")
-            .clone()
-    } else {
-        panic!("Stats should be a JSON object or array");
-    };
+    let obj = json["stats"].as_object().expect("stats object");
 
     // Verify key fields exist
     for key in &["functions", "strings", "symbols"] {
@@ -228,20 +216,9 @@ fn test_stats_json_format() {
     result.assert_success();
 
     // Verify output is valid JSON
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
 
-    // Extract stats object (may be flat or wrapped)
-    let stats = if json.is_object() {
-        json.clone()
-    } else if let Some(arr) = json.as_array() {
-        arr.first()
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("stats"))
-            .cloned()
-            .expect("Expected stats in array wrapper")
-    } else {
-        panic!("Expected JSON object or array");
-    };
+    let stats = &json["stats"];
 
     // Verify it has numeric function count
     let functions = stats

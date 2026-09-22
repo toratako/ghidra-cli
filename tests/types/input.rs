@@ -34,8 +34,8 @@ fn type_import_file_and_stdin_create_saved_definitions() {
             .with_project(test_project(), TEST_PROGRAM)
             .run();
         result.assert_success();
-        let value: serde_json::Value = result.json();
-        assert_eq!(value[0]["components"][0]["name"], "value");
+        let value: serde_json::Value = result.data();
+        assert_eq!(value["components"][0]["name"], "value");
     }
     harness.client().unwrap().program_close().unwrap();
     let result = ghidra(harness)
@@ -85,7 +85,7 @@ public class ApplyImportRollbackFixture extends GhidraScript {
         .unwrap();
     let before = type_command(&program, &["list", "--limit", "0"]);
     before.assert_success();
-    let before: serde_json::Value = before.json();
+    let before: serde_json::Value = before.data();
 
     // Both syntax and lexical failures follow a valid prefix that replaces
     // Existing. The parser commits its nested transaction even on failure, so
@@ -110,7 +110,7 @@ public class ApplyImportRollbackFixture extends GhidraScript {
             }
             let after = type_command(&program, &["list", "--limit", "0"]);
             after.assert_success();
-            assert_eq!(after.json::<serde_json::Value>(), before);
+            assert_eq!(after.data::<serde_json::Value>(), before);
             client
                 .script_run_source(
                 r#"
@@ -193,7 +193,7 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .run();
 
     list_result.assert_success();
-    let listed_types: Vec<serde_json::Value> = list_result.json();
+    let listed_types: Vec<serde_json::Value> = list_result.data();
 
     let categories: HashSet<String> = listed_types
         .iter()

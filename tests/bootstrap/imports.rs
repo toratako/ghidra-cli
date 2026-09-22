@@ -23,8 +23,8 @@ fn import_names_are_saved_and_selected_across_all_routes() {
             name,
             "--no-analyze",
         ]);
-        assert_eq!(result[0]["command"], "program import");
-        assert_eq!(result[0]["program"], name);
+        assert_eq!(result["command"], "program import");
+        assert_eq!(result["program"], name);
         project.assert_program_identity(name);
         let programs = project.ok(&["program", "list"]);
         assert!(
@@ -49,10 +49,10 @@ fn import_names_are_saved_and_selected_across_all_routes() {
         "0x8000",
     ];
     let result = project.ok(&args);
-    assert_eq!(result[0]["program"], "raw-name");
+    assert_eq!(result["program"], "raw-name");
     let info = project.ok(&["program", "info"]);
-    assert_eq!(info[0]["name"], "raw-name");
-    let executable_path = info[0]["executable_path"].as_str().unwrap();
+    assert_eq!(info["name"], "raw-name");
+    let executable_path = info["executable_path"].as_str().unwrap();
     // Ghidra's local FSRL paths use /C:/... for Windows drive paths.
     #[cfg(windows)]
     let executable_path = executable_path
@@ -119,7 +119,7 @@ public class CheckProgramIdentity extends GhidraScript {
     project.ok(&["bridge", "start", "--program", "raw-name"]);
     project.assert_program_identity("raw-name");
     let receipt = project.ok(&["listing", "define-code", "0x8000", "--end", "0x8002"]);
-    assert_eq!(receipt[0]["landed"], true);
+    assert_eq!(receipt["landed"], true);
     let disassembly = project.ok(&["disassemble", "0x8000", "--limit", "2"]);
     assert_eq!(disassembly[0]["mnemonic"], "XOR");
     let duplicate = project.run(&args);
@@ -144,7 +144,7 @@ public class CheckProgramIdentity extends GhidraScript {
             binary.to_str().unwrap(),
             "--no-analyze",
         ]);
-        let name = result[0]["program"].as_str().unwrap();
+        let name = result["program"].as_str().unwrap();
         project.assert_program_identity(name);
         let selected = project.ok(&["program", "list"]);
         assert!(
@@ -180,14 +180,14 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
     command.current_dir(&inputs);
     let output = common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
     assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result[0]["program"], name);
+    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["program"], name);
     project.assert_program_identity(name);
 
     // The running bridge takes the TCP route. An implicit name collision must
     // still get Ghidra's suffix, rather than behave like an explicit --name.
     let result = project.ok(&["program", "import", link.to_str().unwrap(), "--no-analyze"]);
-    let suffixed = result[0]["program"].as_str().unwrap();
+    let suffixed = result["program"].as_str().unwrap();
     assert_ne!(suffixed, name);
     assert_ne!(suffixed, "actual.bin");
     project.assert_program_identity(suffixed);
@@ -201,7 +201,7 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
         "--no-analyze",
     ];
     let result = project.ok(&explicit);
-    assert_eq!(result[0]["program"], "chosen-name");
+    assert_eq!(result["program"], "chosen-name");
     project.assert_program_identity("chosen-name");
     let duplicate = project.run(&explicit);
     assert!(!duplicate.status.success());
@@ -313,7 +313,7 @@ fn unsupported_loader_options_never_save_a_program() {
         assert_eq!(programs.as_array().unwrap().len(), 1, "{programs}");
         assert_eq!(programs[0]["name"], "valid");
         assert_eq!(
-            project.ok(&["program", "info"])[0]["min_address"],
+            project.ok(&["program", "info"])["min_address"],
             "0x00009000"
         );
     }

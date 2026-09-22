@@ -1,5 +1,8 @@
 //! Tests for project management commands.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use predicates::prelude::*;
 use serial_test::serial;
 
@@ -60,7 +63,7 @@ fn test_import_binary() {
         .output()
         .unwrap();
     assert!(info.status.success(), "{info:?}");
-    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    let info: serde_json::Value = crate::json_output::from_slice(&info.stdout).unwrap();
     assert_eq!(info["exists"], true);
     let bare = std::path::PathBuf::from(info["path"].as_str().unwrap());
     std::fs::create_dir(&bare).unwrap();
@@ -140,7 +143,7 @@ fn test_project_delete_nonexistent() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(value["project"], project);
     assert_eq!(value["deleted"], false);
 }
@@ -175,7 +178,7 @@ fn test_project_delete_honors_directory_override_and_preserves_source_files() ->
     )?;
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout)?,
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout)?,
         serde_json::json!({"project": "project", "deleted": true})
     );
     assert!(!target.with_added_extension("gpr").exists());
@@ -220,7 +223,7 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
     )?;
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout)?["deleted"],
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout)?["deleted"],
         true
     );
     assert!(
@@ -443,8 +446,8 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
         .expect("program info");
     assert!(info.status.success());
     let info_json: serde_json::Value =
-        serde_json::from_slice(&info.stdout).expect("program info JSON");
-    let program = &info_json[0];
+        crate::json_output::from_slice(&info.stdout).expect("program info JSON");
+    let program = &info_json;
     assert_eq!(program["executable_format"], "Raw Binary");
     assert_eq!(program["language"], "x86/little/32/default");
     assert_eq!(program["min_address"], "0x00008000");
@@ -466,9 +469,9 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
         .output()
         .expect("define raw code");
     assert!(definition.status.success(), "{definition:?}");
-    let receipt: serde_json::Value = serde_json::from_slice(&definition.stdout).unwrap();
-    assert_eq!(receipt[0]["changed"], true);
-    assert!(receipt[0].get("instructions").is_none());
+    let receipt: serde_json::Value = crate::json_output::from_slice(&definition.stdout).unwrap();
+    assert_eq!(receipt["changed"], true);
+    assert!(receipt.get("instructions").is_none());
     let disasm = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "disassemble",
@@ -485,7 +488,7 @@ fn test_import_raw_x86_blob_with_language_and_base_address() {
         .expect("raw disassembly");
     assert!(disasm.status.success());
     let disasm_json: serde_json::Value =
-        serde_json::from_slice(&disasm.stdout).expect("disassembly JSON");
+        crate::json_output::from_slice(&disasm.stdout).expect("disassembly JSON");
     let instructions = disasm_json.as_array().expect("instructions");
     assert_eq!(instructions.len(), 2);
     assert_eq!(instructions[0]["mnemonic"], "XOR");

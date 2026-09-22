@@ -1,5 +1,8 @@
 //! Tests for script execution operations.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;

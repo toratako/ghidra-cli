@@ -19,7 +19,8 @@ and target checks in `src/cli/tests.rs`.
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
-| `output.rs` | Select output format, unwrap envelopes, apply query processing, and route C-only decompiler diagnostics to stderr |
+| `result.rs` | Declare command result shapes, retain context/page metadata, and apply queries to produce the common result value |
+| `output.rs` | Render common results for standalone/batch/management output and route C-only decompiler diagnostics to stderr |
 | `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
 | `installation.rs` | Setup and doctor commands |
 | `local.rs` | Configuration and project commands |
@@ -47,7 +48,7 @@ Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
 Decompilation diagnostics are result fields in JSON and human formats. C-only
 output retains the generated C and sends API diagnostics absent from its warning
-comments to stderr; count, filtering, field projection, and quiet mode still apply.
+comments to stderr; field projection and quiet mode still apply.
 `program import` owns its startup and selection workflow; `--name` is the saved
 file name, independent of global `--program` and configured target defaults.
 Import retains stop/start/open/analyze order. `program save` saves in place and
@@ -105,7 +106,23 @@ Output precedence: explicit format, pretty JSON, compact JSON, configured
 `default_output_format`, then TTY detection. Carry the residual
 [query plan](../query/README.md) with each command result; rebuilding it for output
 can apply a server offset twice.
-Extract response envelopes before query processing. `output.rs` renders reports;
+`result.rs` classifies results by command, never by payload keys. Normal JSON
+contains `data` and optional nonempty `meta`; standalone output and batch entries
+serialize the same prepared result. Single values retain their JSON type, lists
+use arrays, and graphs retain their nodes and edges. Row extraction and contextual
+metadata fields are declared together. Lists report `returned`; paged operations
+retain the effective `offset`/`limit` from before pushdown (`null` is unlimited).
+Count results retain page/context metadata without `returned`. Fields project
+data only; graph projection applies to nodes after matching outgoing edges.
+Receipts, nested fields, and warnings remain data. No result wrapper implies
+success: doctor and failed batches can print diagnostic results before exiting
+nonzero. Stderr errors keep their separate contract.
+
+NDJSON renders list elements individually, other results as one JSON value,
+and empty lists as no output; it omits the outer wrapper and metadata. Batch
+NDJSON is one report value whose entries retain the common result envelopes.
+Management output uses the same preparation and preserves its text rendering.
+`output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
 wait timeouts exit 75, setup verification/doctor failures exit 1. Human-readable

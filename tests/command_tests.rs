@@ -1,5 +1,8 @@
 //! Tests for basic CLI commands that don't require daemon.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use predicates::prelude::*;
 
 #[macro_use]
@@ -105,7 +108,7 @@ fn config_set_java_home_persists_requested_value_and_preserves_other_settings() 
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["key"], "java_home");
 
     let config: ghidra_cli::config::Config =
@@ -121,7 +124,7 @@ fn config_set_java_home_persists_requested_value_and_preserves_other_settings() 
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<std::path::PathBuf>(&output.stdout).unwrap(),
+        crate::json_output::from_slice::<std::path::PathBuf>(&output.stdout).unwrap(),
         java_home
     );
 }

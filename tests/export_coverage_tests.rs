@@ -81,8 +81,8 @@ public class DefineExportCoverageFixture extends GhidraScript {
         .arg("--json")
         .run();
     result.assert_success();
-    let result: Value = result.json();
-    let c = &result[0];
+    let result: Value = result.data();
+    let c = &result;
     assert_receipt(c, &program, "c", &[&c_path]);
     let c_source = std::fs::read_to_string(&c_path).unwrap();
     assert!(c_source.contains("read_global("), "{c_source}");

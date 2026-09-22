@@ -25,7 +25,7 @@ fn command(program: &str, args: &[&str]) -> Value {
         .arg("--json")
         .run();
     result.assert_success();
-    result.json()
+    result.data()
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn function_get_preserves_disjoint_body_ranges_without_expanding_list_rows() {
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
     let checked = std::panic::catch_unwind(|| {
-        let detail = command(&program, &["function", "get", "disjoint"])[0].clone();
+        let detail = command(&program, &["function", "get", "disjoint"]);
         assert_eq!(detail["entry_point"], "0x00001000");
         assert_eq!(detail["size"], 10);
         assert_eq!(
@@ -49,17 +49,17 @@ fn function_get_preserves_disjoint_body_ranges_without_expanding_list_rows() {
         );
         // Selectors in any body range resolve the same function, even before its entry.
         for address in ["0xff1", "0x1000", "0x1102"] {
-            assert_eq!(command(&program, &["function", "get", address])[0], detail);
+            assert_eq!(command(&program, &["function", "get", address]), detail);
         }
         assert!(client
             .send_command("get_function", Some(json!({"address":"0x1080"})))
             .is_err());
 
         let overlay = command(&program, &["function", "get", "body_overlay:0x1010"]);
-        assert_eq!(overlay[0]["name"], "overlay_body");
-        assert_eq!(overlay[0]["size"], 3);
+        assert_eq!(overlay["name"], "overlay_body");
+        assert_eq!(overlay["size"], 3);
         assert_eq!(
-            overlay[0]["body_ranges"],
+            overlay["body_ranges"],
             json!([
                 {"start":"body_overlay:0x00001000", "end":"body_overlay:0x00001001"},
                 {"start":"body_overlay:0x00001010", "end":"body_overlay:0x00001010"},
@@ -75,12 +75,12 @@ fn function_get_preserves_disjoint_body_ranges_without_expanding_list_rows() {
         assert!(rows.contains(&summary));
         assert!(rows.iter().any(|row| row["name"] == "overlay_body"));
         assert_eq!(
-            command(&program, &["function", "get", "unmapped_body"])[0]["body_ranges"],
+            command(&program, &["function", "get", "unmapped_body"])["body_ranges"],
             json!([{"start":"0x00009000", "end":"0x00009000"}])
         );
         let external = command(&program, &["function", "get", "outside_body"]);
-        assert_eq!(external[0]["is_external"], true);
-        assert_eq!(external[0]["body_ranges"], json!([]));
+        assert_eq!(external["is_external"], true);
+        assert_eq!(external["body_ranges"], json!([]));
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
@@ -143,7 +143,7 @@ fn calling_convention_discovery_follows_selected_compiler_and_accepts_listed_nam
 }
 
 fn signature_details(program: &str, target: &str) -> Value {
-    command(program, &["function", "get", target, "--with-signature"])[0].clone()
+    command(program, &["function", "get", target, "--with-signature"])
 }
 
 fn signature_program_state() -> String {
@@ -207,7 +207,7 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
             }
             let mut summary = plain.clone();
             summary.as_object_mut().unwrap().remove("signature_details");
-            assert_eq!(command(&program, &["function", "get", "plain"])[0], summary);
+            assert_eq!(command(&program, &["function", "get", "plain"]), summary);
             assert_eq!(plain["stack_purge"]["bytes"], 4);
 
             let indirect = signature_details(&program, "indirect");
@@ -278,7 +278,7 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
                         "name,signature_details"
                     ]
                 ),
-                json!([{"name":"custom", "signature_details":custom["signature_details"]}])
+                json!({"name":"custom", "signature_details":custom["signature_details"]})
             );
             for format in ["compact", "full"] {
                 let result = ghidra(harness())

@@ -1,4 +1,7 @@
 //! Durable import checkpoints, saved names, and real doctor startup.
+#[path = "support/json.rs"]
+mod json_output;
+
 use ghidra_cli::ghidra::bridge;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -45,7 +48,7 @@ impl Project {
             "{args:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        serde_json::from_slice(&output.stdout).unwrap()
+        crate::json_output::from_slice(&output.stdout).unwrap()
     }
     fn raw(&self) -> PathBuf {
         let path = self.root.path().join("original's file.bin");
@@ -61,8 +64,8 @@ impl Project {
         let path = format!("/{name}");
         let command = ["program", "info"];
         let result = self.ok(&command);
-        assert_eq!(result[0]["name"], name, "{command:?}: {result}");
-        assert_eq!(result[0]["path"], path, "{command:?}: {result}");
+        assert_eq!(result["name"], name, "{command:?}: {result}");
+        assert_eq!(result["path"], path, "{command:?}: {result}");
         let client = self.client();
         assert_eq!(
             client.list_programs().unwrap()["current_program_name"],
@@ -159,7 +162,7 @@ fn doctor_runtime_discovers_path_installation_and_removes_disposable_project() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["installation"]["path"], serde_json::json!(install));
     assert!(result["installation"]["source"]
         .as_str()

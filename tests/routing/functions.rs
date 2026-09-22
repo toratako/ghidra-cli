@@ -6,18 +6,18 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
     let bridge = RecordedBridge::new();
     let all = call_graph_fixture();
     let graph = |nodes: &[usize], edges: &[usize]| {
-        json!([{
+        json!({
             "nodes": nodes.iter().map(|&i| all["nodes"][i].clone()).collect::<Vec<_>>(),
             "edges": edges.iter().map(|&i| all["edges"][i].clone()).collect::<Vec<_>>(),
             "node_count": nodes.len(),
             "edge_count": edges.len(),
-        }])
+        })
     };
     let mut projected = graph(&[1, 2], &[1, 2, 3]);
-    projected[0]["nodes"] = json!([{"name": "alpha"}, {"name": "beta"}]);
+    projected["nodes"] = json!([{"name": "alpha"}, {"name": "beta"}]);
     for (flags, expected, fetch_limit) in [
         (vec![], graph(&[0], &[0]), json!(1)),
-        (vec!["--limit", "0"], json!([all]), Value::Null),
+        (vec!["--limit", "0"], all.clone(), Value::Null),
         (vec!["--limit", "2"], graph(&[0, 1], &[0, 1, 2]), json!(2)),
         (vec!["--sort", "name"], graph(&[1], &[1, 2]), Value::Null),
         (
@@ -77,16 +77,11 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                     .unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
-            let expected = if batch && args.len() == 2 {
-                &expected[0]
-            } else {
-                &expected
-            };
-            assert_eq!(&result, expected, "{args:?}, batch={batch}");
+            assert_eq!(result, expected, "{args:?}, batch={batch}");
             let requests = bridge.requests.lock().unwrap();
             let graphs: Vec<_> = requests
                 .iter()
@@ -220,13 +215,8 @@ fn call_traversal_queries_share_rows_and_preserve_selection_before_limits() {
             bridge.requests.lock().unwrap().clear();
             std::fs::write(bridge.root.path().join("calls.txt"), batch_arguments(&args)).unwrap();
             let batch = bridge.run(&["batch", "calls.txt"]);
-            let actual = &batch[0]["results"][0]["result"];
-            if args.len() == 5 {
-                assert_eq!(actual["calls"], expected);
-                assert_eq!(actual["count"], 1);
-            } else {
-                assert_eq!(*actual, expected, "{args:?}: {batch}");
-            }
+            let actual = &batch["results"][0]["result"]["data"];
+            assert_eq!(*actual, expected, "{args:?}: {batch}");
             let requests = bridge.requests.lock().unwrap();
             let operations: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
             assert_eq!(operations.len(), 1);
@@ -247,9 +237,9 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
             }
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
-                bridge.run(&args)[0].clone()
+                bridge.run(&args)
             };
             assert_eq!(result["basic_block_count"], 3);
             assert_eq!(result.get("jump_tables").is_some(), with_jump_tables);

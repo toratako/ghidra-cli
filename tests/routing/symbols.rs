@@ -75,15 +75,10 @@ fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
                 args.extend(["--fields", fields]);
                 receipt.as_object_mut().unwrap().remove("name");
             }
-            assert_eq!(bridge.run(&args), json!([receipt]));
+            assert_eq!(bridge.run(&args), receipt.clone());
             std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
             let report = bridge.run(&["batch", "batch.txt"]);
-            let expected = if fields.is_some() {
-                json!([receipt])
-            } else {
-                receipt
-            };
-            assert_eq!(report[0]["results"][0]["result"], expected);
+            assert_eq!(report["results"][0]["result"]["data"], receipt);
             for request in bridge
                 .requests
                 .lock()

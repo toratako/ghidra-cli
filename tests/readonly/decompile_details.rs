@@ -39,7 +39,7 @@ fn decompile(name: &str, jump_tables: bool) -> Value {
     }
     let result = command(&args);
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 #[test]

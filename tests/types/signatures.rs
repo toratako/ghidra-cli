@@ -68,9 +68,9 @@ fn adjacent_pointer_return_names_preserve_types_after_reopen() {
         ] {
             let result = set_signature(&program, declaration);
             result.assert_success();
-            let result: Value = result.json();
-            assert_eq!(result[0]["status"], "signature_set");
-            assert_eq!(result[0]["function"], "lookup");
+            let result: Value = result.data();
+            assert_eq!(result["status"], "signature_set");
+            assert_eq!(result["function"], "lookup");
             let before = function();
             client.program_close().unwrap();
             client.open_program(&program).unwrap();
@@ -122,7 +122,7 @@ fn unrepresentable_qualifiers_fail_without_changing_saved_signature() {
     let before = function();
     let types_before = type_command(&program, &["list", "--limit", "0"]);
     types_before.assert_success();
-    let types_before: Value = types_before.json();
+    let types_before: Value = types_before.data();
 
     for (declaration, qualifier) in [
         ("void renamed(const char *text)", "const"),
@@ -151,7 +151,7 @@ fn unrepresentable_qualifiers_fail_without_changing_saved_signature() {
             assert_eq!(function(), before);
             let types_after = type_command(&program, &["list", "--limit", "0"]);
             types_after.assert_success();
-            assert_eq!(types_after.json::<Value>(), types_before);
+            assert_eq!(types_after.data::<Value>(), types_before);
         }
     }
     set_signature(&program, "void lookup(char *text)").assert_success();
@@ -183,40 +183,40 @@ fn batch_resumes_corrected_signature_at_line_45_without_repeating_saved_edits() 
         .arg("--json")
         .run();
     failed.assert_failure();
-    let report: Value = failed.json();
-    assert_eq!(report[0]["commands_executed"], 45);
-    assert_eq!(report[0]["not_executed"], 1);
-    assert_eq!(report[0]["results"][44]["detail"]["rolled_back"], true);
-    assert!(report[0]["results"][44]["error"]
+    let report: Value = failed.data();
+    assert_eq!(report["commands_executed"], 45);
+    assert_eq!(report["not_executed"], 1);
+    assert_eq!(report["results"][44]["detail"]["rolled_back"], true);
+    assert!(report["results"][44]["error"]
         .as_str()
         .unwrap()
         .contains("const"));
-    assert_eq!(report[0]["recovery"]["action"], "resume_from_line");
-    assert_eq!(report[0]["recovery"]["line"], 45);
-    assert_eq!(report[0]["recovery"]["program"], format!("/{program}"));
+    assert_eq!(report["recovery"]["action"], "resume_from_line");
+    assert_eq!(report["recovery"]["line"], 45);
+    assert_eq!(report["recovery"]["program"], format!("/{program}"));
     let client = harness().client().unwrap();
     // Check saved state, then change the selection before following the hint.
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
     assert_eq!(function(), before);
-    let progress: Value = type_command(&program, &["get", "Progress"]).json();
-    assert_eq!(progress[0]["components"].as_array().unwrap().len(), 43);
+    let progress: Value = type_command(&program, &["get", "Progress"]).data();
+    assert_eq!(progress["components"].as_array().unwrap().len(), 43);
     client.open_program(TEST_PROGRAM).unwrap();
     lines[44] = "function set-signature 0x1000 --signature 'void lookup(char *text)'".to_owned();
     std::fs::write(&file, lines.join("\n")).unwrap();
-    let argv: Vec<String> = serde_json::from_value(report[0]["recovery"]["argv"].clone()).unwrap();
+    let argv: Vec<String> = serde_json::from_value(report["recovery"]["argv"].clone()).unwrap();
     let resumed = common::GhidraCommand::new()
         .arg("--json")
         .args(argv.into_iter().skip(1))
         .run();
     resumed.assert_success();
-    let report: Value = resumed.json();
-    assert_eq!(report[0]["commands_executed"], 2);
-    assert_eq!(report[0]["results"][0]["line"], 45);
+    let report: Value = resumed.data();
+    assert_eq!(report["commands_executed"], 2);
+    assert_eq!(report["results"][0]["line"], 45);
     client.program_close().unwrap();
-    let progress: Value = type_command(&program, &["get", "Progress"]).json();
-    assert_eq!(progress[0]["components"].as_array().unwrap().len(), 44);
-    assert_eq!(progress[0]["components"][43]["name"], "tail");
+    let progress: Value = type_command(&program, &["get", "Progress"]).data();
+    assert_eq!(progress["components"].as_array().unwrap().len(), 44);
+    assert_eq!(progress["components"][43]["name"], "tail");
     let signature = client
         .send_command(
             "get_function",
@@ -280,9 +280,9 @@ public class CreateSignatureTestProgram extends GhidraScript {
     };
     let valid = set_signature("int signature_target(int argument)");
     valid.assert_success();
-    let result: serde_json::Value = valid.json();
-    assert_eq!(result[0]["status"], "signature_set");
-    assert!(result[0]["signature"]
+    let result: serde_json::Value = valid.data();
+    assert_eq!(result["status"], "signature_set");
+    assert!(result["signature"]
         .as_str()
         .unwrap()
         .contains("int argument"));

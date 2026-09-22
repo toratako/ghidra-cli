@@ -25,11 +25,11 @@ fn analysis_run_reanalyzes_with_changed_settings() {
     assert_eq!(strings(), serde_json::json!([]));
     project.ok(&["analysis", "option", "set", "ASCII Strings", "false"]);
     let first = project.ok(&["analysis", "run"]);
-    assert_eq!(first[0]["command"], "analysis run");
-    assert_eq!(first[0]["status"], "success");
-    assert_eq!(first[0]["data"]["status"], "success");
-    assert_eq!(first[0]["data"]["program"], "strings-raw");
-    assert!(first[0]["data"]["function_count"].is_u64());
+    assert_eq!(first["command"], "analysis run");
+    assert_eq!(first["status"], "success");
+    assert_eq!(first["data"]["status"], "success");
+    assert_eq!(first["data"]["program"], "strings-raw");
+    assert!(first["data"]["function_count"].is_u64());
     assert_eq!(strings(), serde_json::json!([]));
     assert_eq!(
         client.list_programs().unwrap()["programs"][0]["analyzed"],
@@ -44,8 +44,8 @@ fn analysis_run_reanalyzes_with_changed_settings() {
     );
     let minimum = "ASCII Strings.Minimum String Length";
     let option = project.ok(&["analysis", "option", "get", minimum]);
-    assert_eq!(option[0]["type"], "enum");
-    assert!(option[0]["choices"]
+    assert_eq!(option["type"], "enum");
+    assert!(option["choices"]
         .as_array()
         .unwrap()
         .contains(&serde_json::json!("LEN_25")));
@@ -63,7 +63,7 @@ fn analysis_run_reanalyzes_with_changed_settings() {
         "setting alone must not reanalyze"
     );
     let second = project.ok(&["analysis", "run"]);
-    assert_eq!(second[0]["data"]["status"], "success");
+    assert_eq!(second["data"]["status"], "success");
     let rows = strings();
     assert!(
         rows.as_array()

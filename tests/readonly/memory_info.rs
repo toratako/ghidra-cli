@@ -135,7 +135,7 @@ fn memory_info_classifies_listing_and_preserves_object_and_address_space_boundar
             .with_project(test_project(), &name)
             .run();
         output.assert_success();
-        assert_eq!(output.json::<Value>(), json!([expected]));
+        assert_eq!(output.data::<Value>(), expected);
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

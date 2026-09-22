@@ -38,7 +38,7 @@ fn config_set_preserves_persisted_values_despite_invocation_overrides() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["key"], "ghidra_project_dir");
 
     expected.ghidra_project_dir = Some(requested.clone());
@@ -53,7 +53,7 @@ fn config_set_preserves_persisted_values_despite_invocation_overrides() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let status: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(status["state"], "stopped");
     assert_eq!(
         status["project"],
@@ -82,7 +82,7 @@ fn config_reset_recovers_malformed_yaml_without_saving_invocation_overrides() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["message"], "Configuration reset to defaults");
 
     let expected = serde_json::to_value(ghidra_cli::config::Config::default()).unwrap();
@@ -95,7 +95,7 @@ fn config_reset_recovers_malformed_yaml_without_saving_invocation_overrides() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
         expected
     );
 }
@@ -138,7 +138,7 @@ fn unavailable_file_logging_does_not_prevent_commands() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+    crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap();
     assert!(output.stderr.is_empty(), "{output:?}");
     assert_eq!(std::fs::read_to_string(not_a_directory).unwrap(), "keep");
 }

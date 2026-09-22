@@ -138,8 +138,8 @@ public class CreatePointerTargets extends GhidraScript {
         .json_format()
         .run();
     output.assert_success();
-    let output: Value = output.json();
-    let result = &output[0];
+    let output: Value = output.data();
+    let result = &output;
     assert_eq!(result.as_object().expect("memory result").len(), 5);
     assert_eq!(result["source"], "memory");
     assert_eq!(parse_address(&result["address"]), 0x1000);
@@ -340,19 +340,13 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
         .json_format()
         .run();
     output.assert_success();
-    assert_eq!(
-        output.json::<Value>(),
-        json!([read_original(&client, "0x1000", 8)])
-    );
+    assert_eq!(output.data::<Value>(), read_original(&client, "0x1000", 8));
     let output = common::ghidra(&harness)
         .args(["memory", "read", "0x1000", "8", "--source", "memory"])
         .json_format()
         .run();
     output.assert_success();
-    assert_eq!(
-        output.json::<Value>(),
-        json!([read_memory(&client, "0x1000", 8)])
-    );
+    assert_eq!(output.data::<Value>(), read_memory(&client, "0x1000", 8));
 
     drop(harness);
     let reopened = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();

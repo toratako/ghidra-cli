@@ -35,7 +35,7 @@ fn test_function_list_schema_validation() {
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     assert!(!functions.is_empty(), "Function list should not be empty");
 
     for func in &functions {
@@ -61,7 +61,7 @@ fn test_function_list_contains_expected_functions() {
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     let names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
 
     // main must always be present
@@ -105,7 +105,7 @@ fn test_function_list_limit() {
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     assert!(
         functions.len() <= 3,
         "Limit 3 should return at most 3 functions, got {}",
@@ -130,7 +130,7 @@ fn test_function_list_filter() {
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     assert!(
         !functions.is_empty(),
         "Filter 'name~main' should match at least one function"
@@ -182,7 +182,7 @@ fn test_function_list_address_range_filter() {
 
     result.assert_success();
 
-    let functions: Vec<Function> = result.json();
+    let functions: Vec<Function> = result.data();
     assert!(
         !functions.is_empty(),
         "Filter '{}' should match at least one function (addresses {}..={})",

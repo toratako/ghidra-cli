@@ -69,8 +69,7 @@ public class CreateVariableTestProgram extends GhidraScript {
             .with_project(test_project(), &program)
             .run();
         output.assert_success();
-        let value: serde_json::Value = output.json();
-        value[0].clone()
+        output.data::<serde_json::Value>()
     };
     let edit = |variable: &str, flags: &[&str]| {
         ghidra(harness)
@@ -93,45 +92,42 @@ public class CreateVariableTestProgram extends GhidraScript {
 
     let renamed = edit(original["name"].as_str().unwrap(), &["--name", "value"]);
     renamed.assert_success();
-    let renamed: serde_json::Value = renamed.json();
-    assert_eq!(renamed[0]["kind"], "local");
-    assert_eq!(renamed[0]["before"]["name"], original["name"]);
-    assert_eq!(renamed[0]["after"]["name"], "value");
-    assert_eq!(renamed[0]["after"]["type"], "undefined4");
+    let renamed: serde_json::Value = renamed.data();
+    assert_eq!(renamed["kind"], "local");
+    assert_eq!(renamed["before"]["name"], original["name"]);
+    assert_eq!(renamed["after"]["name"], "value");
+    assert_eq!(renamed["after"]["type"], "undefined4");
     assert_eq!(decompile()["variables"][0]["type"], original["type"]);
 
     let typed = edit("value", &["--type", "uint"]);
     typed.assert_success();
-    let typed: serde_json::Value = typed.json();
-    assert_eq!(typed[0]["after"]["name"], "value");
-    assert_eq!(typed[0]["after"]["type"], "uint");
+    let typed: serde_json::Value = typed.data();
+    assert_eq!(typed["after"]["name"], "value");
+    assert_eq!(typed["after"]["type"], "uint");
 
     let combined = edit("value", &["--name", "buffer", "--type", "char *"]);
     combined.assert_success();
-    let combined: serde_json::Value = combined.json();
-    assert_eq!(combined[0]["before"]["name"], "value");
-    assert_eq!(combined[0]["after"]["name"], "buffer");
-    assert_eq!(combined[0]["after"]["type"], "char *");
-    assert_eq!(
-        combined[0]["after"]["storage"],
-        combined[0]["before"]["storage"]
-    );
+    let combined: serde_json::Value = combined.data();
+    assert_eq!(combined["before"]["name"], "value");
+    assert_eq!(combined["after"]["name"], "buffer");
+    assert_eq!(combined["after"]["type"], "char *");
+    assert_eq!(combined["after"]["storage"], combined["before"]["storage"]);
 
     let parameter = edit("input", &["--name", "count", "--type", "uint"]);
     parameter.assert_success();
-    let parameter: serde_json::Value = parameter.json();
-    assert_eq!(parameter[0]["kind"], "parameter");
-    assert_eq!(parameter[0]["after"]["name"], "count");
-    assert_eq!(parameter[0]["after"]["type"], "uint");
+    let parameter: serde_json::Value = parameter.data();
+    assert_eq!(parameter["kind"], "parameter");
+    assert_eq!(parameter["after"]["name"], "count");
+    assert_eq!(parameter["after"]["type"], "uint");
     let parameter = edit("count", &["--name", "length"]);
     parameter.assert_success();
-    let parameter: serde_json::Value = parameter.json();
-    assert_eq!(parameter[0]["after"]["type"], "uint");
+    let parameter: serde_json::Value = parameter.data();
+    assert_eq!(parameter["after"]["type"], "uint");
     let parameter = edit("length", &["--type", "int"]);
     parameter.assert_success();
-    let parameter: serde_json::Value = parameter.json();
-    assert_eq!(parameter[0]["after"]["name"], "length");
-    assert_eq!(parameter[0]["after"]["type"], "int");
+    let parameter: serde_json::Value = parameter.data();
+    assert_eq!(parameter["after"]["name"], "length");
+    assert_eq!(parameter["after"]["type"], "int");
 
     let before_errors = decompile();
     for (flags, message) in [

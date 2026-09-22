@@ -1,5 +1,8 @@
 //! CLI output format tests that do not require Ghidra or a JDK installation.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 #[path = "output/config.rs"]
 mod config;
 #[path = "output/installation.rs"]
@@ -71,7 +74,7 @@ fn configured_json_default_and_explicit_flags_choose_presentation() {
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap();
         assert_eq!(
             output.stdout.iter().filter(|&&c| c == b'\n').count() > 1,
             pretty,
@@ -97,7 +100,7 @@ fn local_results_obey_json_modes() {
                 .output()
                 .unwrap();
             assert!(output.status.success(), "{flags:?} {args:?}: {output:?}");
-            let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
             if args[0] == "bridge" {
                 assert_eq!(result["state"], "stopped", "{args:?}: {result}");
             }
@@ -162,7 +165,7 @@ fn quiet_mutations_keep_results_and_apply_changes() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["key"], "default_limit");
     assert!(temp.path().join("config.yaml").exists());
 
@@ -170,7 +173,10 @@ fn quiet_mutations_keep_results_and_apply_changes() {
         .args(["config", "get", "default_limit"])
         .output()
         .unwrap();
-    assert_eq!(serde_json::from_slice::<usize>(&output.stdout).unwrap(), 7);
+    assert_eq!(
+        crate::json_output::from_slice::<usize>(&output.stdout).unwrap(),
+        7
+    );
 }
 
 #[cfg(unix)]
@@ -246,7 +252,7 @@ fn terminal_defaults_and_explicit_json_and_quiet() {
             serde_json::from_str::<serde_json::Value>(&stdout).unwrap();
             assert!(output.stderr.is_empty());
             if flags == ["--pretty"] {
-                assert!(stdout.contains("\n  \"key\""), "{stdout}");
+                assert!(stdout.contains("\n  \"data\""), "{stdout}");
             }
         } else {
             assert!(stdout.starts_with("Configuration updated"), "{stdout}");

@@ -103,11 +103,8 @@ fn parse_cli() -> Cli {
             // A failed parse has no Cli. Recover only presentation options, stopping
             // at `--` so script arguments and operands never select our output mode.
             use std::io::{IsTerminal, Write};
-            let mut output = app::Output {
-                json: !std::io::stdout().is_terminal(),
-                pretty: false,
-                quiet: false,
-            };
+            let mut output =
+                app::Output::diagnostic(!std::io::stdout().is_terminal(), false, false);
             let mut format = None;
             let mut args = args.iter().skip(1).take_while(|arg| *arg != "--");
             while let Some(arg) = args.next() {
@@ -227,11 +224,7 @@ mod tests {
     #[test]
     fn structured_errors_preserve_detail_and_timeout_exit_code() {
         for pretty in [false, true] {
-            let output = app::Output {
-                json: true,
-                pretty,
-                quiet: false,
-            };
+            let output = app::Output::diagnostic(true, pretty, false);
             let error = anyhow::Error::new(ipc::protocol::BridgeCommandError {
                 message: "function already exists".to_string(),
                 detail: json!({"entry": "00401000", "name": "main"}),
@@ -270,11 +263,7 @@ mod tests {
 
     #[test]
     fn human_errors_explain_edit_outcomes_without_verbose_details() {
-        let output = app::Output {
-            json: false,
-            pretty: false,
-            quiet: false,
-        };
+        let output = app::Output::diagnostic(false, false, false);
         for (detail, expected) in [
             (
                 json!({"rolled_back": true}),
@@ -292,14 +281,8 @@ mod tests {
             let (code, text) = format_error(&error, output, 0);
             assert_eq!(code, 1);
             assert_eq!(text, format!("Error: edit failed\n{expected}"));
-            let (_, json_text) = format_error(
-                &error,
-                app::Output {
-                    json: true,
-                    ..output
-                },
-                0,
-            );
+            let (_, json_text) =
+                format_error(&error, app::Output::diagnostic(true, false, false), 0);
             let value: Value = serde_json::from_str(&json_text).unwrap();
             assert_eq!(value["detail"], detail);
             assert_eq!(value["message"], "edit failed");

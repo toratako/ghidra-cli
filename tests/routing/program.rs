@@ -15,11 +15,11 @@ fn program_info_and_stats_support_projection_and_format_in_standalone_and_batch(
             "--format",
             "json-compact",
         ];
-        assert_eq!(bridge.run(&args), json!([{"observed_program": "B"}]));
+        assert_eq!(bridge.run(&args), json!({"observed_program": "B"}));
         std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
         assert_eq!(
-            bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"],
-            json!([{"observed_program": "B"}])
+            bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"],
+            json!({"observed_program": "B"})
         );
         assert_eq!(
             bridge
@@ -53,15 +53,11 @@ fn tag_get_preserves_details_and_projection_in_standalone_and_batch() {
             }
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
-            if batch && fields.is_none() {
-                assert_eq!(result, expected);
-            } else {
-                assert_eq!(result, json!([expected]));
-            }
+            assert_eq!(result, expected);
             let requests = bridge.requests.lock().unwrap();
             let domain: Vec<_> = requests
                 .iter()
@@ -88,16 +84,12 @@ fn memory_read_preserves_bytes_and_pointers_with_output_options() {
             }
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
-            // A plain batch line retains the object; standalone and projected results are rows.
-            let object = if batch && fields.is_none() {
-                &result
-            } else {
-                &result[0]
-            };
+            // Nested fields belong to the single result in both execution modes.
+            let object = &result;
             assert_eq!(object["size"], 8);
             assert_eq!(object["hex"], "0000000001000000");
             assert_eq!(object["pointers"].as_array().unwrap().len(), 2);
@@ -133,15 +125,11 @@ fn memory_info_preserves_nested_details_and_projection_in_standalone_and_batch()
                 let result = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                         .unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
-                let object = if batch && fields.is_none() {
-                    &result
-                } else {
-                    &result[0]
-                };
+                let object = &result;
                 assert_eq!(object["kind"], "instruction");
                 assert_eq!(object["instruction"]["mnemonic"], "MOV");
                 assert_eq!(object["data"], Value::Null);
@@ -186,10 +174,13 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
             )
             .unwrap();
             let result = bridge.run(&["batch", "batch.txt"]);
-            assert_eq!(result[0]["results"][0]["result"]["observed_program"], "B");
+            assert_eq!(
+                result["results"][0]["result"]["data"]["observed_program"],
+                "B"
+            );
         } else {
             let result = bridge.run(&["memory", "write", "main", "90 c3", "--program", "B"]);
-            assert_eq!(result[0]["observed_program"], "B");
+            assert_eq!(result["observed_program"], "B");
         }
         let requests = bridge.requests.lock().unwrap();
         let write = requests

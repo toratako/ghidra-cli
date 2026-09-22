@@ -309,7 +309,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             .json_format()
             .run();
         selected.assert_success();
-        let selected: Value = selected.json();
+        let selected: Value = selected.data();
         assert_eq!(selected.as_array().unwrap().len(), 1);
         assert_eq!(address(&selected[0], "call_site"), 0x10a8);
         assert_eq!(selected[0]["caller"], "search_caller");
@@ -320,7 +320,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             .json_format()
             .run();
         count.assert_success();
-        assert_eq!(count.json::<Value>(), json!(15));
+        assert_eq!(count.data::<Value>(), json!(15));
         let dir = tempfile::tempdir().unwrap();
         let batch_file = dir.path().join("calls.txt");
         std::fs::write(&batch_file,
@@ -332,7 +332,10 @@ public class CreateCallSearchFixture extends GhidraScript {
             .arg("--json")
             .run();
         batch.assert_success();
-        assert_eq!(batch.json::<Value>()[0]["results"][0]["result"], selected);
+        assert_eq!(
+            batch.data::<Value>()["results"][0]["result"]["data"],
+            selected
+        );
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

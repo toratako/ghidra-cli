@@ -27,7 +27,7 @@ fn java_source_on_stdin_runs_without_interactive_prompt() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert!(value.to_string().contains("ARG0=from-stdin"), "{value}");
 }
 
@@ -148,10 +148,10 @@ public final class PackagedAudit extends GhidraScript {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     // Java println uses the host line separator; compare LF and CRLF alike.
     assert_eq!(
-        result[0]["stdout"].as_str().unwrap().replace("\r\n", "\n"),
+        result["stdout"].as_str().unwrap().replace("\r\n", "\n"),
         "audit.packaged.PackagedAudit:file:arg with spaces\n"
     );
 
@@ -199,13 +199,13 @@ public final class PackagedAudit extends GhidraScript {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(
-        result[0]["stdout"].as_str().unwrap().replace("\r\n", "\n"),
+        result["stdout"].as_str().unwrap().replace("\r\n", "\n"),
         "audit.packaged.PackagedAudit:stdin:stdin arg\n"
     );
-    assert_eq!(result[0]["script"], "PackagedAudit.java");
-    assert!(!std::path::Path::new(result[0]["path"].as_str().unwrap()).exists());
+    assert_eq!(result["script"], "PackagedAudit.java");
+    assert!(!std::path::Path::new(result["path"].as_str().unwrap()).exists());
 }
 
 #[test]

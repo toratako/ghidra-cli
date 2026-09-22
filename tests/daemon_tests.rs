@@ -1,6 +1,9 @@
 //! Bridge lifecycle, program ownership, persistence, and control-plane tests.
 //! Each test owns its harness; all modules share the suite's fixture and serial lock.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 #[macro_use]
 mod common;
 use common::{test_project, DaemonTestHarness};

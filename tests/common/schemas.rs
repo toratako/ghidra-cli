@@ -150,7 +150,7 @@ pub struct ResultWrapper<T> {
     pub truncated: Option<bool>,
 }
 
-/// CLI disassembly is a JSON array of instructions.
+/// CLI disassembly data is an array of instructions.
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
 pub struct DisasmResult {

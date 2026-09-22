@@ -7,7 +7,7 @@ use serial_test::serial;
 
 fn success(result: GhidraResult) -> Value {
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 fn definition(program: &str, name: &str) -> Value {

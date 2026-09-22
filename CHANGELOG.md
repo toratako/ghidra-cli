@@ -5,6 +5,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Unify normal JSON as `data` with optional nonempty `meta`, including management
+  commands and batch reports. Standalone results and batch entries now match;
+  lists retain context and effective paging metadata through field projection.
+  Classify result shapes by command, keeping single objects and graphs intact.
+- Emit every NDJSON list as one value per line, including project lists; empty
+  lists emit no lines. Count results remain unwrapped numbers in NDJSON.
+- Restrict `function get`, `type get`, and `decompile` to single-result output
+  controls. Keep `symbol delete` target filtering and field projection, removing
+  list sorting, paging, and counting from its receipt. Count comments by row in
+  `comment get` and retain the target address as list context.
+
 ## [0.7.0] - 2026-09-22
 
 This stable release includes all changes from

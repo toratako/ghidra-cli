@@ -25,7 +25,7 @@ fn management_commands_preserve_control_requests_and_json_output() {
             let output = bridge.command().args(&flags).args(&args).output().unwrap();
             assert!(output.status.success(), "{flags:?} {args:?}: {output:?}");
             assert!(output.stderr.is_empty(), "{args:?}: {output:?}");
-            let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+            let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
             assert!(result.is_object(), "{args:?}: {result}");
             assert_eq!(
                 output.stdout.iter().filter(|&&c| c == b'\n').count() > 1,
@@ -183,7 +183,7 @@ fn pending_save_recovery_preserves_selection_and_bypasses_edit_capabilities() {
         let output = command.output().unwrap();
         assert!(output.status.success(), "{program:?}: {output:?}");
         assert!(output.stderr.is_empty(), "{output:?}");
-        let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
         assert_eq!(result["project"], json!(bridge.project));
         assert_eq!(result["observed_program"], program.unwrap_or("A"));
         let mut expected = Vec::new();
@@ -245,7 +245,7 @@ fn starting_a_running_bridge_keeps_its_program_selection() {
             "Start options must not reopen a program or restart an existing bridge"
         );
     }
-    assert_eq!(bridge.run(&["program", "info"])[0]["observed_program"], "A");
+    assert_eq!(bridge.run(&["program", "info"])["observed_program"], "A");
 }
 
 #[test]
@@ -276,11 +276,11 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
             ]);
             let result = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
-            assert_eq!(result, json!([{"status": "deleted", "address": "0x1000"}]));
+            assert_eq!(result, json!({"status": "deleted", "address": "0x1000"}));
             let requests = bridge.requests.lock().unwrap();
             let domain: Vec<_> = requests
                 .iter()

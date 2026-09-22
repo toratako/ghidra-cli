@@ -110,14 +110,9 @@ fn typed_data_selection_precedes_paging_and_preserves_object_components() {
                 std::fs::write(bridge.root.path().join("data.txt"), batch_arguments(&args))
                     .unwrap();
                 let report = bridge.run(&["batch", "data.txt"]);
-                report[0]["results"][0]["result"].clone()
+                report["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
-            };
-            let value = if batched && args.len() == 2 {
-                value["items"].clone()
-            } else {
-                value
             };
             assert_eq!(value, expected, "{args:?}, batch={batched}");
             let requests = bridge.requests.lock().unwrap();
@@ -130,13 +125,13 @@ fn typed_data_selection_precedes_paging_and_preserves_object_components() {
         let args = ["data", "read", "record", "--fields", "components"];
         let value = if batched {
             std::fs::write(bridge.root.path().join("data.txt"), batch_arguments(&args)).unwrap();
-            bridge.run(&["batch", "data.txt"])[0]["results"][0]["result"].clone()
+            bridge.run(&["batch", "data.txt"])["results"][0]["result"]["data"].clone()
         } else {
             bridge.run(&args)
         };
         assert_eq!(
             value,
-            json!([{"components":[{"name":"flags","value":"3"},{"name":"count","value":"7"}]}])
+            json!({"components":[{"name":"flags","value":"3"},{"name":"count","value":"7"}]})
         );
     }
 }

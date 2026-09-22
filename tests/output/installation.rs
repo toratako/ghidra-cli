@@ -58,7 +58,7 @@ fn doctor_reports_path_selection_without_persisting_it() {
         .unwrap();
     // This fixture proves selection only; it has no executable Ghidra or JDK.
     assert!(!output.status.success());
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["installation"]["ok"], true);
     assert_eq!(
         result["installation"]["path"],
@@ -102,7 +102,7 @@ fn doctor_failure_is_reported_in_both_result_and_exit_status() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     assert_eq!(result["ok"], false);
     assert!(!result["failures"].as_array().unwrap().is_empty());
     let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
@@ -123,7 +123,7 @@ fn doctor_reports_unwritable_state_path_without_claiming_runtime_success() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     let state = result["storage"]
         .as_array()
         .unwrap()

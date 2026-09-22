@@ -1,5 +1,8 @@
 //! Tests for symbol operations.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use predicates::prelude::*;
 use serial_test::serial;
 use std::sync::OnceLock;
@@ -188,8 +191,8 @@ fn test_function_create_recreates_deleted_function_body() {
         .expect("Failed to run command");
     assert!(before.status.success());
     let before_json: serde_json::Value =
-        serde_json::from_slice(&before.stdout).expect("valid JSON");
-    let original_size = before_json[0]["size"].as_u64().expect("size field");
+        crate::json_output::from_slice(&before.stdout).expect("valid JSON");
+    let original_size = before_json["size"].as_u64().expect("size field");
 
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("function")
@@ -227,9 +230,10 @@ fn test_function_create_recreates_deleted_function_body() {
         .output()
         .expect("Failed to run command");
     assert!(after.status.success());
-    let after_json: serde_json::Value = serde_json::from_slice(&after.stdout).expect("valid JSON");
+    let after_json: serde_json::Value =
+        crate::json_output::from_slice(&after.stdout).expect("valid JSON");
     assert_eq!(
-        after_json[0]["size"].as_u64(),
+        after_json["size"].as_u64(),
         Some(original_size),
         "recreated function body should match the original (flow-followed, not a stub): {}",
         after_json

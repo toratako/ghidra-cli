@@ -27,7 +27,7 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
         (
             vec!["analysis", "option", "get", "Analyzer.Mode"],
             "analysis_option_get",
-            json!([{"name": "Analyzer.Mode", "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"]}]),
+            json!({"name": "Analyzer.Mode", "type": "enum", "value": "FAST", "choices": ["FAST", "FULL"]}),
         ),
         (
             vec![
@@ -40,7 +40,7 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
                 "name,value,status",
             ],
             "analysis_option_set",
-            json!([{"name": "Analyzer.Path", "value": "path with spaces", "status": "set"}]),
+            json!({"name": "Analyzer.Path", "value": "path with spaces", "status": "set"}),
         ),
     ];
     for (mut args, wire, expected) in cases {
@@ -59,15 +59,11 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
                 bridge.command().args(&args).output().unwrap()
             };
             assert!(output.status.success(), "{args:?}: {output:?}");
-            let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+            let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
             if batched {
-                assert_eq!(result[0]["failed"], 0);
-                let actual = &result[0]["results"][0]["result"];
-                if wire == "analysis_option_get" {
-                    assert_eq!(actual, &expected[0]);
-                } else {
-                    assert_eq!(actual, &expected);
-                }
+                assert_eq!(result["failed"], 0);
+                let actual = &result["results"][0]["result"]["data"];
+                assert_eq!(actual, &expected);
             } else {
                 assert_eq!(result, expected);
             }
@@ -111,8 +107,8 @@ fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch()
         assert!(output.status.success(), "{output:?}");
         assert!(output.stderr.is_empty(), "JSON modes suppress progress");
         assert_eq!(
-            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
-            json!([expected])
+            crate::json_output::from_slice::<Value>(&output.stdout).unwrap(),
+            expected
         );
         let requests = bridge.requests.lock().unwrap().clone();
         assert_eq!(requests[requests.len() - 2]["command"], "open_program");
@@ -127,12 +123,12 @@ fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
         assert!(output.stderr.is_empty(), "batch must suppress progress");
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(report[0]["failed"], 0);
-        let rows = report[0]["results"].as_array().unwrap();
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["failed"], 0);
+        let rows = report["results"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
         for row in rows {
-            assert_eq!(row["result"], expected);
+            assert_eq!(row["result"]["data"], expected);
         }
         let requests = bridge.requests.lock().unwrap();
         assert_eq!(

@@ -125,7 +125,7 @@ public class CreateByteRegexFixture extends GhidraScript {
             .with_project(test_project(), &name)
             .run();
         output.assert_success();
-        assert_eq!(output.json::<Value>(), found["results"]);
+        assert_eq!(output.data::<Value>(), found["results"]);
         let invalid = ghidra(harness())
             .args(["find", "bytes", "--regex", "[", "--json"])
             .with_project(test_project(), &name)
@@ -144,7 +144,7 @@ public class CreateByteRegexFixture extends GhidraScript {
             .run();
         batch.assert_success();
         assert_eq!(
-            batch.json::<Value>()[0]["results"][0]["result"],
+            batch.data::<Value>()["results"][0]["result"]["data"],
             found["results"]
         );
     });

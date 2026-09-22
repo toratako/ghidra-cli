@@ -16,12 +16,7 @@ fn command(args: &[&str]) -> GhidraResult {
 
 fn success(result: GhidraResult) -> Value {
     result.assert_success();
-    let value: Value = result.json();
-    value
-        .as_array()
-        .map(|items| &items[0])
-        .unwrap_or(&value)
-        .clone()
+    result.data()
 }
 
 fn definition(name: &str) -> Value {

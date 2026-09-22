@@ -3,14 +3,16 @@
 `Query::from_options` parses the query before connecting to Ghidra.
 `QueryPlan` then resolves the configured limit and splits the work into bridge
 fetch arguments and a residual Rust query. `app::CommandResult` carries that
-same residual query to standalone or batch output; output does not rebuild it.
+same residual query and effective page to standalone or batch output; output
+does not rebuild them. The page is recorded before consuming a pushed offset,
+so metadata describes the original selection.
 
 The plan records each command adapter's fetch support: contains/paging, limit
 only, or neither. A limit is sent only if the adapter forwards it and the
 remaining row selection does not need a full fetch. Commands without fetch
-limits retain their cap in Rust. With no explicit query options, the default
-cap truncates the response's row array and updates its count while preserving
-the batch envelope; it does not truncate nested fields of a single object.
+limits retain their cap in Rust. Default caps use the same residual query as
+explicit queries. Only row and graph commands with query options receive the
+configured default; single values and their nested arrays are never paginated.
 
 ## Conservative list queries
 
@@ -39,8 +41,9 @@ reduce the transferred rows for sort/count, but its offset and limit stay in Rus
 Lists outside the table retain client-side offset and must fetch without a cap
 when a client filter/sort/count/offset is requested.
 
-The remaining pipeline is filter -> sort -> offset/limit -> count or fields ->
-format. A pushed filter is checked again in Rust; a pushed offset is removed
+The remaining pipeline is filter -> sort -> offset/limit -> count or fields.
+The application renders the resulting JSON value. A pushed filter is checked
+again in Rust; a pushed offset is removed
 from the residual query. Projection never erases keys needed for sorting.
 
 When omitted, the limit defaults to `default_limit`, including with no query
@@ -55,8 +58,8 @@ bridge order and include all calls from the selected nodes, even when their
 destinations are outside the selected page. Node IDs are matched before field
 projection; counts reflect the returned nodes and edges. `--count` returns the
 selected node count. An empty selection retains an empty graph object.
-Standalone and batch queries share this processing; a batch line without query
-options retains its original bridge envelope.
+Standalone and batch queries share this processing and the same result envelope,
+including when no query options are supplied.
 
 `find bytes`, `find text`, and `find string` use this same limit contract,
 without a separate fixed result cap. `find string` visits defined strings only;

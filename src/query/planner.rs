@@ -21,9 +21,14 @@ pub(crate) struct FetchParams {
 pub(crate) struct QueryPlan {
     pub fetch: FetchParams,
     pub post: Option<Query>,
-    /// A client-side default cap when no explicit query was requested. Keeping
-    /// this separate preserves unmodified batch response envelopes.
-    pub fallback_limit: Option<usize>,
+    /// Effective page before a pushed offset is consumed by the bridge.
+    pub page: Page,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Page {
+    pub offset: usize,
+    pub limit: Option<usize>,
 }
 
 impl QueryPlan {
@@ -38,7 +43,10 @@ impl QueryPlan {
             _ => None,
         };
         let mut fetch = FetchParams::default();
-        let mut fallback_limit = None;
+        let mut page = Page::default();
+        if query.is_none() && default_limit.is_some() {
+            query = Some(Query::default());
+        }
         if let Some(post) = &mut query {
             let selects_rows =
                 post.filter.is_some() || post.sort.is_some() || post.offset.is_some();
@@ -47,6 +55,10 @@ impl QueryPlan {
             if post.limit.is_none() && !post.count_only {
                 post.limit = default_limit;
             }
+            page = Page {
+                offset: post.offset.unwrap_or(0),
+                limit: post.limit.filter(|&n| n != 0),
+            };
             fetch.filter = match (list_field, post.filter.as_ref().map(|f| &f.expr)) {
                 (
                     Some(list_field),
@@ -73,15 +85,11 @@ impl QueryPlan {
                 // Offset is not idempotent: never apply it a second time.
                 fetch.offset = post.offset.take().filter(|&n| n != 0);
             }
-        } else if support == FetchSupport::Client {
-            fallback_limit = default_limit.filter(|&n| n != 0);
-        } else {
-            fetch.limit = default_limit.filter(|&n| n != 0);
         }
         Self {
             fetch,
             post: query,
-            fallback_limit,
+            page,
         }
     }
 }
@@ -90,7 +98,6 @@ impl QueryPlan {
 mod tests {
     use super::*;
     use crate::cli::QueryOptions;
-    use crate::format::OutputFormat;
     use serde_json::{json, Value};
 
     fn options() -> QueryOptions {
@@ -109,11 +116,7 @@ mod tests {
     }
 
     fn plan(opts: &QueryOptions, support: FetchSupport) -> QueryPlan {
-        QueryPlan::new(
-            Query::from_options(opts, OutputFormat::JsonCompact).unwrap(),
-            Some(2),
-            support,
-        )
+        QueryPlan::new(Query::from_options(opts).unwrap(), Some(2), support)
     }
 
     #[test]
@@ -231,17 +234,14 @@ mod tests {
                                     .take(plan.fetch.limit.unwrap_or(usize::MAX))
                                     .cloned()
                                     .collect();
-                                let actual = plan.post.unwrap().process_results(fetched).unwrap();
+                                let actual = plan.post.unwrap().apply(fetched).unwrap();
                                 // Reference: full-data client query with the output's
                                 // default cap (count and explicit zero exempt).
                                 if opts.limit.is_none() && !count {
                                     opts.limit = Some(2);
                                 }
-                                let reference =
-                                    Query::from_options(&opts, OutputFormat::JsonCompact)
-                                        .unwrap()
-                                        .unwrap();
-                                let expected = reference.process_results(rows.clone()).unwrap();
+                                let reference = Query::from_options(&opts).unwrap().unwrap();
+                                let expected = reference.apply(rows.clone()).unwrap();
                                 assert_eq!(actual, expected, "{opts:?}, support={support:?}");
                             }
                         }
@@ -252,22 +252,24 @@ mod tests {
     }
 
     #[test]
-    fn unmodified_results_and_unlimited_defaults_keep_their_shape() {
+    fn default_limits_share_the_residual_query_path() {
         for default in [None, Some(0), Some(2)] {
             let plan = QueryPlan::new(None, default, FetchSupport::Paged("name"));
-            assert!(plan.post.is_none());
+            assert_eq!(plan.post.as_ref().and_then(|q| q.limit), default);
             assert_eq!(plan.fetch.limit, default.filter(|&n| n != 0));
-            assert_eq!(plan.fallback_limit, None);
+            assert_eq!(plan.page.limit, default.filter(|&n| n != 0));
             let client = QueryPlan::new(None, default, FetchSupport::Client);
-            assert!(client.post.is_none());
+            assert_eq!(client.post.as_ref().and_then(|q| q.limit), default);
             assert_eq!(client.fetch, FetchParams::default());
-            assert_eq!(client.fallback_limit, default.filter(|&n| n != 0));
         }
         let mut opts = options();
         opts.limit = Some(0);
         let plan = plan(&opts, FetchSupport::Paged("name"));
         assert_eq!(plan.fetch.limit, None);
-        assert_eq!(plan.post.unwrap().process_results(vec![]).unwrap(), "[]");
+        assert_eq!(
+            plan.post.unwrap().apply(vec![]).unwrap(),
+            serde_json::json!([])
+        );
     }
 
     #[test]
@@ -276,7 +278,6 @@ mod tests {
         opts.fields = Some("name".into());
         let plan = plan(&opts, FetchSupport::Client);
         assert_eq!(plan.fetch, FetchParams::default());
-        assert_eq!(plan.fallback_limit, None);
         assert_eq!(plan.post.unwrap().limit, Some(2));
     }
 }

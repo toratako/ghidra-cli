@@ -89,8 +89,8 @@ fn test_type_apply_force_on_function_entry_warns() {
 
     result.assert_success();
     // The CLI wraps single-address results in a JSON array.
-    let json: serde_json::Value = result.json();
-    let entry = &json[0];
+    let json: serde_json::Value = result.data();
+    let entry = &json;
     assert_eq!(entry["cleared_conflicting"], true);
     assert_eq!(
         entry["is_function_entry"], true,

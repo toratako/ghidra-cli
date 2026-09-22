@@ -65,7 +65,7 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
                 .arg("--json")
                 .run();
             result.assert_success();
-            result.json()
+            result.data()
         };
         let rows = expected.as_array().unwrap();
         assert_eq!(run(&[]), json!(rows[..2]));
@@ -153,7 +153,7 @@ fn executable_hashes_describe_imported_file_after_memory_edits_and_reopen() {
                 .run();
             result.assert_success();
             assert_eq!(
-                result.json::<Value>(),
+                result.data::<Value>(),
                 if flags.is_empty() {
                     json!([])
                 } else {

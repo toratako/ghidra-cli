@@ -317,7 +317,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::AnalysisOptionCommands::Get(args) => Some((&args.options).into()),
             cli::AnalysisOptionCommands::Set(args) => Some((&args.options).into()),
         },
-        Commands::Decompile(args) => Some(args.options.clone()),
+        Commands::Decompile(args) => Some((&args.options).into()),
         Commands::Disasm(args) => Some(args.options.clone()),
         Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
             Some(opts.into())
@@ -329,7 +329,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::ListCallingConventions(opts) => Some(opts.clone()),
-            cli::FunctionCommands::Get(args) => Some(args.options.clone()),
+            cli::FunctionCommands::Get(args) => Some((&args.options).into()),
             cli::FunctionCommands::Disasm(args) => Some(args.options.clone()),
             cli::FunctionCommands::Delete(args) => Some(QueryOptions {
                 program: args.program.clone(),
@@ -366,12 +366,12 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Symbol(cmd) => match cmd {
             cli::SymbolCommands::List(opts) => Some(opts.clone()),
             cli::SymbolCommands::Get(args) => Some(args.options.clone()),
-            cli::SymbolCommands::Delete(args) => Some(args.options.clone()),
+            cli::SymbolCommands::Delete(args) => Some((&args.options).into()),
             _ => None,
         },
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => Some(opts.clone()),
-            cli::TypeCommands::Get(args) => Some(args.options.clone()),
+            cli::TypeCommands::Get(args) => Some((&args.options).into()),
             _ => None,
         },
         Commands::Tag(cmd) => match cmd {

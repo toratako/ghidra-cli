@@ -134,7 +134,7 @@ Bookmarks help locate analysis problems after `analysis run`.
 ## Query controls
 
 Query order is filter, sort, offset/limit, then count or field selection.
-The result cap defaults to `default_limit` (1000 unless configured), including
+For lists, the result cap defaults to `default_limit` (1000 unless configured), including
 with no query options or only `--fields`. `--limit 0` returns all rows.
 `--count` ignores the default cap but honors an explicit offset/limit, counting
 the selected page. Small limits may still require scanning or fetching all matches.

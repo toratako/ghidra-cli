@@ -50,15 +50,11 @@ fn constant_queries_preserve_values_and_apply_selection_in_standalone_and_batch(
                 let result = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                         .unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
-                let expected = if batch && flags.is_empty() {
-                    json!({"results": expected, "count": 1})
-                } else {
-                    expected.clone()
-                };
+                let expected = expected.clone();
                 assert_eq!(result, expected, "{args:?}, batch={batch}");
                 let requests = bridge.requests.lock().unwrap();
                 let request = requests
@@ -160,19 +156,14 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
                 let result = if batch {
                     std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                         .unwrap();
-                    bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                    bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
                 } else {
                     bridge.run(&args)
                 };
                 if flags.contains(&"--count") {
                     assert_eq!(result, expected_len, "{args:?}, batch={batch}");
                 } else {
-                    let rows = if batch && flags.is_empty() {
-                        assert_eq!(result["count"], expected_len);
-                        &result["results"]
-                    } else {
-                        &result
-                    };
+                    let rows = &result;
                     assert_eq!(
                         rows.as_array().unwrap().len(),
                         expected_len,
@@ -287,7 +278,7 @@ fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
             let actual = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                     .unwrap();
-                bridge.run(&["batch", "batch.txt"])[0]["results"][0]["result"].clone()
+                bridge.run(&["batch", "batch.txt"])["results"][0]["result"]["data"].clone()
             } else {
                 bridge.run(&args)
             };
@@ -422,7 +413,7 @@ fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
         std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
         let report = bridge.run(&["batch", "batch.txt"]);
         assert_eq!(
-            report[0]["results"][0]["result"], expected,
+            report["results"][0]["result"]["data"], expected,
             "batch {args:?}"
         );
     }

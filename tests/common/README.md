@@ -29,6 +29,8 @@ fn test_function_list() {
 }
 ```
 
+`GhidraResult::data()` decodes the required `.data` result field; `json()` reads
+the full document when checking metadata or the public envelope.
 `ghidra(&harness)` supplies the project; `timeout` sets the command budget.
 See [suite guidance](../README.md) for
 fixture compilation, serial execution, commands, and unbootstrapped snapshots.

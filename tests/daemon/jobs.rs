@@ -12,7 +12,7 @@ fn job_command(args: &[&str]) -> serde_json::Value {
         .unwrap();
     assert!(output.status.success(), "{args:?}: {output:?}");
     assert!(output.stderr.is_empty(), "{args:?}: {output:?}");
-    serde_json::from_slice(&output.stdout).unwrap()
+    crate::json_output::from_slice(&output.stdout).unwrap()
 }
 
 #[test]

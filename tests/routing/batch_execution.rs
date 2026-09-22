@@ -20,14 +20,14 @@ fn batch_on_error_controls_runtime_failures_after_preflight() {
         assert!(!output.stdout.is_empty());
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(error["detail"].get("results").is_none());
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        let detail = &report[0];
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        let detail = &report;
         let stopped = policy == Some("stop");
         assert_eq!(detail["commands_parsed"], 3);
         assert_eq!(detail["commands_executed"], if stopped { 2 } else { 3 });
         assert_eq!(detail["failed"], 1);
         assert_eq!(detail["not_executed"], usize::from(stopped));
-        assert!(detail["results"][0]["result"].is_object());
+        assert!(detail["results"][0]["result"]["data"].is_object());
         assert_eq!(detail["results"][1]["line"], 2);
         assert_eq!(detail["results"][1]["exit_code"], 1);
         let requests = bridge.requests.lock().unwrap();
@@ -95,8 +95,8 @@ fn nested_batch_inherits_on_error_unless_overridden() {
         assert!(!output.stdout.is_empty());
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(error["detail"].get("results").is_none());
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        let detail = &report[0];
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        let detail = &report;
         assert_eq!(detail["failed"], 1);
         assert_eq!(detail["not_executed"], usize::from(parent_policy == "stop"));
         let nested = &detail["results"][1]["detail"];
@@ -126,14 +126,14 @@ fn batch_routes_each_target_and_keeps_explicit_program_switches() {
         batch_path_argument(&second.project),
     )).unwrap();
     let result = first.run(&["batch", "batch.txt", "--program", "A"]);
-    let rows = &result[0]["results"];
-    assert_eq!(rows[0]["result"]["observed_program"], "B");
-    assert_eq!(rows[1]["result"]["observed_program"], "B");
+    let rows = &result["results"];
+    assert_eq!(rows[0]["result"]["data"]["observed_program"], "B");
+    assert_eq!(rows[1]["result"]["data"]["observed_program"], "B");
     assert_eq!(
-        rows[2]["result"]["results"][0]["result"]["observed_program"],
+        rows[2]["result"]["data"]["results"][0]["result"]["data"]["observed_program"],
         "C"
     );
-    assert_eq!(rows[3]["result"]["observed_program"], "D");
+    assert_eq!(rows[3]["result"]["data"]["observed_program"], "D");
     assert_eq!(
         second.requests.lock().unwrap().last().unwrap()["command"],
         "program_info"
@@ -167,8 +167,11 @@ fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result[0]["results"][0]["result"]["observed_program"], "A");
+    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        result["results"][0]["result"]["data"]["observed_program"],
+        "A"
+    );
 }
 
 #[test]
@@ -181,8 +184,8 @@ fn batch_save_of_a_stopped_project_does_not_start_it() {
     )
     .unwrap();
     let result = bridge.run(&["batch", "batch.txt"]);
-    assert_eq!(result[0]["results"][0]["result"]["state"], "stopped");
-    assert_eq!(result[0]["results"][0]["result"]["saved"], false);
+    assert_eq!(result["results"][0]["result"]["data"]["state"], "stopped");
+    assert_eq!(result["results"][0]["result"]["data"]["saved"], false);
 }
 
 #[test]
@@ -211,12 +214,12 @@ fn project_directory_overrides_are_local_to_each_batch_line() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let observed: Vec<_> = report[0]["results"]
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    let observed: Vec<_> = report["results"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|row| row["result"]["observed_program"].as_str().unwrap())
+        .map(|row| row["result"]["data"]["observed_program"].as_str().unwrap())
         .collect();
     assert_eq!(observed, ["first", "second", "first"]);
 }
@@ -235,14 +238,11 @@ fn batch_queries_inherit_targets_and_keep_program_selection() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
     for (index, program) in [(0, "A"), (1, "B"), (2, "B"), (3, "C"), (4, "D"), (5, "C")] {
-        let key = if index == 1 {
-            "observed_program"
-        } else {
-            "current_program_name"
-        };
-        assert_eq!(result[0]["results"][index]["result"][key], program);
+        let data = &result["results"][index]["result"]["data"];
+        let observed = if index == 1 { data } else { &data[0] };
+        assert_eq!(observed["observed_program"], program);
     }
     for (bridge, expected) in [(&first, vec!["A", "B", "C"]), (&second, vec!["D"])] {
         let requests = bridge.requests.lock().unwrap();
@@ -269,11 +269,11 @@ fn batch_rejects_invalid_arguments_before_selecting_any_program() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["commands_executed"], 0);
-    assert_eq!(report[0]["failed"], 1);
-    assert_eq!(report[0]["not_executed"], 2);
-    assert!(report[0]["validation_errors"][0]["error"].is_string());
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 0);
+    assert_eq!(report["failed"], 1);
+    assert_eq!(report["not_executed"], 2);
+    assert!(report["validation_errors"][0]["error"].is_string());
     assert!(bridge.requests.lock().unwrap().is_empty());
 }
 
@@ -298,15 +298,15 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(code), "{output:?}");
-        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(report[0]["commands_executed"], 2);
-        assert_eq!(report[0]["not_executed"], 1);
-        assert_eq!(report[0]["results"][1]["exit_code"], code);
-        assert_eq!(report[0]["results"][1]["detail"]["not_executed"], 1);
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["commands_executed"], 2);
+        assert_eq!(report["not_executed"], 1);
+        assert_eq!(report["results"][1]["exit_code"], code);
+        assert_eq!(report["results"][1]["detail"]["not_executed"], 1);
         let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(diagnostic["detail"].get("results").is_none());
         assert_eq!(diagnostic["exit_code"], code);
-        let recovery = &report[0]["recovery"];
+        let recovery = &report["recovery"];
         assert_eq!(recovery["action"], "inspect_state");
         assert_eq!(recovery["file"], "nested.txt");
         assert_eq!(recovery["line"], 1);

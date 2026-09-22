@@ -173,7 +173,7 @@ fn test_find_instruction_text_ranges_and_query_controls() {
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     output.assert_success();
-    assert_eq!(output.json::<serde_json::Value>(), all["results"]);
+    assert_eq!(output.data::<serde_json::Value>(), all["results"]);
     let counted = ghidra(harness)
         .args([
             "find",
@@ -188,7 +188,7 @@ fn test_find_instruction_text_ranges_and_query_controls() {
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     counted.assert_success();
-    assert_eq!(counted.stdout.trim(), rows.len().to_string());
+    assert_eq!(counted.data::<usize>(), rows.len());
     for (range_start, range_end, expected) in [
         (Some(end), Some(start), "Start address"),
         (Some("not_an_address_or_symbol"), Some(end), "Invalid start"),
@@ -220,7 +220,7 @@ fn test_find_text_in_analyzed_binary() {
         .run();
 
     result.assert_success();
-    let rows: Vec<serde_json::Value> = result.json();
+    let rows: Vec<serde_json::Value> = result.data();
     assert!(!rows.is_empty());
     assert!(rows.iter().all(|row| row["byte_length"] == 10));
 }
@@ -257,14 +257,11 @@ fn test_find_string_no_matches() {
 
     result.assert_success();
 
-    if let Some(json) = result.try_json::<serde_json::Value>() {
-        if let Some(arr) = json.as_array() {
-            assert!(
-                arr.is_empty(),
-                "Should have no matches for nonexistent string"
-            );
-        }
-    }
+    let rows: Vec<serde_json::Value> = result.data();
+    assert!(
+        rows.is_empty(),
+        "Should have no matches for nonexistent string"
+    );
 }
 
 #[test]
@@ -359,7 +356,7 @@ public class StringRefsTestLocale extends GhidraScript {
                 .with_project(test_project(), &name)
                 .run();
             output.assert_success();
-            assert_eq!(output.json::<serde_json::Value>(), references["results"]);
+            assert_eq!(output.data::<serde_json::Value>(), references["results"]);
         }
         // Formatting escapes must not themselves create matches in a string value.
         assert_eq!(
@@ -484,7 +481,7 @@ public class CreateSearchWindowFixture extends GhidraScript {
             .with_project(test_project(), &name)
             .run();
         output.assert_success();
-        let rows: serde_json::Value = output.json();
+        let rows: serde_json::Value = output.data();
         assert_eq!(
             rows,
             client.find_text("日本", "utf-16le").unwrap()["results"]

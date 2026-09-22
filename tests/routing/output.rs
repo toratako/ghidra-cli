@@ -1,12 +1,149 @@
 use super::RecordedBridge;
 use serde_json::{json, Value};
 
+fn document(bridge: &RecordedBridge, args: &[&str]) -> Value {
+    let output = bridge.command().args(args).output().unwrap();
+    assert!(output.status.success(), "{args:?}: {output:?}");
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn json_results_match_batch_entries_and_retain_context_after_queries() {
+    let bridge = RecordedBridge::new();
+    for args in [
+        vec!["tag", "get", "review"],
+        vec!["tag", "get", "review", "--fields", "name"],
+        vec!["memory", "read", "0x1000", "8"],
+        vec!["decompile", "warned", "--fields", "code,warnings"],
+        vec!["function", "list"],
+        vec![
+            "function", "list", "--filter", "name~l", "--offset", "1", "--limit", "1", "--fields",
+            "name",
+        ],
+        vec!["function", "list", "--count"],
+        vec![
+            "function", "list", "--offset", "1", "--limit", "2", "--count",
+        ],
+        vec![
+            "graph",
+            "calls",
+            "--filter",
+            "name=alpha",
+            "--fields",
+            "name",
+        ],
+        vec!["graph", "calls", "--filter", "name=absent"],
+        vec!["graph", "callees", "entry", "--fields", "callee"],
+        vec!["string", "refs", "absent"],
+        vec![
+            "comment", "get", "0x1000", "--limit", "0", "--fields", "text",
+        ],
+        vec!["comment", "get", "0x1000", "--count"],
+        vec!["symbol", "delete", "shared", "--filter", "kind=label"],
+    ] {
+        let standalone = document(&bridge, &args);
+        assert!(standalone.get("data").is_some(), "{standalone}");
+        std::fs::write(
+            bridge.root.path().join("contract.txt"),
+            super::batch_arguments(&args),
+        )
+        .unwrap();
+        let report = document(&bridge, &["batch", "contract.txt"]);
+        assert_eq!(
+            report["data"]["results"][0]["result"], standalone,
+            "{args:?}"
+        );
+        assert!(report.get("meta").is_none());
+    }
+    let page = document(
+        &bridge,
+        &[
+            "function", "list", "--offset", "2", "--limit", "1", "--fields", "name",
+        ],
+    );
+    assert_eq!(
+        page,
+        json!({"data": [{"name": "large"}], "meta": {"returned": 1, "offset": 2, "limit": 1}})
+    );
+    let comments = document(&bridge, &["comment", "get", "0x1000", "--count"]);
+    assert_eq!(
+        comments,
+        json!({"data": 2, "meta": {"address": "0x1000", "offset": 0, "limit": null}})
+    );
+    assert_eq!(
+        document(&bridge, &["string", "refs", "absent"]),
+        json!({"data": [], "meta": {"pattern": "absent", "returned": 0, "offset": 0, "limit": 1}})
+    );
+    let tag = document(&bridge, &["tag", "get", "review", "--fields", "name"]);
+    assert_eq!(tag, json!({"data": {"name": "review"}}));
+}
+
+#[test]
+fn ndjson_preserves_values_and_escaping_without_result_metadata() {
+    let bridge = RecordedBridge::new();
+    for (args, expected) in [
+        (
+            vec![
+                "comment", "get", "0x1000", "--limit", "0", "--fields", "text",
+            ],
+            vec![json!({"text": "first\nsecond"}), json!({"text": "review"})],
+        ),
+        (vec!["string", "refs", "absent"], vec![]),
+        (vec!["comment", "get", "0x1000", "--count"], vec![json!(2)]),
+        (
+            vec!["tag", "get", "review", "--fields", "name"],
+            vec![json!({"name": "review"})],
+        ),
+        (
+            vec!["graph", "calls", "--filter", "name=absent"],
+            vec![json!({"nodes": [], "edges": [], "node_count": 0, "edge_count": 0})],
+        ),
+    ] {
+        let output = bridge
+            .command()
+            .args(args)
+            .args(["--format", "ndjson"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        let lines: Vec<Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(lines, expected);
+    }
+    std::fs::write(
+        bridge.root.path().join("ndjson.txt"),
+        "comment get 0x1000 --count\n",
+    )
+    .unwrap();
+    let expected = document(&bridge, &["batch", "ndjson.txt"]);
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_limit: 1\ndefault_output_format: ndjson\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "ndjson.txt"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(text.lines().count(), 1);
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).unwrap(),
+        expected["data"]
+    );
+}
+
 #[test]
 fn explicit_code_formats_override_json_without_changing_output_defaults() {
     let bridge = RecordedBridge::new();
     let command = vec!["decompile", "main"];
     let rows = bridge.run(&command);
-    assert_eq!(rows[0]["name"], "main", "non-TTY default stays JSON");
+    assert_eq!(rows["name"], "main", "non-TTY default stays JSON");
     for flag in ["--json", "--pretty"] {
         let output = bridge
             .command()
@@ -40,7 +177,7 @@ fn explicit_code_formats_override_json_without_changing_output_defaults() {
 }
 
 #[test]
-fn decompile_warnings_follow_output_formats_and_selected_rows() {
+fn decompile_warnings_follow_output_formats_and_projection() {
     let bridge = RecordedBridge::new();
     let output = bridge
         .command()
@@ -49,10 +186,10 @@ fn decompile_warnings_follow_output_formats_and_selected_rows() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    let rows: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(rows[0]["warnings"].as_array().unwrap().len(), 3);
-    assert_eq!(rows[0]["entry_memory"]["permissions"], "rx");
-    let code = rows[0]["code"].as_str().unwrap();
+    let rows: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(rows["warnings"].as_array().unwrap().len(), 3);
+    assert_eq!(rows["entry_memory"]["permissions"], "rx");
+    let code = rows["code"].as_str().unwrap();
     for fields in [vec![], vec!["--fields", "code"]] {
         let output = bridge
             .command()
@@ -88,12 +225,7 @@ fn decompile_warnings_follow_output_formats_and_selected_rows() {
             "{text}"
         );
     }
-    for flags in [
-        vec!["--count"],
-        vec!["--filter", "name=absent"],
-        vec!["--fields", "warnings"],
-        vec!["--quiet"],
-    ] {
+    for flags in [vec!["--fields", "warnings"], vec!["--quiet"]] {
         let output = bridge
             .command()
             .args(["decompile", "warned", "--format", "c"])
@@ -106,8 +238,8 @@ fn decompile_warnings_follow_output_formats_and_selected_rows() {
     std::fs::write(bridge.root.path().join("batch.txt"), "decompile warned\n").unwrap();
     let batch = bridge.run(&["batch", "batch.txt"]);
     assert_eq!(
-        batch[0]["results"][0]["result"]["warnings"],
-        rows[0]["warnings"]
+        batch["results"][0]["result"]["data"]["warnings"],
+        rows["warnings"]
     );
 }
 
@@ -135,7 +267,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
             .unwrap();
         assert!(output.status.success(), "{flags:?}: {output:?}");
         assert_eq!(
-            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            crate::json_output::from_slice::<Value>(&output.stdout).unwrap(),
             json!([{"name": "first"}])
         );
     }
@@ -151,7 +283,7 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<Value>(&output.stdout)
+        crate::json_output::from_slice::<Value>(&output.stdout)
             .unwrap()
             .as_array()
             .unwrap()

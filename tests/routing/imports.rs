@@ -37,16 +37,16 @@ fn program_import_keeps_saved_names_and_selection_separate_in_standalone_and_bat
                 let output = command.output().unwrap();
                 assert!(output.status.success(), "{args:?}: {output:?}");
                 assert!(output.stderr.is_empty(), "JSON modes suppress progress");
-                let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+                let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
                 let receipt = if batched {
-                    assert_eq!(result[0]["failed"], 0, "{result}");
+                    assert_eq!(result["failed"], 0, "{result}");
                     assert_eq!(
-                        result[0]["results"][1]["result"]["observed_program"],
+                        result["results"][1]["result"]["data"]["observed_program"],
                         "imported"
                     );
-                    &result[0]["results"][0]["result"]
+                    &result["results"][0]["result"]["data"]
                 } else {
-                    &result[0]
+                    &result
                 };
                 assert_eq!(receipt["command"], "program import");
                 assert_eq!(receipt["program"], "imported");

@@ -24,7 +24,7 @@ pub(super) fn execute(
                 client,
                 &args.name,
                 args.address.as_deref(),
-                args.options.filter.as_deref(),
+                args.filter.as_deref(),
                 args.all,
             )?;
             client.symbol_delete_targets(&args.name, &targets)

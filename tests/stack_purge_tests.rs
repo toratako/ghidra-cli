@@ -20,8 +20,8 @@ fn command(harness: &common::DaemonTestHarness, target: &str, edit: &[&str]) -> 
         .arg("--json")
         .run();
     result.assert_success();
-    let rows: Value = result.json();
-    rows[0].clone()
+    let rows: Value = result.data();
+    rows.clone()
 }
 
 fn decompile(client: &BridgeClient) -> String {
@@ -163,7 +163,7 @@ fn stack_purge_changes_caller_interpretation_and_persists_without_convention_edi
         .json_format()
         .run();
     listed.assert_success();
-    let listed: Value = listed.json();
+    let listed: Value = listed.data();
     for (name, expected) in [("callee", unknown), ("invalid_purge", invalid)] {
         let row = listed
             .as_array()

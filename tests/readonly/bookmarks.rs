@@ -114,7 +114,7 @@ fn bookmarks_preserve_annotations_and_query_exact_addresses() {
                 .arg("--json")
                 .run();
             output.assert_success();
-            output.json()
+            output.data()
         };
         assert_eq!(run(&["bookmark", "list"]), json!(rows[..2]));
         assert_eq!(run(&["bookmark", "list", "--limit", "0"]), json!(rows));

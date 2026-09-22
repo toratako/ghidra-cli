@@ -177,7 +177,7 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
                 .arg("--json")
                 .run();
             output.assert_success();
-            output.json()
+            output.data()
         };
         let with = |flags: &[&str]| -> Value {
             let mut args = vec!["find", "constant", "-1"];
@@ -237,10 +237,10 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         std::fs::write(&batch_path,
             "find constant -1 --filter bits=32 --offset 1 --limit 1 --fields address,value,bits\nfind constant --min 9007199254740992 --max 9007199254740993 --limit 0\nfind constant -1 --count\n").unwrap();
         let batch = run(&["batch", batch_path.to_str().unwrap()]);
-        let results = &batch[0]["results"];
-        assert_eq!(results[0]["result"], projected);
-        assert_eq!(results[1]["result"], json!(high_range));
-        assert_eq!(results[2]["result"], minus_one.len());
+        let results = &batch["results"];
+        assert_eq!(results[0]["result"]["data"], projected);
+        assert_eq!(results[1]["result"]["data"], json!(high_range));
+        assert_eq!(results[2]["result"]["data"], minus_one.len());
         client
             .script_run_source(
                 include_str!("CheckConstantCancellation.java"),

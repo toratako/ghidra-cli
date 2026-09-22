@@ -261,9 +261,9 @@ fn test_type_field_set_places_at_exact_offset() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+    let parsed: serde_json::Value = serde_json::from_str::<serde_json::Value>(stdout.trim())
         .unwrap_or_else(|e| panic!("bad JSON: {} in {}", e, stdout));
-    let obj = parsed.as_array().and_then(|a| a.first()).unwrap_or(&parsed);
+    let obj = &parsed["data"];
 
     assert_eq!(
         obj["size"].as_u64(),

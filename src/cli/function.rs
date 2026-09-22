@@ -1,4 +1,4 @@
-use super::options::QueryOptions;
+use super::options::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -85,7 +85,7 @@ pub struct FunctionGetArgs {
     #[arg(long)]
     pub with_signature: bool,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -223,5 +223,5 @@ pub struct DecompileArgs {
     #[arg(long)]
     pub with_jump_tables: bool,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }

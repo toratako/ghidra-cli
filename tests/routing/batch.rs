@@ -4,10 +4,10 @@ use serde_json::{json, Value};
 fn failed_report(bridge: &RecordedBridge, args: &[&str]) -> (Value, Value) {
     let output = bridge.command().args(args).output().unwrap();
     assert!(!output.status.success(), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
     let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(report[0]["recovery"], diagnostic["detail"]["recovery"]);
-    (report[0].clone(), diagnostic)
+    assert_eq!(report["recovery"], diagnostic["detail"]["recovery"]);
+    (report.clone(), diagnostic)
 }
 
 #[test]
@@ -19,11 +19,11 @@ fn batch_from_line_skips_prefix_validation_and_keeps_physical_lines() {
     )
     .unwrap();
     let report = bridge.run(&["batch", "batch.txt", "--from-line", "3"]);
-    assert_eq!(report[0]["from_line"], 3);
-    assert_eq!(report[0]["commands_parsed"], 1);
-    assert_eq!(report[0]["commands_executed"], 1);
-    assert_eq!(report[0]["not_executed"], 0);
-    assert_eq!(report[0]["results"][0]["line"], 5);
+    assert_eq!(report["from_line"], 3);
+    assert_eq!(report["commands_parsed"], 1);
+    assert_eq!(report["commands_executed"], 1);
+    assert_eq!(report["not_executed"], 0);
+    assert_eq!(report["results"][0]["line"], 5);
     assert_eq!(
         bridge
             .requests
@@ -73,11 +73,11 @@ fn nested_batch_from_line_is_local_to_each_file() {
     )
     .unwrap();
     let report = bridge.run(&["batch", "batch.txt", "--from-line", "2"]);
-    let child = &report[0]["results"][0]["result"];
+    let child = &report["results"][0]["result"]["data"];
     assert_eq!(child["file"], "nested.txt");
     assert_eq!(child["from_line"], 3);
     assert_eq!(child["results"][0]["line"], 4);
-    assert_eq!(report[0]["results"][1]["line"], 3);
+    assert_eq!(report["results"][1]["line"], 3);
 }
 
 #[test]
@@ -105,9 +105,12 @@ fn batch_recovery_restores_selected_program_and_does_not_replay_prefix() {
     bridge.requests.lock().unwrap().clear();
     let output = bridge.command().args(&argv[1..]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
-    let resumed: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(resumed[0]["results"][0]["line"], 3);
-    assert_eq!(resumed[0]["results"][0]["result"]["observed_program"], "B");
+    let resumed: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(resumed["results"][0]["line"], 3);
+    assert_eq!(
+        resumed["results"][0]["result"]["data"]["observed_program"],
+        "B"
+    );
     let requests = bridge.requests.lock().unwrap();
     let edits: Vec<_> = requests
         .iter()

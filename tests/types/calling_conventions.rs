@@ -48,7 +48,7 @@ fn convention_validation_uses_selected_spec_and_preserves_rejected_edits_after_r
         .unwrap();
     let accepted = command(&x64, "inferred", supported);
     accepted.assert_success();
-    assert_eq!(accepted.json::<Value>()[0]["calling_convention"], supported);
+    assert_eq!(accepted.data::<Value>()["calling_convention"], supported);
     let before = function("inferred");
     assert_eq!(before["calling_convention"], supported);
 

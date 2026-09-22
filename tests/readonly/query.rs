@@ -47,7 +47,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 .env("GHIDRA_CLI_CONFIG", config.to_string_lossy())
                 .run();
             result.assert_success();
-            result.json()
+            result.data()
         };
         for (command, wire, key, field) in [
             (

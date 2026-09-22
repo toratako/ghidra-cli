@@ -23,7 +23,7 @@ fn management_results_are_single_json_documents() {
                 .output()
                 .unwrap();
             assert!(output.status.success(), "{command:?}: {output:?}");
-            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
             assert!(value.is_object(), "{command:?}: {value}");
             assert!(output.stderr.is_empty(), "{command:?}: {output:?}");
             if command == ["bridge", "status"] {
@@ -77,7 +77,7 @@ fn management_results_are_single_json_documents() {
         )
         .unwrap();
         assert!(output.status.success(), "{args:?}: {output:?}");
-        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let value: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
         if args == ["program", "save"] {
             assert_eq!(value["saved"], true);
             assert_eq!(
@@ -115,12 +115,12 @@ fn test_batch_failure_exit_and_results() {
     assert_eq!(error["detail"]["commands_executed"], 3);
     assert_eq!(error["detail"]["failed"], 1);
     assert!(error["detail"].get("results").is_none());
-    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["commands_executed"], 3);
-    assert_eq!(report[0]["failed"], 1);
-    assert!(report[0]["results"][0]["result"]["function_count"].is_number());
-    assert!(report[0]["results"][1]["detail"].is_object());
-    assert!(report[0]["results"][2]["result"]["function_count"].is_number());
+    let report: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 3);
+    assert_eq!(report["failed"], 1);
+    assert!(report["results"][0]["result"]["data"]["function_count"].is_number());
+    assert!(report["results"][1]["detail"].is_object());
+    assert!(report["results"][2]["result"]["data"]["function_count"].is_number());
     std::fs::write(batch.path(), "program info\nprogram save\n").unwrap();
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args(["--json", "batch"])
@@ -129,8 +129,8 @@ fn test_batch_failure_exit_and_results() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result[0]["failed"], 0);
-    assert_eq!(result[0]["results"][1]["result"]["saved"], true);
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["failed"], 0);
+    assert_eq!(result["results"][1]["result"]["data"]["saved"], true);
     assert!(harness.client().unwrap().ping().unwrap());
 }

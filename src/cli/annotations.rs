@@ -67,13 +67,17 @@ pub struct SymbolDeleteArgs {
     /// Segmented selectors require the space name, e.g. ram:0x1234:0x0005.
     #[arg(long)]
     pub address: Option<String>,
+    /// Filter expression used to narrow which of the name's matches get deleted,
+    /// e.g. --filter 'address=0xc200'.
+    #[arg(short, long)]
+    pub filter: Option<String>,
     /// Delete every symbol named `name`, program-wide. Without this (or
     /// `--address`/`--filter`), an ambiguous name is a hard error rather
     /// than silently deleting every match.
     #[arg(long)]
     pub all: bool,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -157,8 +157,8 @@ program info
     assert!(!result.stdout.is_empty());
     let diagnostic: serde_json::Value = serde_json::from_str(&result.stderr).unwrap();
     assert!(diagnostic["detail"].get("results").is_none());
-    let report: serde_json::Value = serde_json::from_str(&result.stdout).unwrap();
-    let error = &report[0];
+    let report: serde_json::Value = crate::json_output::from_str(&result.stdout).unwrap();
+    let error = &report;
     assert_eq!(error["commands_parsed"], 3);
     assert_eq!(error["commands_executed"], 0);
     assert_eq!(error["failed"], 1);

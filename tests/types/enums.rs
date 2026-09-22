@@ -7,7 +7,7 @@ use serial_test::serial;
 fn definition(program: &str, name: &str) -> Value {
     let result = type_command(program, &["get", name]);
     result.assert_success();
-    result.json::<Value>()[0].clone()
+    result.data::<Value>()
 }
 
 #[test]
@@ -56,10 +56,10 @@ public class SetEnumMetadata extends GhidraScript {
         &["enum", "member", "delete", "Mode", "--name", "Remove"],
     );
     deleted.assert_success();
-    let deleted: Value = deleted.json();
-    assert_eq!(deleted[0]["path"], "/Mode");
-    assert_eq!(deleted[0]["member"], "Remove");
-    assert_eq!(deleted[0]["value"], 1);
+    let deleted: Value = deleted.data();
+    assert_eq!(deleted["path"], "/Mode");
+    assert_eq!(deleted["member"], "Remove");
+    assert_eq!(deleted["value"], 1);
     let remaining = definition(&program, "Mode");
     assert_eq!(remaining["size"], 8);
     assert_eq!(remaining["members"].as_array().unwrap().len(), 2);

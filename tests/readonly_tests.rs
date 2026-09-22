@@ -1,5 +1,8 @@
 //! Read-query integration tests sharing one bridge and suite-owned project.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use serial_test::serial;
 use std::sync::OnceLock;
 
@@ -78,7 +81,7 @@ fn test_snapshot_function_list_structure() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("function_list_structure", json, {
         "[].address" => "[ADDR]",
         "[].entry_point" => "[ADDR]",
@@ -105,7 +108,7 @@ fn test_snapshot_stats_structure() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("stats_structure", json, {
         ".functions" => "[N]",
         ".instructions" => "[N]",
@@ -136,7 +139,7 @@ fn test_snapshot_memory_map_structure() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("memory_map_structure", json, {
         "[].start" => "[ADDR]",
         "[].end" => "[ADDR]",
@@ -164,7 +167,7 @@ fn test_snapshot_disasm_structure() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("disasm_structure", json, {
         ".results[].address" => "[ADDR]",
         ".results[].operands" => "[OPS]",
@@ -197,7 +200,7 @@ fn test_snapshot_graph_callees_structure() {
 
     result.assert_success();
 
-    let json: serde_json::Value = result.json();
+    let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("graph_callees_structure", json, {
         "[].caller_address" => "[ADDR]",
         "[].callee_address" => "[ADDR]",

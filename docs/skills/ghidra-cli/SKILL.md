@@ -76,9 +76,16 @@ are not expanded. See [batch syntax and targeting](references/batch.md) for deta
 Output defaults to human-readable on a terminal and compact JSON when piped.
 `--json` and `--pretty` explicitly select JSON. Format precedence is `--format`,
 `--pretty`, `--json`, the configured format, then terminal detection.
-Use `--format ndjson` for newline-delimited JSON. Results go to stdout; errors
-and progress go to stderr. JSON modes include structured error detail and
-suppress progress.
+Read normal JSON results from `.data`; batch entries use
+`.data.results[].result.data`. Lists are arrays, single results are objects,
+and counts are numbers. Optional `.meta` retains list context and paging;
+`meta.returned` counts returned rows, not all matches. Reaching `meta.limit`
+does not establish whether more results exist. `--fields` selects data fields
+without removing this context.
+Use `--format ndjson` for one list element per line without the outer wrapper or
+metadata; an empty list produces no lines. Results go to stdout; errors and
+progress go to stderr. JSON modes include structured error detail and suppress
+progress.
 
 Edits are saved automatically before success is returned, including analysis,
 scripts, and each operation in a batch.

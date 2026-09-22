@@ -22,7 +22,7 @@ fn test_xref_to() {
 
     result.assert_success();
 
-    let xrefs: Vec<XRef> = result.json();
+    let xrefs: Vec<XRef> = result.data();
     assert!(
         !xrefs.is_empty(),
         "add_numbers should have incoming cross-references (called by main)"
@@ -50,7 +50,7 @@ fn test_xref_from_explicit_address_and_function_scope() {
         }
         let result = command.run();
         result.assert_success();
-        result.json()
+        result.data()
     };
 
     let body = run(&main_addr, true);
@@ -186,7 +186,7 @@ fn xref_metadata_preserves_operand_distinct_references_in_both_directions() {
                 .arg("--json")
                 .run();
             result.assert_success();
-            let mut rows: Vec<Value> = result.json();
+            let mut rows: Vec<Value> = result.data();
             rows.sort_by_key(|row| row["operand_index"].as_i64().unwrap());
             assert_eq!(rows, expected);
         }
@@ -219,27 +219,27 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
             .json_format()
             .run();
         result.assert_success();
-        result.json()
+        result.data()
     };
     let page_flags = ["--sort", "name", "--offset", "1", "--limit", "2"];
     let page = query(&page_flags);
     let selected = &nodes[1..3];
-    assert_eq!(page[0]["nodes"], serde_json::json!(selected));
+    assert_eq!(page["nodes"], serde_json::json!(selected));
     let outgoing: Vec<_> = edges
         .iter()
         .filter(|edge| selected.iter().any(|node| node["id"] == edge["from"]))
         .collect();
-    assert_eq!(page[0]["edges"], serde_json::json!(outgoing));
-    assert_eq!(page[0]["node_count"], 2);
-    assert_eq!(page[0]["edge_count"], outgoing.len());
+    assert_eq!(page["edges"], serde_json::json!(outgoing));
+    assert_eq!(page["node_count"], 2);
+    assert_eq!(page["edge_count"], outgoing.len());
     assert_eq!(query(&["--count"]), serde_json::json!(nodes.len()));
     assert_eq!(query(&["--limit", "2", "--count"]), 2);
     assert_eq!(
         query(&["--offset", &nodes.len().to_string(), "--limit", "2"]),
-        serde_json::json!([{"nodes": [], "edges": [], "node_count": 0, "edge_count": 0}])
+        serde_json::json!({"nodes": [], "edges": [], "node_count": 0, "edge_count": 0})
     );
     let matching = query(&["--filter", "name~add_numbers", "--limit", "0"]);
-    let matching = matching[0]["nodes"].as_array().unwrap();
+    let matching = matching["nodes"].as_array().unwrap();
     assert!(!matching.is_empty());
     assert_eq!(
         matching.len(),
@@ -266,8 +266,8 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
         .arg("--json")
         .run();
     batch.assert_success();
-    let batch: serde_json::Value = batch.json();
-    assert_eq!(batch[0]["results"][0]["result"], page);
+    let batch: serde_json::Value = batch.data();
+    assert_eq!(batch["results"][0]["result"]["data"], page);
 }
 
 #[test]

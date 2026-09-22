@@ -50,10 +50,10 @@ fn batch_validation_precedes_configuration_loading_and_bridge_startup() {
         assert!(stderr.contains("batch.txt:1"), "{stderr}");
         assert!(stderr.contains("batch.txt:3"), "{stderr}");
         assert!(stderr.contains("batch.txt:4"), "{stderr}");
-        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(report[0]["commands_executed"], 0);
-        assert_eq!(report[0]["not_executed"], 4);
-        assert_eq!(report[0]["validation_errors"].as_array().unwrap().len(), 3);
+        let report: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["commands_executed"], 0);
+        assert_eq!(report["not_executed"], 4);
+        assert_eq!(report["validation_errors"].as_array().unwrap().len(), 3);
         assert_eq!(std::fs::read_to_string(&config).unwrap(), original);
         assert!(!temp.path().join("projects").exists());
     }
@@ -68,11 +68,11 @@ fn batch_missing_root_file_reports_a_validation_failure_without_a_project() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report[0]["validation_failed"], true);
-    assert_eq!(report[0]["commands_executed"], 0);
-    assert_eq!(report[0]["validation_errors"][0]["file"], "missing.txt");
-    assert!(report[0]["validation_errors"][0]["line"].is_null());
+    let report: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["validation_failed"], true);
+    assert_eq!(report["commands_executed"], 0);
+    assert_eq!(report["validation_errors"][0]["file"], "missing.txt");
+    assert!(report["validation_errors"][0]["line"].is_null());
     assert!(!temp.path().join("projects").exists());
 }
 

@@ -36,17 +36,17 @@ fn cleanup_tag(harness: &DaemonTestHarness, name: &str) {
         .run();
 }
 
-/// Run a tag subcommand with JSON output and return the parsed rows.
+/// Run a tag subcommand with JSON output and return the result data.
 /// Uses the global `--json` flag: mutation subcommands deliberately carry no
 /// QueryOptions, so `--format json` is not available on them.
-fn tag_json(harness: &DaemonTestHarness, args: &[&str]) -> Vec<serde_json::Value> {
+fn tag_json(harness: &DaemonTestHarness, args: &[&str]) -> serde_json::Value {
     let result = ghidra(harness)
         .args(args.iter().copied())
         .arg("--json")
         .with_project(test_project(), TEST_PROGRAM)
         .run();
     result.assert_success();
-    result.json()
+    result.data()
 }
 
 fn str_items(value: &serde_json::Value) -> Vec<&str> {
@@ -67,11 +67,13 @@ fn test_tag_create_and_list_roundtrip() {
         harness,
         &["tag", "create", "tt1_crypto", "--comment", "AES helpers"],
     );
-    assert_eq!(rows[0]["status"], "created");
-    assert_eq!(rows[0]["existed"], false);
+    assert_eq!(rows["status"], "created");
+    assert_eq!(rows["existed"], false);
 
     let tags = tag_json(harness, &["tag", "list"]);
     let row = tags
+        .as_array()
+        .unwrap()
         .iter()
         .find(|t| t["name"] == "tt1_crypto")
         .expect("created tag missing from tag list");
@@ -90,7 +92,7 @@ fn test_tag_create_existing_reports_existed() {
 
     tag_json(harness, &["tag", "create", "tt2_dup"]);
     let rows = tag_json(harness, &["tag", "create", "tt2_dup"]);
-    assert_eq!(rows[0]["existed"], true);
+    assert_eq!(rows["existed"], true);
 
     cleanup_tag(harness, "tt2_dup");
 }
@@ -107,7 +109,7 @@ fn test_tag_add_reports_created_and_already_present() {
     tag_json(harness, &["tag", "create", "tt3_pre"]);
 
     let rows = tag_json(harness, &["tag", "add", &addr, "tt3_pre", "tt3_auto"]);
-    let row = &rows[0];
+    let row = &rows;
     assert_eq!(row["status"], "tagged");
     assert_eq!(str_items(&row["added"]), vec!["tt3_pre", "tt3_auto"]);
     assert_eq!(str_items(&row["created"]), vec!["tt3_auto"]);
@@ -115,9 +117,9 @@ fn test_tag_add_reports_created_and_already_present() {
 
     // Idempotency: re-run reports already_present, not an error.
     let rows = tag_json(harness, &["tag", "add", &addr, "tt3_pre", "tt3_auto"]);
-    assert!(str_items(&rows[0]["added"]).is_empty());
+    assert!(str_items(&rows["added"]).is_empty());
     assert_eq!(
-        str_items(&rows[0]["already_present"]),
+        str_items(&rows["already_present"]),
         vec!["tt3_pre", "tt3_auto"]
     );
 
@@ -134,8 +136,8 @@ fn test_tag_add_dedupes_argv() {
     cleanup_tag(harness, "tt4_dup");
 
     let rows = tag_json(harness, &["tag", "add", &addr, "tt4_dup", "tt4_dup"]);
-    assert_eq!(str_items(&rows[0]["added"]), vec!["tt4_dup"]);
-    assert_eq!(str_items(&rows[0]["created"]), vec!["tt4_dup"]);
+    assert_eq!(str_items(&rows["added"]), vec!["tt4_dup"]);
+    assert_eq!(str_items(&rows["created"]), vec!["tt4_dup"]);
 
     cleanup_tag(harness, "tt4_dup");
 }
@@ -158,7 +160,7 @@ fn test_tag_get_details_track_membership() {
     });
     assert_eq!(
         tag_json(harness, &["tag", "get", "tt5_member"]),
-        vec![expected.clone()]
+        expected.clone()
     );
 
     for addr in &addrs {
@@ -171,18 +173,15 @@ fn test_tag_get_details_track_membership() {
     );
     assert_eq!(
         tag_json(harness, &["tag", "get", "tt5_member"]),
-        vec![expected.clone()]
+        expected.clone()
     );
 
     let tags = tag_json(harness, &["tag", "list", "--function", &addrs[0]]);
-    assert!(tags.contains(&expected));
+    assert!(tags.as_array().unwrap().contains(&expected));
 
     tag_json(harness, &["tag", "remove", &addrs[0], "tt5_member"]);
     expected["use_count"] = serde_json::json!(1);
-    assert_eq!(
-        tag_json(harness, &["tag", "get", "tt5_member"]),
-        vec![expected]
-    );
+    assert_eq!(tag_json(harness, &["tag", "get", "tt5_member"]), expected);
 
     cleanup_tag(harness, "tt5_member");
 }
@@ -211,8 +210,8 @@ fn test_function_list_tag_filter_and_semantics() {
             "name,address",
         ],
     );
-    assert_eq!(rows.len(), 2);
-    for (row, addr) in rows.iter().zip(&addrs) {
+    assert_eq!(rows.as_array().unwrap().len(), 2);
+    for (row, addr) in rows.as_array().unwrap().iter().zip(&addrs) {
         assert!(row["name"].is_string());
         assert_eq!(row["address"], *addr);
         assert_eq!(row.as_object().unwrap().len(), 2);
@@ -230,7 +229,7 @@ fn test_function_list_tag_filter_and_semantics() {
             "tt6_only1",
         ],
     );
-    assert_eq!(rows.len(), 1);
+    assert_eq!(rows.as_array().unwrap().len(), 1);
     assert_eq!(rows[0]["address"], serde_json::json!(addrs[0]));
 
     cleanup_tag(harness, "tt6_both");
@@ -276,7 +275,11 @@ fn test_function_list_untagged() {
 
     let rows = tag_json(harness, &["function", "list", "--untagged", "--limit", "0"]);
     assert!(
-        !rows.iter().any(|r| r["address"] == serde_json::json!(addr)),
+        !rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["address"] == serde_json::json!(addr)),
         "--untagged must exclude the tagged function"
     );
 
@@ -296,16 +299,18 @@ fn test_tag_remove_and_all() {
 
     // Remove one present + one absent: absent is reported, not an error.
     let rows = tag_json(harness, &["tag", "remove", &addr, "tt9_a", "tt9_zzz"]);
-    assert_eq!(str_items(&rows[0]["removed"]), vec!["tt9_a"]);
-    assert_eq!(str_items(&rows[0]["not_present"]), vec!["tt9_zzz"]);
+    assert_eq!(str_items(&rows["removed"]), vec!["tt9_a"]);
+    assert_eq!(str_items(&rows["not_present"]), vec!["tt9_zzz"]);
 
     // --all clears the rest
     let rows = tag_json(harness, &["tag", "remove", &addr, "--all"]);
-    assert_eq!(str_items(&rows[0]["removed"]), vec!["tt9_b"]);
+    assert_eq!(str_items(&rows["removed"]), vec!["tt9_b"]);
 
     let tags = tag_json(harness, &["tag", "list", "--function", &addr]);
     assert!(
         !tags
+            .as_array()
+            .unwrap()
             .iter()
             .any(|t| t["name"] == "tt9_a" || t["name"] == "tt9_b"),
         "function should have no tt9 tags after remove --all"
@@ -328,11 +333,19 @@ fn test_tag_rename_and_collision() {
     tag_json(harness, &["tag", "create", "tt10_taken"]);
 
     let rows = tag_json(harness, &["tag", "rename", "tt10_old", "tt10_new"]);
-    assert_eq!(rows[0]["status"], "renamed");
+    assert_eq!(rows["status"], "renamed");
 
     let tags = tag_json(harness, &["tag", "list"]);
-    assert!(tags.iter().any(|t| t["name"] == "tt10_new"));
-    assert!(!tags.iter().any(|t| t["name"] == "tt10_old"));
+    assert!(tags
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"] == "tt10_new"));
+    assert!(!tags
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"] == "tt10_old"));
 
     // Renaming onto an existing name errors — no implicit merge.
     let result = ghidra(harness)
@@ -360,12 +373,12 @@ fn test_tag_set_comment_and_clear() {
     );
 
     let tags = tag_json(harness, &["tag", "get", "tt11_c"]);
-    assert_eq!(tags[0]["comment"], "first pass done");
+    assert_eq!(tags["comment"], "first pass done");
 
     // Empty string clears
     tag_json(harness, &["tag", "set-comment", "tt11_c", ""]);
     let tags = tag_json(harness, &["tag", "get", "tt11_c"]);
-    assert_eq!(tags[0]["comment"], "");
+    assert_eq!(tags["comment"], "");
 
     cleanup_tag(harness, "tt11_c");
 }
@@ -381,9 +394,9 @@ fn test_tag_delete_reports_counts_then_get_errors() {
     tag_json(harness, &["tag", "add", &addr, "tt12_del"]);
 
     let rows = tag_json(harness, &["tag", "delete", "tt12_del"]);
-    assert_eq!(rows[0]["status"], "deleted");
-    assert_eq!(rows[0]["use_count"], 1);
-    assert_eq!(rows[0]["functions_affected"], 1);
+    assert_eq!(rows["status"], "deleted");
+    assert_eq!(rows["use_count"], 1);
+    assert_eq!(rows["functions_affected"], 1);
 
     let result = ghidra(harness)
         .args(["tag", "get", "tt12_del"])
@@ -410,7 +423,11 @@ fn test_tag_add_no_create_errors_without_mutating() {
 
     // Tag must not have been created, function must not have been tagged.
     let tags = tag_json(harness, &["tag", "list"]);
-    assert!(!tags.iter().any(|t| t["name"] == "tt13_nc"));
+    assert!(!tags
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"] == "tt13_nc"));
 }
 
 #[test]
@@ -459,7 +476,11 @@ fn test_tag_case_sensitivity() {
             "0",
         ],
     );
-    assert!(rows.iter().any(|r| r["address"] == serde_json::json!(addr)));
+    assert!(rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["address"] == serde_json::json!(addr)));
 
     // DSL `=` is exact: wrong case matches nothing.
     let rows = tag_json(
@@ -473,7 +494,11 @@ fn test_tag_case_sensitivity() {
             "0",
         ],
     );
-    assert!(!rows.iter().any(|r| r["address"] == serde_json::json!(addr)));
+    assert!(!rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["address"] == serde_json::json!(addr)));
 
     cleanup_tag(harness, "tt14_Case");
 }
@@ -490,18 +515,23 @@ fn test_function_outputs_include_tags_field() {
     tag_json(harness, &["tag", "add", &addr, "tt15_b", "tt15_a"]);
 
     // function get carries tags, sorted alphabetically
-    let rows = tag_json(harness, &["function", "get", &addr]);
-    assert_eq!(str_items(&rows[0]["tags"]), vec!["tt15_a", "tt15_b"]);
+    let row = tag_json(harness, &["function", "get", &addr]);
+    assert_eq!(str_items(&row["tags"]), vec!["tt15_a", "tt15_b"]);
 
     // function list rows carry tags too (stable schema: present even when empty)
     let rows = tag_json(harness, &["function", "list", "--limit", "0"]);
     let row = rows
+        .as_array()
+        .unwrap()
         .iter()
         .find(|r| r["address"] == serde_json::json!(addr))
         .expect("function missing from list");
     assert_eq!(str_items(&row["tags"]), vec!["tt15_a", "tt15_b"]);
     assert!(
-        rows.iter().all(|r| r["tags"].is_array()),
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["tags"].is_array()),
         "every function row must carry a tags array"
     );
 

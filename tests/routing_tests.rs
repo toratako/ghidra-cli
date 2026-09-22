@@ -1,5 +1,8 @@
 //! CLI routing contracts, verified against recorded requests without Ghidra.
 
+#[path = "support/json.rs"]
+mod json_output;
+
 use ghidra_cli::ghidra::bridge;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
@@ -381,12 +384,12 @@ impl RecordedBridge {
                     }
                     "memory_map" => {
                         let rows = vec![
-                            json!({"name":"first"}),
-                            json!({"name":"second"}),
-                            json!({"name":"third"}),
+                            json!({"name":"first", "observed_program": program}),
+                            json!({"name":"second", "observed_program": program}),
+                            json!({"name":"third", "observed_program": program}),
                         ];
                         let key = "blocks";
-                        json!({key: rows, "count": rows.len(), "current_program_name": program})
+                        json!({key: rows, "count": rows.len()})
                     }
                     "string_refs" => {
                         let rows = if args["pattern"] == "absent" {
@@ -422,6 +425,10 @@ impl RecordedBridge {
                     "comment_delete" => {
                         json!({"status": "deleted", "address": args["address"]})
                     }
+                    "comment_get" => json!({
+                        "address": args["address"],
+                        "comments": [{"type": "EOL", "text": "first\nsecond"}, {"type": "PRE", "text": "review"}],
+                    }),
                     "tag_get" => {
                         json!({"name": args["name"], "comment": "Review queue", "use_count": 2})
                     }
@@ -492,7 +499,7 @@ impl RecordedBridge {
     fn run(&self, args: &[&str]) -> Value {
         let output = self.command().args(args).output().unwrap();
         assert!(output.status.success(), "{args:?}: {output:?}");
-        serde_json::from_slice(&output.stdout).unwrap()
+        crate::json_output::from_slice(&output.stdout).unwrap()
     }
 }
 

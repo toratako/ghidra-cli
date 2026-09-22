@@ -59,7 +59,7 @@ For import inputs and program export destinations, see
 
 ## Result structure
 
-In JSON output, `.[0].results` contains attempted commands in execution order.
+In JSON output, `.data.results` contains attempted commands in execution order.
 Each result's `line` is the one-based source line number. The report's
 `commands_executed` includes failed attempts; counts cover the selected range.
 Nested batch reports appear within the containing command's result or error detail.

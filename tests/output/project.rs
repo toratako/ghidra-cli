@@ -1,6 +1,59 @@
 use super::{installation_fixture, isolated_command};
 
 #[test]
+fn project_lists_share_json_metadata_and_ndjson_row_semantics() {
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("installation");
+    installation_fixture::write(&install);
+    let projects = temp.path().join("projects");
+    std::fs::create_dir(&projects).unwrap();
+    let command = || {
+        let mut cmd = isolated_command(&temp);
+        cmd.env("GHIDRA_INSTALL_DIR", &install);
+        cmd
+    };
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        "default_output_format: ndjson\n",
+    )
+    .unwrap();
+    let empty = command().args(["project", "list"]).output().unwrap();
+    assert!(empty.status.success(), "{empty:?}");
+    assert!(empty.stdout.is_empty());
+    for name in ["A", "B"] {
+        std::fs::write(projects.join(format!("{name}.gpr")), "descriptor").unwrap();
+        std::fs::create_dir(projects.join(format!("{name}.rep"))).unwrap();
+    }
+    let rows = command().args(["project", "list"]).output().unwrap();
+    assert!(rows.status.success(), "{rows:?}");
+    assert_eq!(String::from_utf8(rows.stdout).unwrap(), "\"A\"\n\"B\"\n");
+    for flag in ["--json", "--pretty"] {
+        let result = command().args(["project", "list", flag]).output().unwrap();
+        assert!(result.status.success(), "{result:?}");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+            serde_json::json!({
+                "data": ["A", "B"], "meta": {"returned": 2}
+            })
+        );
+    }
+    for (key, expected) in [
+        ("default_output_format", serde_json::json!("ndjson")),
+        ("default_program", serde_json::Value::Null),
+    ] {
+        let result = command()
+            .args(["config", "get", key, "--json"])
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{result:?}");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+            serde_json::json!({"data": expected})
+        );
+    }
+}
+
+#[test]
 fn project_management_honors_directory_override_and_lists_real_project_names() {
     let temp = tempfile::tempdir().unwrap();
     installation_fixture::write(&temp.path().join("unused-install"));
@@ -35,14 +88,14 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .output()
         .unwrap();
     assert!(info.status.success(), "{info:?}");
-    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    let info: serde_json::Value = crate::json_output::from_slice(&info.stdout).unwrap();
     assert_eq!(info["path"], serde_json::json!(requested.join("target")));
     assert_eq!(info["exists"], false);
     std::fs::create_dir(configured.join("target")).unwrap();
     let output = command().args(["project", "list"]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
         serde_json::json!([])
     );
     let output = command()
@@ -51,7 +104,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()["deleted"],
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap()["deleted"],
         false
     );
     assert!(configured.join("target").is_dir());
@@ -63,7 +116,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .unwrap();
     assert!(info.status.success(), "{info:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
+        crate::json_output::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
         false
     );
 
@@ -77,7 +130,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
     let output = command().args(["project", "list"]).output().unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
         serde_json::json!(["target"])
     );
     let output = command()
@@ -86,7 +139,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
         serde_json::json!({"project": "with-source", "deleted": false})
     );
     assert_eq!(
@@ -97,7 +150,7 @@ fn project_management_honors_directory_override_and_lists_real_project_names() {
         let info = command().args(["project", "info", name]).output().unwrap();
         assert!(info.status.success(), "{info:?}");
         assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
+            crate::json_output::from_slice::<serde_json::Value>(&info.stdout).unwrap()["exists"],
             exists
         );
     }
@@ -130,7 +183,7 @@ fn project_info_resolves_positional_global_and_configured_targets() {
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
-        let info: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let info: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
         assert_eq!(info["project"], expected);
         assert_eq!(info["path"], serde_json::json!(directory.join(expected)));
         assert_eq!(info["exists"], true);
@@ -179,7 +232,7 @@ fn project_directory_precedence_reaches_management_and_doctor() {
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
-        let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let status: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
         assert_eq!(
             status["project"],
             serde_json::json!(expected.join("missing"))
@@ -195,7 +248,7 @@ fn project_directory_precedence_reaches_management_and_doctor() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let report: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
     let projects = report["storage"]
         .as_array()
         .unwrap()

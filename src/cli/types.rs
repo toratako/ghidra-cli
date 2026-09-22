@@ -1,4 +1,4 @@
-use super::options::QueryOptions;
+use super::options::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +68,7 @@ pub enum TypeCreateCommands {
 pub struct TypeGetArgs {
     pub name: String,
     #[command(flatten)]
-    pub options: QueryOptions,
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

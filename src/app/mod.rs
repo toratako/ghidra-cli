@@ -7,12 +7,12 @@ mod management;
 mod options;
 mod output;
 mod project;
+mod result;
 
 use crate::cli::{self, Cli, Commands};
-use crate::format::OutputFormat;
 use crate::ghidra::bridge::{self, BridgeStartMode};
 use crate::ipc::client::BridgeClient;
-use crate::query::{Query, QueryPlan};
+use crate::query::{Page, Query, QueryPlan};
 use execute::execute_via_bridge;
 use installation::handle_doctor;
 pub(super) use installation::run_setup;
@@ -26,6 +26,7 @@ use options::{
 use output::describe_query_error;
 pub(crate) use output::Output;
 use project::{load_config, resolve_project_path};
+use result::ResultShape;
 
 /// Run a command, starting the bridge if needed.
 pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
@@ -89,6 +90,8 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                             CommandResult {
                                 value: batch.detail.clone(),
                                 query: None,
+                                shape: ResultShape::Value,
+                                page: None,
                             },
                         )?;
                         let mut summary = batch.detail.clone();
@@ -109,6 +112,8 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
 struct CommandResult {
     value: serde_json::Value,
     query: Option<Query>,
+    shape: ResultShape,
+    page: Option<Page>,
 }
 
 struct CommandQuery {
@@ -120,7 +125,9 @@ impl CommandQuery {
     fn plan(self, command: &Commands, default_limit: Option<usize>) -> anyhow::Result<QueryPlan> {
         let plan = QueryPlan::new(
             self.query,
-            default_limit.filter(|_| self.has_options),
+            default_limit.filter(|_| {
+                self.has_options && ResultShape::for_command(command).supports_paging()
+            }),
             options::query_fetch_support(command),
         );
         options::validate_query_bounds(command, &plan)?;
@@ -130,17 +137,10 @@ impl CommandQuery {
 
 fn parse_command_query(command: &Commands) -> anyhow::Result<CommandQuery> {
     execute::validate_command_syntax(command)?;
-    let mut query_options = extract_query_options(command);
-    if matches!(command, Commands::Symbol(cli::SymbolCommands::Delete(_))) {
-        // This filter selects mutation targets, not rows in the deletion receipt.
-        // validate_command_syntax has checked it before config or bridge work.
-        if let Some(options) = &mut query_options {
-            options.filter = None;
-        }
-    }
+    let query_options = extract_query_options(command);
     let query = query_options
         .as_ref()
-        .map(|opts| Query::from_options(opts, OutputFormat::JsonCompact))
+        .map(Query::from_options)
         .transpose()
         .map_err(describe_query_error)?
         .flatten();
@@ -157,6 +157,8 @@ fn execute_bridge_command(
 ) -> anyhow::Result<CommandResult> {
     let output = Output::new(cli);
     let query = parse_command_query(&cli.command)?;
+    let shape = ResultShape::for_command(&cli.command);
+    let paged = shape.supports_paging() && query.has_options;
     let config = load_config(&cli.projects_dir)?;
     // The same plan travels with the result through standalone and batch output,
     // so paging is never applied twice. Preflight has already checked batch input.
@@ -172,7 +174,12 @@ fn execute_bridge_command(
         Commands::Program(cli::ProgramCommands::Save(_))
     ) {
         return management::program_save_result(cli)
-            .map(|(value, _)| CommandResult { value, query: None })
+            .map(|(value, _)| CommandResult {
+                value,
+                query: None,
+                shape,
+                page: None,
+            })
             .map_err(|error| {
                 if batch_line {
                     batch::in_project(error, &project_path)
@@ -286,8 +293,10 @@ fn execute_bridge_command(
     })?;
 
     Ok(CommandResult {
-        value: output::limit_response_rows(result, plan.fallback_limit),
+        value: result,
         query: plan.post,
+        shape,
+        page: paged.then_some(plan.page),
     })
 }
 
