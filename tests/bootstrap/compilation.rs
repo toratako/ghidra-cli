@@ -22,14 +22,15 @@ fn doctor_compiles_from_quoted_temporary_directory() {
 }
 
 #[test]
-fn bridge_compiles_with_long_classpath_and_quoted_paths() {
+fn bridge_compiles_with_long_relative_classpath_and_quoted_paths() {
     require_ghidra!();
     let config = ghidra_cli::config::Config::load().unwrap();
     let install = config.get_ghidra_install_dir().unwrap();
     let jdk = java::resolve_for_ghidra(&install, config.get_java_home()).unwrap();
+    let working_dir = std::env::current_dir().unwrap();
     let root = tempfile::Builder::new()
         .prefix("javac classpath's #日本語 ")
-        .tempdir()
+        .tempdir_in(&working_dir)
         .unwrap();
     // Windows paths already contain backslashes. On Unix also exercise literal
     // backslashes, double quotes and newlines in a directory name.
@@ -65,5 +66,8 @@ fn bridge_compiles_with_long_classpath_and_quoted_paths() {
         count += 1;
     }
 
-    bridge::compile_check(&jars, &jdk.home).unwrap_or_else(|error| panic!("{error}"));
+    // The compiler runs in its own temporary directory. Relative inputs must
+    // still resolve against the caller's directory.
+    let relative_jars = jars.strip_prefix(&working_dir).unwrap();
+    bridge::compile_check(relative_jars, &jdk.home).unwrap_or_else(|error| panic!("{error}"));
 }

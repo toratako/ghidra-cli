@@ -2,7 +2,6 @@
 
 use super::sources;
 use anyhow::Result;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{info, warn};
@@ -48,7 +47,11 @@ pub fn compile_check(
     #[cfg(not(windows))]
     let (javac_name, cp_sep) = ("javac", ':');
 
-    let javac = jdk_home.join("bin").join(javac_name);
+    // Resolve caller-relative paths before changing the compiler's directory.
+    let javac = std::path::absolute(jdk_home.join("bin").join(javac_name))
+        .map_err(|e| format!("Failed to resolve javac path: {e}"))?;
+    let ghidra_install_dir = std::path::absolute(ghidra_install_dir)
+        .map_err(|e| format!("Failed to resolve Ghidra path: {e}"))?;
     if !javac.exists() {
         return Err(format!("javac not found at {}", javac.display()));
     }
@@ -91,10 +94,11 @@ pub fn compile_check(
     let argument_file = tmp.path().join("javac.args");
     std::fs::write(&argument_file, arguments)
         .map_err(|e| format!("Failed to write javac argument file: {e}"))?;
-    let mut argument = OsString::from("@");
-    argument.push(&argument_file);
+    // Windows javac can lose characters outside the system code page in argv.
+    // Pass only an ASCII filename; Unicode paths stay in the UTF-8 argument file.
     let out = Command::new(&javac)
-        .arg(argument)
+        .current_dir(tmp.path())
+        .arg("@javac.args")
         .output()
         .map_err(|e| format!("Failed to run javac: {}", e))?;
 
