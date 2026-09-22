@@ -13,6 +13,21 @@ pub enum ProjectCommands {
     List,
     /// Delete a project
     Delete { name: String },
+    /// Save and stop a project, then archive its local contents as GAR (never overwrites)
+    Archive {
+        /// Project name or base path; overrides the global/configured project
+        name: String,
+        /// New archive file, usually ending in .gar
+        #[arg(short, long)]
+        output: std::path::PathBuf,
+    },
+    /// Restore a GAR into a new project without starting its bridge
+    Restore {
+        /// Ghidra project archive (.gar)
+        archive: std::path::PathBuf,
+        /// New project name or base path; overrides the global/configured project
+        name: String,
+    },
     /// Show project information (NAME overrides --project and the configured default)
     Info { name: Option<String> },
 }

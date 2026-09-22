@@ -75,6 +75,7 @@ identity. Filter a domain with, for example,
 |---|---|
 | `daemon_tests` | Lifecycle/jobs, program sessions/persistence, deletion, and output contracts |
 | `reliability_tests`, `project_tests` | Restart/stale-state recovery and project management |
+| `project/archive.rs` | GAR content/persistence, native Ghidra interoperability, collision and save-failure protection, and invalid archive cleanup |
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding, original file bytes versus edits, mapping intervals/reverse lookup, source identity, cancellation and reopen persistence |
 | `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |

@@ -5,6 +5,7 @@
 | `bridge.rs` | Persistent bridge reuse, discovery files, startup locking, liveness, and shutdown |
 | `bridge/startup.rs` | Persistent child launch, output-reader lifetime, readiness, and failed-start cleanup |
 | `bridge/import.rs` | Private one-shot import lifecycle, loader manifest, and completion receipt |
+| `bridge/archive.rs` | GAR preflight, stopped-project lifecycle locking, bootstrap dispatch, and failure state |
 | `bridge/diagnostics.rs` | Storage/loopback probes and disposable-project runtime check |
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
@@ -125,6 +126,12 @@ while bridges are running.
   in a disposable project acquires the target's Ghidra `LockFactory` lock before
   removing `.rep`/`.gpr`; an external Ghidra owner prevents deletion. It releases
   only its own lock and leaves bare project directories intact.
+- GAR creation holds the lifecycle lock across confirmed final-save shutdown
+  and a bootstrap holding the target's Ghidra lock. An exited PID without a save
+  acknowledgement is an error. Archive preflight rejects existing output before
+  stopping; the bootstrap rechecks under its lock. Restoration locks the new
+  target without opening a bridge and rejects either existing project artifact.
+  GAR errors retain the actual bridge state and underlying timeout/save detail.
 - Startup and shutdown clean stale port/PID files only under the lifecycle lock.
   A live recorded PID prevents cleanup even if its port is unreachable. Status
   is observational and does not clean files.

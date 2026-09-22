@@ -2,9 +2,30 @@
 
 `../GhidraCliBridge.java` adapts inherited state/operations to `ScriptAccess` and
 calls `BridgeRuntime` on the original script thread. The short-lived
-`../GhidraCliBootstrap.java` handles durable import and diagnostic project creation.
+`../GhidraCliBootstrap.java` handles durable import, project maintenance, and
+diagnostic project creation.
 Both share the source bundle, with no separate Java build, JAR installation, or
 per-handler script instance.
+
+`ProjectArchive` owns one-shot GAR creation/restoration and Ghidra's target lock.
+`GarFile` implements the standard `ArchiveTask`/`RestoreTask` layout: `JAR_FORMAT`,
+a `.gpr` marker, and `.rep` subdirectory contents at the ZIP root. It excludes
+root project properties/state and database locks. A private copy is opened for
+project validation and link inspection, never the source. Repository identity
+is read without connecting to the server; external resources are not followed.
+Filesystem links at or inside `.rep` are rejected: linking only the database
+directory does not alias Ghidra's sibling project lock. Use the real project base
+path; aliases of the containing directory still work.
+Link API reflection preserves compilation on older Ghidra versions and reports
+incomplete inspection instead of asserting an absence of dependencies.
+
+Archive publication uses a sibling hard link for atomic no-clobber creation;
+filesystems without hard links fail. Restore validates entry names, namespace
+collisions and CRCs before publication. It exclusively creates `.rep`, moves the
+validated children into that owned directory, then exclusively creates `.gpr`.
+The pair is not atomic; normal failures remove only owned incomplete artifacts.
+Abrupt process termination can leave a partial `.rep`, which subsequent attempts
+refuse. Cleanup failures report remaining paths and whether publication finished.
 
 ## Execution and ownership
 

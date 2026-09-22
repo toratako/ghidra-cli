@@ -9,6 +9,9 @@ use serial_test::serial;
 #[macro_use]
 mod common;
 
+#[path = "project/archive.rs"]
+mod archive;
+
 /// Generate unique project name for test isolation.
 /// UUID prevents collisions in parallel CI runs.
 fn unique_project_name(prefix: &str) -> String {
@@ -240,7 +243,7 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
 
 #[test]
 #[serial]
-fn test_project_delete_preserves_an_external_ghidra_owner() -> anyhow::Result<()> {
+fn test_project_delete_and_archive_preserve_an_external_ghidra_owner() -> anyhow::Result<()> {
     use std::time::{Duration, Instant};
 
     require_ghidra!();
@@ -306,16 +309,29 @@ public class HoldExternalProject extends GhidraScript {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
-        common::run_command_with_output(
+        let archive = common::run_command_with_output(
+            std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+                .args(["--json", "project", "archive"])
+                .arg(&target)
+                .arg("--output")
+                .arg(root.path().join("locked.gar")),
+            Duration::from_secs(60),
+        )?;
+        let deletion = common::run_command_with_output(
             std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
                 .args(["--json", "project", "delete"])
                 .arg(&target),
             Duration::from_secs(60),
-        )
+        )?;
+        Ok((archive, deletion))
     })();
     std::fs::write(&release, [])?;
     owner.join().expect("external owner thread")?;
-    let output = attempt?;
+    let (archive, output) = attempt?;
+    assert!(!archive.status.success(), "{archive:?}");
+    let error: serde_json::Value = serde_json::from_slice(&archive.stderr)?;
+    assert_eq!(error["detail"]["stage"], "project.archive_lock", "{error}");
+    assert!(!root.path().join("locked.gar").exists());
     assert!(!output.status.success(), "{output:?}");
     let error: serde_json::Value = serde_json::from_slice(&output.stderr)?;
     assert_eq!(error["detail"]["stage"], "project.delete_lock", "{error}");

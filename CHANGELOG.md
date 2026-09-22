@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `project archive NAME --output FILE` and `project restore ARCHIVE NAME`
+  for standard Ghidra GAR snapshots and restoration into new projects. Archive
+  drains and saves a running bridge before stopping it; both operations refuse
+  destination collisions and report project-link dependencies.
 - Add `incoming_reference_count` to `data list`, counting references to the
   whole object, including structure fields and array elements, for filtering
   and sorting.

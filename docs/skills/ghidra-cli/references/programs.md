@@ -26,6 +26,30 @@ Use `program stats` for aggregate counts.
 See [job control and persistence](../SKILL.md#results-edits-and-jobs)
 before retrying failed edits or stopping a bridge after a save failure.
 
+## Project snapshots
+
+Use GAR for a project containing several Programs or project type archives;
+use `program export gzf` for one Program.
+
+```bash
+ghidra-cli project archive target --output ./target-20260922.gar
+ghidra-cli project restore ./target-20260922.gar target-copy --projects-dir ./restored
+```
+
+Archive waits for accepted work, saves pending edits, and leaves the bridge
+stopped. After a save failure, recover the live session before retrying.
+Use a fresh archive filename and a new restoration target; neither is overwritten.
+Restore creates the project without running analysis or selecting a Program.
+Archive publication requires hard-link support on the destination filesystem;
+if unavailable, create the GAR on a local filesystem and copy it afterward.
+
+GAR carries local project contents, not GUI state, CLI configuration, or external
+files. Inspect `external_dependencies.links` when moving projects: link targets
+are preserved, not bundled or rewritten. The scan covers project links only;
+`complete: false` means link inspection was unavailable for this Ghidra version.
+On failure, `bridge_state`, `published`, and any `remaining_paths` distinguish
+stopped sessions, completed publication, and cleanup that needs attention.
+
 ## External symbols and entry points
 
 `symbol externals` lists external symbols and their libraries; `symbol entry-points`

@@ -47,4 +47,12 @@ impl GhidraClient {
     pub fn delete_project(&self, name: &str) -> anyhow::Result<bool> {
         bridge::delete_project(&self.get_project_path(name), &self.install_dir)
     }
+
+    pub fn archive_project(&self, name: &str, output: &Path) -> anyhow::Result<serde_json::Value> {
+        bridge::archive::archive_project(&self.get_project_path(name), output, &self.install_dir)
+    }
+
+    pub fn restore_project(&self, archive: &Path, name: &str) -> anyhow::Result<serde_json::Value> {
+        bridge::archive::restore_project(archive, &self.get_project_path(name), &self.install_dir)
+    }
 }

@@ -116,6 +116,30 @@ pub(super) fn handle_project_command(
                 ),
             )?;
         }
+        ProjectCommands::Archive { name, output: path } => {
+            let result = client.archive_project(&name, &path)?;
+            output.result(
+                &result,
+                &format!(
+                    "Archived {} to {}\nBridge: stopped{}",
+                    result["project_path"].as_str().unwrap_or(&name),
+                    result["output"].as_str().unwrap_or_default(),
+                    archive_dependencies(&result),
+                ),
+            )?;
+        }
+        ProjectCommands::Restore { archive, name } => {
+            let result = client.restore_project(&archive, &name)?;
+            output.result(
+                &result,
+                &format!(
+                    "Restored {} to {}\nBridge: stopped{}",
+                    result["archive"].as_str().unwrap_or_default(),
+                    result["project_path"].as_str().unwrap_or(&name),
+                    archive_dependencies(&result),
+                ),
+            )?;
+        }
         ProjectCommands::Info { name } => {
             let project_name = resolve_project_name(&name.or_else(|| project.clone()), &config)?;
             let project_path = client.get_project_path(&project_name);
@@ -134,4 +158,33 @@ pub(super) fn handle_project_command(
     }
 
     Ok(())
+}
+
+fn archive_dependencies(result: &serde_json::Value) -> String {
+    let dependencies = &result["external_dependencies"];
+    let mut text = String::new();
+    if dependencies["complete"] == false {
+        text.push_str("\nProject-link inspection is incomplete for this Ghidra version.");
+    }
+    if let Some(links) = dependencies["links"].as_array() {
+        for link in links {
+            text.push_str(&format!(
+                "\nProject link: {} -> {}",
+                link["path"].as_str().unwrap_or_default(),
+                link["target"].as_str().unwrap_or("unknown target")
+            ));
+        }
+        if !links.is_empty() {
+            text.push_str("\nLink targets are preserved; external content is not bundled.");
+        }
+    }
+    if let Some(repository) = result
+        .get("source_repository")
+        .filter(|value| !value.is_null())
+    {
+        text.push_str(&format!(
+            "\nShared repository: {repository} (only local contents archived)"
+        ));
+    }
+    text
 }

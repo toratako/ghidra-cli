@@ -1,10 +1,11 @@
-// Short-lived project initialization and durable import; never serves requests.
+// Short-lived durable import and project maintenance; never serves requests.
 // @category Bridge
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import ghidra.app.script.GhidraScript;
 import ghidracli.ImportSupport;
 import ghidracli.ProjectDeletion;
+import ghidracli.ProjectArchive;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,7 +17,9 @@ public class GhidraCliBootstrap extends GhidraScript {
         JsonObject args = JsonParser.parseString(Files.readString(Path.of(paths[0]))).getAsJsonObject();
         JsonObject result;
         try {
-            if (args.has("delete_project")) {
+            if (args.has("archive_operation")) {
+                result = ProjectArchive.run(args, monitor);
+            } else if (args.has("delete_project")) {
                 result = ProjectDeletion.run(args.get("delete_project").getAsString());
             } else if (args.has("create_project") && args.get("create_project").getAsBoolean()) {
                 result = new JsonObject();

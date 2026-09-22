@@ -17,6 +17,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/ProjectDeletion.java"),
     ),
     (
+        "ghidracli/ProjectArchive.java",
+        include_str!("../scripts/ghidracli/ProjectArchive.java"),
+    ),
+    (
+        "ghidracli/GarFile.java",
+        include_str!("../scripts/ghidracli/GarFile.java"),
+    ),
+    (
         "GhidraCliBridge.java",
         include_str!("../scripts/GhidraCliBridge.java"),
     ),

@@ -13,6 +13,7 @@ use tracing::info;
 
 use crate::ipc::client::BridgeClient;
 
+pub mod archive;
 pub mod diagnostics;
 mod headless;
 mod import;

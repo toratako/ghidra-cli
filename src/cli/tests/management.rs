@@ -152,3 +152,40 @@ fn analysis_option_set_preserves_typed_input_for_bridge_validation() {
         }
     }
 }
+
+#[test]
+fn project_archives_have_explicit_operands_independent_of_global_selection() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "--project",
+        "default",
+        "--program",
+        "selected",
+        "project",
+        "archive",
+        "work",
+        "--output",
+        "work.gar",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command, Commands::Project(ProjectArgs {
+        command: ProjectCommands::Archive { name, output },
+    }) if name == "work" && output == std::path::Path::new("work.gar")));
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "project",
+        "restore",
+        "work.gar",
+        "work-copy",
+        "--projects-dir",
+        "copies",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command, Commands::Project(ProjectArgs {
+        command: ProjectCommands::Restore { archive, name },
+    }) if name == "work-copy" && archive == std::path::Path::new("work.gar")));
+    assert_eq!(
+        cli.projects_dir.as_deref(),
+        Some(std::path::Path::new("copies"))
+    );
+}

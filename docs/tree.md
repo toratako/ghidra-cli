@@ -13,6 +13,8 @@ ghidra-cli
 ├── project
 │   ├── list
 │   ├── delete
+│   ├── archive
+│   ├── restore
 │   └── info
 ├── program
 │   ├── list
@@ -198,4 +200,4 @@ ghidra-cli
 └── setup
 ```
 
-186 command nodes (excluding the root), 0 aliases.
+188 command nodes (excluding the root), 0 aliases.
