@@ -14,6 +14,8 @@ const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 #[path = "types/application.rs"]
 mod application;
+#[path = "types/bitfields.rs"]
+mod bitfields;
 #[path = "types/calling_conventions.rs"]
 mod calling_conventions;
 #[path = "types/components.rs"]
@@ -28,6 +30,8 @@ mod fields;
 mod input;
 #[path = "types/registry.rs"]
 mod registry;
+#[path = "types/resize.rs"]
+mod resize;
 #[path = "types/resolution.rs"]
 mod resolution;
 #[path = "types/return_types.rs"]

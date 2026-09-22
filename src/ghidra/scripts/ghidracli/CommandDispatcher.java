@@ -20,6 +20,8 @@ final class CommandDispatcher {
     private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
     private final TypeDefinitionCommands typeDefinitionCommands;
+    private final TypeResizeCommands typeResizeCommands;
+    private final BitFieldCommands bitFieldCommands;
     private final TagCommands tagCommands;
     private final PcodeCommands pcodeCommands;
     private final AnalysisCommands analysisCommands;
@@ -67,6 +69,8 @@ final class CommandDispatcher {
         equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         typeDefinitionCommands = new TypeDefinitionCommands(session, typeResolver);
+        typeResizeCommands = new TypeResizeCommands(session, typeResolver);
+        bitFieldCommands = new BitFieldCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
         pcodeCommands = new PcodeCommands(session, addressResolver, functionQueries);
         analysisCommands = new AnalysisCommands(session);
@@ -158,6 +162,7 @@ final class CommandDispatcher {
             case "type_get":        return typeCommands.handleTypeGet(args);
             case "type_clone":      return typeDefinitionCommands.handleClone(args);
             case "type_move":       return typeDefinitionCommands.handleMove(args);
+            case "type_resize":     return typeResizeCommands.handleResize(args);
             case "type_category_list": return typeDefinitionCommands.handleCategoryList(args);
             case "type_category_create": return typeDefinitionCommands.handleCategoryCreate(args);
             case "type_category_delete": return typeDefinitionCommands.handleCategoryDelete(args);
@@ -171,6 +176,7 @@ final class CommandDispatcher {
             case "type_enum_member_delete": return typeCommands.handleTypeEnumMemberDelete(args);
             case "type_typedef":    return typeCommands.handleTypeTypedef(args);
             case "type_field_append":  return typeCommands.handleTypeFieldAppend(args);
+            case "type_field_create_bitfield": return bitFieldCommands.handleCreate(args);
             case "type_field_set":  return typeCommands.handleTypeFieldSet(args);
             case "type_field_clear": return typeCommands.handleTypeFieldClear(args);
             case "type_field_delete":  return typeCommands.handleTypeFieldDelete(args);

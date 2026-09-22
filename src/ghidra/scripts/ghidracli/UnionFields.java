@@ -26,8 +26,6 @@ final class UnionFields {
         if (ordinal < 0 || ordinal >= union.getNumComponents())
             throw new IllegalArgumentException("Union member ordinal is outside the union: " + ordinal);
         DataTypeComponent field = union.getComponent(ordinal);
-        if (field.isBitFieldComponent())
-            throw new IllegalArgumentException("Bit-field members are not supported by union field edits");
         return field;
     }
 
@@ -74,6 +72,11 @@ final class UnionFields {
     static JsonObject set(Union union, int ordinal, String name, DataType type,
             String comment, Integer size) throws Exception {
         DataTypeComponent old = target(union, ordinal);
+        if (old.isBitFieldComponent()) {
+            if (size != null) throw new IllegalArgumentException("--size is not supported for bit-fields");
+            if (type != null)
+                throw new IllegalArgumentException("Bit-field layout edits require a structure with packing disabled");
+        }
         if (size != null && type == null)
             throw new IllegalArgumentException("--size requires --type");
         if (name == null && type == null && comment == null)

@@ -64,7 +64,8 @@ final class TypeCommands {
             typeData.addProperty("name", dt.getName());
             typeData.addProperty("path", dt.getPathName());
             typeData.addProperty("category", dt.getCategoryPath().toString());
-            typeData.addProperty("size", dt instanceof Union ? UnionFields.length((Union) dt) : dt.getLength());
+            typeData.addProperty("size", dt instanceof Structure ? StructureFields.length((Structure) dt)
+                : dt instanceof Union ? UnionFields.length((Union) dt) : dt.getLength());
             String kind;
             if (dt instanceof Structure) kind = "struct";
             else if (dt instanceof Union) kind = "union";
@@ -107,6 +108,7 @@ final class TypeCommands {
         if (dataType instanceof Structure) {
             typeInfo.addProperty("kind", "struct");
             Structure struct = (Structure) dataType;
+            typeInfo.addProperty("size", StructureFields.length(struct));
             typeInfo.addProperty("packing_enabled", struct.isPackingEnabled());
             JsonArray components = new JsonArray();
             for (DataTypeComponent comp : struct.getComponents()) {
@@ -536,17 +538,24 @@ final class TypeCommands {
             if (target == null) return errorResult("Type not found: " + targetName);
             if (!(target instanceof Structure) && !(target instanceof Union))
                 return errorResult("Type is not a struct or union: " + targetName);
-            int position = target instanceof Union ? TypeFields.unionOrdinal((Union) target, args)
-                : TypeFields.structureOffset((Structure) target, args);
             String typeName = getArgString(args, "field_type");
             DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
-            if (target instanceof Union)
-                return UnionFields.set((Union) target, position,
+            Integer bitSize = BitFieldCommands.bitSize(args);
+            if (target instanceof Union) {
+                if (bitSize != null)
+                    return errorResult("Bit-field layout edits require a structure with packing disabled");
+                return UnionFields.set((Union) target, TypeFields.unionOrdinal((Union) target, args),
                     getArgString(args, "field_name"), type, comment, StructureFields.size(args));
+            }
             Structure struct = (Structure) target;
-            return StructureFields.set(struct, position,
+            TypeFields.StructureSelection selected = TypeFields.structureSelection(struct, args);
+            if (selected.field != null && selected.field.isBitFieldComponent())
+                return BitFieldCommands.set(struct, selected.field, getArgString(args, "field_name"),
+                    type, comment, StructureFields.size(args), bitSize);
+            if (bitSize != null) return errorResult("--bit-size requires an existing bit-field");
+            return StructureFields.set(struct, selected,
                 getArgString(args, "field_name"), type, comment, comment != null,
                 StructureFields.size(args)).apply(struct);
         } catch (Exception e) {
@@ -558,7 +567,7 @@ final class TypeCommands {
         if (session.program() == null) return errorResult("No program loaded");
         try {
             Structure struct = findStructure(args);
-            return StructureFields.clear(struct, TypeFields.structureOffset(struct, args)).apply(struct);
+            return StructureFields.clear(struct, TypeFields.structureSelection(struct, args)).apply(struct);
         } catch (Exception e) {
             return errorResult("Failed to clear field: " + e.getMessage(), e);
         }
@@ -584,6 +593,7 @@ final class TypeCommands {
             int sizeBefore = StructureFields.length(struct);
             JsonObject before = StructureFields.describe(field);
             struct.delete(field.getOrdinal());
+            TypeFields.verifyComponentCount(struct);
             return TypeFields.result(struct, sizeBefore, StructureFields.length(struct), before, null, "deleted");
         } catch (Exception e) {
             return errorResult("Failed to delete field: " + e.getMessage(), e);

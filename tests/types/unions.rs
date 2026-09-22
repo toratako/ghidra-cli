@@ -237,14 +237,6 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
         assert_eq!(definition(&program, name), before);
     }
     let holder = definition(&program, "/Recovered/Holder");
-    for command in ["set", "delete"] {
-        let mut args = vec!["field", command, "/Recovered/Holder", "--ordinal", "0"];
-        if command == "set" {
-            args.extend(["--name", "wrong"]);
-        }
-        type_command(&program, &args).assert_failure();
-    }
-    assert_eq!(definition(&program, "/Recovered/Holder"), holder);
     let client = harness().client().unwrap();
     for (command, args, message) in [
         (
@@ -440,7 +432,7 @@ public class CreateUnionSettings extends GhidraScript {
 
 #[test]
 #[serial]
-fn union_bitfield_targets_are_rejected_and_other_members_remain_editable() {
+fn union_bitfield_metadata_and_deletion_preserve_other_members() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
     success(type_command(
@@ -451,22 +443,21 @@ fn union_bitfield_targets_are_rejected_and_other_members_remain_editable() {
         ],
     ));
     let before = definition(&program, "Flags");
-    for result in [
-        set(&program, "Flags", "0", &["--name", "renamed"]),
-        type_command(&program, &["field", "delete", "Flags", "--ordinal", "0"]),
-        type_command(
-            &program,
-            &[
-                "field", "set", "Flags", "--field", "bits", "--name", "renamed",
-            ],
-        ),
-        type_command(&program, &["field", "delete", "Flags", "--field", "bits"]),
-    ] {
-        result
-            .assert_failure()
-            .assert_stderr_contains("Bit-field members");
-        assert_eq!(definition(&program, "Flags"), before);
-    }
+    let edited = success(set(
+        &program,
+        "Flags",
+        "0",
+        &["--name", "renamed", "--comment", "flags"],
+    ));
+    assert_eq!(edited["before"], before["components"][0]);
+    assert_eq!(edited["after"]["is_bitfield"], true);
+    assert_eq!(edited["after"]["bit_size"], 3);
+    set(&program, "Flags", "0", &["--bit-size", "4"])
+        .assert_failure()
+        .assert_stderr_contains("packing disabled");
+    set(&program, "Flags", "0", &["--type", "uint16_t"])
+        .assert_failure()
+        .assert_stderr_contains("packing disabled");
     success(set(
         &program,
         "Flags",
@@ -474,9 +465,18 @@ fn union_bitfield_targets_are_rejected_and_other_members_remain_editable() {
         &["--name", "value", "--type", "uint16_t"],
     ));
     let after = definition(&program, "Flags");
-    assert_eq!(after["components"][0], before["components"][0]);
+    assert_eq!(after["components"][0], edited["after"]);
     harness().client().unwrap().program_close().unwrap();
     assert_eq!(definition(&program, "Flags"), after);
+    let deleted = success(type_command(
+        &program,
+        &["field", "delete", "Flags", "--field", "renamed"],
+    ));
+    assert_eq!(deleted["before"], edited["after"]);
+    let remaining = definition(&program, "Flags");
+    assert_eq!(remaining["components"].as_array().unwrap().len(), 1);
+    assert_eq!(remaining["components"][0]["name"], "value");
+    assert_eq!(remaining["components"][0]["size"], 2);
     harness()
         .client()
         .unwrap()

@@ -316,6 +316,10 @@ pub(super) fn execute_via_bridge(
                     Some(json!({"type_name": args.type_name, "new_name": args.new_name,
                         "category": args.category})),
                 ),
+                TypeCommands::Resize(args) => client.send_command(
+                    "type_resize",
+                    Some(json!({"type_name": args.type_name, "size": args.size})),
+                ),
                 TypeCommands::Move(args) => client.send_command(
                     "type_move",
                     Some(json!({"type_name": args.type_name, "category": args.category})),
@@ -341,6 +345,19 @@ pub(super) fn execute_via_bridge(
                             "size": args.size,
                         })),
                     ),
+                    cli::TypeFieldCommands::CreateBitfield(args) => client.send_command(
+                        "type_field_create_bitfield",
+                        Some(json!({
+                            "type_name": args.type_name,
+                            "offset": args.offset,
+                            "storage_size": args.storage_size,
+                            "bit_offset": args.bit_offset,
+                            "bit_size": args.bit_size,
+                            "field_type": args.field_type,
+                            "field_name": args.name,
+                            "comment": args.comment,
+                        })),
+                    ),
                     cli::TypeFieldCommands::Set(args) => client.send_command(
                         "type_field_set",
                         Some(json!({
@@ -351,13 +368,14 @@ pub(super) fn execute_via_bridge(
                             "field_name": args.name,
                             "field_type": args.field_type,
                             "size": args.size,
+                            "bit_size": args.bit_size,
                             "comment": args.comment,
                         })),
                     ),
                     cli::TypeFieldCommands::Clear(args) => client.send_command(
                         "type_field_clear",
-                        Some(json!({"type_name": args.type_name, "offset": args.offset,
-                            "field": args.field})),
+                        Some(json!({"type_name": args.type_name, "offset": args.selector.offset,
+                            "ordinal": args.selector.ordinal, "field": args.selector.field})),
                     ),
                     cli::TypeFieldCommands::Delete(args) => client.send_command(
                         "type_field_delete",

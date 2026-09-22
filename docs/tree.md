@@ -120,6 +120,7 @@ ghidra-cli
 │   ├── delete
 │   ├── rename
 │   ├── clone
+│   ├── resize
 │   ├── move
 │   ├── category
 │   │   ├── list
@@ -127,6 +128,7 @@ ghidra-cli
 │   │   └── delete
 │   ├── field
 │   │   ├── append
+│   │   ├── create-bitfield
 │   │   ├── set
 │   │   ├── clear
 │   │   └── delete
@@ -196,4 +198,4 @@ ghidra-cli
 └── setup
 ```
 
-184 command nodes (excluding the root), 0 aliases.
+186 command nodes (excluding the root), 0 aliases.

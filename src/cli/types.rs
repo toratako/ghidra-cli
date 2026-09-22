@@ -21,6 +21,8 @@ pub enum TypeCommands {
     Rename(TypeRenameArgs),
     /// Clone a named type definition, sharing its referenced types
     Clone(TypeCloneArgs),
+    /// Resize only the undefined tail of a nonpacked struct
+    Resize(TypeResizeArgs),
     /// Move a named type to an existing category
     Move(TypeMoveArgs),
     /// Organize data type categories
@@ -38,11 +40,13 @@ pub enum TypeCommands {
 pub enum TypeFieldCommands {
     /// Append a field using the type's packing and alignment
     Append(TypeFieldAppendArgs),
+    /// Place a bitfield in a nonpacked struct without shifting other fields
+    CreateBitfield(TypeFieldCreateBitfieldArgs),
     /// Update a field, or create one at a struct offset in undefined space
     Set(TypeFieldSetArgs),
     /// Replace a struct field with undefined bytes, preserving size and later offsets
     Clear(TypeFieldClearArgs),
-    /// Delete a field; shifts later struct fields or renumbers union members
+    /// Delete a field; ordinary struct fields shift later bytes, nonpacked bitfields preserve offsets
     Delete(TypeFieldDeleteArgs),
 }
 
@@ -197,6 +201,17 @@ pub struct TypeCloneArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeResizeArgs {
+    /// Nonpacked struct name or full type path
+    pub type_name: String,
+    /// New total byte size, in decimal or 0x hexadecimal; zero is allowed
+    #[arg(value_parser = parse_type_integer)]
+    pub size: i32,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TypeMoveArgs {
     /// Registered struct, union, enum, typedef, or function type name or path
     pub type_name: String,
@@ -254,6 +269,35 @@ pub struct TypeFieldAppendArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeFieldCreateBitfieldArgs {
+    /// Nonpacked struct name or full type path
+    pub type_name: String,
+    /// Storage byte offset, in decimal or 0x hexadecimal
+    #[arg(long, value_parser = parse_type_integer)]
+    pub offset: i32,
+    /// Storage byte length interpreted using the Program's byte order
+    #[arg(long, value_parser = parse_positive_type_integer)]
+    pub storage_size: i32,
+    /// Bit offset from the storage integer's least significant bit
+    #[arg(long, value_parser = parse_type_integer)]
+    pub bit_offset: i32,
+    /// Positive bit width; must fit the storage and base type
+    #[arg(long, value_parser = parse_positive_type_integer)]
+    pub bit_size: i32,
+    /// Integer, enum, or typedef base type
+    #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub field_type: String,
+    /// Field name; omit for an unnamed bitfield
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
+    /// Field comment
+    #[arg(long)]
+    pub comment: Option<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TypeFieldDeleteArgs {
     /// Struct or union name or full type path
     pub type_name: String,
@@ -278,7 +322,7 @@ pub struct TypeEnumMemberDeleteArgs {
     pub project: Option<String>,
 }
 
-fn parse_field_offset(value: &str) -> Result<i32, String> {
+fn parse_type_integer(value: &str) -> Result<i32, String> {
     let (digits, radix) = value
         .strip_prefix("0x")
         .or_else(|| value.strip_prefix("0X"))
@@ -289,13 +333,21 @@ fn parse_field_offset(value: &str) -> Result<i32, String> {
             .chars()
             .all(|c| c.is_ascii_hexdigit() && c.is_digit(radix))
     {
-        return Err("offset must be a nonnegative decimal or 0x hexadecimal integer".into());
+        return Err("must be a nonnegative decimal or 0x hexadecimal integer".into());
     }
-    i32::from_str_radix(digits, radix).map_err(|_| "offset exceeds 2147483647".into())
+    i32::from_str_radix(digits, radix).map_err(|_| "must not exceed 2147483647".into())
+}
+
+fn parse_positive_type_integer(value: &str) -> Result<i32, String> {
+    let value = parse_type_integer(value)?;
+    if value == 0 {
+        return Err("must be greater than zero".into());
+    }
+    Ok(value)
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-#[command(group(clap::ArgGroup::new("field_edit").required(true).multiple(true).args(["name", "field_type", "comment"])))]
+#[command(group(clap::ArgGroup::new("field_edit").required(true).multiple(true).args(["name", "field_type", "bit_size", "comment"])))]
 pub struct TypeFieldSetArgs {
     /// Struct or union name or full type path
     pub type_name: String,
@@ -307,9 +359,12 @@ pub struct TypeFieldSetArgs {
     /// Field type; required when creating a field in undefined space
     #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub field_type: Option<String>,
-    /// Field size override; requires --type
-    #[arg(long, requires = "field_type")]
+    /// Ordinary field byte size override; requires --type
+    #[arg(long, requires = "field_type", conflicts_with = "bit_size")]
     pub size: Option<i32>,
+    /// New width of an existing nonpacked struct bitfield within its current storage
+    #[arg(long, value_parser = parse_positive_type_integer, conflicts_with = "offset")]
+    pub bit_size: Option<i32>,
     /// Field comment; an empty string clears it, omission preserves it
     #[arg(long)]
     pub comment: Option<String>,
@@ -320,16 +375,11 @@ pub struct TypeFieldSetArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-#[command(group(clap::ArgGroup::new("field_selector").required(true).args(["offset", "field"])))]
 pub struct TypeFieldClearArgs {
     /// Structure name or full type path
     pub type_name: String,
-    /// Field starting byte offset, in decimal or 0x hexadecimal
-    #[arg(long, value_parser = parse_field_offset)]
-    pub offset: Option<i32>,
-    /// Exact existing field name (not its generated display name)
-    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
-    pub field: Option<String>,
+    #[command(flatten)]
+    pub selector: TypeFieldSelector,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
@@ -340,9 +390,9 @@ pub struct TypeFieldClearArgs {
 #[group(id = "field_selector", required = true, multiple = false)]
 pub struct TypeFieldSelector {
     /// Struct field's starting byte offset, in decimal or 0x hexadecimal
-    #[arg(long, value_parser = parse_field_offset)]
+    #[arg(long, value_parser = parse_type_integer)]
     pub offset: Option<i32>,
-    /// Union member's zero-based ordinal from `type get`
+    /// Struct or union component's zero-based ordinal from the latest `type get`
     #[arg(long, value_parser = clap::value_parser!(i32).range(0..))]
     pub ordinal: Option<i32>,
     /// Exact existing field name (not its generated display name)

@@ -3,6 +3,7 @@ package ghidracli;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.data.Composite;
+import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.Union;
@@ -28,29 +29,48 @@ final class TypeFields {
     private static DataTypeComponent named(Composite type, JsonObject args) {
         String name = JsonProtocol.getArgString(args, "field");
         if (name.isBlank()) throw new IllegalArgumentException("Field name must not be empty");
-        for (DataTypeComponent field : type.getComponents()) {
+        DataTypeComponent[] fields = type instanceof Structure
+            ? ((Structure) type).getDefinedComponents() : type.getComponents();
+        for (DataTypeComponent field : fields) {
             if (name.equals(field.getFieldName())) return field;
         }
         throw new IllegalArgumentException("Field not found: " + name + " in " + type.getPathName());
     }
 
-    static int structureOffset(Structure struct, JsonObject args) {
-        switch (selector(args)) {
-            case "field": return named(struct, args).getOffset();
-            case "offset": return StructureFields.offset(args);
-            default: throw new IllegalArgumentException("Struct fields require --offset or --field, not --ordinal");
+    static final class StructureSelection {
+        final int offset;
+        final DataTypeComponent field;
+
+        StructureSelection(int offset, DataTypeComponent field) {
+            this.offset = offset;
+            this.field = field;
         }
     }
 
+    static StructureSelection structureSelection(Structure struct, JsonObject args) {
+        String selector = selector(args);
+        if (selector.equals("offset")) {
+            int offset = StructureFields.offset(args);
+            return new StructureSelection(offset, StructureFields.target(struct, offset));
+        }
+        DataTypeComponent field;
+        if (selector.equals("field")) {
+            field = named(struct, args);
+        } else {
+            int ordinal = JsonProtocol.getNonnegativeIntArg(args, "ordinal", 0);
+            if (ordinal >= struct.getNumComponents())
+                throw new IllegalArgumentException("Struct field ordinal is outside the structure: " + ordinal);
+            field = struct.getComponent(ordinal);
+        }
+        return new StructureSelection(field.getOffset(),
+            field.getDataType() == DataType.DEFAULT ? null : field);
+    }
+
     static DataTypeComponent structureDeletionTarget(Structure struct, JsonObject args) {
-        // Named deletion also supports bit-fields and zero-length fields. An offset
-        // cannot uniquely identify these, so it uses the guarded offset selector.
-        if (selector(args).equals("field")) return named(struct, args);
-        int offset = structureOffset(struct, args);
-        DataTypeComponent field = StructureFields.target(struct, offset);
-        if (field == null)
-            throw new IllegalArgumentException("No defined field starts at offset " + offset);
-        return field;
+        StructureSelection selected = structureSelection(struct, args);
+        if (selected.field == null)
+            throw new IllegalArgumentException("No defined field starts at offset " + selected.offset);
+        return selected.field;
     }
 
     static int unionOrdinal(Union union, JsonObject args) {
@@ -59,6 +79,24 @@ final class TypeFields {
             case "ordinal": return JsonProtocol.getNonnegativeIntArg(args, "ordinal", 0);
             default: throw new IllegalArgumentException("Union members require --ordinal or --field, not --offset");
         }
+    }
+
+    /** Count implicit filler and overlapping components without native int overflow. */
+    static void verifyComponentCount(Structure struct) {
+        if (struct.isPackingEnabled()) return;
+        long count = 0;
+        long end = 0;
+        for (DataTypeComponent field : struct.getDefinedComponents()) {
+            count += Math.max(0L, (long) field.getOffset() - end);
+            if (field.getOrdinal() != count)
+                throw new IllegalArgumentException("invalid component ordinal in " + struct.getPathName());
+            count++;
+            end = (long) field.getOffset() + field.getLength();
+        }
+        count += StructureFields.length(struct) - end;
+        if (count < 0 || count > Integer.MAX_VALUE || struct.getNumComponents() != count)
+            throw new IllegalArgumentException("structure component count exceeds its supported range in "
+                + struct.getPathName());
     }
 
     static JsonObject result(Composite type, int sizeBefore, int sizeAfter,

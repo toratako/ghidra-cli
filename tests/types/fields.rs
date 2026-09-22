@@ -787,19 +787,25 @@ public class CreateSpecialFieldFixtures extends GhidraScript {
             set(&name, &offset, &["--type", "byte"]),
             clear(&name, &offset),
             command(&["field", "delete", &name, "--offset", &offset]),
-            command(&[
-                "field",
-                "set",
-                &name,
-                "--field",
-                field_name,
-                "--comment",
-                "changed",
-            ]),
-            command(&["field", "clear", &name, "--field", field_name]),
         ] {
             let error = rejected_unchanged(&name, &before, result, "not supported by offset edits");
             assert_eq!(error["detail"]["field"]["name"], field_name);
+        }
+        if field_name == "zero" {
+            for result in [
+                command(&[
+                    "field",
+                    "set",
+                    &name,
+                    "--field",
+                    field_name,
+                    "--comment",
+                    "changed",
+                ]),
+                command(&["field", "clear", &name, "--field", field_name]),
+            ] {
+                rejected_unchanged(&name, &before, result, "Zero-length fields");
+            }
         }
         let deleted = success(command(&["field", "delete", &name, "--field", field_name]));
         assert_field_receipt(&deleted, "struct", &name, "deleted");

@@ -122,6 +122,150 @@ fn type_creation_accepts_global_options_at_each_command_level() {
 }
 
 #[test]
+fn type_resize_accepts_decimal_and_hex_sizes_with_zero_and_java_int_boundaries() {
+    for (input, size) in [("0", 0), ("64", 64), ("0x40", 64), ("0X7fffffff", i32::MAX)] {
+        let cli =
+            Cli::try_parse_from(["ghidra-cli", "type", "resize", "/Draft/Header", input]).unwrap();
+        assert!(
+            matches!(cli.command, Commands::Type(TypeCommands::Resize(args))
+            if args.type_name == "/Draft/Header" && args.size == size)
+        );
+    }
+    for size in ["-1", "2147483648", "0x80000000", "0x", "1.5"] {
+        assert!(Cli::try_parse_from(["ghidra-cli", "type", "resize", "/Header", size]).is_err());
+    }
+}
+
+#[test]
+fn bitfield_creation_parses_explicit_storage_and_optional_attributes() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "field",
+        "create-bitfield",
+        "/Flags",
+        "--offset",
+        "0x10",
+        "--storage-size",
+        "0x4",
+        "--bit-offset",
+        "0",
+        "--bit-size",
+        "3",
+        "--type",
+        "uint32_t",
+        "--name",
+        "mode",
+        "--comment",
+        "",
+    ])
+    .unwrap();
+    let Commands::Type(TypeCommands::Field(TypeFieldCommands::CreateBitfield(args))) = cli.command
+    else {
+        panic!("expected bitfield creation");
+    };
+    assert_eq!(
+        (
+            args.offset,
+            args.storage_size,
+            args.bit_offset,
+            args.bit_size
+        ),
+        (16, 4, 0, 3)
+    );
+    assert_eq!(args.field_type, "uint32_t");
+    assert_eq!(args.name.as_deref(), Some("mode"));
+    assert_eq!(args.comment.as_deref(), Some(""));
+}
+
+#[test]
+fn bitfield_edits_require_positive_width_and_an_exact_component_selector() {
+    for selector in [["--field", "mode"], ["--ordinal", "1"]] {
+        let cli = Cli::try_parse_from(
+            ["ghidra-cli", "type", "field", "set", "/Flags"]
+                .into_iter()
+                .chain(selector)
+                .chain(["--bit-size", "4"]),
+        )
+        .unwrap();
+        assert!(matches!(cli.command,
+            Commands::Type(TypeCommands::Field(TypeFieldCommands::Set(args)))
+                if args.bit_size == Some(4) && args.field_type.is_none()));
+    }
+    for flags in [
+        vec!["--offset", "0", "--bit-size", "4"],
+        vec!["--ordinal", "1", "--bit-size", "0"],
+        vec!["--ordinal", "1", "--bit-size", "2147483648"],
+        vec![
+            "--ordinal",
+            "1",
+            "--bit-size",
+            "4",
+            "--type",
+            "uint",
+            "--size",
+            "4",
+        ],
+    ] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "type", "field", "set", "/Flags"]
+                .into_iter()
+                .chain(flags)
+        )
+        .is_err());
+    }
+    for (storage_size, bit_size) in [("0", "1"), ("4", "0"), ("2147483648", "1")] {
+        assert!(Cli::try_parse_from([
+            "ghidra-cli",
+            "type",
+            "field",
+            "create-bitfield",
+            "/Flags",
+            "--offset",
+            "0",
+            "--storage-size",
+            storage_size,
+            "--bit-offset",
+            "0",
+            "--bit-size",
+            bit_size,
+            "--type",
+            "uint",
+        ])
+        .is_err());
+    }
+}
+
+#[test]
+fn field_clear_uses_the_shared_component_selector() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "field",
+        "clear",
+        "/Flags",
+        "--ordinal",
+        "1",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command,
+        Commands::Type(TypeCommands::Field(TypeFieldCommands::Clear(args)))
+            if args.selector.ordinal == Some(1)));
+    assert!(Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "field",
+        "clear",
+        "/Flags",
+        "--ordinal",
+        "1",
+        "--field",
+        "mode",
+    ])
+    .is_err());
+}
+
+#[test]
 fn type_category_requires_a_path_and_exposes_queries_only_for_lists() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",

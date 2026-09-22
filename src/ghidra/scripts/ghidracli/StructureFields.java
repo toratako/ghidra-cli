@@ -85,11 +85,14 @@ final class StructureFields {
         return target;
     }
 
-    static Plan set(Structure struct, int offset, String name, DataType type,
+    static Plan set(Structure struct, TypeFields.StructureSelection selected, String name, DataType type,
             String comment, boolean commentSpecified, Integer sizeOverride) throws Exception {
         if (sizeOverride != null && type == null)
             throw new IllegalArgumentException("--size requires --type");
-        DataTypeComponent old = target(struct, offset);
+        int offset = selected.offset;
+        DataTypeComponent old = selected.field;
+        if (old != null && old.getLength() == 0)
+            throw conflict("Zero-length fields are not supported by layout edits", old);
         if (name == null && type == null && !commentSpecified)
             throw new IllegalArgumentException("At least one of --name, --type, or --comment is required");
         if (old == null && type == null)
@@ -110,6 +113,8 @@ final class StructureFields {
 
         int newSize = old == null ? 0 : old.getLength();
         if (type != null) {
+            if (type instanceof BitFieldDataType)
+                throw new IllegalArgumentException("Ordinary fields cannot be converted to bit-fields");
             type = type.clone(struct.getDataTypeManager());
             newSize = sizeOverride != null ? sizeOverride : type.getLength();
             if (newSize <= 0 || type.isZeroLength())
@@ -150,7 +155,7 @@ final class StructureFields {
                     + " for field type " + type.getName());
         }
         verifyOtherFields(struct, staged, old);
-        DataTypeComponent after = target(staged, offset);
+        DataTypeComponent after = type == null ? staged.getComponent(old.getOrdinal()) : target(staged, offset);
         if (after == null || (name != null && !name.equals(after.getFieldName())))
             throw new IllegalArgumentException("Ghidra did not preserve the requested field name or offset");
         if (length(staged) < length(struct))
@@ -159,23 +164,27 @@ final class StructureFields {
             old == null ? "created" : "updated");
     }
 
-    static Plan clear(Structure struct, int offset) {
-        if (offset < 0 || offset >= length(struct))
+    static Plan clear(Structure struct, TypeFields.StructureSelection selected) {
+        int offset = selected.offset;
+        if (selected.field == null && (offset < 0 || offset >= length(struct)))
             throw new IllegalArgumentException("Offset is outside the structure");
-        DataTypeComponent old = target(struct, offset);
+        DataTypeComponent old = selected.field;
+        if (old != null && old.getLength() == 0 && !old.isBitFieldComponent())
+            throw conflict("Zero-length fields are not supported by layout edits", old);
         Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
         if (old != null) {
             if (struct.isPackingEnabled())
                 throw new IllegalArgumentException("Clearing a field requires a structure with packing disabled");
             staged.clearComponent(old.getOrdinal());
         }
+        TypeFields.verifyComponentCount(staged);
         verifyOtherFields(struct, staged, old);
         if (length(staged) != length(struct))
             throw new IllegalArgumentException("Clearing a field would change the structure size");
         return new Plan(struct, staged, offset, old, null, false, "cleared");
     }
 
-    private static void verifyOtherFields(Structure original, Structure staged, DataTypeComponent old) {
+    static void verifyOtherFields(Structure original, Structure staged, DataTypeComponent old) {
         for (DataTypeComponent field : original.getDefinedComponents()) {
             if (old != null && field.getOrdinal() == old.getOrdinal()) continue;
             boolean found = false;
@@ -183,6 +192,9 @@ final class StructureFields {
                 if (field.getOffset() == candidate.getOffset() && field.getLength() == candidate.getLength()
                         && Objects.equals(field.getFieldName(), candidate.getFieldName())
                         && Objects.equals(field.getComment(), candidate.getComment())
+                        && (!field.isBitFieldComponent() || candidate.isBitFieldComponent()
+                            && ((BitFieldDataType) field.getDataType()).getBitOffset()
+                                == ((BitFieldDataType) candidate.getDataType()).getBitOffset())
                         && field.getDataType().isEquivalent(candidate.getDataType())) {
                     found = true;
                     break;
@@ -224,6 +236,10 @@ final class StructureFields {
                     before.setComment(after.getComment());
                 } else if (after == null) {
                     original.clearComponent(before.getOrdinal());
+                    TypeFields.verifyComponentCount(original);
+                    if (length(original) != length(staged))
+                        throw new IllegalArgumentException("Clearing a field changed the structure size");
+                    verifyOtherFields(staged, original, null);
                 } else {
                     int growth = length(staged) - length(original);
                     if (growth > 0) original.growStructure(growth);

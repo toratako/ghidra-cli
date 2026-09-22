@@ -510,6 +510,18 @@ impl RecordedBridge {
                     "namespace_get" => {
                         json!({"id": "9007199254740993", "name": "Widget", "path": args["path"], "parent": "app", "kind": "class"})
                     }
+                    "type_category_list" => types::category_list_fixture(args),
+                    "type_clone"
+                    | "type_resize"
+                    | "type_move"
+                    | "type_category_create"
+                    | "type_category_delete"
+                    | "type_field_create_bitfield" => json!({
+                        "status": "updated", "changed": true,
+                        "before": {"fields": [{"name": "flags", "bit_size": 3}]},
+                        "after": {"fields": [{"name": "flags", "bit_size": 4}]},
+                        "observed_program": program,
+                    }),
                     "xref_create_memory"
                     | "xref_delete"
                     | "xref_set_primary"
