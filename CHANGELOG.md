@@ -7,6 +7,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `type clone` for independent top-level definitions, `type resize` for
+  non-packed structure tails, and category listing, creation, empty deletion,
+  and single-type moves. Type details include universal IDs and source archives.
+- Add explicitly placed bitfields with `type field create-bitfield`, bounded
+  width/base-type edits, struct ordinal selectors, and bitfield annotation,
+  clearing, and deletion without losing neighboring components.
 - Add `function call-signature get/set/clear` for saved prototypes at one call
   site, including overrides left stale by later instruction or body changes.
 - Add `function set-body` to replace a function's complete body with repeated
@@ -44,6 +50,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Report logical size zero for empty structs in `type get` and `type list`.
 - Replace `function edit-var` with `function var list/get/set`. Variable reads
   expose decompiler candidates and saved definitions separately; exact-name
   selection with optional filtering resolves one target before an edit.

@@ -407,6 +407,28 @@ effective `bit_size`, `bit_offset` within the component storage, and
 The byte `offset`/`size` describe Ghidra's minimal component storage, so a bit
 offset is not relative to the entire base type or structure.
 
+`type_get` includes nullable `universal_id` and `source_archive` with `id`,
+`name`, and `kind`. IDs are strings, preserving their precision; source metadata
+does not describe an open archive connection. Struct and union sizes report
+logical zero for empty definitions.
+
+`type_clone` takes `type_name`, `new_name`, and optional existing `category`;
+`type_move` takes `type_name` and existing `category`. Clones get local identities
+and share dependencies; moves retain identity. `type_category_list/create/delete`
+take absolute `path`. List returns immediate `categories` rows with `name`,
+`path`, and direct `type_count`, retaining the selected category path as context.
+Create includes missing parents; delete requires an empty non-root category.
+
+`type_resize` takes `type_name` and nonnegative byte `size` for a non-packed
+structure. It preserves defined components and verifies size propagation before
+the ordinary request commits. `type_field_create_bitfield` takes `type_name`,
+`offset`, `storage_size`, `bit_offset`, `bit_size`, `field_type`, optional
+`field_name`, and optional `comment`. Bit positions are relative to the specified
+Program-endian integer. Creation and non-packed width/base-type edits reject
+clipping and overlap. `type_field_set` accepts `bit_size`; bitfields are selected
+by real `field` name or `ordinal`, never byte offset. Struct clear/delete also
+accept ordinals. Non-packed bitfield deletion leaves later offsets unchanged.
+
 Decompilation includes `basic_block_count` from HighFunction p-code blocks,
 or null when that result is unavailable. `with_jump_tables: true` adds
 `jump_tables: [{switch_address, cases: [{address, label, is_default}]}]`.

@@ -206,6 +206,25 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
+### Trying a separate type definition
+
+```bash
+ghidra-cli type category create /Draft
+ghidra-cli type clone /Recovered/Header HeaderV2 --category /Draft
+ghidra-cli type resize /Draft/HeaderV2 64
+ghidra-cli type move /Draft/HeaderV2 /Recovered
+```
+
+Clone separates only the top-level definition. Referenced types remain shared;
+cloning `Node` to `NodeV2` leaves `next` pointing to `Node *`. Retarget that field
+explicitly when needed; packed structures do not support field type replacement.
+Clone and move require an existing destination category and reject name conflicts.
+
+Resize adjusts the undefined tail of a non-packed structure. It cannot remove
+defined fields, including explicit padding arrays. Size changes propagate to
+containing types and applied data; edits that cannot fit completely fail. Use
+an unapplied clone when experimenting with a layout that cannot fit existing uses.
+
 ### Recovering unions
 
 ```bash
@@ -232,8 +251,9 @@ ghidra-cli type field clear Manager --offset 0x1c
 ```
 
 `field set`, `field clear`, and `field delete` select a struct field by its exact
-starting byte offset or `--field NAME`. In `field set`, omitted attributes keep
-their current values. At an offset in undefined space, supply `--type`.
+starting byte offset, `--field NAME`, or the latest `--ordinal` from `type get`.
+In `field set`, omitted attributes keep their current values. At an offset in
+undefined space, supply `--type`.
 
 Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field.
@@ -243,7 +263,8 @@ For types that need an explicit length, use `--type string --size 8` with
 
 `field clear` replaces the field with undefined bytes and preserves structure
 size and later offsets, though component ordinals can change. `field delete`
-removes bytes and shifts later fields.
+removes ordinary fields' bytes and shifts later fields. Deleting a bitfield in
+a non-packed structure leaves the byte layout unchanged.
 
 `field append` uses the structure's packing and alignment. Packed structures also
 allow name/comment edits, but reject field type changes and clearing defined
@@ -251,6 +272,25 @@ fields. Bit-fields and zero-length fields cannot be edited with offset commands.
 
 In `type get`, an unnamed field has `name: null`; `display_name` gives its
 generated name, which cannot be used with `--field`.
+
+### Placing recovered bitfields
+
+```bash
+ghidra-cli type field create-bitfield Flags --offset 0 --storage-size 4 \
+  --bit-offset 0 --bit-size 3 --type uint32_t --name mode
+ghidra-cli type field set Flags --field mode --bit-size 4
+ghidra-cli type field clear Flags --field mode
+```
+
+The placement range is read as a Program-endian integer; bit offset zero is its
+least significant bit. Ghidra normalizes the result to the smallest byte range,
+so the example's field starts at byte 0 on little-endian and byte 3 on big-endian.
+Use the returned component range and `bit_offset` when decoding its value.
+
+Width edits stay within that current minimal range, even if creation specified
+a larger storage size. Select bitfields by real name or a fresh ordinal because
+several fields can share one byte. Clear removes only the selected field and
+retains its neighbors. For ABI-driven packing, use a C declaration with `import-c`.
 
 ## Function tags
 

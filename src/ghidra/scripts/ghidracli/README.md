@@ -132,6 +132,7 @@ another consumer or terminate its checkout.
 | `MemoryInfoCommands`, `MemorySources`, `FileMappingCommands` | Listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
 | `DataCommands` | Applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
+| `TypeDefinitionCommands`, `TypeResizeCommands`, `BitFieldCommands` | Definition identity/settings, category operations, guarded size propagation, and explicit bitfield layouts |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands`, `BookmarkCommands` | Program annotations and symbols |
 | `NamespaceCommands`, `NamespaceSupport` | Root-relative namespace lookup, creation, and shared identity serialization |
 | `EquateCommands` | Exact named constants, operand associations, and native dynamic-reference preservation |
@@ -153,6 +154,16 @@ Errors use `error` for messages and `detail` for diagnostics. Additional fields
 take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
+
+`TypeResizeCommands` follows native size propagation through composite, array,
+and typedef parents and scans their applied Listing data. Before committing it
+checks complete component lengths, native component counts, preserved definitions,
+and explicit settings on applied components. Packed parent movement and array
+stride changes are allowed only when existing settings keep their association.
+The scan checks cancellation through defined fields and array elements; it does
+not expand implicit struct filler. Applied zero-length roots are rejected because
+Listing cannot represent their requested logical length. All failures use the
+ordinary request rollback boundary.
 
 `FunctionReturnType` decompiles internal `DEFAULT` signatures before a return edit
 can lock an empty or partial input declaration. Rebuilding retains existing
