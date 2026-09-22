@@ -149,6 +149,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/NameSuggestions.java"),
     ),
     (
+        "ghidracli/NamespaceCommands.java",
+        include_str!("../scripts/ghidracli/NamespaceCommands.java"),
+    ),
+    (
+        "ghidracli/NamespaceSupport.java",
+        include_str!("../scripts/ghidracli/NamespaceSupport.java"),
+    ),
+    (
         "ghidracli/PcodeCommands.java",
         include_str!("../scripts/ghidracli/PcodeCommands.java"),
     ),

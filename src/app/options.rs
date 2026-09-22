@@ -12,6 +12,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::XRef(_)
             | Commands::Symbol(_)
             | Commands::Equate(_)
+            | Commands::Namespace(_)
             | Commands::Type(_)
             | Commands::Tag(_)
             | Commands::Pcode(_)
@@ -108,6 +109,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::SymbolCommands::CreateLabel(args) => args.project.clone(),
             cli::SymbolCommands::Delete(args) => args.options.project.clone(),
             cli::SymbolCommands::Rename(args) => args.project.clone(),
+            cli::SymbolCommands::SetNamespace(args) => args.options.project.clone(),
+            cli::SymbolCommands::SetPrimary(args) => args.options.project.clone(),
         },
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => opts.project.clone(),
@@ -187,6 +190,11 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => {
                 args.options.project.clone()
             }
+        },
+        Commands::Namespace(cmd) => match cmd {
+            cli::NamespaceCommands::List(opts) => opts.project.clone(),
+            cli::NamespaceCommands::Get(args) => args.options.project.clone(),
+            cli::NamespaceCommands::Create(args) => args.options.project.clone(),
         },
         Commands::Batch(args) => args.project.clone(),
         _ => None,
@@ -275,6 +283,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::SymbolCommands::CreateLabel(args) => args.program.clone(),
             cli::SymbolCommands::Delete(args) => args.options.program.clone(),
             cli::SymbolCommands::Rename(args) => args.program.clone(),
+            cli::SymbolCommands::SetNamespace(args) => args.options.program.clone(),
+            cli::SymbolCommands::SetPrimary(args) => args.options.program.clone(),
         },
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => opts.program.clone(),
@@ -355,6 +365,11 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 args.options.program.clone()
             }
         },
+        Commands::Namespace(cmd) => match cmd {
+            cli::NamespaceCommands::List(opts) => opts.program.clone(),
+            cli::NamespaceCommands::Get(args) => args.options.program.clone(),
+            cli::NamespaceCommands::Create(args) => args.options.program.clone(),
+        },
         Commands::Batch(args) => args.program.clone(),
         _ => None,
     }
@@ -379,6 +394,11 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => {
                 Some((&args.options).into())
             }
+        },
+        Commands::Namespace(cmd) => match cmd {
+            cli::NamespaceCommands::List(opts) => Some(opts.clone()),
+            cli::NamespaceCommands::Get(args) => Some((&args.options).into()),
+            cli::NamespaceCommands::Create(args) => Some((&args.options).into()),
         },
         Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => match cmd {
             cli::AnalysisOptionCommands::List(opts) => Some(opts.clone()),
@@ -441,6 +461,8 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::SymbolCommands::List(opts) => Some(opts.clone()),
             cli::SymbolCommands::Get(args) => Some(args.options.clone()),
             cli::SymbolCommands::Delete(args) => Some((&args.options).into()),
+            cli::SymbolCommands::SetNamespace(args) => Some((&args.options).into()),
+            cli::SymbolCommands::SetPrimary(args) => Some((&args.options).into()),
             _ => None,
         },
         Commands::Type(cmd) => match cmd {

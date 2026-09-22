@@ -75,6 +75,14 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         Commands::Symbol(cli::SymbolCommands::Delete(args)) => {
             Some((args.address.as_deref(), args.filter.as_deref()))
         }
+        Commands::Symbol(cli::SymbolCommands::SetNamespace(args)) => Some((
+            args.selection.address.as_deref(),
+            args.selection.filter.as_deref(),
+        )),
+        Commands::Symbol(cli::SymbolCommands::SetPrimary(args)) => Some((
+            args.selection.address.as_deref(),
+            args.selection.filter.as_deref(),
+        )),
         _ => None,
     };
     if let Some((address, filter)) = selector {
@@ -308,6 +316,13 @@ pub(super) fn execute_via_bridge(
                 Some(json!({"address": args.address, "name": args.name, "operand_index": args.operand_index})),
             ),
             cli::EquateCommands::Delete(args) => client.send_command("equate_delete", Some(json!({"name": args.name}))),
+        },
+        Commands::Namespace(cmd) => match cmd {
+            cli::NamespaceCommands::List(_) => client.send_command("namespace_list", None),
+            cli::NamespaceCommands::Get(args) => client.send_command("namespace_get", Some(json!({"path": args.path}))),
+            cli::NamespaceCommands::Create(args) => client.send_command(
+                "namespace_create", Some(json!({"name": args.name, "parent": args.parent, "kind": args.kind})),
+            ),
         },
         Commands::Type(cmd) => {
             use cli::{TypeCommands, TypeCreateCommands};

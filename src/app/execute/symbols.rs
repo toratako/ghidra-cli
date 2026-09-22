@@ -1,4 +1,4 @@
-//! Symbol dispatch and guarded target selection shared by both rename spellings.
+//! Symbol dispatch and guarded target selection shared by symbol mutations.
 
 use crate::address::ExplicitAddress;
 use crate::app::output::describe_query_error;
@@ -30,6 +30,39 @@ pub(super) fn execute(
             client.symbol_delete_targets(&args.name, &targets)
         }
         SymbolCommands::Rename(args) => rename(client, args),
+        SymbolCommands::SetNamespace(args) => {
+            let selection = &args.selection;
+            let targets = resolve_symbol_targets(
+                client,
+                &selection.name,
+                selection.address.as_deref(),
+                selection.filter.as_deref(),
+                false,
+            )?;
+            client.send_command(
+                "symbol_set_namespace",
+                Some(serde_json::json!({
+                    "name": selection.name, "targets": targets,
+                    "namespace": args.namespace, "global": args.global,
+                })),
+            )
+        }
+        SymbolCommands::SetPrimary(args) => {
+            let selection = &args.selection;
+            let targets = resolve_symbol_targets(
+                client,
+                &selection.name,
+                selection.address.as_deref(),
+                selection.filter.as_deref(),
+                false,
+            )?;
+            client.send_command(
+                "symbol_set_primary",
+                Some(serde_json::json!({
+                    "name": selection.name, "targets": targets,
+                })),
+            )
+        }
     }
 }
 
@@ -92,21 +125,23 @@ fn resolve_symbol_targets(
     }
 
     if candidates.len() > 1 && !all {
-        let addrs: Vec<String> = candidates
+        let details = candidates
             .iter()
-            .map(|s| {
-                s.get("address")
-                    .and_then(|a| a.as_str())
-                    .unwrap_or("?")
-                    .to_string()
+            .map(|symbol| {
+                format!(
+                    "id={}, namespace={}, address={}",
+                    symbol["id"].as_str().unwrap_or("?"),
+                    symbol["namespace"].as_str().unwrap_or("?"),
+                    symbol["address"].as_str().unwrap_or("?"),
+                )
             })
-            .collect();
+            .collect::<Vec<_>>()
+            .join("; ");
         anyhow::bail!(
-            "'{}' matches {} symbols at addresses [{}] -- pass --address <ADDR> (or a narrower \
-             --filter) to pick one, or --all to affect every match",
+            "'{}' matches {} symbols [{}] -- use --address or a narrower --filter to select one",
             name,
             candidates.len(),
-            addrs.join(", ")
+            details,
         );
     }
 

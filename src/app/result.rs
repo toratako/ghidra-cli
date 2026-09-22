@@ -39,6 +39,7 @@ impl ResultShape {
             Commands::Data(DataCommands::List(_)) => Self::rows("items"),
             Commands::XRef(XRefCommands::To(_) | XRefCommands::From(_)) => Self::rows("xrefs"),
             Commands::Equate(EquateCommands::List(_)) => Self::rows("equates"),
+            Commands::Namespace(NamespaceCommands::List(_)) => Self::rows("namespaces"),
             Commands::Type(TypeCommands::List(_)) => Self::rows("types"),
             Commands::Tag(TagCommands::List(_)) => Self::rows("tags"),
             Commands::Analysis(AnalysisCommands::Option(AnalysisOptionCommands::List(_))) => {
@@ -77,6 +78,7 @@ impl ResultShape {
             | Commands::Symbol(_)
             | Commands::XRef(_)
             | Commands::Equate(_)
+            | Commands::Namespace(_)
             | Commands::Bookmark(_)
             | Commands::Memory(_)
             | Commands::Data(_)

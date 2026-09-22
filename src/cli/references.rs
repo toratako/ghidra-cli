@@ -73,3 +73,35 @@ fn parse_equate_value(value: &str) -> Result<String, String> {
         Err("Expected a signed 64-bit decimal integer or a 0x-prefixed 64-bit bit pattern".into())
     }
 }
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum NamespaceCommands {
+    /// List namespaces and classes with their full paths
+    List(QueryOptions),
+    /// Inspect an exact full path from global scope
+    Get(NamespaceGetArgs),
+    /// Create a namespace or class under an existing parent
+    Create(NamespaceCreateArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct NamespaceGetArgs {
+    /// Full path from global scope, e.g. app::Widget
+    pub path: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct NamespaceCreateArgs {
+    /// Name of the new namespace or class
+    pub name: String,
+    /// Existing parent path from global scope (omitted: global)
+    #[arg(long)]
+    pub parent: Option<String>,
+    /// Namespace kind; a class organizes symbols and does not define a data type
+    #[arg(long, default_value = "namespace", value_parser = ["namespace", "class"])]
+    pub kind: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}

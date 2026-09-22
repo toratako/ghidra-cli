@@ -16,6 +16,7 @@ final class CommandDispatcher {
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
     private final SymbolCommands symbolCommands;
+    private final NamespaceCommands namespaceCommands;
     private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
     private final TagCommands tagCommands;
@@ -51,6 +52,7 @@ final class CommandDispatcher {
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         symbolCommands = new SymbolCommands(session);
+        namespaceCommands = new NamespaceCommands(session);
         equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
@@ -118,6 +120,11 @@ final class CommandDispatcher {
             case "symbol_create_label":   return symbolCommands.handleSymbolCreateLabel(args);
             case "symbol_delete":   return symbolCommands.handleSymbolDelete(args);
             case "symbol_rename":   return symbolCommands.handleSymbolRename(args);
+            case "symbol_set_namespace": return symbolCommands.handleSetNamespace(args);
+            case "symbol_set_primary": return symbolCommands.handleSetPrimary(args);
+            case "namespace_list": return namespaceCommands.handleList(args);
+            case "namespace_get": return namespaceCommands.handleGet(args);
+            case "namespace_create": return namespaceCommands.handleCreate(args);
             // Equate definitions and operand associations
             case "equate_list": return equateCommands.handleList(args);
             case "equate_get": return equateCommands.handleGet(args);

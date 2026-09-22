@@ -55,7 +55,9 @@ ghidra-cli
 │   ├── entry-points
 │   ├── create-label
 │   ├── delete
-│   └── rename
+│   ├── rename
+│   ├── set-namespace
+│   └── set-primary
 ├── equate
 │   ├── list
 │   ├── get
@@ -63,6 +65,10 @@ ghidra-cli
 │   ├── attach
 │   ├── detach
 │   └── delete
+├── namespace
+│   ├── list
+│   ├── get
+│   └── create
 ├── memory
 │   ├── map
 │   ├── info
@@ -164,4 +170,4 @@ ghidra-cli
 └── setup
 ```
 
-152 command nodes (excluding the root), 0 aliases.
+158 command nodes (excluding the root), 0 aliases.

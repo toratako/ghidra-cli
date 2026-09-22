@@ -4,11 +4,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.data.DataType;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.exception.CancelledException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -188,6 +191,136 @@ final class SymbolCommands {
             selected.add(symbol);
         }
         return selected;
+    }
+
+    private Symbol resolveLocalTarget(JsonObject args, boolean labelOnly) throws CancelledException {
+        String name = getArgString(args, "name");
+        if (name == null || name.isEmpty()) throw new IllegalArgumentException("Symbol name required");
+        List<Symbol> targets = resolveScopedSymbols(session.program().getSymbolTable(), name, args);
+        if (targets.size() != 1) {
+            throw new IllegalArgumentException("Exactly one symbol target is required");
+        }
+        Symbol symbol = targets.get(0);
+        if (symbol.isDynamic() || symbol.isExternal() || !symbol.getAddress().isMemoryAddress()
+                || (symbol.getSymbolType() != SymbolType.LABEL
+                    && (labelOnly || symbol.getSymbolType() != SymbolType.FUNCTION))) {
+            throw new IllegalArgumentException(labelOnly
+                ? "Target must be a persisted local label"
+                : "Target must be a persisted local label or function");
+        }
+        return symbol;
+    }
+
+    JsonObject handleSetNamespace(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            Symbol symbol = resolveLocalTarget(args, false);
+            String path = getArgString(args, "namespace");
+            boolean global = JsonProtocol.getArgBool(args, "global", false);
+            if (global == (path != null)) {
+                throw new IllegalArgumentException("Specify exactly one namespace path or global destination");
+            }
+            Namespace destination = global ? session.program().getGlobalNamespace()
+                : new NamespaceSupport(session).resolve(path);
+            JsonObject before = symbolToJson(symbol);
+            boolean changed = !symbol.getParentNamespace().equals(destination);
+            // Ghidra permits duplicate labels at different addresses. Moving a named
+            // symbol must not silently introduce another same-name destination member.
+            if (changed) {
+                for (Symbol other : symbolsNamed(session.program().getSymbolTable(), symbol.getName())) {
+                    session.monitor().checkCancelled();
+                    if (other.getID() != symbol.getID() && other.getParentNamespace().equals(destination)) {
+                        JsonObject detail = new JsonObject();
+                        detail.add("conflict", symbolToJson(other));
+                        throw new JsonProtocol.CommandException("Destination already contains a symbol named "
+                            + symbol.getName(), detail);
+                    }
+                }
+            }
+            Function function = symbol.getSymbolType() == SymbolType.FUNCTION
+                ? (Function) symbol.getObject() : null;
+            JsonObject functionBefore = function == null ? null : functionMoveSnapshot(function);
+            Set<Long> typesBefore = function == null ? null : dataTypeIds();
+            if (changed) symbol.setNamespace(destination);
+            if (symbol.isDeleted() || !symbol.getParentNamespace().equals(destination)
+                    || !symbol.getName().equals(before.get("name").getAsString())
+                    || !Long.toString(symbol.getID()).equals(before.get("id").getAsString())) {
+                throw new IllegalStateException("Ghidra did not preserve the symbol identity while moving it");
+            }
+            JsonObject result = new JsonObject();
+            result.addProperty("status", changed ? "moved" : "unchanged");
+            result.add("before", before);
+            result.add("after", symbolToJson(symbol));
+            if (function != null) {
+                result.add("function_before", functionBefore);
+                result.add("function_after", functionMoveSnapshot(function));
+                JsonArray createdTypes = new JsonArray();
+                var types = session.program().getDataTypeManager().getAllDataTypes();
+                while (types.hasNext()) {
+                    session.monitor().checkCancelled();
+                    DataType type = types.next();
+                    long id = session.program().getDataTypeManager().getID(type);
+                    if (!typesBefore.contains(id)) {
+                        JsonObject row = new JsonObject();
+                        row.addProperty("id", Long.toString(id));
+                        row.addProperty("path", type.getPathName());
+                        row.addProperty("size", type.getLength());
+                        createdTypes.add(row);
+                    }
+                }
+                result.add("created_types", createdTypes);
+            }
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to move symbol: " + e.getMessage(), e);
+        }
+    }
+
+    private JsonObject functionMoveSnapshot(Function function) throws CancelledException {
+        FunctionQueries queries = new FunctionQueries(session, new AddressResolver(session));
+        JsonObject result = queries.signatureDetailsToJson(function);
+        result.addProperty("signature", function.getPrototypeString(false, false));
+        result.addProperty("calling_convention", function.getCallingConventionName());
+        return result;
+    }
+
+    private Set<Long> dataTypeIds() throws CancelledException {
+        Set<Long> ids = new HashSet<>();
+        var manager = session.program().getDataTypeManager();
+        var types = manager.getAllDataTypes();
+        while (types.hasNext()) {
+            session.monitor().checkCancelled();
+            ids.add(manager.getID(types.next()));
+        }
+        return ids;
+    }
+
+    JsonObject handleSetPrimary(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            Symbol symbol = resolveLocalTarget(args, true);
+            SymbolTable table = session.program().getSymbolTable();
+            for (Symbol other : table.getSymbols(symbol.getAddress())) {
+                if (other.getSymbolType() == SymbolType.FUNCTION) {
+                    throw new IllegalArgumentException("A function symbol is primary at this address; use function rename to change its name");
+                }
+            }
+            JsonObject before = symbolToJson(symbol);
+            Symbol previousPrimary = table.getPrimarySymbol(symbol.getAddress());
+            JsonObject previous = previousPrimary == null ? null : symbolToJson(previousPrimary);
+            boolean changed = symbol.setPrimary();
+            if (!symbol.isPrimary() || (!changed && !before.get("is_primary").getAsBoolean())) {
+                throw new IllegalStateException("Ghidra refused to make the label primary");
+            }
+            JsonObject result = new JsonObject();
+            result.addProperty("status", changed ? "updated" : "unchanged");
+            result.add("before", before);
+            result.add("after", symbolToJson(symbol));
+            result.add("previous_primary", previous);
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to set primary symbol: " + e.getMessage(), e);
+        }
     }
 
     JsonObject handleSymbolDelete(JsonObject args) {

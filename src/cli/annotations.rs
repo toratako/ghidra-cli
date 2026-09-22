@@ -46,6 +46,44 @@ pub enum SymbolCommands {
     Delete(SymbolDeleteArgs),
     /// Rename symbol
     Rename(RenameArgs),
+    /// Move one local label or function into an existing namespace or class
+    SetNamespace(SymbolSetNamespaceArgs),
+    /// Make one saved local label the primary symbol at its address
+    SetPrimary(SymbolSetPrimaryArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SymbolSelectionArgs {
+    /// Exact symbol name
+    pub name: String,
+    /// Explicit address to narrow the selection; segmented addresses require their space name
+    #[arg(long)]
+    pub address: Option<String>,
+    /// Filter selecting one symbol, e.g. id='12345' or namespace=app
+    #[arg(short, long)]
+    pub filter: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SymbolSetNamespaceArgs {
+    #[command(flatten)]
+    pub selection: SymbolSelectionArgs,
+    /// Existing namespace/class path from global scope
+    #[arg(required_unless_present = "global", conflicts_with = "global")]
+    pub namespace: Option<String>,
+    /// Move the symbol to global scope
+    #[arg(long)]
+    pub global: bool,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SymbolSetPrimaryArgs {
+    #[command(flatten)]
+    pub selection: SymbolSelectionArgs,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -174,7 +174,7 @@ fn symbol_resolution_errors_never_send_a_mutation() {
         ),
         (
             vec!["symbol", "rename", "shared", "renamed"],
-            "matches 2 symbols at addresses [0x00ab, 0x00cd]",
+            "matches 2 symbols [id=9007199254740993, namespace=Global, address=0x00ab; id=9007199254740994, namespace=Global, address=0x00cd]",
         ),
         (
             vec!["symbol", "delete", "shared", "--address", "0xffff"],

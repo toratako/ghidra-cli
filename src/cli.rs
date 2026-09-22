@@ -103,6 +103,10 @@ pub enum Commands {
     #[command(subcommand)]
     Equate(EquateCommands),
 
+    /// Namespace and class organization
+    #[command(subcommand)]
+    Namespace(NamespaceCommands),
+
     /// Memory operations
     #[command(subcommand)]
     Memory(MemoryCommands),
