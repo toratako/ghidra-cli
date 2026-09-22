@@ -1,4 +1,4 @@
-use super::options::QueryOptions;
+use super::options::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,51 @@ pub enum XRefCommands {
     To(XRefArgs),
     /// Get cross-references from one address, or an entire function with --function
     From(XRefFromArgs),
+    /// Create a reference of an explicit kind
+    #[command(subcommand)]
+    Create(XRefCreateCommands),
+    /// Delete the exact reference only if its source matches
+    Delete(XRefEditArgs),
+    /// Select the primary reference for one source operand
+    SetPrimary(XRefEditArgs),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum XRefCreateCommands {
+    /// Create an ordinary memory reference with USER_DEFINED source
+    Memory(XRefCreateMemoryArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct XRefCreateMemoryArgs {
+    /// Explicit address of the instruction or data start
+    pub from: String,
+    /// Explicit destination address; unmapped memory is allowed
+    pub to: String,
+    /// Zero-based operand index; -1 selects the whole instruction or data unit
+    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
+    pub operand_index: i32,
+    /// Meaning of the reference
+    #[arg(long, ignore_case = true, value_parser = ["DATA", "READ", "WRITE", "READ_WRITE", "INDIRECTION", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL", "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP"])]
+    pub ref_type: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct XRefEditArgs {
+    /// Explicit address of the instruction or data start
+    pub from: String,
+    /// Explicit destination address
+    pub to: String,
+    /// Zero-based operand index; -1 selects the whole instruction or data unit
+    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
+    pub operand_index: i32,
+    /// Required source of the existing reference
+    #[arg(long, default_value = "USER_DEFINED", ignore_case = true, value_parser = ["USER_DEFINED", "ANALYSIS", "IMPORTED", "DEFAULT"])]
+    pub source: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

@@ -63,6 +63,12 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.project.clone(),
             cli::XRefCommands::From(args) => args.options.project.clone(),
+            cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => {
+                args.options.project.clone()
+            }
+            cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args) => {
+                args.options.project.clone()
+            }
         },
         Commands::Disasm(args) => args.options.project.clone(),
         Commands::Listing(cmd) => match cmd {
@@ -212,6 +218,12 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => args.options.program.clone(),
             cli::XRefCommands::From(args) => args.options.program.clone(),
+            cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => {
+                args.options.program.clone()
+            }
+            cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args) => {
+                args.options.program.clone()
+            }
         },
         Commands::Disasm(args) => args.options.program.clone(),
         Commands::Listing(cmd) => match cmd {
@@ -383,6 +395,12 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::XRef(cmd) => match cmd {
             cli::XRefCommands::To(args) => Some(args.options.clone()),
             cli::XRefCommands::From(args) => Some(args.options.clone()),
+            cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => {
+                Some((&args.options).into())
+            }
+            cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args) => {
+                Some((&args.options).into())
+            }
         },
         Commands::Symbol(cmd) => match cmd {
             cli::SymbolCommands::List(opts) => Some(opts.clone()),

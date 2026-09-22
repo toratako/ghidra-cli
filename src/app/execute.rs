@@ -49,6 +49,21 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
             );
         }
     }
+    let edit_addresses: Vec<&str> = match command {
+        Commands::XRef(cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args))) => {
+            vec![&args.from, &args.to]
+        }
+        Commands::XRef(cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args)) => {
+            vec![&args.from, &args.to]
+        }
+        _ => vec![],
+    };
+    for address in edit_addresses {
+        anyhow::ensure!(
+            crate::address::ExplicitAddress::parse(address).is_some(),
+            "Invalid address '{address}': use an explicit 0x-prefixed address"
+        );
+    }
     let selector = match command {
         Commands::Symbol(cli::SymbolCommands::Rename(args)) => {
             Some((args.address.as_deref(), args.filter.as_deref()))
@@ -216,6 +231,16 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 XRefCommands::To(args) => client.xrefs_to(args.target.clone()),
                 XRefCommands::From(args) => client.xrefs_from(args.target.clone(), args.function),
+                XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => client.send_command(
+                    "xref_create_memory",
+                    Some(json!({"from": args.from, "to": args.to, "operand_index": args.operand_index,
+                        "ref_type": args.ref_type.to_ascii_uppercase()})),
+                ),
+                XRefCommands::Delete(args) | XRefCommands::SetPrimary(args) => client.send_command(
+                    if matches!(cmd, XRefCommands::Delete(_)) { "xref_delete" } else { "xref_set_primary" },
+                    Some(json!({"from": args.from, "to": args.to, "operand_index": args.operand_index,
+                        "source": args.source.to_ascii_uppercase()})),
+                ),
             }
         }
         Commands::Program(cmd) => {

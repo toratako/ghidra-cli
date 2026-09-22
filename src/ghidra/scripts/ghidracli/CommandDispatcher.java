@@ -90,6 +90,9 @@ final class CommandDispatcher {
             case "data_read":       return dataCommands.handleRead(args);
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
+            case "xref_create_memory": return xrefCommands.handleCreateMemory(args);
+            case "xref_delete": return xrefCommands.handleDelete(args);
+            case "xref_set_primary": return xrefCommands.handleSetPrimary(args);
             case "import":          return programCommands.handleImport(args);
             case "analysis_run":    return analysisCommands.handleRun(args);
             case "list_programs":   return programCommands.handleListPrograms();

@@ -69,7 +69,11 @@ ghidra-cli
 │   └── undefine
 ├── xref
 │   ├── to
-│   └── from
+│   ├── from
+│   ├── create
+│   │   └── memory
+│   ├── delete
+│   └── set-primary
 ├── type
 │   ├── list
 │   ├── get
@@ -151,4 +155,4 @@ ghidra-cli
 └── setup
 ```
 
-139 command nodes (excluding the root), 0 aliases.
+143 command nodes (excluding the root), 0 aliases.
