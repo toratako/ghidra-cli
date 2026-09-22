@@ -1,4 +1,4 @@
-use super::{format_json_value, frame, signature};
+use super::{flow, format_json_value, frame, signature};
 use crate::error::Result;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -131,6 +131,9 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
     for item in &json_data {
         match item {
             JsonValue::Object(map) => {
+                if flow::format_result(item, &mut result, false) {
+                    continue;
+                }
                 // Special case: decompile response with "code" key
                 if let Some(code) = map.get("code").and_then(|v| v.as_str()) {
                     if let Some(sig) = map.get("signature").and_then(|v| v.as_str()) {
@@ -301,6 +304,9 @@ pub(super) fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
 
         match item {
             JsonValue::Object(map) => {
+                if flow::format_result(item, &mut result, true) {
+                    continue;
+                }
                 // Special case: decompile response
                 if let Some(code) = map.get("code").and_then(|v| v.as_str()) {
                     if let Some(sig) = map.get("signature").and_then(|v| v.as_str()) {
