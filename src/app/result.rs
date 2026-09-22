@@ -51,6 +51,9 @@ impl ResultShape {
             Commands::Equate(EquateCommands::List(_)) => Self::rows("equates"),
             Commands::Namespace(NamespaceCommands::List(_)) => Self::rows("namespaces"),
             Commands::Type(TypeCommands::List(_)) => Self::rows("types"),
+            Commands::Type(TypeCommands::Category(TypeCategoryCommands::List(_))) => {
+                Self::context("categories", &["path"])
+            }
             Commands::Tag(TagCommands::List(_)) => Self::rows("tags"),
             Commands::Analysis(AnalysisCommands::Option(AnalysisOptionCommands::List(_))) => {
                 Self::rows("options")

@@ -19,6 +19,13 @@ pub enum TypeCommands {
     Delete(TypeDeleteArgs),
     /// Rename a data type
     Rename(TypeRenameArgs),
+    /// Clone a named type definition, sharing its referenced types
+    Clone(TypeCloneArgs),
+    /// Move a named type to an existing category
+    Move(TypeMoveArgs),
+    /// Organize data type categories
+    #[command(subcommand)]
+    Category(TypeCategoryCommands),
     /// Edit struct and union fields
     #[command(subcommand)]
     Field(TypeFieldCommands),
@@ -37,6 +44,32 @@ pub enum TypeFieldCommands {
     Clear(TypeFieldClearArgs),
     /// Delete a field; shifts later struct fields or renumbers union members
     Delete(TypeFieldDeleteArgs),
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeCategoryCommands {
+    /// List immediate child categories and their direct type counts
+    List(TypeCategoryListArgs),
+    /// Create a category and any missing parents
+    Create(TypeCategoryArgs),
+    /// Delete an empty category
+    Delete(TypeCategoryArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeCategoryListArgs {
+    /// Category path whose immediate children to list, e.g. /
+    pub path: String,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeCategoryArgs {
+    /// Category path, e.g. /Protocol/Draft
+    pub path: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -148,6 +181,29 @@ pub struct TypeRenameArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeCloneArgs {
+    /// Registered struct, union, enum, typedef, or function type name or path
+    pub type_name: String,
+    /// New name for the cloned definition
+    pub new_name: String,
+    /// Existing destination category; omit to keep the source category
+    #[arg(long)]
+    pub category: Option<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeMoveArgs {
+    /// Registered struct, union, enum, typedef, or function type name or path
+    pub type_name: String,
+    /// Existing destination category path
+    pub category: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

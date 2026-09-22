@@ -1,6 +1,7 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.database.data.DataTypeUtilities;
@@ -16,6 +17,7 @@ import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.EnumDataType;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.Pointer;
+import ghidra.program.model.data.SourceArchive;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.TypeDef;
@@ -27,6 +29,7 @@ import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
 import java.util.Iterator;
+import java.util.Locale;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgInt;
@@ -99,6 +102,7 @@ final class TypeCommands {
         typeInfo.addProperty("category", dataType.getCategoryPath().toString());
         typeInfo.addProperty("size", dataType.getLength());
         typeInfo.addProperty("description", dataType.getDescription());
+        addIdentity(typeInfo, dataType);
 
         if (dataType instanceof Structure) {
             typeInfo.addProperty("kind", "struct");
@@ -146,6 +150,20 @@ final class TypeCommands {
         }
 
         return typeInfo;
+    }
+
+    private static void addIdentity(JsonObject result, DataType type) {
+        result.addProperty("universal_id", type.getUniversalID() == null ? null : type.getUniversalID().toString());
+        SourceArchive archive = type.getSourceArchive();
+        if (archive == null) {
+            result.add("source_archive", JsonNull.INSTANCE);
+        } else {
+            JsonObject source = new JsonObject();
+            source.addProperty("id", archive.getSourceArchiveID() == null ? null : archive.getSourceArchiveID().toString());
+            source.addProperty("name", archive.getName());
+            source.addProperty("kind", archive.getArchiveType().name().toLowerCase(Locale.ROOT));
+            result.add("source_archive", source);
+        }
     }
 
     JsonObject handleTypeCreate(JsonObject args) {

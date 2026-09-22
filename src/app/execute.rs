@@ -311,6 +311,26 @@ pub(super) fn execute_via_bridge(
                     "type_rename",
                     Some(json!({"old_name": args.old_name, "new_name": args.new_name})),
                 ),
+                TypeCommands::Clone(args) => client.send_command(
+                    "type_clone",
+                    Some(json!({"type_name": args.type_name, "new_name": args.new_name,
+                        "category": args.category})),
+                ),
+                TypeCommands::Move(args) => client.send_command(
+                    "type_move",
+                    Some(json!({"type_name": args.type_name, "category": args.category})),
+                ),
+                TypeCommands::Category(cmd) => match cmd {
+                    cli::TypeCategoryCommands::List(args) => client.send_command(
+                        "type_category_list", Some(json!({"path": args.path})),
+                    ),
+                    cli::TypeCategoryCommands::Create(args) => client.send_command(
+                        "type_category_create", Some(json!({"path": args.path})),
+                    ),
+                    cli::TypeCategoryCommands::Delete(args) => client.send_command(
+                        "type_category_delete", Some(json!({"path": args.path})),
+                    ),
+                },
                 TypeCommands::Field(cmd) => match cmd {
                     cli::TypeFieldCommands::Append(args) => client.send_command(
                         "type_field_append",

@@ -120,3 +120,37 @@ fn type_creation_accepts_global_options_at_each_command_level() {
         }
     }
 }
+
+#[test]
+fn type_category_requires_a_path_and_exposes_queries_only_for_lists() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "category",
+        "list",
+        "/Protocol",
+        "--filter",
+        "type_count>0",
+        "--sort",
+        "name",
+        "--fields",
+        "path",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command,
+        Commands::Type(TypeCommands::Category(TypeCategoryCommands::List(args)))
+            if args.path == "/Protocol" && args.options.fields.as_deref() == Some("path")));
+    assert!(Cli::try_parse_from(["ghidra-cli", "type", "category", "list"]).is_err());
+    for operation in ["create", "delete"] {
+        assert!(Cli::try_parse_from([
+            "ghidra-cli",
+            "type",
+            "category",
+            operation,
+            "/Draft",
+            "--filter",
+            "name=Draft",
+        ])
+        .is_err());
+    }
+}

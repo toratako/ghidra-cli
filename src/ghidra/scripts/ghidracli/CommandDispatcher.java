@@ -19,6 +19,7 @@ final class CommandDispatcher {
     private final NamespaceCommands namespaceCommands;
     private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
+    private final TypeDefinitionCommands typeDefinitionCommands;
     private final TagCommands tagCommands;
     private final PcodeCommands pcodeCommands;
     private final AnalysisCommands analysisCommands;
@@ -65,6 +66,7 @@ final class CommandDispatcher {
         namespaceCommands = new NamespaceCommands(session);
         equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
+        typeDefinitionCommands = new TypeDefinitionCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
         pcodeCommands = new PcodeCommands(session, addressResolver, functionQueries);
         analysisCommands = new AnalysisCommands(session);
@@ -154,6 +156,11 @@ final class CommandDispatcher {
             // Type commands
             case "type_list":       return typeCommands.handleTypeList(args);
             case "type_get":        return typeCommands.handleTypeGet(args);
+            case "type_clone":      return typeDefinitionCommands.handleClone(args);
+            case "type_move":       return typeDefinitionCommands.handleMove(args);
+            case "type_category_list": return typeDefinitionCommands.handleCategoryList(args);
+            case "type_category_create": return typeDefinitionCommands.handleCategoryCreate(args);
+            case "type_category_delete": return typeDefinitionCommands.handleCategoryDelete(args);
             case "type_create":     return typeCommands.handleTypeCreate(args);
             case "type_apply":      return typeCommands.handleTypeApply(args);
             case "type_import_c":   return typeImportCommands.handleTypeImportC(args);

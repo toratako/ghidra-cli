@@ -249,6 +249,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/TypeCommands.java"),
     ),
     (
+        "ghidracli/TypeDefinitionCommands.java",
+        include_str!("../scripts/ghidracli/TypeDefinitionCommands.java"),
+    ),
+    (
         "ghidracli/TypeFields.java",
         include_str!("../scripts/ghidracli/TypeFields.java"),
     ),

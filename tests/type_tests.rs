@@ -18,6 +18,8 @@ mod application;
 mod calling_conventions;
 #[path = "types/components.rs"]
 mod components;
+#[path = "types/definitions.rs"]
+mod definitions;
 #[path = "types/enums.rs"]
 mod enums;
 #[path = "types/fields.rs"]

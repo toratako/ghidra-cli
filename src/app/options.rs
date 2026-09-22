@@ -134,6 +134,13 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::ImportC(args) => args.project.clone(),
             cli::TypeCommands::Delete(args) => args.project.clone(),
             cli::TypeCommands::Rename(args) => args.project.clone(),
+            cli::TypeCommands::Clone(args) => args.options.project.clone(),
+            cli::TypeCommands::Move(args) => args.options.project.clone(),
+            cli::TypeCommands::Category(cmd) => match cmd {
+                cli::TypeCategoryCommands::List(args) => args.options.project.clone(),
+                cli::TypeCategoryCommands::Create(args)
+                | cli::TypeCategoryCommands::Delete(args) => args.options.project.clone(),
+            },
             cli::TypeCommands::Field(cmd) => match cmd {
                 cli::TypeFieldCommands::Append(args) => args.project.clone(),
                 cli::TypeFieldCommands::Set(args) => args.project.clone(),
@@ -317,6 +324,13 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::TypeCommands::ImportC(args) => args.program.clone(),
             cli::TypeCommands::Delete(args) => args.program.clone(),
             cli::TypeCommands::Rename(args) => args.program.clone(),
+            cli::TypeCommands::Clone(args) => args.options.program.clone(),
+            cli::TypeCommands::Move(args) => args.options.program.clone(),
+            cli::TypeCommands::Category(cmd) => match cmd {
+                cli::TypeCategoryCommands::List(args) => args.options.program.clone(),
+                cli::TypeCategoryCommands::Create(args)
+                | cli::TypeCategoryCommands::Delete(args) => args.options.program.clone(),
+            },
             cli::TypeCommands::Field(cmd) => match cmd {
                 cli::TypeFieldCommands::Append(args) => args.program.clone(),
                 cli::TypeFieldCommands::Set(args) => args.program.clone(),
@@ -496,6 +510,13 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => Some(opts.clone()),
             cli::TypeCommands::Get(args) => Some((&args.options).into()),
+            cli::TypeCommands::Clone(args) => Some((&args.options).into()),
+            cli::TypeCommands::Move(args) => Some((&args.options).into()),
+            cli::TypeCommands::Category(cmd) => match cmd {
+                cli::TypeCategoryCommands::List(args) => Some(args.options.clone()),
+                cli::TypeCategoryCommands::Create(args)
+                | cli::TypeCategoryCommands::Delete(args) => Some((&args.options).into()),
+            },
             _ => None,
         },
         Commands::Tag(cmd) => match cmd {

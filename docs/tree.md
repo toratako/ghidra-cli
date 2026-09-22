@@ -119,6 +119,12 @@ ghidra-cli
 │   ├── import-c
 │   ├── delete
 │   ├── rename
+│   ├── clone
+│   ├── move
+│   ├── category
+│   │   ├── list
+│   │   ├── create
+│   │   └── delete
 │   ├── field
 │   │   ├── append
 │   │   ├── set
@@ -190,4 +196,4 @@ ghidra-cli
 └── setup
 ```
 
-178 command nodes (excluding the root), 0 aliases.
+184 command nodes (excluding the root), 0 aliases.
