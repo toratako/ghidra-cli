@@ -44,16 +44,75 @@ printf '%s' 'possible vtable load; verify callers' | \
 ghidra-cli comment set 0x401000 --text-file ./note.txt --project target
 ```
 
+Use bookmarks for tasks you want to revisit by category, and comments for an
+explanation of the code:
+
+```bash
+ghidra-cli bookmark set 0x401000 'Check the jump table bounds' --category Review
+ghidra-cli bookmark list --filter 'category=Review'
+ghidra-cli bookmark delete 0x401000 --category Review
+```
+
+Each address can have several bookmarks. Type and category select one;
+deleting a `Note` in `Review` leaves analysis-error bookmarks at that address.
+
 ## Symbols
 
 ```bash
 ghidra-cli symbol create-label 0x404000 packet_header --project target
 ghidra-cli symbol rename packet_header message_header --project target
+ghidra-cli namespace create app
+ghidra-cli namespace create Widget --parent app --kind class
+ghidra-cli symbol set-namespace dispatch app::Widget --address 0x401300
+ghidra-cli symbol set-primary message_header --address 0x404000
 ```
 
 Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `--all` to affect every match. Rename/delete take exact names (even `0x...`);
 `symbol get` accepts names or addresses.
+
+Namespace paths start at global scope, such as `app::Widget`. Moving a function
+into a class can change its native `this` parameter/type; inspect the returned
+function changes before continuing type recovery. A class namespace does not
+describe member layout or inheritance. Deleting a namespace through
+`symbol delete` can also delete its children.
+
+## References
+
+Record a recovered table-slot relationship or an indirect-call candidate:
+
+```bash
+ghidra-cli xref from 0x405020
+ghidra-cli xref create memory 0x405020 0x401300 --operand 0 --ref-type DATA
+ghidra-cli xref create memory 0x401234 0x401300 --operand 0 --ref-type COMPUTED_CALL
+ghidra-cli xref delete 0x401234 0x401300 --operand 0
+```
+
+Use the zero-based `operand_index` and `source` from `xref from` to select an
+existing reference. Editing an analysis-created reference requires
+`--source ANALYSIS`; creation never replaces a conflicting reference.
+`xref set-primary` chooses the representative destination for one operand,
+including replacing an analysis-created primary. A reference can improve later
+analysis, but does not establish that the decompiler recovered the indirect call.
+
+## Named constants
+
+Use an Equate when a particular numeric operand has an understood meaning:
+
+```bash
+ghidra-cli equate create READ_MODE 0x1
+ghidra-cli equate attach 0x401234 READ_MODE --operand 1
+ghidra-cli equate get READ_MODE
+ghidra-cli equate detach 0x401234 READ_MODE --operand 1
+```
+
+The definition does not replace every occurrence of its value. `attach` selects
+one matching scalar operand; ambiguous matches fail without changing annotations.
+`detach` preserves the definition and its other uses; `delete` removes the
+definition and all its uses. Existing decompiler-specific references can have
+`operand_selectable: false`; an operand index cannot identify those uses safely.
+Inspect named constants with `equate get` and `decompile`; `disassemble` keeps
+the instruction's numeric operand representation.
 
 ## Types
 

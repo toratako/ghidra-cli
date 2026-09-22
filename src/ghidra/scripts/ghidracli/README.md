@@ -128,7 +128,9 @@ another consumer or terminate its checkout.
 | `MemoryInfoCommands`, `MemorySources` | Listing classification and preserved FileBytes provenance/reads |
 | `DataCommands` | Applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
-| `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands` | Program annotations and symbols |
+| `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands`, `BookmarkCommands` | Program annotations and symbols |
+| `NamespaceCommands`, `NamespaceSupport` | Root-relative namespace lookup, creation, and shared identity serialization |
+| `EquateCommands` | Exact named constants, operand associations, and native dynamic-reference preservation |
 | `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
 | `ConstantSearch` | Signed/unsigned value matching over existing instruction Scalar operands |
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
@@ -279,6 +281,32 @@ and `count` for successful receipts so rolled-back attempts are not reported as
 committed deletions.
 Comment listing scans all comment addresses, including external and unmapped
 addresses, while retaining the four supported comment types and query ordering.
+
+Tag attach/detach validates every requested definition before changing any
+membership. Attach never creates a definition; detach keeps unused definitions.
+Bookmark mutations identify one exact address/type/category and retain other
+bookmarks at that address, including analysis diagnostics.
+
+Namespace mutations reuse stable symbol snapshots for one selected label or
+function. Class moves retain Ghidra's native type/parameter effects and report
+the before/after function state. They never infer a new calling convention.
+Symbol primary selection cannot replace the function symbol at its entry point.
+
+Xref mutations select `(from, to, operand_index)` and compare `source` before
+deletion or primary changes. Creation refuses native replacement of conflicting
+references, including non-memory references on the operand. Offset/shift,
+fallthrough, and p-code override references are not editable through the
+ordinary-memory contract. Native insertion translates unmapped overlay
+destinations into physical addresses; reject that case instead of changing the
+requested destination.
+
+Equate values are stored as native 64-bit values and emitted as strings. Operand
+attachment compares the Scalar's native signedness/width without truncation.
+Ghidra's instruction-wide dynamic hashes can replace other operand references;
+preflight and post-edit checks preserve unrelated associations. Operand-only
+detach must not select ambiguous or dynamic-only references. Definition deletion
+intentionally removes every use of that ordinary Equate; enum-backed definitions
+remain read-only. All these edits use the ordinary request transaction/save boundary.
 
 Keep the reflective OSGi loading in `ScriptCommands`: it avoids introducing
 imports of Ghidra-internal packages that the source bundle cannot resolve. A

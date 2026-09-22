@@ -38,6 +38,8 @@ mod program;
 mod program_analysis;
 #[path = "routing/queries.rs"]
 mod queries;
+#[path = "routing/references.rs"]
+mod references;
 #[path = "routing/rollout.rs"]
 mod rollout;
 #[path = "routing/scripts.rs"]
@@ -460,12 +462,54 @@ impl RecordedBridge {
                         json!({"results": rows, "count": rows.len(), "pattern": args["pattern"]})
                     }
                     "xrefs_to" | "xrefs_from" => json!({"xrefs": [], "count": 0}),
+                    "equate_list" | "namespace_list" => {
+                        let key = if request["command"] == "equate_list" {
+                            "equates"
+                        } else {
+                            "namespaces"
+                        };
+                        let rows: Vec<_> = ["zeta", "alpha", "beta"].into_iter().map(|name| {
+                            json!({"name": name, "path": name, "value": "0xffffffffffffffff", "signed_value": "-1", "kind": "ordinary"})
+                        }).collect();
+                        json!({key: rows, "count": 3})
+                    }
+                    "equate_get" => {
+                        json!({"name": args["name"], "value": "0xffffffffffffffff", "signed_value": "-1",
+                        "kind": "ordinary", "reference_count": 2, "references": [{"address": "0x1000", "operand_index": 1}, {"address": "0x2000", "operand_index": 1}]})
+                    }
+                    "namespace_get" => {
+                        json!({"id": "9007199254740993", "name": "Widget", "path": args["path"], "parent": "app", "kind": "class"})
+                    }
+                    "xref_create_memory"
+                    | "xref_delete"
+                    | "xref_set_primary"
+                    | "equate_create"
+                    | "equate_attach"
+                    | "equate_detach"
+                    | "equate_delete"
+                    | "namespace_create"
+                    | "symbol_set_namespace"
+                    | "symbol_set_primary"
+                    | "bookmark_set"
+                    | "bookmark_delete" => json!({"changed": true, "count": 1,
+                        "before": [{"address": "0x1000"}], "after": [{"address": "0x1000"}], "observed_program": program}),
+                    "tag_attach" | "tag_detach" => {
+                        json!({"status": if request["command"] == "tag_attach" {"attached"} else {"detached"}, "observed_program": program})
+                    }
                     "define_code" => json!({"address": args["target"], "end": args["end"],
                         "ok": true, "landed": true, "already_defined": false,
                         "changed": true, "status": "defined"}),
                     "symbol_get" | "symbol_get_by_name" => {
                         json!({"symbols": if args["name"] == "missing" {
                             vec![]
+                        } else if args["name"] == "scoped" {
+                            [("9007199254740993", "app"), ("9007199254740994", "app::Widget")]
+                                .into_iter().map(|(id, namespace)| {
+                                    let mut symbol = symbol_fixture(id, "0x00ab", "label");
+                                    symbol["name"] = json!("scoped");
+                                    symbol["namespace"] = json!(namespace);
+                                    symbol
+                                }).collect()
                         } else {
                             vec![
                                 symbol_fixture("9007199254740993", "0x00ab", "label"),

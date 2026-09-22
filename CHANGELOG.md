@@ -7,6 +7,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `xref create memory`, `delete`, and `set-primary` with explicit operand
+  selection, source checks, and conflict preservation.
+- Add Equate definitions with `equate create/list/get/delete` and exact operand
+  associations with `attach/detach`, preserving 64-bit constant values.
+- Add `bookmark set/delete` for one address/type/category, with stdin and file
+  text input for setting notes.
+- Add `namespace list/get/create`, including class namespaces, and
+  `symbol set-namespace/set-primary` with single-target selection and native
+  function-change receipts.
 - Add `program context list/get/set/clear` for processor decoding context,
   distinguishing recorded, default, and effective values with valid-bit masks.
   Context edits do not replace existing instructions or run analysis.

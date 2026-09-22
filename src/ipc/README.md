@@ -137,6 +137,43 @@ relocations are not reapplied, and analysis is not started.
 external functions when present. Membership queries use `list_functions` with
 `tags`, which lists non-external functions.
 
+`tag_attach` and `tag_detach` take `function` and `tags`; detach also accepts
+`all: true` instead of names. Both require existing definitions and validate
+all names before editing. Results contain `attached`/`already_present` or
+`detached`/`not_present` name arrays; they do not create or delete definitions.
+
+`xref_create_memory`, `xref_delete`, and `xref_set_primary` take explicit `from`
+and `to` addresses and integer `operand_index` (`-1` is the mnemonic reference).
+Creation requires `ref_type` and uses `USER_DEFINED`. Delete/primary take
+`source` (default `USER_DEFINED`) as an expected-origin check, not an additional
+identity field. Receipts keep `before`/`after` nested: primary changes include
+the operand's reference set and old primary origin. They are single results.
+
+`equate_create` takes `name` and string `value`: signed 64-bit decimal or an
+unsigned hexadecimal 64-bit pattern. `equate_list` returns `{equates, count}`;
+`equate_get` and `equate_delete` take `name`. Definition values are hexadecimal
+`value` and decimal `signed_value` strings. Get also returns `references` with
+address, operand, dynamic hash and operand selectability. Enum-backed definitions
+are distinguishable in reads and cannot be edited.
+`equate_attach`/`equate_detach` take `name`, explicit `address`, and nonnegative
+integer `operand_index`. Unknown names fail; known definitions with no selected
+association detach successfully without change. Delete removes the ordinary
+definition and every association, including dynamic uses.
+
+`namespace_list` returns `{namespaces, count}`; `namespace_get` takes `path`.
+`namespace_create` takes a component `name`, optional full `parent` path, and
+`kind` (`namespace` by default, or `class`). Rows use string `id`, `name`, `path`,
+nullable parent path, and `kind`. Paths are rooted at global scope without a
+global-prefix component. `symbol_set_namespace` and `symbol_set_primary` take
+`name` plus a single stable symbol snapshot in `targets`, using the same
+revalidation as rename/delete. Namespace movement adds either `namespace`
+or `global: true`; native function/type effects remain in the receipt.
+
+`bookmark_set` takes `address`, `text`, `type` (default `Note`), and required
+`category`; `bookmark_delete` takes the same identity without text. Identity
+strings are case-sensitive, and an address need not be mapped. Set returns the
+bookmark row with `status`; delete returns the identity and `deleted` count.
+
 `symbol_externals`, `symbol_entry_points`, `tag_list`, `graph_calls`,
 `graph_callers`, `graph_callees`, `find_instruction`, and `find_constant` accept `limit` only in
 `0..=2147483647`. Graph `depth` uses the same checked range and defaults to 1.

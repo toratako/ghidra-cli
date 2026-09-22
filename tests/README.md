@@ -82,6 +82,7 @@ identity. Filter a domain with, for example,
 | `export_coverage_tests` | Export artifacts, C declaration limits, initialized binary ranges and XML sidecars |
 | `address_tests` | Strict address syntax, exact-name collisions, rejected mutations, and address output round trips |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
+| `xref_tests`, `equate_tests`, `bookmark_tests`, `namespace_tests` | Operand/source-safe reference edits, exact constant associations, bookmark identity, and namespace/primary mutations |
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version flags, doctor, config |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |

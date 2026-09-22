@@ -4,6 +4,7 @@ use clap::CommandFactory;
 mod inspection;
 mod management;
 mod output;
+mod references;
 mod types;
 
 #[test]
