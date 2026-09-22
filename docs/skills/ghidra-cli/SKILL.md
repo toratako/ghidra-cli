@@ -117,7 +117,7 @@ A timeout is reported with exit 75, distinct from a command failure.
 
 | When                                                                       | Reference                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| Check decompiler metadata, search modes, graphs, filters, or result limits | [Exploration](references/exploration.md)         |
+| Check decompiler metadata, file mappings, search modes, graphs, or result limits | [Exploration](references/exploration.md)         |
 | Refine names, types, namespaces, references, constants, or annotations    | [Refinement](references/refinement.md)           |
 | Inspect instructions or PCode, fix decoding context or boundaries, or patch code | [Low-level analysis](references/low-level.md) |
 | Run custom Java processing and validate its artifacts                      | [Scripting](references/scripting.md)             |

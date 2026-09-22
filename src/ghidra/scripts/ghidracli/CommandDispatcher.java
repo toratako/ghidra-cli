@@ -27,6 +27,7 @@ final class CommandDispatcher {
     private final GraphCommands graphCommands;
     private final MemoryCommands memoryCommands;
     private final MemoryInfoCommands memoryInfoCommands;
+    private final FileMappingCommands fileMappingCommands;
     private final DataCommands dataCommands;
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
@@ -63,6 +64,7 @@ final class CommandDispatcher {
         graphCommands = new GraphCommands(session, functionQueries);
         memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
         memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
+        fileMappingCommands = new FileMappingCommands(session);
         dataCommands = new DataCommands(session, addressResolver);
         scriptCommands = new ScriptCommands(session, artifacts);
     }
@@ -90,6 +92,7 @@ final class CommandDispatcher {
             case "symbol_entry_points":    return listingCommands.handleSymbolEntryPoints(args);
             case "memory_map":      return listingCommands.handleMemoryMap();
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
+            case "memory_file_mappings": return fileMappingCommands.handleFileMappings(args);
             case "data_list":       return dataCommands.handleList(args);
             case "data_read":       return dataCommands.handleRead(args);
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);

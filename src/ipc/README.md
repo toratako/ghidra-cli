@@ -245,7 +245,8 @@ memory are independent. `initialized` is the native block flag; byte/bit-mapped
 blocks report false even when their backing bytes are readable. This query does
 not decode data values. `file_mapping.state` is `mapped`, `unmapped`, or
 `unsupported`. A mapped location includes `filename`, original `file_offset`,
-and relative `file_bytes_offset`; other states include a reason.
+relative `file_bytes_offset`, and provenance shared with `memory_file_mappings`;
+other states include a reason.
 
 `read_memory` accepts `source: "memory" | "original"` (default `memory`) and
 echoes the selected source with `address`, `size`, and `hex`. Current-memory
@@ -253,6 +254,22 @@ reads retain pointer candidates. Original reads require preserved FileBytes
 for the complete requested range and return source `mappings` instead of pointer
 candidates. Each mapping includes its address/end/size and file provenance.
 Indirect bit/byte mappings are explicitly unsupported; host files are not read.
+
+`memory_file_mappings` accepts optional `file_offset` (a nonnegative decimal or
+`0x` integer string) and `source_at` (an explicit address with a direct FileBytes
+mapping). It returns `{mappings, count, unsupported_mappings}`. Each row has
+`address`, inclusive `end`, byte `size`, `block_start`, and mapped-file provenance.
+Without `file_offset` a row covers one direct source interval; with it each match
+is a one-byte interval. `file_offset` is relative to the original file;
+`file_bytes_offset` is relative to its preserved FileBytes region. `source_at`
+identifies the first direct address of that FileBytes under native address order;
+`source_file_offset` and `source_size` describe its preserved original-file span.
+These fields also appear in `memory_info.file_mapping` and original-read mappings.
+Anchors are recalculated per request, and equal filenames never merge FileBytes.
+Unloaded portions have no rows. `unsupported_mappings` contains excluded
+address/end/block_start/reason records, including when `source_at` is selected
+because indirect mappings cannot be classified as direct matches. Rust retains
+this context and supplied selectors in `meta`, and applies normal query paging.
 
 `data_list` takes `limit` and returns `{items, count}` for top-level defined
 data; filtering, sorting and offset remain in Rust. `data_read` takes `target`,

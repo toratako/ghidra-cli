@@ -8,6 +8,22 @@ impl BridgeClient {
         self.send_command("memory_map", None)
     }
 
+    /// Read every direct mapping before client-side row queries are applied.
+    pub fn memory_file_mappings(
+        &self,
+        file_offset: Option<&str>,
+        source_at: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut args = json!({});
+        if let Some(file_offset) = file_offset {
+            args["file_offset"] = json!(file_offset);
+        }
+        if let Some(source_at) = source_at {
+            args["source_at"] = json!(source_at);
+        }
+        self.send_command("memory_file_mappings", Some(args))
+    }
+
     /// Get instruction, data, function, and memory details at a target.
     pub fn memory_info(&self, address: &str) -> Result<serde_json::Value> {
         self.send_command("memory_info", Some(json!({"address": address})))

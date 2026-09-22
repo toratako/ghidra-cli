@@ -1,0 +1,58 @@
+package ghidracli;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import ghidra.program.model.address.Address;
+import static ghidracli.JsonProtocol.errorResult;
+
+/** Lists direct preserved-file intervals or every mapping of one original-file byte. */
+final class FileMappingCommands {
+    private final ProgramSession session;
+
+    FileMappingCommands(ProgramSession session) {
+        this.session = session;
+    }
+
+    JsonObject handleFileMappings(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        Long fileOffset = null;
+        if (args.has("file_offset")) {
+            String text = requireString(args, "file_offset");
+            String digits;
+            int radix;
+            if (text.matches("0[xX][0-9a-fA-F]+")) {
+                digits = text.substring(2);
+                radix = 16;
+            } else if (text.matches("[0-9]+")) {
+                digits = text;
+                radix = 10;
+            } else {
+                throw invalidOffset();
+            }
+            try {
+                fileOffset = Long.parseLong(digits, radix);
+            } catch (NumberFormatException error) {
+                throw invalidOffset();
+            }
+        }
+        Address sourceAt = null;
+        if (args.has("source_at")) {
+            String text = requireString(args, "source_at");
+            sourceAt = AddressCodec.parse(session.program().getAddressFactory(), text);
+            if (sourceAt == null) throw new IllegalArgumentException("source_at must be an explicit address: " + text);
+        }
+        return MemorySources.fileMappings(session, fileOffset, sourceAt);
+    }
+
+    private static String requireString(JsonObject args, String key) {
+        JsonElement value = args.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(key + " must be a string");
+        }
+        return value.getAsString();
+    }
+
+    private static IllegalArgumentException invalidOffset() {
+        return new IllegalArgumentException("file_offset must be a nonnegative decimal or 0x-prefixed integer from 0 to " + Long.MAX_VALUE);
+    }
+}

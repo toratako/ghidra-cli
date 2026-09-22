@@ -3,6 +3,7 @@ use clap::CommandFactory;
 
 mod inspection;
 mod management;
+mod memory;
 mod output;
 mod references;
 mod types;

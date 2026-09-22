@@ -327,6 +327,14 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
             false,
         )
         .unwrap();
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CreateFileMappings.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     client.memory_write("0x1000", "deadbeef").unwrap();
     client
         .memory_write("original_overlay:0x1000", "aabbccdd")
@@ -335,6 +343,16 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     std::fs::remove_file(&binary).unwrap();
 
     check_memory_sources(&client);
+    check_file_mappings(&client);
+    check_file_mapping_cli(&harness, &client);
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckFileMappingCancellation.java"),
+            &[],
+            &[],
+            false,
+        )
+        .expect("mapping traversal must propagate cancellation");
     let output = common::ghidra(&harness)
         .args(["memory", "read", "0x1000", "8", "--source", "original"])
         .json_format()
@@ -351,6 +369,7 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     drop(harness);
     let reopened = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     check_memory_sources(&reopened.client().unwrap());
+    check_file_mappings(&reopened.client().unwrap());
 }
 
 fn read_original(client: &BridgeClient, address: &str, size: usize) -> Value {
@@ -390,18 +409,25 @@ fn check_memory_sources(client: &BridgeClient) {
         spanning["mappings"],
         json!([
             {"state": "mapped", "filename": "archive-member", "file_offset": 0x205,
-             "file_bytes_offset": 5, "address": "0x00002002", "end": "0x00002003", "size": 2},
+             "file_bytes_offset": 5, "address": "0x00002002", "end": "0x00002003", "size": 2,
+             "block_start": "0x00002000", "source_at": "0x00002000",
+             "source_file_offset": 0x200, "source_size": 32},
             {"state": "mapped", "filename": "archive-member", "file_offset": 0x209,
-             "file_bytes_offset": 9, "address": "0x00002004", "end": "0x00002007", "size": 4},
+             "file_bytes_offset": 9, "address": "0x00002004", "end": "0x00002007", "size": 4,
+             "block_start": "0x00002000", "source_at": "0x00002000",
+             "source_file_offset": 0x200, "source_size": 32},
             {"state": "mapped", "filename": "second-input", "file_offset": 0x501,
-             "file_bytes_offset": 1, "address": "0x00002008", "end": "0x00002009", "size": 2}
+             "file_bytes_offset": 1, "address": "0x00002008", "end": "0x00002009", "size": 2,
+             "block_start": "0x00002008", "source_at": "0x00002008",
+             "source_file_offset": 0x500, "source_size": 16}
         ])
     );
     let mapped = client.memory_info("0x2002").unwrap();
     assert_eq!(
         mapped["file_mapping"],
         json!({"state": "mapped", "filename": "archive-member",
-               "file_offset": 0x205, "file_bytes_offset": 5})
+               "file_offset": 0x205, "file_bytes_offset": 5, "source_at": "0x00002000",
+               "source_file_offset": 0x200, "source_size": 32})
     );
     for (address, state, reason) in [
         ("0x3000", "unmapped", "No preserved file bytes"),
@@ -434,4 +460,186 @@ fn check_memory_sources(client: &BridgeClient) {
         .to_string();
     assert!(error.contains("0x0000200c"), "{error}");
     assert_eq!(read_original(client, "0x200a", 2)["hex"], "7374");
+}
+
+fn file_mappings(client: &BridgeClient, args: Value) -> Value {
+    client
+        .send_command("memory_file_mappings", Some(args))
+        .expect("direct file mapping query")
+}
+
+fn mapping_addresses(result: &Value) -> std::collections::BTreeSet<&str> {
+    result["mappings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["address"].as_str().unwrap())
+        .collect()
+}
+
+fn check_file_mappings(client: &BridgeClient) {
+    let all = file_mappings(client, json!({}));
+    assert_eq!(all["count"], 8, "{all}");
+    let unsupported = json!([
+        {"address": "0x00005000", "end": "0x00005003", "block_start": "0x00005000",
+         "reason": "Indirect bit/byte memory mapping"},
+        {"address": "0x00006000", "end": "0x00006007", "block_start": "0x00006000",
+         "reason": "Indirect bit/byte memory mapping"}
+    ]);
+    assert_eq!(all["unsupported_mappings"], unsupported);
+    for row in all["mappings"].as_array().unwrap() {
+        assert_eq!(row["state"], "mapped");
+        assert!(row["size"].as_u64().unwrap() > 0);
+        let address = row["address"].as_str().unwrap();
+        let forward = &client.memory_info(address).unwrap()["file_mapping"];
+        for field in [
+            "filename",
+            "file_offset",
+            "file_bytes_offset",
+            "source_at",
+            "source_file_offset",
+            "source_size",
+        ] {
+            assert_eq!(row[field], forward[field], "{field}: {row}");
+        }
+        let inverse = file_mappings(
+            client,
+            json!({"file_offset": row["file_offset"].to_string(), "source_at": row["source_at"]}),
+        );
+        assert!(mapping_addresses(&inverse).contains(address), "{inverse}");
+    }
+
+    let matches = file_mappings(client, json!({"file_offset": "0x205"}));
+    assert_eq!(matches["count"], 4);
+    assert_eq!(
+        mapping_addresses(&matches),
+        [
+            "0x00002002",
+            "0x00007002",
+            "0x00007102",
+            "same_source_overlay:0x00002002"
+        ]
+        .into_iter()
+        .collect()
+    );
+    for offset in ["517", "0X205"] {
+        assert_eq!(
+            matches,
+            file_mappings(client, json!({"file_offset": offset}))
+        );
+    }
+    for row in matches["mappings"].as_array().unwrap() {
+        assert_eq!(row["address"], row["end"]);
+        assert_eq!(row["size"], 1);
+        assert_eq!(row["file_offset"], 0x205);
+        assert_eq!(row["file_bytes_offset"], 5);
+        assert_eq!(row["source_file_offset"], 0x200);
+        assert_eq!(row["source_size"], 32);
+    }
+    let selected = file_mappings(
+        client,
+        json!({"file_offset": "0x205", "source_at": "same_source_overlay:0x2001"}),
+    );
+    assert_eq!(selected["count"], 3);
+    assert!(!mapping_addresses(&selected).contains("0x00007002"));
+    for row in selected["mappings"].as_array().unwrap() {
+        assert_eq!(row["source_at"], "0x00002000");
+    }
+    assert_eq!(
+        file_mappings(client, json!({"source_at": "0x2001"}))["count"],
+        4
+    );
+    let duplicate = file_mappings(
+        client,
+        json!({"file_offset": "0x205", "source_at": "0x7001"}),
+    );
+    assert_eq!(duplicate["count"], 1);
+    assert_eq!(duplicate["mappings"][0]["source_at"], "0x00007000");
+    assert_eq!(read_original(client, "0x7002", 1)["hex"], "90");
+    assert_eq!(read_original(client, "0x2002", 1)["hex"], "45");
+    let second = file_mappings(client, json!({"file_offset": "0x504"}));
+    assert_eq!(second["count"], 2);
+    assert_eq!(
+        mapping_addresses(&second),
+        ["0x0000200b", "original_overlay:0x00001000"]
+            .into_iter()
+            .collect()
+    );
+    // Includes source gaps, preserved-but-unloaded bytes, and the largest valid offset.
+    for offset in ["0x200", "0x207", "0x800", "9223372036854775807"] {
+        let empty = file_mappings(client, json!({"file_offset": offset}));
+        assert_eq!(empty["count"], 0, "{empty}");
+        assert_eq!(empty["mappings"], json!([]));
+        assert_eq!(empty["unsupported_mappings"], unsupported);
+    }
+    for args in [
+        json!({"file_offset": -1}),
+        json!({"file_offset": "-1"}),
+        json!({"file_offset": "0x8000000000000000"}),
+        json!({"source_at": "source_label"}),
+        json!({"source_at": "0x4000"}),
+        json!({"source_at": "0x5000"}),
+        json!({"source_at": "0x9000"}),
+    ] {
+        assert!(
+            client
+                .send_command("memory_file_mappings", Some(args.clone()))
+                .is_err(),
+            "invalid selector accepted: {args}"
+        );
+    }
+}
+
+fn check_file_mapping_cli(harness: &common::DaemonTestHarness, client: &BridgeClient) {
+    let output = common::ghidra(harness)
+        .args(["memory", "file-mappings", "--limit", "0"])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_file_mapping_output(output.json(), file_mappings(client, json!({})));
+    let output = common::ghidra(harness)
+        .args([
+            "memory",
+            "file-mappings",
+            "--file-offset",
+            "0x205",
+            "--source-at",
+            "0x2001",
+            "--limit",
+            "0",
+        ])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_file_mapping_output(
+        output.json(),
+        file_mappings(
+            client,
+            json!({"file_offset": "0x205", "source_at": "0x2001"}),
+        ),
+    );
+    let output = common::ghidra(harness)
+        .args([
+            "memory",
+            "file-mappings",
+            "--file-offset",
+            "0x800",
+            "--limit",
+            "0",
+        ])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_file_mapping_output(
+        output.json(),
+        file_mappings(client, json!({"file_offset": "0x800"})),
+    );
+}
+
+fn assert_file_mapping_output(output: Value, wire: Value) {
+    assert_eq!(output["data"], wire["mappings"]);
+    assert_eq!(output["meta"]["returned"], wire["count"]);
+    for context in ["unsupported_mappings", "file_offset", "source_at"] {
+        assert_eq!(output["meta"].get(context), wire.get(context), "{context}");
+    }
 }

@@ -6,12 +6,48 @@ use serde::{Deserialize, Serialize};
 pub enum MemoryCommands {
     /// Show memory map
     Map(QueryOptions),
+    /// List direct file mapping intervals, optionally matching an original-file offset
+    FileMappings(MemoryFileMappingsArgs),
     /// Show the instruction, data, function, and memory block at a target
     Info(MemoryInfoArgs),
     /// Read memory
     Read(MemReadArgs),
     /// Write hex bytes to memory
     Write(MemWriteArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct MemoryFileMappingsArgs {
+    /// Original-file byte offset in decimal or 0x notation; omit to list intervals
+    #[arg(long, value_name = "OFFSET", value_parser = parse_file_offset)]
+    pub file_offset: Option<String>,
+    /// Explicit address directly mapped to the saved source to select
+    #[arg(long, value_name = "ADDRESS")]
+    pub source_at: Option<String>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+fn parse_nonnegative_long(value: &str) -> Result<i64, String> {
+    let (digits, radix) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .map_or((value, 10), |digits| (digits, 16));
+    if digits.is_empty()
+        || !digits.bytes().all(|c| match radix {
+            16 => c.is_ascii_hexdigit(),
+            _ => c.is_ascii_digit(),
+        })
+    {
+        return Err("use a nonnegative decimal or 0x integer".into());
+    }
+    i64::from_str_radix(digits, radix)
+        .map_err(|_| format!("value must be between 0 and {}", i64::MAX))
+}
+
+fn parse_file_offset(value: &str) -> Result<String, String> {
+    parse_nonnegative_long(value)?;
+    Ok(value.to_owned())
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

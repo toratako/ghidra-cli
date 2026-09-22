@@ -105,6 +105,8 @@ For instruction-text matching and disassembly ranges, see
 ghidra-cli symbol list --limit 100 --project target
 ghidra-cli memory map --project target
 ghidra-cli memory info 0x401003 --project target
+ghidra-cli memory file-mappings --project target
+ghidra-cli memory file-mappings --file-offset 0x205 --limit 0 --project target
 ghidra-cli memory read 0x401000 64 --project target
 ghidra-cli memory read 0x401000 64 --source original --project target
 ghidra-cli data list --filter 'type=Header' --fields name,address,type,size --project target
@@ -119,6 +121,14 @@ Use `memory info` to check file provenance and `memory read --source original`
 to compare current memory with preserved import bytes before relocations or
 patches. This requires a file mapping for the whole range; it does not reopen
 the executable on disk or decode original bytes as current-memory pointers.
+
+`memory file-mappings` relates preserved input-file ranges to their current
+memory placement. `--file-offset` uses the original file's byte offset and can
+match several placements, including overlays. To select one saved input, pass
+`--source-at` an address mapped from it; `source_at` in the results is a reusable
+anchor until the layout changes. Filenames alone do not distinguish saved inputs.
+Inspect `meta.unsupported_mappings`: excluded indirect mappings mean that an
+empty result proves only the absence of a direct mapping.
 
 For byte edits, see [patching](low-level.md#patching).
 

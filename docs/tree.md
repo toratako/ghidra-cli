@@ -71,6 +71,7 @@ ghidra-cli
 │   └── create
 ├── memory
 │   ├── map
+│   ├── file-mappings
 │   ├── info
 │   ├── read
 │   └── write
@@ -170,4 +171,4 @@ ghidra-cli
 └── setup
 ```
 
-158 command nodes (excluding the root), 0 aliases.
+159 command nodes (excluding the root), 0 aliases.

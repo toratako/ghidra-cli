@@ -1,3 +1,4 @@
+mod memory;
 mod scripts;
 mod symbols;
 
@@ -39,6 +40,9 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Memory(command) = command {
+        memory::validate(command)?;
+    }
     if let Commands::Listing(cli::ListingCommands::Undefine(args)) = command {
         for (label, value) in [("START", &args.start), ("--end", &args.end)] {
             anyhow::ensure!(
@@ -209,22 +213,7 @@ pub(super) fn execute_via_bridge(
                 StringsCommands::Refs(args) => client.string_refs(args.pattern.clone()),
             }
         }
-        Commands::Memory(cmd) => {
-            use cli::MemoryCommands;
-            match cmd {
-                MemoryCommands::Map(_) => client.memory_map(),
-                MemoryCommands::Info(args) => client.memory_info(&args.target),
-                MemoryCommands::Write(args) => client.memory_write(&args.address, &args.hex),
-                MemoryCommands::Read(args) => client.send_command(
-                    "read_memory",
-                    Some(json!({
-                        "address": args.address,
-                        "size": args.size,
-                        "source": args.source,
-                    })),
-                ),
-            }
-        }
+        Commands::Memory(cmd) => memory::execute(client, cmd),
         Commands::Data(cmd) => match cmd {
             cli::DataCommands::List(_) => {
                 client.send_command("data_list", Some(json!({"limit": list_limit})))

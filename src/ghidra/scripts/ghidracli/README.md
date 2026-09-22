@@ -125,7 +125,7 @@ another consumer or terminate its checkout.
 | `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
 | `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | `MemoryBlockInfo` | Block name and permission serialization shared by memory and function queries |
-| `MemoryInfoCommands`, `MemorySources` | Listing classification and preserved FileBytes provenance/reads |
+| `MemoryInfoCommands`, `MemorySources`, `FileMappingCommands` | Listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
 | `DataCommands` | Applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands`, `BookmarkCommands` | Program annotations and symbols |
@@ -211,6 +211,10 @@ and cancellation; this helper owns no transactions or saves.
 only for original-file provenance; reads use the relative FileBytes offset.
 It rejects indirect bit/byte mappings instead of assuming a 1:1 correspondence.
 Original reads must map the complete requested range and never consult host files.
+Each request builds its own interval snapshot and FileBytes-identity anchor index;
+never retain these across edits or program changes. `FileMappingCommands` lists
+whole source intervals, or one-byte intersections for an original-file offset.
+Excluded mappings remain response context even when there are no matches.
 
 `DataCommands` reads through applied `Data` instances so component settings and
 bitfield layouts stay native. Interior lookup stops at overlapping components;

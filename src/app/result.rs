@@ -36,6 +36,10 @@ impl ResultShape {
             Commands::Symbol(SymbolCommands::Externals(_)) => Self::rows("externals"),
             Commands::Symbol(SymbolCommands::EntryPoints(_)) => Self::rows("entry_points"),
             Commands::Memory(MemoryCommands::Map(_)) => Self::rows("blocks"),
+            Commands::Memory(MemoryCommands::FileMappings(_)) => Self::context(
+                "mappings",
+                &["unsupported_mappings", "file_offset", "source_at"],
+            ),
             Commands::Data(DataCommands::List(_)) => Self::rows("items"),
             Commands::XRef(XRefCommands::To(_) | XRefCommands::From(_)) => Self::rows("xrefs"),
             Commands::Equate(EquateCommands::List(_)) => Self::rows("equates"),

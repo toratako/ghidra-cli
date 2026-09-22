@@ -30,6 +30,8 @@ mod installation_fixture;
 mod listing;
 #[path = "routing/management.rs"]
 mod management;
+#[path = "routing/memory.rs"]
+mod memory;
 #[path = "routing/output.rs"]
 mod output;
 #[path = "routing/program.rs"]
@@ -450,6 +452,7 @@ impl RecordedBridge {
                         let key = "blocks";
                         json!({key: rows, "count": rows.len()})
                     }
+                    "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
                     "string_refs" => {
                         let rows = if args["pattern"] == "absent" {
                             vec![]

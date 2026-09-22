@@ -133,6 +133,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/MemoryBlockInfo.java"),
     ),
     (
+        "ghidracli/FileMappingCommands.java",
+        include_str!("../scripts/ghidracli/FileMappingCommands.java"),
+    ),
+    (
         "ghidracli/MemoryInfoCommands.java",
         include_str!("../scripts/ghidracli/MemoryInfoCommands.java"),
     ),
