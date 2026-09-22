@@ -132,6 +132,32 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let from_native = root.path().join("from-native");
     success(restore(&native_gar, &from_native)?)?;
     verify(&from_native)?;
+
+    // Exercise Windows-native entry names on every host, using real project data.
+    let windows_gar = root.path().join("windows.gar");
+    let mut source = zip::ZipArchive::new(std::fs::File::open(&native_gar)?)?;
+    let mut windows = zip::ZipWriter::new(std::fs::File::create(&windows_gar)?);
+    let options = zip::write::SimpleFileOptions::default();
+    for index in 0..source.len() {
+        let mut entry = source.by_index(index)?;
+        if entry.is_dir() {
+            continue;
+        }
+        windows.start_file(entry.name().replace('/', "\\"), options)?;
+        std::io::copy(&mut entry, &mut windows)?;
+    }
+    for excluded in ["save\\ignored", "idata\\00\\.properties"] {
+        windows.start_file(excluded, options)?;
+        std::io::Write::write_all(&mut windows, b"excluded project state")?;
+    }
+    drop(windows.finish()?);
+    let from_windows = root.path().join("from-windows");
+    success(restore(&windows_gar, &from_windows)?)?;
+    let data = from_windows.with_added_extension("rep");
+    assert!(!data.join("save").exists());
+    assert!(!data.join("idata/00/.properties").exists());
+    verify(&from_windows)?;
+
     worker.client()?.script_run_source(
         include_str!("CheckGarFailures.java"),
         &[
@@ -253,7 +279,8 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
         "../escaped",
         "/absolute",
         "idata/../../escaped",
-        "idata\\escape",
+        "idata\\../..\\escaped",
+        "\\absolute",
         "C:/escape",
     ]
     .into_iter()
@@ -284,7 +311,7 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
     }
     // ZIP writers reject duplicate names, so construct a valid pair and change
     // the equal-length local/central names to collide after finalization.
-    for fault in ["duplicate", "crc", "file_directory"] {
+    for fault in ["duplicate", "separator_duplicate", "crc", "file_directory"] {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
@@ -292,10 +319,10 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
         zip.start_file("idata/a", options)?;
         zip.write_all(b"unique-payload")?;
         zip.start_file(
-            if fault == "file_directory" {
-                "idata/a/b"
-            } else {
-                "idata/b"
+            match fault {
+                "file_directory" => "idata\\a/b",
+                "separator_duplicate" => "idata\\a",
+                _ => "idata/b",
             },
             options,
         )?;
@@ -323,6 +350,12 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
             "{error}"
         );
         assert_eq!(error["detail"]["published"], false);
+        if fault == "separator_duplicate" {
+            assert!(error["detail"]["cause"]
+                .as_str()
+                .unwrap()
+                .contains("Duplicate GAR entry: idata/a"));
+        }
         assert_eq!(std::fs::read_dir(root.path())?.count(), 1, "{error}");
     }
     std::fs::write(&file, b"not a zip")?;

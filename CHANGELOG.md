@@ -75,6 +75,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   list sorting, paging, and counting from its receipt. Count comments by row in
   `comment get` and retain the target address as list context.
 
+### Fixed
+
+- Restore GAR archives created by Ghidra on Windows by normalizing entry path
+  separators before safety checks, collision detection, and extraction.
+
 ## [0.7.0] - 2026-09-22
 
 This stable release includes all changes from

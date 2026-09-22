@@ -127,9 +127,11 @@ final class GarFile {
     }
 
     private static String validateName(ZipEntry entry) throws IOException {
-        String name = entry.getName();
+        // Ghidra's JarWriter uses File.separator, including backslashes on Windows.
+        // Canonicalize before validation, duplicate detection, exclusions and extraction.
+        String name = entry.getName().replace('\\', '/');
         if (entry.isDirectory()) name = name.substring(0, name.length() - 1);
-        if (name.isEmpty() || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0 || name.indexOf('\0') >= 0) {
+        if (name.isEmpty() || name.indexOf(':') >= 0 || name.indexOf('\0') >= 0) {
             throw new IOException("Unsafe GAR entry: " + entry.getName());
         }
         for (String part : name.split("/", -1)) {
