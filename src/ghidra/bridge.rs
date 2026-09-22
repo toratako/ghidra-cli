@@ -447,8 +447,8 @@ fn stop_bridge_with<T>(
         }) {
             return Err(shutdown_result.unwrap_err());
         }
-        // A response can be lost during successful shutdown. If the process
-        // has already exited, cleanup is still safe; otherwise retain state.
+        // Exit alone cannot confirm a successful final save: the JVM may have
+        // crashed before replying. Preserve that uncertainty for archive callers.
         while check_alive(pid) {
             if deadline.is_some_and(|end| now() >= end) {
                 return Err(timeout_error().context(format!("Bridge process {pid} did not exit before GHIDRA_CLI_SHUTDOWN_TIMEOUT; preserving discovery and project locks")));
@@ -462,6 +462,8 @@ fn stop_bridge_with<T>(
             });
             sleep(remaining);
         }
+        shutdown_result
+            .context("Bridge exited without confirming its final save; preserving project state")?;
     }
     cleanup_stale_files_locked(project_path)?;
     info!("Bridge stopped");

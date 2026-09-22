@@ -26,6 +26,39 @@ fn stopped_project_remains_locked_through_the_deletion_callback() {
 }
 
 #[test]
+fn exited_bridge_without_save_acknowledgement_never_runs_archive_callback() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("unconfirmed-save");
+    let pid_path = pid_file_path(&project).unwrap();
+    let port_path = port_file_path(&project).unwrap();
+    std::fs::write(&pid_path, "1234").unwrap();
+    std::fs::write(&port_path, "2345").unwrap();
+    let alive = Cell::new(true);
+    let result = stop_bridge_with(
+        &project,
+        Some(Duration::from_secs(1)),
+        |_| alive.get(),
+        |_, _| {
+            alive.set(false);
+            Err(anyhow::anyhow!(
+                "connection lost before the final save acknowledgement"
+            ))
+        },
+        std::time::Instant::now,
+        |_| panic!("the process has already exited"),
+        || -> Result<()> { panic!("must not archive an unconfirmed save") },
+    );
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("without confirming"));
+    assert!(pid_path.exists());
+    assert!(port_path.exists());
+    std::fs::remove_file(pid_path).unwrap();
+    std::fs::remove_file(port_path).unwrap();
+}
+
+#[test]
 fn shutdown_deadline_includes_lifecycle_lock_wait_and_retains_timeout_type() {
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("locked-project");
