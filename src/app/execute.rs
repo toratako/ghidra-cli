@@ -56,6 +56,9 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         Commands::XRef(cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args)) => {
             vec![&args.from, &args.to]
         }
+        Commands::Equate(cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args)) => {
+            vec![&args.address]
+        }
         _ => vec![],
     };
     for address in edit_addresses {
@@ -293,6 +296,18 @@ pub(super) fn execute_via_bridge(
             }
         }
         Commands::Symbol(cmd) => symbols::execute(client, cmd, fetch),
+        Commands::Equate(cmd) => match cmd {
+            cli::EquateCommands::List(_) => client.send_command("equate_list", None),
+            cli::EquateCommands::Get(args) => client.send_command("equate_get", Some(json!({"name": args.name}))),
+            cli::EquateCommands::Create(args) => client.send_command(
+                "equate_create", Some(json!({"name": args.name, "value": args.value})),
+            ),
+            cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => client.send_command(
+                if matches!(cmd, cli::EquateCommands::Attach(_)) { "equate_attach" } else { "equate_detach" },
+                Some(json!({"address": args.address, "name": args.name, "operand_index": args.operand_index})),
+            ),
+            cli::EquateCommands::Delete(args) => client.send_command("equate_delete", Some(json!({"name": args.name}))),
+        },
         Commands::Type(cmd) => {
             use cli::{TypeCommands, TypeCreateCommands};
             match cmd {

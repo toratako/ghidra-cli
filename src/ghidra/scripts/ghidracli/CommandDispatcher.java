@@ -16,6 +16,7 @@ final class CommandDispatcher {
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
     private final SymbolCommands symbolCommands;
+    private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
     private final TagCommands tagCommands;
     private final PcodeCommands pcodeCommands;
@@ -50,6 +51,7 @@ final class CommandDispatcher {
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         symbolCommands = new SymbolCommands(session);
+        equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
         pcodeCommands = new PcodeCommands(session, addressResolver, functionQueries);
@@ -116,6 +118,13 @@ final class CommandDispatcher {
             case "symbol_create_label":   return symbolCommands.handleSymbolCreateLabel(args);
             case "symbol_delete":   return symbolCommands.handleSymbolDelete(args);
             case "symbol_rename":   return symbolCommands.handleSymbolRename(args);
+            // Equate definitions and operand associations
+            case "equate_list": return equateCommands.handleList(args);
+            case "equate_get": return equateCommands.handleGet(args);
+            case "equate_create": return equateCommands.handleCreate(args);
+            case "equate_attach": return equateCommands.handleAttach(args);
+            case "equate_detach": return equateCommands.handleDetach(args);
+            case "equate_delete": return equateCommands.handleDelete(args);
             // Type commands
             case "type_list":       return typeCommands.handleTypeList(args);
             case "type_get":        return typeCommands.handleTypeGet(args);

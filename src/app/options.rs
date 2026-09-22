@@ -11,6 +11,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Data(_)
             | Commands::XRef(_)
             | Commands::Symbol(_)
+            | Commands::Equate(_)
             | Commands::Type(_)
             | Commands::Tag(_)
             | Commands::Pcode(_)
@@ -175,6 +176,16 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
         },
+        Commands::Equate(cmd) => match cmd {
+            cli::EquateCommands::List(opts) => opts.project.clone(),
+            cli::EquateCommands::Get(args) | cli::EquateCommands::Delete(args) => {
+                args.options.project.clone()
+            }
+            cli::EquateCommands::Create(args) => args.options.project.clone(),
+            cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => {
+                args.options.project.clone()
+            }
+        },
         Commands::Batch(args) => args.project.clone(),
         _ => None,
     }
@@ -330,6 +341,16 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ProgramCommands::Export(args) => args.program.clone(),
             cli::ProgramCommands::Save(args) => args.program.clone(),
         },
+        Commands::Equate(cmd) => match cmd {
+            cli::EquateCommands::List(opts) => opts.program.clone(),
+            cli::EquateCommands::Get(args) | cli::EquateCommands::Delete(args) => {
+                args.options.program.clone()
+            }
+            cli::EquateCommands::Create(args) => args.options.program.clone(),
+            cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => {
+                args.options.program.clone()
+            }
+        },
         Commands::Batch(args) => args.program.clone(),
         _ => None,
     }
@@ -345,6 +366,16 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::ProgramContextCommands::Clear(args) => Some((&args.options).into()),
         },
         Commands::Program(cli::ProgramCommands::Rebase(args)) => Some((&args.options).into()),
+        Commands::Equate(cmd) => match cmd {
+            cli::EquateCommands::List(opts) => Some(opts.clone()),
+            cli::EquateCommands::Get(args) | cli::EquateCommands::Delete(args) => {
+                Some((&args.options).into())
+            }
+            cli::EquateCommands::Create(args) => Some((&args.options).into()),
+            cli::EquateCommands::Attach(args) | cli::EquateCommands::Detach(args) => {
+                Some((&args.options).into())
+            }
+        },
         Commands::Analysis(cli::AnalysisCommands::Option(cmd)) => match cmd {
             cli::AnalysisOptionCommands::List(opts) => Some(opts.clone()),
             cli::AnalysisOptionCommands::Get(args) => Some((&args.options).into()),

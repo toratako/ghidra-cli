@@ -38,6 +38,7 @@ impl ResultShape {
             Commands::Memory(MemoryCommands::Map(_)) => Self::rows("blocks"),
             Commands::Data(DataCommands::List(_)) => Self::rows("items"),
             Commands::XRef(XRefCommands::To(_) | XRefCommands::From(_)) => Self::rows("xrefs"),
+            Commands::Equate(EquateCommands::List(_)) => Self::rows("equates"),
             Commands::Type(TypeCommands::List(_)) => Self::rows("types"),
             Commands::Tag(TagCommands::List(_)) => Self::rows("tags"),
             Commands::Analysis(AnalysisCommands::Option(AnalysisOptionCommands::List(_))) => {
@@ -73,6 +74,7 @@ impl ResultShape {
             | Commands::Function(_)
             | Commands::Symbol(_)
             | Commands::XRef(_)
+            | Commands::Equate(_)
             | Commands::Memory(_)
             | Commands::Data(_)
             | Commands::Listing(_)

@@ -14,6 +14,7 @@ mod memory;
 mod options;
 mod output;
 mod project;
+mod references;
 mod types;
 
 // Keep command types available through crate::cli while their definitions
@@ -31,6 +32,7 @@ pub use memory::*;
 pub use options::{ObjectOptions, QueryOptions};
 pub use output::OutputFormat;
 pub use project::*;
+pub use references::*;
 pub use types::*;
 
 #[derive(Parser, Clone)]
@@ -96,6 +98,10 @@ pub enum Commands {
     /// Symbol operations
     #[command(subcommand)]
     Symbol(SymbolCommands),
+
+    /// Named integer constants and their instruction applications
+    #[command(subcommand)]
+    Equate(EquateCommands),
 
     /// Memory operations
     #[command(subcommand)]
