@@ -70,7 +70,7 @@ pub(super) fn execute(
         FunctionCommands::SetBody(args) => client.send_command(
             "function_set_body",
             Some(
-                json!({"target": args.target, "ranges": args.ranges.chunks_exact(2)
+                json!({"target": args.target, "ranges": args.ranges.as_chunks::<2>().0.iter()
                 .map(|range| json!({"start": range[0], "end": range[1]})).collect::<Vec<_>>()}),
             ),
         ),
