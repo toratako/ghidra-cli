@@ -91,7 +91,10 @@ fn import_names_are_saved_and_selected_across_all_routes() {
             .unwrap()["program"],
         "raw-name"
     );
-    assert_eq!(client.analysis_run().unwrap()["program"], "raw-name");
+    assert_eq!(
+        client.analysis_run(None, None, false).unwrap()["program"],
+        "raw-name"
+    );
     let artifact = project.root.path().join("internal-name.txt");
     let result = client
         .script_run_source(

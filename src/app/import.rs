@@ -190,7 +190,7 @@ fn run_import_steps(
     } else if !one_shot {
         progress.stage = "import.analysis";
         progress.analysis = "unknown";
-        let result = client.analysis_run()?;
+        let result = client.analysis_run(None, None, false)?;
         progress.analysis = "completed";
         result
     } else {

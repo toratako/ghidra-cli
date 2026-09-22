@@ -28,10 +28,31 @@ impl BridgeClient {
         )
     }
 
-    /// Analyze the current program. Unbounded read timeout: full auto-analysis
-    /// can exceed any fixed cap on large/complex binaries.
-    pub fn analysis_run(&self) -> Result<serde_json::Value> {
-        self.send_command_with_timeout("analysis_run", None, long_op_timeout())
+    /// Analyze the current program with full, bounded seed, or pending work.
+    /// Analysis can exceed any fixed cap on large/complex binaries.
+    pub fn analysis_run(
+        &self,
+        start: Option<&str>,
+        end: Option<&str>,
+        pending: bool,
+    ) -> Result<serde_json::Value> {
+        anyhow::ensure!(
+            start.is_some() == end.is_some(),
+            "Analysis range requires both start and end"
+        );
+        anyhow::ensure!(
+            !pending || start.is_none(),
+            "Pending analysis cannot specify a range"
+        );
+        let mut args = serde_json::Map::new();
+        if let (Some(start), Some(end)) = (start, end) {
+            args.insert("start".into(), json!(start));
+            args.insert("end".into(), json!(end));
+        }
+        if pending {
+            args.insert("pending".into(), json!(true));
+        }
+        self.send_command_with_timeout("analysis_run", Some(args.into()), long_op_timeout())
     }
 
     pub fn analysis_option_list(&self) -> Result<serde_json::Value> {

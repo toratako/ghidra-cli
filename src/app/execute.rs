@@ -79,11 +79,12 @@ pub(super) fn execute_via_bridge(
     let list_limit = fetch.limit;
 
     match command {
-        Commands::Analysis(cli::AnalysisCommands::Run(_)) => {
+        Commands::Analysis(cli::AnalysisCommands::Run(args)) => {
             if !quiet {
                 eprintln!("Analyzing...");
             }
-            let result = client.analysis_run()?;
+            let result =
+                client.analysis_run(args.start.as_deref(), args.end.as_deref(), args.pending)?;
             if !quiet {
                 eprintln!("Analysis complete!");
             }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum AnalysisCommands {
-    /// Analyze or reanalyze the entire program using its saved analysis settings
+    /// Run saved analysis settings (default: the entire program)
     Run(AnalysisRunArgs),
     /// Inspect and change program analysis settings, including analyzer enablement
     #[command(subcommand)]
@@ -13,6 +13,15 @@ pub enum AnalysisCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct AnalysisRunArgs {
+    /// Inclusive start address to seed reanalysis; effects can extend outside the range
+    #[arg(long, requires = "end", conflicts_with = "pending")]
+    pub start: Option<String>,
+    /// Inclusive end in the same address space; requires --start
+    #[arg(long, requires = "start", conflicts_with = "pending")]
+    pub end: Option<String>,
+    /// Process the open program's queued analysis; does not resume cancelled or closed work
+    #[arg(long)]
+    pub pending: bool,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

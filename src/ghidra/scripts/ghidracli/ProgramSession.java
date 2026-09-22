@@ -2,11 +2,13 @@ package ghidracli;
 
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
 import ghidra.app.script.GhidraState;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.DomainObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.util.GhidraProgramUtilities;
@@ -68,14 +70,37 @@ final class ProgramSession {
     boolean disassemble(Address address) throws Exception { return script.disassemble(address); }
     void analyzeAll() throws CancelledException {
         monitor().checkCancelled();
-        // Ghidra's analyzeAll initializes analyzer options and schedules full
-        // reanalysis itself; do not call reAnalyzeAll separately.
+        // Older supported Ghidra versions do not initialize options in analyzeAll.
+        AutoAnalysisManager.getAnalysisManager(program()).initializeOptions();
+        // The script entry point schedules full reanalysis itself; do not call
+        // reAnalyzeAll separately.
         script.analyzeAll(program());
         // Ghidra's analysis entry point can return normally after cancellation.
         // Preserve an earlier completed analysis flag, but never create one for
         // the cancelled first run.
         monitor().checkCancelled();
         GhidraProgramUtilities.markProgramAnalyzed(program());
+    }
+    void analyzeRange(AddressSetView range) throws CancelledException {
+        // Ghidra treats an empty set as full analysis. Never allow an empty
+        // memory intersection to broaden a caller's requested starting range.
+        if (range == null || range.isEmpty()) {
+            throw new IllegalArgumentException("Analysis range contains no program memory");
+        }
+        analyzeChanges(range);
+    }
+    void analyzePending() throws CancelledException { analyzeChanges(null); }
+
+    private void analyzeChanges(AddressSetView range) throws CancelledException {
+        monitor().checkCancelled();
+        AutoAnalysisManager manager = AutoAnalysisManager.getAnalysisManager(program());
+        manager.initializeOptions();
+        if (range != null) manager.reAnalyzeAll(range);
+        // The native entry point flushes pending Program events before draining
+        // its queue, including work created by the analyzers themselves.
+        script.analyzeChanges(program());
+        monitor().checkCancelled();
+        // A range/pending pass does not establish initial full-program analysis.
     }
     void clearListing(Address start, Address end) throws Exception { script.clearListing(start, end); }
 
@@ -240,6 +265,18 @@ final class ProgramSession {
     boolean isCurrent(DomainFile domainFile) {
         return program() != null
             && program().getDomainFile().getPathname().equals(domainFile.getPathname());
+    }
+
+    DomainFile findProgram(String name) {
+        if (state().getProject() == null) throw new IllegalArgumentException("No project open");
+        var data = state().getProject().getProjectData();
+        String path = name.startsWith("/") ? name : "/" + name;
+        DomainFile file = data.getFile(path);
+        if (file == null) throw new IllegalArgumentException("Program not found: " + name);
+        if (!isProgramFile(file)) {
+            throw new IllegalArgumentException("Project file is not a program: " + file.getPathname());
+        }
+        return file;
     }
 
     /** Save before switching; keep the old program if saving or opening fails. */

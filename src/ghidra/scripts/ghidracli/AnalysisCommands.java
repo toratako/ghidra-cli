@@ -7,7 +7,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import ghidra.framework.options.OptionType;
 import ghidra.framework.options.Options;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.listing.Program;
+import ghidra.util.exception.CancelledException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +22,75 @@ final class AnalysisCommands {
 
     AnalysisCommands(ProgramSession session) {
         this.session = session;
+    }
+
+    JsonObject handleRun(JsonObject args) throws Exception {
+        boolean hasStart = args != null && args.has("start");
+        boolean hasEnd = args != null && args.has("end");
+        boolean pending = false;
+        if (args != null && args.has("pending")) {
+            JsonElement value = args.get("pending");
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+                throw new IllegalArgumentException("pending must be a boolean");
+            }
+            pending = value.getAsBoolean();
+        }
+        if (hasStart != hasEnd) {
+            throw new IllegalArgumentException("start and end must be specified together");
+        }
+        if (pending && hasStart) {
+            throw new IllegalArgumentException("pending cannot be combined with start/end");
+        }
+        String startText = hasStart ? requireString(args, "start") : null;
+        String endText = hasEnd ? requireString(args, "end") : null;
+        if (hasStart && (!AddressCodec.isValidSyntax(startText)
+                || !AddressCodec.isValidSyntax(endText))) {
+            throw new IllegalArgumentException("start and end must be explicit addresses");
+        }
+        if (args != null && args.has("program")) {
+            String name = requireString(args, "program");
+            if (name.isEmpty()) throw new IllegalArgumentException("Program name required");
+            session.open(session.findProgram(name));
+        }
+        if (session.program() == null) return errorResult("No program loaded");
+
+        AddressSet range = null;
+        JsonObject receipt = new JsonObject();
+        receipt.addProperty("mode", pending ? "pending" : hasStart ? "range" : "full");
+        receipt.addProperty("program", session.programName());
+        if (hasStart) {
+            Address start = AddressCodec.parse(session.program().getAddressFactory(), startText);
+            Address end = AddressCodec.parse(session.program().getAddressFactory(), endText);
+            if (!start.getAddressSpace().equals(end.getAddressSpace())) {
+                throw new IllegalArgumentException("start and end must use the same address space");
+            }
+            if (start.compareTo(end) > 0) {
+                throw new IllegalArgumentException("start must not exceed end");
+            }
+            range = new AddressSet(start, end).intersect(session.program().getMemory());
+            if (range.isEmpty()) {
+                throw new IllegalArgumentException("Analysis range contains no program memory");
+            }
+            receipt.addProperty("start", AddressCodec.format(start));
+            receipt.addProperty("end", AddressCodec.format(end));
+        }
+        try {
+            if (pending) session.analyzePending();
+            else if (range != null) session.analyzeRange(range);
+            else session.analyzeAll();
+            receipt.addProperty("status", "success");
+            receipt.addProperty("completed", true);
+            receipt.addProperty("function_count", session.program().getFunctionManager().getFunctionCount());
+            return receipt;
+        } catch (Exception failure) {
+            receipt.addProperty("completed", false);
+            if (failure instanceof CancelledException || session.monitor().isCancelled()) {
+                receipt.addProperty("cancelled", true);
+            }
+            JsonObject result = errorResult("Analysis failed: " + failure.getMessage());
+            result.add("detail", receipt);
+            return result;
+        }
     }
 
     JsonObject handleOptionList(JsonObject args) throws Exception {

@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.framework.model.DomainFile;
-import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
 import ghidra.program.model.data.DataTypeManager;
@@ -114,45 +113,6 @@ final class ProgramCommands {
         }
     }
 
-    JsonObject handleAnalysisRun(JsonObject args) {
-        String programName = getArgString(args, "program");
-        boolean selectProgram = programName != null && !programName.isEmpty();
-        if (programName == null || programName.isEmpty()) {
-            if (session.program() == null) {
-                return errorResult("No program loaded. Use 'open_program' or 'import' first.");
-            }
-        }
-
-        if (session.program() == null) {
-            return errorResult("No program currently loaded");
-        }
-
-        // Resolve an explicit selection by project file, not the internal name.
-        if (selectProgram) {
-            JsonObject switchArgs = new JsonObject();
-            switchArgs.addProperty("program", programName);
-            JsonObject switchResult = handleOpenProgram(switchArgs);
-            if (switchResult.has("error")) {
-                return switchResult;
-            }
-        }
-
-        try {
-            // Use GhidraScript's built-in analyzeAll which works across Ghidra versions
-            session.analyzeAll();
-
-            FunctionManager fm = session.program().getFunctionManager();
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "success");
-            result.addProperty("program", session.programName());
-            result.addProperty("function_count", fm.getFunctionCount());
-            return result;
-
-        } catch (Exception e) {
-            return errorResult("Analysis failed: " + e.getMessage());
-        }
-    }
-
     JsonObject handleListPrograms() {
         Project project = session.state().getProject();
         if (project == null) {
@@ -244,35 +204,7 @@ final class ProgramCommands {
         }
 
         try {
-            ProjectData projectData = project.getProjectData();
-            DomainFolder rootFolder = projectData.getRootFolder();
-
-            // Find the domain file by name
-            DomainFile domainFile = null;
-            for (DomainFile f : rootFolder.getFiles()) {
-                if (f.getName().equals(programName)) {
-                    domainFile = f;
-                    break;
-                }
-            }
-
-            if (domainFile == null) {
-                // Try as a path
-                String path = programName.startsWith("/") ? programName : "/" + programName;
-                domainFile = projectData.getFile(path);
-            }
-
-            if (domainFile == null) {
-                // Build list of available programs for error message
-                StringBuilder available = new StringBuilder();
-                for (DomainFile f : rootFolder.getFiles()) {
-                    if (available.length() > 0) available.append(", ");
-                    available.append(f.getName());
-                }
-                return errorResult("Program not found: " + programName +
-                    ". Available: " + available.toString());
-            }
-
+            DomainFile domainFile = session.findProgram(programName);
             session.open(domainFile);
 
             JsonObject result = new JsonObject();

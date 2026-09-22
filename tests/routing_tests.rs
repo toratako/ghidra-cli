@@ -227,7 +227,22 @@ impl RecordedBridge {
                     }
                     "import" => json!({"program": "imported"}),
                     "analysis_run" => {
-                        json!({"status": "success", "program": program, "function_count": 3})
+                        let mode = if args["pending"] == true {
+                            "pending"
+                        } else if args["start"].is_string() {
+                            "range"
+                        } else {
+                            "full"
+                        };
+                        let mut result = json!({
+                            "status": "success", "program": program, "function_count": 3,
+                            "mode": mode, "completed": true, "saved": true,
+                        });
+                        if mode == "range" {
+                            result["start"] = args["start"].clone();
+                            result["end"] = args["end"].clone();
+                        }
+                        result
                     }
                     "analysis_option_list" => json!({"count": 3, "options": [
                         {"name": "Analyzer", "type": "boolean", "value": true},

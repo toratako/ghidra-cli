@@ -17,6 +17,7 @@ public interface ScriptAccess {
     void setMonitor(TaskMonitor monitor);
     boolean disassemble(Address address) throws Exception;
     void analyzeAll(Program program);
+    void analyzeChanges(Program program);
     void clearListing(Address start, Address end) throws Exception;
     void logError(String message);
 }

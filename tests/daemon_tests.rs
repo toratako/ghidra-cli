@@ -10,6 +10,8 @@ use common::{test_project, DaemonTestHarness};
 
 #[path = "daemon/analysis.rs"]
 mod analysis;
+#[path = "daemon/analysis_modes.rs"]
+mod analysis_modes;
 #[path = "daemon/decompiler.rs"]
 mod decompiler;
 #[path = "daemon/deletion.rs"]

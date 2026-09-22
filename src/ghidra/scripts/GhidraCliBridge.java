@@ -37,6 +37,9 @@ public class GhidraCliBridge extends GhidraScript {
             public void analyzeAll(Program program) {
                 GhidraCliBridge.this.analyzeAll(program);
             }
+            public void analyzeChanges(Program program) {
+                GhidraCliBridge.this.analyzeChanges(program);
+            }
             public void clearListing(Address start, Address end) throws Exception {
                 GhidraCliBridge.this.clearListing(start, end);
             }

@@ -140,7 +140,7 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
         skipped["analyzed"].is_null() || skipped["analyzed"] == false,
         "{skipped}"
     );
-    client.analysis_run().unwrap();
+    client.analysis_run(None, None, false).unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
 
     let prepare = |flag: &str, cancel: bool| {
@@ -177,7 +177,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
     };
     prepare("false", false);
     assert_flag("skipped-raw", serde_json::json!(false));
-    client.analysis_run().unwrap();
+    client.analysis_run(None, None, false).unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
     client.program_close().unwrap();
     assert_flag("skipped-raw", serde_json::json!(true));
@@ -190,7 +190,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
     ] {
         prepare(flag, true);
         let error = client
-            .analysis_run()
+            .analysis_run(None, None, false)
             .expect_err("cancelled analysis must fail");
         assert!(
             error.to_string().contains("Operation cancelled"),
@@ -202,7 +202,7 @@ public class PrepareAnalysisCompletionTest extends GhidraScript {
         client.open_program("skipped-raw").unwrap();
     }
     // Per-job cancellation must not affect the next completed analysis or save.
-    client.analysis_run().unwrap();
+    client.analysis_run(None, None, false).unwrap();
     project.ok(&["bridge", "stop"]);
     project.ok(&["bridge", "start", "--program", "skipped-raw"]);
     let listing = project.client().list_programs().unwrap();

@@ -82,7 +82,7 @@ final class CommandDispatcher {
             case "xrefs_to":        return xrefCommands.handleXrefsTo(args);
             case "xrefs_from":      return xrefCommands.handleXrefsFrom(args);
             case "import":          return programCommands.handleImport(args);
-            case "analysis_run":    return programCommands.handleAnalysisRun(args);
+            case "analysis_run":    return analysisCommands.handleRun(args);
             case "list_programs":   return programCommands.handleListPrograms();
             case "open_program":    return programCommands.handleOpenProgram(args);
             case "program_close":   return programCommands.handleProgramClose();
@@ -190,6 +190,7 @@ final class CommandDispatcher {
             if ("error".equals(response.get("status").getAsString())) {
                 JsonObject detail = response.has("detail")
                     ? response.getAsJsonObject("detail") : new JsonObject();
+                if ("analysis_run".equals(command)) detail.addProperty("saved", outcome.saved());
                 if (outcome.rolledBack()) detail.addProperty("rolled_back", true);
                 else if (outcome.saved()) detail.addProperty("partial_changes_saved", true);
                 if (outcome.cancelled()) detail.addProperty("cancelled", true);
@@ -198,6 +199,9 @@ final class CommandDispatcher {
                 if (outcome.rolledBack() && session.program() != null)
                     detail.addProperty("program", session.programPath());
                 if (detail.size() != 0) response.add("detail", detail);
+            } else if ("analysis_run".equals(command)) {
+                // The save boundary completed, including when no write was necessary.
+                response.getAsJsonObject("data").addProperty("saved", true);
             }
             return response;
         } catch (ProgramSession.SaveFailure e) {

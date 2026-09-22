@@ -46,8 +46,9 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
     let harness = start_daemon();
     let port = harness.port();
 
-    let analysis =
-        std::thread::spawn(move || ghidra_cli::ipc::client::BridgeClient::new(port).analysis_run());
+    let analysis = std::thread::spawn(move || {
+        ghidra_cli::ipc::client::BridgeClient::new(port).analysis_run(None, None, false)
+    });
 
     let control = harness.client().expect("control client");
     let deadline = std::time::Instant::now() + Duration::from_secs(30);

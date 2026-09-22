@@ -87,62 +87,165 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
 #[test]
 fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
-    let expected = json!({
-        "command": "analysis run", "status": "success",
-        "data": {"status": "success", "program": "B", "function_count": 3},
-    });
-    std::fs::write(
-        bridge.root.path().join("batch.txt"),
-        "analysis run --program B\nanalysis run\n",
-    )
-    .unwrap();
-    for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
-        bridge.requests.lock().unwrap().clear();
-        let output = bridge
-            .command()
-            .args(["analysis", "run", "--program", "B"])
-            .args(&flags)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "{output:?}");
-        assert!(output.stderr.is_empty(), "JSON modes suppress progress");
-        assert_eq!(
-            crate::json_output::from_slice::<Value>(&output.stdout).unwrap(),
-            expected
-        );
-        let requests = bridge.requests.lock().unwrap().clone();
-        assert_eq!(requests[requests.len() - 2]["command"], "open_program");
-        assert_eq!(requests.last().unwrap()["command"], "analysis_run");
-
-        bridge.requests.lock().unwrap().clear();
-        let output = bridge
-            .command()
-            .args(["batch", "batch.txt", "--program", "A"])
-            .args(&flags)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "{output:?}");
-        assert!(output.stderr.is_empty(), "batch must suppress progress");
-        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
-        assert_eq!(report["failed"], 0);
-        let rows = report["results"].as_array().unwrap();
-        assert_eq!(rows.len(), 2);
-        for row in rows {
-            assert_eq!(row["result"]["data"], expected);
+    for (mode, mode_args, expected_args) in [
+        ("full", vec![], json!({})),
+        (
+            "range",
+            vec!["--start", "overlay:0x1000", "--end", "overlay:0x1fff"],
+            json!({"start": "overlay:0x1000", "end": "overlay:0x1fff"}),
+        ),
+        ("pending", vec!["--pending"], json!({"pending": true})),
+    ] {
+        let mut expected = json!({
+            "command": "analysis run", "status": "success",
+            "data": {
+                "status": "success", "program": "B", "function_count": 3,
+                "mode": mode, "completed": true, "saved": true,
+            },
+        });
+        if mode == "range" {
+            expected["data"]["start"] = expected_args["start"].clone();
+            expected["data"]["end"] = expected_args["end"].clone();
         }
-        let requests = bridge.requests.lock().unwrap();
-        assert_eq!(
-            requests
+        let args: Vec<_> = ["analysis", "run"].into_iter().chain(mode_args).collect();
+        std::fs::write(
+            bridge.root.path().join("batch.txt"),
+            format!(
+                "{} --program B\n{}\n",
+                batch_arguments(&args),
+                batch_arguments(&args)
+            ),
+        )
+        .unwrap();
+        for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge
+                .command()
+                .args(&args)
+                .args(["--program", "B"])
+                .args(&flags)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{mode}: {output:?}");
+            assert!(output.stderr.is_empty(), "JSON modes suppress progress");
+            assert_eq!(
+                crate::json_output::from_slice::<Value>(&output.stdout).unwrap(),
+                expected
+            );
+            let requests = bridge.requests.lock().unwrap().clone();
+            assert_eq!(requests[requests.len() - 2]["command"], "open_program");
+            assert_eq!(
+                requests[requests.len() - 2]["args"],
+                json!({"program": "B"})
+            );
+            assert_eq!(requests.last().unwrap()["command"], "analysis_run");
+            assert_eq!(requests.last().unwrap()["args"], expected_args);
+
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge
+                .command()
+                .args(["batch", "batch.txt", "--program", "A"])
+                .args(&flags)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{mode}: {output:?}");
+            assert!(output.stderr.is_empty(), "batch must suppress progress");
+            let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+            assert_eq!(report["failed"], 0);
+            let rows = report["results"].as_array().unwrap();
+            assert_eq!(rows.len(), 2);
+            for row in rows {
+                assert_eq!(row["result"]["data"], expected);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let runs: Vec<_> = requests
                 .iter()
                 .filter(|r| r["command"] == "analysis_run")
-                .count(),
-            2
-        );
-        let selections: Vec<_> = requests
+                .collect();
+            assert_eq!(runs.len(), 2);
+            for run in runs {
+                assert_eq!(run["args"], expected_args);
+            }
+            let selections: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "open_program")
+                .map(|r| r["args"]["program"].as_str().unwrap())
+                .collect();
+            assert_eq!(selections, ["A", "B"]);
+        }
+    }
+}
+
+#[test]
+fn analysis_run_honors_project_overrides_in_standalone_and_batch() {
+    let first = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    let args = [
+        "analysis",
+        "run",
+        "--pending",
+        "--project",
+        selected.project.to_str().unwrap(),
+        "--program",
+        "B",
+    ];
+    for batched in [false, true] {
+        first.requests.lock().unwrap().clear();
+        selected.requests.lock().unwrap().clear();
+        if batched {
+            std::fs::write(first.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+            first.run(&["batch", "batch.txt"]);
+        } else {
+            first.run(&args);
+        }
+        assert!(first
+            .requests
+            .lock()
+            .unwrap()
             .iter()
-            .filter(|r| r["command"] == "open_program")
-            .map(|r| r["args"]["program"].as_str().unwrap())
+            .all(|r| r["command"] == "bridge_info"));
+        let requests = selected.requests.lock().unwrap();
+        let domain: Vec<_> = requests
+            .iter()
+            .filter(|r| r["command"] != "bridge_info")
             .collect();
-        assert_eq!(selections, ["A", "B"]);
+        assert_eq!(domain.len(), 2, "{domain:?}");
+        assert_eq!(domain[0]["command"], "open_program");
+        assert_eq!(domain[0]["args"], json!({"program": "B"}));
+        assert_eq!(domain[1]["command"], "analysis_run");
+        assert_eq!(domain[1]["args"], json!({"pending": true}));
+    }
+}
+
+#[test]
+fn incompatible_analysis_modes_do_not_reach_the_bridge() {
+    let bridge = RecordedBridge::new();
+    let args = [
+        "analysis",
+        "run",
+        "--pending",
+        "--start",
+        "0x1000",
+        "--end",
+        "0x1fff",
+    ];
+    for batched in [false, true] {
+        let output = if batched {
+            std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+            bridge
+                .command()
+                .args(["batch", "batch.txt"])
+                .output()
+                .unwrap()
+        } else {
+            bridge.command().args(args).output().unwrap()
+        };
+        assert!(!output.status.success(), "{output:?}");
+        assert!(bridge
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|r| r["command"] == "bridge_info"));
     }
 }
