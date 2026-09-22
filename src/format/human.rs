@@ -236,7 +236,14 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     })
                     .filter_map(|(k, v)| {
                         let s = format_json_value(v);
-                        if s.is_empty() || (s == "null" && k != "entry_memory") || s == "\"\"" {
+                        if s.is_empty()
+                            || (s == "null"
+                                && !matches!(
+                                    k.as_str(),
+                                    "entry_memory" | "database" | "before" | "after" | "override"
+                                ))
+                            || s == "\"\""
+                        {
                             None
                         } else {
                             Some(format!("{}={}", k, s))

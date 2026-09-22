@@ -136,7 +136,7 @@ public class CreateOrderedParametersFixture extends GhidraScript {
                 json!({"function": "ordered_params", "high": true}),
             ),
             (
-                "function_edit_var",
+                "function_var_set",
                 json!({"target": "ordered_params", "var_name": "p0", "new_name": "p0"}),
             ),
         ];
@@ -173,7 +173,7 @@ public class CreateOrderedParametersFixture extends GhidraScript {
             ] {
                 let mut args = base_args.clone();
                 args["timeout_secs"] = timeout;
-                if *command == "function_edit_var" {
+                if *command == "function_var_set" {
                     args["new_name"] = json!("must_not_be_saved");
                 }
                 let error = client

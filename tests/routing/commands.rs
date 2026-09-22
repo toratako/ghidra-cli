@@ -148,9 +148,9 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
         ),
         (
             vec![
-                "function", "edit-var", "entry", "--var", "local_10", "--name", "value",
+                "function", "var", "set", "entry", "--var", "local_10", "--name", "value",
             ],
-            "function_edit_var",
+            "function_var_set",
             "target",
         ),
         (vec!["function", "get", "entry"], "get_function", "address"),

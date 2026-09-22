@@ -398,7 +398,8 @@ fn variable_edits_send_one_request_with_only_requested_attributes() {
     ] {
         let mut args = vec![
             "function",
-            "edit-var",
+            "var",
+            "set",
             "parse_header",
             "--var",
             "local_10",
@@ -410,7 +411,7 @@ fn variable_edits_send_one_request_with_only_requested_attributes() {
         let mut requests = bridge.requests.lock().unwrap();
         let edits: Vec<_> = requests
             .iter()
-            .filter(|r| r["command"] == "function_edit_var")
+            .filter(|r| r["command"] == "function_var_set")
             .collect();
         assert_eq!(edits.len(), 1);
         assert_eq!(

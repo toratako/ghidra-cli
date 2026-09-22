@@ -1,3 +1,4 @@
+mod functions;
 mod memory;
 mod scripts;
 mod symbols;
@@ -73,6 +74,12 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         );
     }
     let selector = match command {
+        Commands::Function(cli::FunctionCommands::Var(cli::FunctionVarCommands::Get(args))) => {
+            Some((None, args.selection.filter.as_deref()))
+        }
+        Commands::Function(cli::FunctionCommands::Var(cli::FunctionVarCommands::Set(args))) => {
+            Some((None, args.selection.filter.as_deref()))
+        }
         Commands::Symbol(cli::SymbolCommands::Rename(args)) => {
             Some((args.address.as_deref(), args.filter.as_deref()))
         }
@@ -131,79 +138,7 @@ pub(super) fn execute_via_bridge(
             args.with_params,
             args.with_jump_tables,
         ),
-        Commands::Function(cmd) => {
-            use cli::FunctionCommands;
-            match cmd {
-                FunctionCommands::List(args) => client.list_functions(
-                    list_limit,
-                    fetch.filter.clone(),
-                    &args.tags,
-                    args.untagged,
-                    fetch.offset,
-                ),
-                FunctionCommands::Get(args) => {
-                    client.send_command("get_function", Some(json!({
-                        "address": args.target,
-                        "with_signature": args.with_signature,
-                    })))
-                }
-                FunctionCommands::ListCallingConventions(_) => {
-                    client.function_list_calling_conventions()
-                }
-                FunctionCommands::Disasm(args) => client.function_disasm(&args.target, list_limit),
-                FunctionCommands::Rename(args) => client.send_command(
-                    "rename_function",
-                    Some(json!({
-                        "old_name": args.old_name,
-                        "new_name": args.new_name,
-                        "address": args.address,
-                    })),
-                ),
-                FunctionCommands::Create(args) => client.send_command(
-                    "create_function",
-                    Some(json!({
-                        "address": args.address,
-                        "name": args.name,
-                    })),
-                ),
-                FunctionCommands::Delete(args) => client.send_command(
-                    "delete_function",
-                    Some(json!({
-                        "address": args.target,
-                    })),
-                ),
-                FunctionCommands::SetSignature(args) => client.send_command(
-                    "function_set_signature",
-                    Some(json!({
-                        "target": args.target,
-                        "signature": args.signature,
-                    })),
-                ),
-                FunctionCommands::SetReturnType(args) => {
-                    client.function_set_return_type(&args.target, &args.return_type)
-                }
-                FunctionCommands::SetCallingConvention(args) => client.send_command(
-                    "function_set_calling_convention",
-                    Some(json!({
-                        "target": args.target,
-                        "convention": args.convention,
-                    })),
-                ),
-                FunctionCommands::EditVar(args) => client.function_edit_var(
-                    &args.target,
-                    &args.var_name,
-                    args.new_name.as_deref(),
-                    args.type_name.as_deref(),
-                ),
-                FunctionCommands::SetNoReturn(args) => {
-                    client.function_set_noreturn(&args.target, args.value)
-                }
-                FunctionCommands::SetStackPurge(args) => client.send_command(
-                    "function_set_stack_purge",
-                    Some(json!({"target": args.target, "bytes": args.bytes, "unknown": args.unknown})),
-                ),
-            }
-        }
+        Commands::Function(cmd) => functions::execute(client, cmd, fetch),
         Commands::Strings(cmd) => {
             use cli::StringsCommands;
             match cmd {

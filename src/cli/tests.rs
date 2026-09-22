@@ -28,7 +28,7 @@ fn targets_require_one_positional() {
         ],
         vec!["function", "set-noreturn"],
         vec![
-            "function", "edit-var", "--var", "local_10", "--name", "value",
+            "function", "var", "set", "--var", "local_10", "--name", "value",
         ],
         vec!["function", "get"],
         vec!["function", "disassemble"],
@@ -66,9 +66,11 @@ fn targets_require_one_positional() {
                 Commands::Function(FunctionCommands::SetNoReturn(args)) => {
                     (args.target, args.program, args.project)
                 }
-                Commands::Function(FunctionCommands::EditVar(args)) => {
-                    (args.target, args.program, args.project)
-                }
+                Commands::Function(FunctionCommands::Var(FunctionVarCommands::Set(args))) => (
+                    args.selection.target,
+                    args.options.program,
+                    args.options.project,
+                ),
                 Commands::Function(FunctionCommands::Get(args)) => {
                     (args.target, args.options.program, args.options.project)
                 }

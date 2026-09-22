@@ -161,7 +161,7 @@ public class DecompilerSessionProbe extends GhidraScript {
 
         String parameter = initial.getAsJsonArray("params").get(0).getAsJsonObject()
             .get("name").getAsString();
-        success(command("function_edit_var", args("target", address, "var_name", parameter,
+        success(command("function_var_set", args("target", address, "var_name", parameter,
             "new_name", "session_input")));
         check(shared == engine(), "Variable edit did not share the decompiler");
         check(decompile().getAsJsonArray("params").get(0).getAsJsonObject()

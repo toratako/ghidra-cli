@@ -161,22 +161,39 @@ impl BridgeClient {
         )
     }
 
-    pub fn function_edit_var(
+    pub fn function_var_list(&self, target: &str) -> Result<serde_json::Value> {
+        self.send_decompile_command("function_var_list", json!({"target": target}))
+    }
+
+    pub fn function_var_get(
         &self,
         target: &str,
         var_name: &str,
+        selection: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let mut args = json!({"target": target, "var_name": var_name});
+        if let Some(selection) = selection {
+            args["selection"] = selection.clone();
+        }
+        self.send_decompile_command("function_var_get", args)
+    }
+
+    pub fn function_var_set(
+        &self,
+        target: &str,
+        var_name: &str,
+        selection: Option<&serde_json::Value>,
         new_name: Option<&str>,
         type_name: Option<&str>,
     ) -> Result<serde_json::Value> {
-        self.send_decompile_command(
-            "function_edit_var",
-            json!({
-                "target": target,
-                "var_name": var_name,
-                "new_name": new_name,
-                "type_name": type_name,
-            }),
-        )
+        let mut args = json!({
+            "target": target, "var_name": var_name,
+            "new_name": new_name, "type_name": type_name,
+        });
+        if let Some(selection) = selection {
+            args["selection"] = selection.clone();
+        }
+        self.send_decompile_command("function_var_set", args)
     }
 }
 

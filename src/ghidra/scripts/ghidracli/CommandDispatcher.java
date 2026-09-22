@@ -33,6 +33,7 @@ final class CommandDispatcher {
     private final ScriptCommands scriptCommands;
     private final DecompileCommands decompileCommands;
     private final FunctionSignatureCommands functionSignatureCommands;
+    private final FunctionVariableCommands functionVariableCommands;
     private final TypeImportCommands typeImportCommands;
 
     CommandDispatcher(ProgramSession session) {
@@ -45,6 +46,7 @@ final class CommandDispatcher {
         functionCommands = new FunctionCommands(session, addressResolver, functionQueries);
         decompileCommands = new DecompileCommands(session, functionQueries);
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
+        functionVariableCommands = new FunctionVariableCommands(session, functionQueries, typeResolver);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
         programContextCommands = new ProgramContextCommands(session);
@@ -174,7 +176,9 @@ final class CommandDispatcher {
             case "function_set_calling_convention": return functionSignatureCommands.handleFunctionSetCallingConvention(args);
             case "function_set_stack_purge": return functionSignatureCommands.handleFunctionSetStackPurge(args);
             case "function_set_noreturn": return functionSignatureCommands.handleFunctionSetNoReturn(args);
-            case "function_edit_var": return functionSignatureCommands.handleFunctionEditVar(args);
+            case "function_var_list": return functionVariableCommands.handleFunctionVarList(args);
+            case "function_var_get": return functionVariableCommands.handleFunctionVarGet(args);
+            case "function_var_set": return functionVariableCommands.handleFunctionVarSet(args);
             // PCode commands
             case "pcode_at":        return pcodeCommands.handlePcodeAt(args);
             case "pcode_function":  return pcodeCommands.handlePcodeFunction(args);

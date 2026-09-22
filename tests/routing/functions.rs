@@ -98,6 +98,11 @@ fn decompiler_commands_share_native_timeout_configuration() {
     let bridge = RecordedBridge::new();
     for (args, wire) in [
         (vec!["decompile", "main"], "decompile"),
+        (vec!["function", "var", "list", "main"], "function_var_list"),
+        (
+            vec!["function", "var", "get", "main", "--var", "value"],
+            "function_var_get",
+        ),
         (
             vec!["function", "set-return-type", "main", "--type", "void"],
             "function_set_return_type",
@@ -108,9 +113,9 @@ fn decompiler_commands_share_native_timeout_configuration() {
         ),
         (
             vec![
-                "function", "edit-var", "main", "--var", "param_1", "--name", "input",
+                "function", "var", "set", "main", "--var", "param_1", "--name", "input",
             ],
-            "function_edit_var",
+            "function_var_set",
         ),
     ] {
         for (configured, expected) in [
@@ -261,5 +266,183 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
                 json!({"address": "main", "with_vars": false, "with_params": false, "with_jump_tables": with_jump_tables, "timeout_secs": 0})
             );
         }
+    }
+}
+
+#[test]
+fn variable_list_queries_preserve_context_and_filter_before_paging() {
+    let bridge = RecordedBridge::new();
+    let args = [
+        "function",
+        "var",
+        "list",
+        "main",
+        "--filter",
+        "kind=local",
+        "--sort=-first_use",
+        "--offset",
+        "1",
+        "--limit",
+        "1",
+        "--fields",
+        "name,first_use",
+    ];
+    let output = bridge.command().args(args).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        result["data"],
+        json!([{"name": "value", "first_use": "0x1010"}])
+    );
+    assert_eq!(result["meta"]["function"], "main");
+    assert_eq!(result["meta"]["address"], "0x1000");
+    assert_eq!(result["meta"]["program"], "A");
+    assert_eq!(result["meta"]["modification"], "42");
+    assert_eq!(result["meta"]["returned"], 1);
+    assert_eq!(result["meta"]["offset"], 1);
+    assert_eq!(
+        bridge.run(&["function", "var", "list", "main", "--count"]),
+        3
+    );
+    std::fs::write(
+        bridge.root.path().join("variables.txt"),
+        batch_arguments(&args),
+    )
+    .unwrap();
+    let batch = bridge.run(&["batch", "variables.txt"]);
+    assert_eq!(batch["results"][0]["result"], result);
+    let requests = bridge.requests.lock().unwrap();
+    for request in requests
+        .iter()
+        .filter(|r| r["command"] == "function_var_list")
+    {
+        assert_eq!(
+            request["args"],
+            json!({"target": "main", "timeout_secs": 0})
+        );
+    }
+}
+
+#[test]
+fn variable_selection_sends_full_snapshot_and_keeps_filter_out_of_result_queries() {
+    let bridge = RecordedBridge::new();
+    for operation in ["get", "set"] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec![
+                "function",
+                "var",
+                operation,
+                "main",
+                "--var",
+                "value",
+                "--filter",
+                "kind=local",
+                "--program",
+                "B",
+            ];
+            if operation == "set" {
+                args.extend(["--name", "length", "--fields", "after"]);
+            }
+            let receipt = if batch {
+                std::fs::write(
+                    bridge.root.path().join("selection.txt"),
+                    batch_arguments(&args),
+                )
+                .unwrap();
+                bridge.run(&["batch", "selection.txt"])["results"][0]["result"]["data"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            if operation == "set" {
+                assert_eq!(receipt, json!({"after": {"name": "length", "type": null}}));
+            } else {
+                assert_eq!(receipt["decompiler"]["name"], "value");
+                assert_eq!(receipt["decompiler"]["kind"], "local");
+                assert!(receipt["database"].is_null());
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"].as_str().unwrap().starts_with("function_var_"))
+                .collect();
+            assert_eq!(operations.len(), 2);
+            assert_eq!(operations[0]["command"], "function_var_list");
+            assert_eq!(
+                operations[1]["command"],
+                format!("function_var_{operation}")
+            );
+            assert_eq!(operations[1]["args"]["var_name"], "value");
+            assert_eq!(
+                operations[1]["args"]["selection"],
+                json!({
+                    "program": "B", "function_address": "0x1000", "modification": "42",
+                    "variable": {"name": "value", "kind": "local", "type": "int", "storage": "Stack[-0x8]:4", "ordinal": null, "first_use": "0x1010"},
+                })
+            );
+            assert_eq!(operations[1]["args"]["timeout_secs"], 0);
+        }
+    }
+}
+
+#[test]
+fn variable_selection_requires_exactly_one_same_name_candidate_before_mutation() {
+    let bridge = RecordedBridge::new();
+    for (filter, expected) in [
+        ("kind=absent", "No variable named"),
+        ("type=int", "matches 2 candidates"),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        let output = bridge
+            .command()
+            .args([
+                "function", "var", "set", "main", "--var", "value", "--filter", filter, "--name",
+                "length",
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(expected),
+            "{output:?}"
+        );
+        let requests = bridge.requests.lock().unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r["command"] == "function_var_list")
+                .count(),
+            1
+        );
+        assert!(requests.iter().all(|r| r["command"] != "function_var_set"));
+    }
+}
+
+#[test]
+fn function_edit_selectors_are_validated_before_program_selection_and_batch_execution() {
+    let bridge = RecordedBridge::new();
+    for args in [vec![
+        "function", "var", "set", "main", "--var", "value", "--filter", "invalid", "--name",
+        "length",
+    ]] {
+        let mut args = args;
+        args.extend(["--program", "must-not-open"]);
+        let output = bridge.command().args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?}");
+        std::fs::write(
+            bridge.root.path().join("invalid.txt"),
+            batch_arguments(&args),
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .args(["batch", "invalid.txt"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["validation_failed"], true);
+        assert_eq!(result["commands_executed"], 0);
+        assert!(bridge.requests.lock().unwrap().is_empty());
     }
 }

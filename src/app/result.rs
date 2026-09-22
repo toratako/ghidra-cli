@@ -22,6 +22,12 @@ impl ResultShape {
         use cli::*;
         match command {
             Commands::Function(FunctionCommands::List(_)) => Self::rows("functions"),
+            Commands::Function(FunctionCommands::Var(FunctionVarCommands::List(_))) => {
+                Self::context(
+                    "variables",
+                    &["function", "address", "program", "modification"],
+                )
+            }
             Commands::Function(FunctionCommands::ListCallingConventions(_)) => {
                 Self::rows("calling_conventions")
             }

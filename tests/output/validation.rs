@@ -151,16 +151,16 @@ fn variable_edit_rejects_missing_or_empty_edits() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
     for args in [
-        vec!["function", "edit-var", "main", "--var", "local_10"],
-        vec!["function", "edit-var", "main", "--name", "header"],
+        vec!["function", "var", "set", "main", "--var", "local_10"],
+        vec!["function", "var", "set", "main", "--name", "header"],
         vec![
-            "function", "edit-var", "main", "--var", "", "--name", "header",
+            "function", "var", "set", "main", "--var", "", "--name", "header",
         ],
         vec![
-            "function", "edit-var", "main", "--var", "local_10", "--name", "",
+            "function", "var", "set", "main", "--var", "local_10", "--name", "",
         ],
         vec![
-            "function", "edit-var", "main", "--var", "local_10", "--type", "",
+            "function", "var", "set", "main", "--var", "local_10", "--type", "",
         ],
     ] {
         let output = isolated_command(&temp).args(&args).output().unwrap();

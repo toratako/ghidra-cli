@@ -28,8 +28,9 @@ pub enum FunctionCommands {
     SetCallingConvention(SetCallingConventionArgs),
     /// Set or clear the function's stack pointer change after return
     SetStackPurge(SetStackPurgeArgs),
-    /// Rename and/or retype a local variable or parameter
-    EditVar(EditVarArgs),
+    /// Inspect and edit decompiler variables
+    #[command(subcommand)]
+    Var(FunctionVarCommands),
     /// Mark a function as never returning to its call site (fixes bogus
     /// decompiled fallthrough tails at every call site in one shot)
     #[command(name = "set-noreturn")]
@@ -187,25 +188,59 @@ pub struct SetStackPurgeArgs {
     pub project: Option<String>,
 }
 
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum FunctionVarCommands {
+    /// List decompiler parameters and locals, including unsaved inferred variables
+    List(FunctionVarListArgs),
+    /// Read one decompiler variable and its corresponding saved definition
+    Get(FunctionVarGetArgs),
+    /// Rename and/or retype one variable; returns saved definitions before and after
+    Set(FunctionVarSetArgs),
+}
+
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-#[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["new_name", "type_name"])))]
-pub struct EditVarArgs {
+pub struct FunctionVarListArgs {
     /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
-    /// Current variable name (exact match, from decompile --with-vars/--with-params)
-    #[arg(long = "var", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionVarSelection {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "TARGET")]
+    pub target: String,
+    /// Current variable name (exact match, from function var list)
+    #[arg(long = "var", value_name = "NAME", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub var_name: String,
+    /// Narrow same-name candidates using their list fields; must select exactly one
+    #[arg(long, short = 'f')]
+    pub filter: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionVarGetArgs {
+    #[command(flatten)]
+    pub selection: FunctionVarSelection,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["new_name", "type_name"])))]
+pub struct FunctionVarSetArgs {
+    #[command(flatten)]
+    pub selection: FunctionVarSelection,
     /// New variable name; omit to retain the name
     #[arg(long = "name", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub new_name: Option<String>,
     /// New type name (e.g., "int", "char *", "MyStruct")
     #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub type_name: Option<String>,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

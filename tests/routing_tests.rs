@@ -308,6 +308,23 @@ impl RecordedBridge {
                         let (key, rows) = api_list_fixture(request["command"].as_str().unwrap());
                         json!({key: rows, "count": rows.len()})
                     }
+                    "function_var_list" => json!({
+                        "function": args["target"], "address": "0x1000", "program": program,
+                        "modification": "42", "variables": [
+                            {"name": "value", "kind": "param", "type": "int", "storage": "EDI:4", "ordinal": 0, "first_use": null},
+                            {"name": "value", "kind": "local", "type": "int", "storage": "Stack[-0x8]:4", "ordinal": null, "first_use": "0x1010"},
+                            {"name": "other", "kind": "local", "type": "int", "storage": "Stack[-0x4]:4", "ordinal": null, "first_use": "0x1014"},
+                        ],
+                    }),
+                    "function_var_get" => json!({
+                        "function": args["target"], "address": "0x1000",
+                        "decompiler": args["selection"]["variable"], "database": null,
+                    }),
+                    "function_var_set" => json!({
+                        "status": "updated", "function": args["target"], "address": "0x1000", "kind": "local",
+                        "decompiler": args["selection"]["variable"], "before": null,
+                        "after": {"name": args["new_name"], "type": args["type_name"]},
+                    }),
                     "decompile" if args["address"] == "warned" => {
                         json!({
                             "name": "warned", "address": "0x1000",
