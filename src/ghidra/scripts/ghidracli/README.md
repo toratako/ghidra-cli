@@ -130,7 +130,7 @@ another consumer or terminate its checkout.
 | `MemoryBlockInfo` | Small block summaries for function queries and full descriptions for memory queries/receipts |
 | `MemoryBlockCommands` | Exact-start block creation/attribute changes and native movement/deletion |
 | `MemoryInfoCommands`, `MemorySources`, `FileMappingCommands` | Listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
-| `DataCommands` | Applied data values, interior component selection and bounded expansion |
+| `DataCommands` | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
 | `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | `TypeDefinitionCommands`, `TypeResizeCommands`, `BitFieldCommands` | Definition identity/settings, category operations, guarded size propagation, and explicit bitfield layouts |
 | `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands`, `BookmarkCommands` | Program annotations and symbols |
@@ -154,6 +154,12 @@ Errors use `error` for messages and `detail` for diagnostics. Additional fields
 take precedence. Shared helpers own lookup/serialization, not routing. Only
 `BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
 most classes are package-private.
+
+`data list` adds `incoming_reference_count` by iterating recorded reference
+destinations within each top-level Data's inclusive address range and summing
+their native counts into a Java `long`. Address spaces remain distinct. The
+count includes self-references and separate operands, and does not scan object
+bytes or expand components. `data read` does not perform this aggregation.
 
 `TypeResizeCommands` follows native size propagation through composite, array,
 and typedef parents and scans their applied Listing data. Before committing it

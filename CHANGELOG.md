@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `incoming_reference_count` to `data list`, counting references to the
+  whole object, including structure fields and array elements, for filtering
+  and sorting.
 - Add `type clone` for independent top-level definitions, `type resize` for
   non-packed structure tails, and category listing, creation, empty deletion,
   and single-type moves. Type details include universal IDs and source archives.

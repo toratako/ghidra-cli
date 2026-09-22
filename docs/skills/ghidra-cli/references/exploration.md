@@ -110,8 +110,13 @@ ghidra-cli memory file-mappings --file-offset 0x205 --limit 0 --project target
 ghidra-cli memory read 0x401000 64 --project target
 ghidra-cli memory read 0x401000 64 --source original --project target
 ghidra-cli data list --filter 'type=Header' --fields name,address,type,size --project target
+ghidra-cli data list --sort=-incoming_reference_count --limit 20 --project target
 ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project target
 ```
+
+`incoming_reference_count` counts Ghidra's recorded references to any address
+inside the object, including fields and array elements. It counts references,
+not distinct callers; unresolved indirect accesses are absent.
 
 `data read` interprets current memory using its applied type. Interior targets
 select a containing component and retain its `parents`; overlapping union

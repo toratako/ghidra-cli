@@ -349,9 +349,9 @@ impl RecordedBridge {
                     }
                     "data_list" => {
                         let mut rows = vec![
-                            json!({"name":"zeta", "address":"0x3000", "type":"Record", "size":16}),
-                            json!({"name":"alpha", "address":"0x1000", "type":"Record", "size":8}),
-                            json!({"name":"beta", "address":"0x2000", "type":"int", "size":4}),
+                            json!({"name":"zeta", "address":"0x3000", "type":"Record", "size":16, "incoming_reference_count":0}),
+                            json!({"name":"alpha", "address":"0x1000", "type":"Record", "size":8, "incoming_reference_count":9}),
+                            json!({"name":"beta", "address":"0x2000", "type":"int", "size":4, "incoming_reference_count":3}),
                         ];
                         if let Some(limit) = args["limit"].as_u64().filter(|n| *n != 0) {
                             rows.truncate(limit as usize);

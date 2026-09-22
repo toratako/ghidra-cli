@@ -78,7 +78,7 @@ identity. Filter a domain with, for example,
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding, original file bytes versus edits, mapping intervals/reverse lookup, source identity, cancellation and reopen persistence |
 | `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |
-| `data_tests` | Applied data values, interior components, exact scalars and bounded aggregate expansion |
+| `data_tests` | Applied data values, interior components, exact scalars, bounded aggregate expansion, and whole-object reference counts including operands, overlays and sparse arrays |
 | `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |
 | `function_body_tests` | Disjoint body replacement, space-aware boundaries, native annotation/reference losses and rollback |
 | `call_signature_tests` | Caller/site ownership, shared override types, direct/indirect decompiler effects, stale cleanup and saved/rolled-back edits |

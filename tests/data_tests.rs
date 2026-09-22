@@ -1,4 +1,4 @@
-//! Applied-type data values, bounded expansion, and interior/overlapping components.
+//! Applied data values, whole-object references, and bounded component expansion.
 
 use ghidra_cli::ghidra::bridge::{import_oneshot, OneShotImportOptions};
 use ghidra_cli::ipc::client::BridgeClient;
@@ -31,6 +31,62 @@ fn expanded_count(data: &Value) -> usize {
         .as_array()
         .map(|children| children.iter().map(|child| 1 + expanded_count(child)).sum())
         .unwrap_or_default()
+}
+
+fn assert_reference_counts(harness: &common::DaemonTestHarness, client: &BridgeClient) {
+    let output = common::ghidra(harness)
+        .args([
+            "data",
+            "list",
+            "--filter",
+            "name^references_",
+            "--sort",
+            "name",
+            "--fields",
+            "name,incoming_reference_count",
+            "--limit",
+            "0",
+        ])
+        .json_format()
+        .run();
+    output.assert_success();
+    assert_eq!(
+        output.data::<Value>(),
+        json!([
+            {"name":"references_adjacent", "incoming_reference_count":1},
+            {"name":"references_array", "incoming_reference_count":3},
+            {"name":"references_none", "incoming_reference_count":0},
+            {"name":"references_overlay", "incoming_reference_count":2},
+            {"name":"references_record", "incoming_reference_count":5},
+            {"name":"references_sparse", "incoming_reference_count":1},
+        ])
+    );
+    // The record has two start references plus field/last-byte/self references.
+    // The array is used only through interior elements, including the final byte.
+    assert_eq!(client.xrefs_to("0x2000".into()).unwrap()["count"], 2);
+    assert_eq!(client.xrefs_to("0x2100".into()).unwrap()["count"], 0);
+
+    let selected = common::ghidra(harness)
+        .args([
+            "data",
+            "list",
+            "--filter",
+            "name^references_ AND incoming_reference_count >= 2",
+            "--sort=-incoming_reference_count",
+            "--offset",
+            "1",
+            "--limit",
+            "1",
+            "--fields",
+            "name,incoming_reference_count",
+        ])
+        .json_format()
+        .run();
+    selected.assert_success();
+    assert_eq!(
+        selected.data::<Value>(),
+        json!([{"name":"references_array", "incoming_reference_count":3}])
+    );
 }
 
 #[test]
@@ -179,6 +235,8 @@ fn applied_data_values_and_bounded_traversal() {
     assert_eq!(long_string["truncated"], true);
     assert_eq!(long_string["reason"], "value_size_limit");
     assert!(long_string["value"].is_null());
+
+    assert_reference_counts(&harness, &client);
 
     let list = common::ghidra(&harness)
         .args([

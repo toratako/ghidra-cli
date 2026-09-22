@@ -84,7 +84,7 @@ fn typed_data_selection_precedes_paging_and_preserves_object_components() {
         for (args, expected, expected_limit) in [
             (
                 vec!["data", "list"],
-                json!([{"name":"zeta","address":"0x3000","type":"Record","size":16}]),
+                json!([{"name":"zeta","address":"0x3000","type":"Record","size":16,"incoming_reference_count":0}]),
                 json!(1),
             ),
             (
@@ -101,6 +101,34 @@ fn typed_data_selection_precedes_paging_and_preserves_object_components() {
                     "name",
                 ],
                 json!([{"name":"zeta"}]),
+                Value::Null,
+            ),
+            (
+                vec![
+                    "data",
+                    "list",
+                    "--filter",
+                    "incoming_reference_count > 0",
+                    "--sort=-incoming_reference_count",
+                    "--offset",
+                    "1",
+                    "--limit",
+                    "1",
+                    "--fields",
+                    "name,incoming_reference_count",
+                ],
+                json!([{"name":"beta", "incoming_reference_count":3}]),
+                Value::Null,
+            ),
+            (
+                vec![
+                    "data",
+                    "list",
+                    "--filter",
+                    "incoming_reference_count > 0",
+                    "--count",
+                ],
+                json!(2),
                 Value::Null,
             ),
             (vec!["data", "list", "--count"], json!(3), Value::Null),

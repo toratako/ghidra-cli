@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.AbstractFloatDataType;
 import ghidra.program.model.data.AbstractIntegerDataType;
 import ghidra.program.model.data.BitFieldDataType;
@@ -15,6 +16,7 @@ import ghidra.program.model.mem.DumbMemBufferImpl;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.DataConverter;
+import ghidra.util.exception.CancelledException;
 import java.math.BigInteger;
 import java.util.List;
 import static ghidracli.JsonProtocol.errorResult;
@@ -42,12 +44,29 @@ final class DataCommands {
         var data = session.program().getListing().getDefinedData(true);
         while (data.hasNext() && (limit == 0 || items.size() < limit)) {
             session.monitor().checkCancelled();
-            items.add(metadata(data.next()));
+            Data object = data.next();
+            JsonObject item = metadata(object);
+            item.addProperty("incoming_reference_count", incomingReferenceCount(object));
+            items.add(item);
         }
         JsonObject result = new JsonObject();
         result.add("items", items);
         result.addProperty("count", items.size());
         return result;
+    }
+
+    private long incomingReferenceCount(Data data) throws CancelledException {
+        var references = session.program().getReferenceManager();
+        // Visit only recorded destinations, including fields and array elements;
+        // never scan each byte of a potentially large object.
+        var destinations = references.getReferenceDestinationIterator(
+            new AddressSet(data.getMinAddress(), data.getMaxAddress()), true);
+        long count = 0;
+        while (destinations.hasNext()) {
+            session.monitor().checkCancelled();
+            count += references.getReferenceCountTo(destinations.next());
+        }
+        return count;
     }
 
     JsonObject handleRead(JsonObject args) throws Exception {

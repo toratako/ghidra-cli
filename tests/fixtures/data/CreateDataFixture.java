@@ -1,5 +1,8 @@
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.*;
+import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.SourceType;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -86,5 +89,68 @@ public class CreateDataFixture extends GhidraScript {
         memory.createInitializedBlock("data_long_string", toAddr(0x10000), 65537,
             (byte) 'a', monitor, false);
         createData(toAddr(0x10000), new ArrayDataType(CharDataType.dataType, 65537, 1));
+
+        createReferenceFixtures();
+    }
+
+    private void createReferenceFixtures() throws Exception {
+        var memory = currentProgram.getMemory();
+        var references = currentProgram.getReferenceManager();
+        var record = new StructureDataType("ReferencedRecord", 0);
+        record.add(UnsignedIntegerDataType.dataType, "header", null);
+        record.add(new ArrayDataType(UnsignedIntegerDataType.dataType, 3, 4), "values", null);
+        createData(toAddr(0x2000), record);
+        createLabel(toAddr(0x2000), "references_record", true, SourceType.USER_DEFINED);
+        createData(toAddr(0x2010), UnsignedIntegerDataType.dataType);
+        createLabel(toAddr(0x2010), "references_adjacent", true, SourceType.USER_DEFINED);
+        createData(toAddr(0x2100), new ArrayDataType(UnsignedIntegerDataType.dataType, 64, 4));
+        createLabel(toAddr(0x2100), "references_array", true, SourceType.USER_DEFINED);
+        createData(toAddr(0x2200), UnsignedIntegerDataType.dataType);
+        createLabel(toAddr(0x2200), "references_none", true, SourceType.USER_DEFINED);
+
+        // Two operands of one instruction referencing the same destination count separately.
+        memory.setBytes(toAddr(0x2900), new byte[] {(byte) 0x89, 0x00}); // MOV [RAX], EAX
+        if (!new DisassembleCommand(toAddr(0x2900),
+                new AddressSet(toAddr(0x2900), toAddr(0x2901)), false)
+                .applyTo(currentProgram, monitor)) {
+            throw new IllegalStateException("Could not disassemble data reference fixture");
+        }
+        references.addMemoryReference(toAddr(0x2900), toAddr(0x2000), RefType.WRITE,
+            SourceType.USER_DEFINED, 0);
+        references.addMemoryReference(toAddr(0x2900), toAddr(0x2000), RefType.READ,
+            SourceType.USER_DEFINED, 1);
+        references.addMemoryReference(toAddr(0x2910), toAddr(0x2004), RefType.DATA,
+            SourceType.USER_DEFINED, 0);
+        references.addMemoryReference(toAddr(0x2920), toAddr(0x200f), RefType.READ,
+            SourceType.USER_DEFINED, 0);
+        references.addMemoryReference(toAddr(0x2008), toAddr(0x200c), RefType.DATA,
+            SourceType.USER_DEFINED, 0); // An internal reference is still incoming to the object.
+        references.addMemoryReference(toAddr(0x2930), toAddr(0x2010), RefType.DATA,
+            SourceType.USER_DEFINED, 0);
+        references.addMemoryReference(toAddr(0x2940), toAddr(0x1fff), RefType.DATA,
+            SourceType.USER_DEFINED, 0); // Just outside the record.
+        long[] targets = {0x2104, 0x2182, 0x21ff};
+        for (int i = 0; i < targets.length; i++) {
+            references.addMemoryReference(toAddr(0x2950 + i * 0x10), toAddr(targets[i]),
+                RefType.READ, SourceType.USER_DEFINED, 0);
+        }
+
+        var overlay = memory.createInitializedBlock("references_overlay", toAddr(0x2000),
+            16, (byte) 0, monitor, true);
+        createData(overlay.getStart(), record);
+        createLabel(overlay.getStart(), "references_overlay", true, SourceType.USER_DEFINED);
+        references.addMemoryReference(toAddr(0x2980), overlay.getStart(), RefType.DATA,
+            SourceType.USER_DEFINED, 0);
+        references.addMemoryReference(toAddr(0x2990), overlay.getEnd(), RefType.DATA,
+            SourceType.USER_DEFINED, 0);
+
+        // A sparse 256 MiB object exercises destination iteration without allocating its bytes.
+        var sparse = memory.createUninitializedBlock("references_sparse", toAddr(0x40000000),
+            0x10000000, false);
+        createData(sparse.getStart(),
+            new ArrayDataType(UnsignedIntegerDataType.dataType, 0x4000000, 4));
+        createLabel(sparse.getStart(), "references_sparse", true, SourceType.USER_DEFINED);
+        references.addMemoryReference(toAddr(0x29a0), sparse.getEnd(), RefType.DATA,
+            SourceType.USER_DEFINED, 0);
     }
 }
