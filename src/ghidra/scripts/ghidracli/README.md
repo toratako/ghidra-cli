@@ -115,6 +115,8 @@ another consumer or terminate its checkout.
 |---|---|
 | `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
 | `ProgramCommands`, `ProgramSession` | Program metadata, import/analysis, selection and release |
+| `ProgramContextCommands` | Processor-context registers, interval values/masks, and context edits |
+| `ProgramRebaseCommands` | Image-base preflight and block movement receipts |
 | `ProgramExportCommands` | Native exporters, artifact receipts, and GZF publication |
 | `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
@@ -132,7 +134,8 @@ another consumer or terminate its checkout.
 | `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
 | `StringQueries` | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
 | `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
-| `MemoryCommands`, `MemoryPatch`, `AnalysisCommands` | Memory/disassembly operations, preservation checks for byte edits, analyzer configuration |
+| `MemoryCommands`, `MemoryPatch` | Memory/disassembly operations and preservation checks for byte edits |
+| `AnalysisCommands` | Full/range/pending analysis dispatch and typed analyzer configuration |
 | `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
 | `AddressCodec`, `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Explicit address syntax/formatting, shared lookup and diagnostics; no handler-to-handler dependencies |
 | `CallReferences` | Shared call-site validation, endpoint resolution, and incoming/outgoing enumeration for all call graphs |
@@ -308,8 +311,18 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--name`; supply the name to the importer.
 
-Ghidra's `analyzeAll()` initializes options and schedules full reanalysis itself;
-`analysis_run` must not separately call `reAnalyzeAll(null)`.
+`ProgramSession.analyzeAll()` explicitly initializes saved analyzer options for
+all supported Ghidra versions. The native `analyzeAll()` entry point schedules
+full reanalysis; `analysis_run` must not separately call `reAnalyzeAll(null)`.
+Range analysis intersects the requested inclusive range with memory before
+`reAnalyzeAll`; never pass an empty set, which Ghidra interprets as full analysis.
+`ProgramSession.analyzeRange()` and `analyzePending()` initialize saved options
+and drain work through `analyzeChanges()`. Range analysis seeds work and can
+process existing pending work or follow references beyond the requested bounds.
+Pending mode drains the current queue without scheduling full reanalysis.
+The queue is not durable; native cancellation, Program close, and restart discard
+pending work. Analysis remains a non-atomic request: completion, cancellation,
+and partial-change persistence are reported separately.
 
 `AnalysisCommands` reads `Program.ANALYSIS_PROPERTIES`, preserving native types,
 defaults and descriptions. Validate before `putObject`; unknown names must not
@@ -319,10 +332,35 @@ create options. Setting options never schedules analysis. See the
 
 `ProgramSession.analyzeAll()` and detached import analysis check cancellation
 before recording Ghidra's standard analyzed flag. The ordinary request/import
-save boundary persists that record. Program lists read the live option for the
-selected file and saved metadata for other files; missing or malformed flags are
+save boundary persists that record. Range and pending analysis do not set it.
+Program lists read the live option for the selected file and saved metadata for
+other files; missing or malformed flags are
 `null`, never inferred from function counts. `ProgramSession.programFiles()` owns
 the recursive file enumeration shared by program lists and control snapshots.
+
+`ProgramContextCommands` limits register selection to processor context and
+keeps stored, default, and effective values separate. Interval output covers
+unknown gaps and coalesces only when all value/mask pairs match. Overlay queries
+translate default-value lookup to the physical space. Set/clear alter recorded
+context only; native instruction conflicts must fail with recovery detail,
+never trigger implicit clearing or analysis. Clear removes current stored bits,
+including values established by native decoding, rather than restoring a prior
+user value. The ordinary session boundary owns rollback and saving.
+
+`ProgramRebaseCommands` preflights each default-space block's endpoints with
+`BigInteger` byte offsets and the actual space minimum/maximum before native
+`setImageBase`. Reject wraparound instead of using native wrapping arithmetic.
+`validateMetadata()` also checks the interval that would wrap for symbols
+(except stationary pinned labels), reference endpoints, comments, stored
+base-register context, bookmarks, public user property maps, relocations,
+equate references, and function bodies. Language context defaults are excluded;
+listing definitions and source-map entries are covered by their mapped blocks.
+The public metadata checks do not inspect script-created Program
+`AddressSetPropertyMap` or `IntRangeMap` tables.
+Overlays and other spaces remain unchanged and appear in the receipt. Native
+image-base movement has no task monitor; cancellation checks before and after it
+allow the ordinary request boundary to roll back a cancelled edit. The handler
+does not rewrite bytes, reapply relocations, run analysis, or own transactions.
 
 `CallReferences` owns call validation and thunk/typed-pointer resolution for
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows

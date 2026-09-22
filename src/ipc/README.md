@@ -70,8 +70,26 @@ points), and `byte_length` (Ghidra data's occupied bytes, including any defined
 terminators/padding). Their response array keys are `strings` and `results`,
 respectively.
 
-`analysis_run` uses the long-operation wait and performs full analysis with the
-Program's saved settings. `analysis_option_list` returns `{options, count}`;
+`analysis_run` uses the long-operation wait and the Program's saved settings.
+Omitting mode arguments requests full analysis; paired inclusive `start`/`end`
+addresses in the same space request range analysis; `pending: true` requests
+only the live queue.
+Range and pending arguments are mutually exclusive. A range must intersect
+Program memory; empty intersections fail before scheduling. It seeds reanalysis,
+not a limit on affected addresses, and can also drain existing queued work.
+Pending work is not persisted and is discarded on cancellation, close, or restart;
+an empty queue does not become a full analysis request.
+
+Analysis results retain `program`, `function_count`, and `status: "success"`, with
+`mode: "full" | "range" | "pending"`, `completed: true`, and `saved: true`.
+Range results add canonical requested `start`/`end`, not measured change bounds.
+Errors after analysis starts retain `mode`, `program`, requested bounds, and
+`completed: false`; cancellation adds `cancelled: true`. The session boundary
+reports whether partial changes were saved. A save failure retains the completed
+command response under `command_response` with outer `saved: false` and
+`save_failed: true`; completion and persistence are distinct.
+
+`analysis_option_list` returns `{options, count}`;
 `analysis_option_get` takes an exact string `name` and returns one option.
 Each option has `name`, native `type`, `value`, `default`, `description`, and
 `settable`; enums also have `choices` containing constant names. Numeric and
@@ -84,6 +102,35 @@ with `status: "set"`. Integers are decimal, floats must be finite, booleans are
 true/false, enums must match a choice exactly, and file paths must be absolute
 because the JVM's working directory can differ from the caller's. List queries
 run in Rust; get/set output only supports projection and format controls.
+
+`program_context_list` returns `{registers, count}` with processor-context
+register rows `{name, bit_length}`, sorted by name. `program_context_get` takes
+`register`, explicit `start`, and optional inclusive `end` (defaulting to start).
+`program_context_set` and `program_context_clear` require both endpoints;
+set also requires a nonnegative decimal or `0x` integer string `value` fitting
+the register width. Endpoints select one ascending memory-space range; context
+can describe unmapped addresses in that space.
+
+Get/set/clear return `{register, bit_length, start, end, ranges}`. Each range has
+inclusive `start`/`end` and `stored`, `default`, and `effective` objects, each
+containing unsigned hexadecimal string `value` and `mask`. A zero mask means
+unknown, including when value is `"0x0"`; effective values combine defaults with
+recorded bits. Rows cover the entire requested range, including unknown gaps,
+and coalesce only when all three representations match. Set/clear return the
+post-edit ranges and add `status: "set" | "cleared"`. Clear unsets recorded bits,
+including native decoding/analysis values; it is not an undo operation. Neither
+edit clears instructions or starts analysis. Native conflicts fail through the
+ordinary rollback boundary with the register, range, reason, and recovery hint.
+
+`program_rebase` takes an explicit absolute `base` in the default address space.
+It returns `old_base`, `new_base`, signed decimal string `delta_bytes`,
+`moved_blocks`, and `unchanged_blocks`. Moved rows contain `name`, `old_start`,
+`old_end`, `new_start`, and `new_end`; unchanged rows contain `name`, `start`,
+`end`, and `reason` (`overlay`, `other_address_space`, or `same_base`). A same-base
+request returns no moved blocks. Only default-space memory and its associated
+Program addresses move. Block ranges cannot wrap; failed or cancelled rebases
+roll back through the ordinary request boundary. Memory bytes are unchanged,
+relocations are not reapplied, and analysis is not started.
 
 `tag_get` accepts an exact, case-sensitive `name` and returns one tag object:
 `{name, comment, use_count}`. `use_count` is Ghidra's total usage, including
@@ -213,6 +260,8 @@ Xref rows include native `operand_index`,
 deduplication includes the operand so distinct references stay selectable.
 `program_info` adds nullable `executable_md5` and `executable_sha256` from
 imported-file metadata, not from current memory bytes.
+Its `language_id` and `compiler_spec_id` are exact import-compatible IDs;
+`language` remains a display description and `compiler` is executable metadata.
 
 Type components include zero-based `ordinal` and `is_bitfield`. Bitfields expose
 effective `bit_size`, `bit_offset` within the component storage, and

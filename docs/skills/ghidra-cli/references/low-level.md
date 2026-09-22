@@ -56,6 +56,38 @@ Word-addressed values may include a byte remainder (`word:0x1000.1`).
 For headerless input, first choose the language and load parameters using
 [raw import](programs.md#raw-import).
 
+## Processor context
+
+Processor context controls how Ghidra decodes an address range. For example,
+`TMode=1` selects Thumb in an ARM language; it is not a runtime register edit.
+Inspect the selected language's registers and the affected range first:
+
+```bash
+ghidra-cli program context list --project target
+ghidra-cli program context get TMode 0x1000 --end 0x101f --project target
+```
+
+Readings distinguish `stored`, `default`, and `effective` values. A value's mask
+identifies known bits; unset bits are unknown, not zero. `clear` removes recorded
+values in the range, including values established by decoding or analysis. It
+does not undo the last `set`, and defaults can remain effective afterward.
+
+Context edits do not replace instructions or run analysis. Ghidra can reject a
+context change across existing instructions. To correct a misdecoded region,
+inspect its definitions and explicitly rebuild it:
+
+```bash
+ghidra-cli listing undefine 0x1000 --end 0x101f --project target
+ghidra-cli program context set TMode 1 0x1000 --end 0x101f --project target
+ghidra-cli listing define-code 0x1000 --end 0x101f --project target
+ghidra-cli disassemble 0x1000 --end 0x101f --project target
+```
+
+Each command saves separately; failure later in this sequence does not restore
+the definitions cleared by `listing undefine`. To remove a recorded override,
+use `program context clear TMode 0x1000 --end 0x101f --project target`, then
+inspect the effective value before decoding again.
+
 ## PCode and analyzer control
 
 ```bash
@@ -68,7 +100,7 @@ ghidra-cli analysis option set "ASCII Strings" true --project target
 ghidra-cli analysis run --project target --program target.bin
 ```
 
-For analyzer settings and whole-program reanalysis, see
+For analyzer settings and full, range, or pending analysis, see
 [import and reanalysis](programs.md#import-and-reanalysis).
 
 ## Patching

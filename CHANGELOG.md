@@ -5,6 +5,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add `program context list/get/set/clear` for processor decoding context,
+  distinguishing recorded, default, and effective values with valid-bit masks.
+  Context edits do not replace existing instructions or run analysis.
+- Add `program rebase BASE` to move the image base and default-space memory,
+  reporting moved blocks and unchanged overlays/other spaces. Rebasing leaves
+  memory bytes unchanged and does not reapply relocations or run analysis.
+- Add inclusive `analysis run --start START --end END` to seed range reanalysis
+  and `--pending` to process the currently open program's queued analysis.
+  The default remains full reanalysis; range analysis can affect other addresses.
+- Add exact `language_id` and `compiler_spec_id` to `program info` for reuse with
+  import settings.
+
 ### Changed
 
 - Unify normal JSON as `data` with optional nonempty `meta`, including management
