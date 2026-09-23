@@ -33,8 +33,10 @@ public final class ProjectArchive {
 
     private JsonObject execute(JsonObject args) throws Exception {
         String operation = args.get("archive_operation").getAsString();
-        Path project = Path.of(args.get("project_path").getAsString()).toAbsolutePath().normalize();
-        Path file = Path.of(args.get("file").getAsString()).toAbsolutePath().normalize();
+        // Rust resolves the filesystem identity before preflight and lifecycle
+        // locking. Preserve those paths when taking Ghidra's lock and doing I/O.
+        Path project = Path.of(args.get("project_path").getAsString()).toAbsolutePath();
+        Path file = Path.of(args.get("file").getAsString()).toAbsolutePath();
         workspace = Path.of(args.get("workspace").getAsString());
         detail.addProperty("operation", operation);
         detail.addProperty("project_path", project.toString());
@@ -66,7 +68,6 @@ public final class ProjectArchive {
             } else {
                 absent(data);
                 absent(marker);
-                Files.createDirectories(project.getParent());
             }
             stage("lock");
             lock = LockFactory.createFileLocker(locator.getProjectLockFile());

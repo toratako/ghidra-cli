@@ -6,9 +6,11 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 pub fn archive_project(project: &Path, output: &Path, installation: &Path) -> Result<Value> {
-    let project = std::path::absolute(project)?;
-    let output = std::path::absolute(output)?;
-    let run = || {
+    let mut project = std::path::absolute(project)?;
+    let mut output = std::path::absolute(output)?;
+    let result = (|| {
+        project = resolve_parent(&project)?;
+        output = resolve_parent(&output)?;
         let paths = crate::ghidra::project::ProjectPaths::new(&project)
             .context("Project must have a name")?;
         anyhow::ensure!(
@@ -21,7 +23,7 @@ pub fn archive_project(project: &Path, output: &Path, installation: &Path) -> Re
             "Project .rep is a symbolic link; use the real project base path so Ghidra's lock protects its data"
         );
         require_absent(&output)?;
-        let parent = dunce::canonicalize(output.parent().context("Output has no parent")?)?;
+        let parent = output.parent().context("Output has no parent")?;
         anyhow::ensure!(
             !parent.starts_with(dunce::canonicalize(&paths.data)?),
             "Archive output must be outside the project's .rep directory"
@@ -29,19 +31,24 @@ pub fn archive_project(project: &Path, output: &Path, installation: &Path) -> Re
         stop_bridge_then(&project, shutdown_timeout(), || {
             bootstrap(&project, &output, "archive", installation)
         })
-    };
-    annotate(run(), &project, &output, "archive")
+    })();
+    annotate(result, &project, &output, "archive")
 }
 
 pub fn restore_project(archive: &Path, project: &Path, installation: &Path) -> Result<Value> {
-    let project = std::path::absolute(project)?;
-    let archive = std::path::absolute(archive)?;
-    let run = || {
+    let mut project = std::path::absolute(project)?;
+    let mut archive = std::path::absolute(archive)?;
+    let result = (|| {
         anyhow::ensure!(
             archive.is_file(),
             "Archive is not a file: {}",
             archive.display()
         );
+        archive = dunce::canonicalize(&archive)?;
+        // Resolve the destination before choosing its lifecycle lock, including
+        // new parent directories that the bootstrap previously created.
+        std::fs::create_dir_all(project.parent().context("Project has no parent")?)?;
+        project = resolve_parent(&project)?;
         let paths = crate::ghidra::project::ProjectPaths::new(&project)
             .context("Project must have a name")?;
         require_absent(&paths.descriptor)?;
@@ -51,8 +58,17 @@ pub fn restore_project(archive: &Path, project: &Path, installation: &Path) -> R
         // Ghidra's own lock in the bootstrap also protects the destination as
         // its .rep identity changes from an absent path to a real directory.
         bootstrap(&project, &archive, "restore", installation)
-    };
-    annotate(run(), &project, &archive, "restore")
+    })();
+    annotate(result, &project, &archive, "restore")
+}
+
+fn resolve_parent(path: &Path) -> Result<PathBuf> {
+    // Project bases and archive outputs need not exist. Resolve their parent
+    // through the filesystem before appending the name: lexical normalization
+    // of `symlink/../name` can select an entirely different project or file.
+    let name = path.file_name().context("Path must have a name")?;
+    let parent = path.parent().context("Path has no parent")?;
+    Ok(dunce::canonicalize(parent)?.join(name))
 }
 
 fn require_absent(path: &Path) -> Result<()> {

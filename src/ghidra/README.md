@@ -131,6 +131,8 @@ while bridges are running.
   acknowledgement is an error. Archive preflight rejects existing output before
   stopping; the bootstrap rechecks under its lock. Restoration locks the new
   target without opening a bridge and rejects either existing project artifact.
+  Rust resolves project/output parents and the archive input through the filesystem
+  before selecting lifecycle locks; Java preserves those resolved paths.
   GAR errors retain the actual bridge state and underlying timeout/save detail.
 - Startup and shutdown clean stale port/PID files only under the lifecycle lock.
   A live recorded PID prevents cleanup even if its port is unreachable. Status

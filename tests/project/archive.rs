@@ -79,7 +79,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     assert!(zip.by_name(&marker).is_ok());
     drop(zip);
     drop(harness);
-    let restored = root.path().join("restored.v2");
+    let restored = dunce::canonicalize(root.path())?.join("restored.v2");
     let receipt = success(common::run_command_with_output(
         Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
             .args([
@@ -168,6 +168,63 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
         &[],
         false,
     )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn gar_resolves_symlinks_before_parent_components_for_every_path() -> anyhow::Result<()> {
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra gar alias ")
+        .tempdir()?;
+    let directory = dunce::canonicalize(root.path())?;
+    let real = directory.join("real");
+    std::fs::create_dir_all(real.join("nested"))?;
+    let alias = directory.join("alias");
+    std::os::unix::fs::symlink(real.join("nested"), &alias)?;
+    let project = real.join("project");
+    let wrong_project = directory.join("project");
+    common::fixture::copy_analyzed_project(&project)?;
+    common::fixture::copy_analyzed_project(&wrong_project)?;
+    let wanted =
+        common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    let wrong =
+        common::DaemonTestHarness::new(wrong_project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    wanted.client()?.script_run_source(
+        include_str!("CreateArchiveFixture.java"),
+        &[],
+        &[],
+        false,
+    )?;
+    let wanted_pid = bridge::read_pid_file(&project)?.unwrap();
+    let wrong_pid = bridge::read_pid_file(&wrong_project)?.unwrap();
+    let aliased_project = alias.join("../project");
+    let aliased_gar = alias.join("../snapshot 'quoted'.gar");
+    let gar = real.join("snapshot 'quoted'.gar");
+    let wrong_gar = directory.join("snapshot 'quoted'.gar");
+    std::fs::write(&wrong_gar, b"unrelated archive")?;
+
+    let receipt = success(archive(&aliased_project, &aliased_gar)?)?;
+    assert_eq!(receipt["project_path"], project.to_string_lossy().as_ref());
+    assert_eq!(receipt["output"], gar.to_string_lossy().as_ref());
+    assert_eq!(receipt["files"], 3);
+    assert!(!bridge::is_pid_alive(wanted_pid));
+    assert!(bridge::is_pid_alive(wrong_pid));
+    assert_eq!(std::fs::read(&wrong_gar)?, b"unrelated archive");
+    drop(wanted);
+
+    // Neither the new destination parent nor the project base exists yet.
+    let aliased_restored = alias.join("../restored-parent/project");
+    let restored = real.join("restored-parent/project");
+    let receipt = success(restore(&aliased_gar, &aliased_restored)?)?;
+    assert_eq!(receipt["archive"], gar.to_string_lossy().as_ref());
+    assert_eq!(receipt["project_path"], restored.to_string_lossy().as_ref());
+    assert!(!directory.join("restored-parent").exists());
+    verify(&restored)?;
+    assert_eq!(wrong.client()?.list_programs()?["count"], 1);
+    assert!(bridge::is_pid_alive(wrong_pid));
     Ok(())
 }
 
