@@ -33,6 +33,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Include the current class/namespace, calling convention, and parameter type
+  when rejecting an automatic `this` edit, with guidance for correcting class
+  membership through namespace operations.
 - Use client-generated UUIDs as job IDs, available before the response arrives.
 - Extend current-memory pointer output with decoded targets, normalized code
   entries, qualified symbols/functions, and direct/final thunk destinations.

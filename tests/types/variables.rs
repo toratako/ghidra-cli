@@ -327,12 +327,6 @@ public class ChangeVariableSelectionRevision extends GhidraScript {
     assert_eq!(signature["signature_details"]["params"], json!([]));
     assert_eq!(signature["signature_details"]["source"], "DEFAULT");
 
-    let before = client
-        .send_command(
-            "get_function",
-            Some(json!({"address":"method", "with_signature":true})),
-        )
-        .unwrap();
     let method = client
         .send_command("function_var_list", Some(json!({"target":"method"})))
         .unwrap();
@@ -343,31 +337,80 @@ public class ChangeVariableSelectionRevision extends GhidraScript {
         .find(|row| row["name"] == "this")
         .unwrap();
     assert_eq!(this["kind"], "parameter");
-    let this = client
-        .send_command(
-            "function_var_get",
-            Some(json!({"target":"method", "var_name":"this"})),
-        )
-        .unwrap();
-    assert_eq!(this["database"]["auto_parameter"], "THIS");
-    let rejected = client
-        .send_command(
-            "function_var_set",
-            Some(json!({"target":"method", "var_name":"this",
-        "new_name":"object", "type_name":"char *"})),
-        )
-        .unwrap_err();
-    assert!(
-        rejected.to_string().contains("auto-parameter"),
-        "{rejected}"
-    );
-    let after = client
-        .send_command(
-            "get_function",
-            Some(json!({"address":"method", "with_signature":true})),
-        )
-        .unwrap();
-    assert_eq!(after, before);
+    let address = method["address"].as_str().unwrap();
+    for (namespace, kind) in [("Global", "global"), ("Receiver", "class")] {
+        if kind == "class" {
+            ghidra(harness)
+                .args(["namespace", "create", namespace, "--kind", "class"])
+                .with_project(test_project(), &program)
+                .run()
+                .assert_success();
+            ghidra(harness)
+                .args([
+                    "symbol",
+                    "set-namespace",
+                    "method",
+                    "--namespace",
+                    namespace,
+                    "--address",
+                    address,
+                ])
+                .with_project(test_project(), &program)
+                .run()
+                .assert_success();
+        }
+        let signature = || {
+            client
+                .send_command(
+                    "get_function",
+                    Some(json!({"address":address, "with_signature":true})),
+                )
+                .unwrap()
+        };
+        let variable = || {
+            client
+                .send_command(
+                    "function_var_get",
+                    Some(json!({"target":address, "var_name":"this"})),
+                )
+                .unwrap()
+        };
+        let before = signature();
+        let this = variable();
+        let symbol_before = client.symbol_get_by_name("method").unwrap();
+        assert_eq!(this["database"]["auto_parameter"], "THIS");
+        let rejected = ghidra(harness)
+            .args([
+                "function", "var", "set", address, "--var", "this", "--name", "object", "--type",
+                "char *", "--json",
+            ])
+            .with_project(test_project(), &program)
+            .run();
+        rejected.assert_failure();
+        let error: Value = serde_json::from_str(&rejected.stderr).unwrap();
+        let message = error["message"].as_str().unwrap();
+        for hint in [
+            "auto-parameter",
+            "class namespace and calling convention",
+            "namespace create --kind class",
+            "symbol set-namespace",
+            "--namespace",
+            "--address",
+        ] {
+            assert!(message.contains(hint), "{error}");
+        }
+        let detail = &error["detail"];
+        assert_eq!(detail["function"], "method");
+        assert_eq!(detail["address"], address);
+        assert_eq!(detail["program"], method["program"]);
+        assert_eq!(detail["namespace"], json!({"path":namespace, "kind":kind}));
+        assert_eq!(detail["calling_convention"], before["calling_convention"]);
+        assert_eq!(detail["parameter"], this["database"]);
+        assert_eq!(detail["rolled_back"], true);
+        assert_eq!(signature(), before);
+        assert_eq!(variable(), this);
+        assert_eq!(client.symbol_get_by_name("method").unwrap(), symbol_before);
+    }
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
 }

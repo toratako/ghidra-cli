@@ -5,11 +5,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.listing.AutoParameterType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Variable;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.pcode.HighSymbol;
+import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolUtilities;
@@ -17,6 +19,7 @@ import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import ghidracli.types.TypeResolver;
 import java.util.List;
+import java.util.Locale;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -98,7 +101,7 @@ public final class FunctionVariableCommands {
             String effectiveName = newName != null ? newName : target.getName();
             Variable saved = savedVariable(function, target);
             if (saved instanceof Parameter parameter && parameter.isAutoParameter()) {
-                return errorResult("Cannot modify auto-parameter: " + parameter.getName());
+                return autoParameterError(function, parameter);
             }
             Symbol existingSymbol = saved == null ? null : saved.getSymbol();
             // Ghidra applies the type before renaming. Reject known conflicts
@@ -142,6 +145,29 @@ public final class FunctionVariableCommands {
         } catch (Exception e) {
             return errorResult("Failed to set variable: " + e.getMessage(), e);
         }
+    }
+
+    private static JsonObject autoParameterError(Function function, Parameter parameter) {
+        String message = "Cannot modify auto-parameter: " + parameter.getName();
+        if (parameter.getAutoParameterType() != AutoParameterType.THIS) return errorResult(message);
+
+        Namespace namespace = function.getParentNamespace();
+        JsonObject namespaceContext = new JsonObject();
+        namespaceContext.addProperty("path", namespace.getName(true));
+        namespaceContext.addProperty("kind", namespace.isGlobal() ? "global"
+            : namespace.getSymbol().getSymbolType().toString().toLowerCase(Locale.ROOT));
+        JsonObject detail = context(function);
+        detail.add("namespace", namespaceContext);
+        detail.addProperty("calling_convention", function.getCallingConventionName());
+        detail.add("parameter", describeDatabase(function, parameter));
+
+        JsonObject error = errorResult(message
+            + ". THIS is generated from the function's class namespace and calling convention."
+            + " Choose the intended class; create it with namespace create --kind class if needed,"
+            + " then move this function with symbol set-namespace using --namespace and --address."
+            + " Inspect the resulting THIS type with function var get.");
+        error.add("detail", detail);
+        return error;
     }
 
     private static Variable savedVariable(Function function, HighSymbol high) {
