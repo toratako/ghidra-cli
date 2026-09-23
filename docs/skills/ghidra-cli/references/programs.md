@@ -6,14 +6,14 @@
 ghidra-cli project list
 ghidra-cli project info target
 ghidra-cli program list --project target
-ghidra-cli program info --project target --program target.bin
+ghidra-cli program info target.bin --project target
 ghidra-cli program list-relocations --filter 'status=FAILURE' --project target
 ghidra-cli bridge status --project target
 ghidra-cli job list --project target
 ghidra-cli job get 42 --project target
 ghidra-cli job cancel --project target
 ghidra-cli bridge restart --project target --program target.bin
-ghidra-cli program save --project target --program target.bin
+ghidra-cli program save target.bin --project target
 ghidra-cli bridge stop --project target
 ```
 
@@ -25,7 +25,7 @@ are saved file names.
 ## Project snapshots
 
 Use GAR for a project containing several Programs or project type archives;
-use `program export gzf` for one Program.
+use `program export NAME --export-format gzf` for one Program.
 
 ```bash
 ghidra-cli project archive target --output ./target-20260922.gar
@@ -109,10 +109,10 @@ For ARM/Thumb mode changes within the same language, use
 ### Correcting the image base
 
 ```bash
-ghidra-cli program rebase 0x80000000 --project firmware --program firmware.bin
+ghidra-cli program rebase firmware.bin --base 0x80000000 --project firmware
 ```
 
-The argument is the absolute image base, which can differ from the first block's
+`--base` is the absolute image base, which can differ from the first block's
 address. Default-space blocks and associated Program addresses move together,
 including MMIO. Overlays and other address spaces stay in place.
 
@@ -122,9 +122,9 @@ or reapply loader relocations. Re-import to reapply relocations.
 ## Export
 
 ```bash
-ghidra-cli program export c --project target -o ./target.c
-ghidra-cli program export gzf --project target -o ./target.gzf
-ghidra-cli program export binary -o ./target.patched.bin --project target
+ghidra-cli program export target.bin --export-format c --project target -o ./target.c
+ghidra-cli program export target.bin --export-format gzf --project target -o ./target.gzf
+ghidra-cli program export target.bin --export-format binary -o ./target.patched.bin --project target
 ```
 
 C exports do not reconstruct complete data initializers.

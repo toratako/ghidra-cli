@@ -5,6 +5,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Make program management targets positional; export takes a program name and
+  `--export-format`, and rebase takes `--base`. Settings and memory operations
+  use named options for values, sizes, permissions, and categories.
+- Select tags and equates before their function/address associations. Use
+  `--text`, `--file`, or `--stdin` for notes and `--code` for inline C declarations.
+  Comment and reference kinds use `--type`; no-return edits require `--value`.
+- Accept repeated `--member NAME VALUE` for enum creation and
+  `--loader-option NAME VALUE` for import. Select enum members with `--member`.
+- Separate script artifact existence checks (`--expect PATH`) from minimum row
+  counts (`--expect-rows PATH MIN_ROWS`), preserving literal artifact paths.
+- Separate field inclusion and exclusion with `--fields` and `--exclude-fields`.
+  Use `--skip` for query pagination, `--format` for response format, and `-o`
+  only for output destinations.
+
 ## [0.8.0] - 2026-09-23
 
 ### Added

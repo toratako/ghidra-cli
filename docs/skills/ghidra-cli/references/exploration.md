@@ -103,8 +103,8 @@ ghidra-cli memory map --project target
 ghidra-cli memory info 0x401003 --project target
 ghidra-cli memory file-mappings --project target
 ghidra-cli memory file-mappings --file-offset 0x205 --limit 0 --project target
-ghidra-cli memory read 0x401000 64 --project target
-ghidra-cli memory read 0x401000 64 --source original --project target
+ghidra-cli memory read 0x401000 --size 64 --project target
+ghidra-cli memory read 0x401000 --size 64 --source original --project target
 ghidra-cli data list --filter 'type=Header' --fields name,address,type,size --project target
 ghidra-cli data list --sort=-incoming_reference_count --limit 20 --project target
 ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project target

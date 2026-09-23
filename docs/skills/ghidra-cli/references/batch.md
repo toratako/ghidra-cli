@@ -24,7 +24,7 @@ Nested batches inherit `--on-error` unless overridden.
 
 ```text
 function rename 0x401000 parse_header
-comment set 0x401000 "Parses the packet header"
+comment set 0x401000 --text "Parses the packet header"
 ```
 
 ```bash

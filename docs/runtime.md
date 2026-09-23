@@ -168,7 +168,7 @@ Program commands, including analysis, scripts, and each batch operation, save
 before reporting success. Switching/closing also saves first; failure keeps the
 program open. For a bridge from another build, follow [upgrading](#upgrading).
 
-`program delete --program NAME` deletes the project file without selecting it.
+`program delete NAME` deletes the project file without selecting it.
 Deleting the current program saves and closes it first; deleting another file
 preserves the current selection. Other consumers and checkouts can prevent
 deletion.

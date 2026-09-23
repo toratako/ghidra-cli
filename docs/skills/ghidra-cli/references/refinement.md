@@ -17,7 +17,7 @@ ghidra-cli function list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
 ghidra-cli function get parse_header --with-signature --with-frame --project target
-ghidra-cli function set-noreturn abort_path --project target
+ghidra-cli function set-noreturn abort_path --value true --project target
 ```
 
 `function set-return-type` can save inferred parameter locations without fixing
@@ -69,9 +69,9 @@ applicability with `get` and use `clear` with the original caller and address.
 ```bash
 printf '%s' 'possible vtable load; verify callers' | \
   ghidra-cli comment set 0x401000 --stdin --project target
-ghidra-cli comment set 0x401000 --text-file ./note.txt --project target
+ghidra-cli comment set 0x401000 --file ./note.txt --project target
 
-ghidra-cli bookmark set 0x401000 'Check the jump table bounds' --category Review
+ghidra-cli bookmark set 0x401000 --text 'Check the jump table bounds' --category Review
 ghidra-cli bookmark list --filter 'category=Review'
 ghidra-cli bookmark delete 0x401000 --category Review
 ```
@@ -85,7 +85,7 @@ ghidra-cli symbol create-label 0x404000 packet_header --project target
 ghidra-cli symbol rename packet_header message_header --project target
 ghidra-cli namespace create app
 ghidra-cli namespace create Widget --parent app --kind class
-ghidra-cli symbol set-namespace dispatch app::Widget --address 0x401300
+ghidra-cli symbol set-namespace dispatch --namespace app::Widget --address 0x401300
 ghidra-cli symbol set-primary message_header --address 0x404000
 ```
 
@@ -101,8 +101,8 @@ through `symbol delete` can also delete its children.
 
 ```bash
 ghidra-cli xref from 0x405020
-ghidra-cli xref create memory 0x405020 0x401300 --operand 0 --ref-type DATA
-ghidra-cli xref create memory 0x401234 0x401300 --operand 0 --ref-type COMPUTED_CALL
+ghidra-cli xref create memory 0x405020 0x401300 --operand 0 --type DATA
+ghidra-cli xref create memory 0x401234 0x401300 --operand 0 --type COMPUTED_CALL
 ghidra-cli xref delete 0x401234 0x401300 --operand 0
 ```
 
@@ -117,9 +117,9 @@ analysis, but does not establish that the decompiler recovered the indirect call
 
 ```bash
 ghidra-cli equate create READ_MODE 0x1
-ghidra-cli equate attach 0x401234 READ_MODE --operand 1
+ghidra-cli equate attach READ_MODE --at 0x401234 --operand 1
 ghidra-cli equate get READ_MODE
-ghidra-cli equate detach 0x401234 READ_MODE --operand 1
+ghidra-cli equate detach READ_MODE --at 0x401234 --operand 1
 ```
 
 `delete` removes the definition and all its uses. Decompiler-specific references
@@ -134,15 +134,15 @@ ghidra-cli type get Header --project target
 ghidra-cli type create struct Header --project target
 ghidra-cli type field append Header --name magic --type uint --project target
 ghidra-cli type field delete Header --field magic --project target
-ghidra-cli type create enum Mode --values "Unknown=0,Read=1,Write=2" --project target
-ghidra-cli type enum member delete Mode --name Unknown --project target
-ghidra-cli type create typedef HeaderAlias Header --project target
+ghidra-cli type create enum Mode --member Unknown 0 --member Read 1 --member Write 2 --project target
+ghidra-cli type enum member delete Mode --member Unknown --project target
+ghidra-cli type create typedef HeaderAlias --type Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
-ghidra-cli type apply 0x404000 Header --project target
-ghidra-cli type apply 0x404000 Header --force --project target
+ghidra-cli type apply 0x404000 --type Header --project target
+ghidra-cli type apply 0x404000 --type Header --force --project target
 ghidra-cli type import-c --category /Recovered \
-  'struct Vec3 { float x; float y; float z; }; typedef Vec3 *Vec3Ptr;' \
+  --code 'struct Vec3 { float x; float y; float z; }; typedef Vec3 *Vec3Ptr;' \
   --project target
 ```
 
@@ -173,8 +173,8 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 ```bash
 ghidra-cli type category create /Draft
 ghidra-cli type clone /Recovered/Header HeaderV2 --category /Draft
-ghidra-cli type resize /Draft/HeaderV2 64
-ghidra-cli type move /Draft/HeaderV2 /Recovered
+ghidra-cli type resize /Draft/HeaderV2 --size 64
+ghidra-cli type move /Draft/HeaderV2 --category /Recovered
 ```
 
 Clone separates only the top-level definition. Referenced types remain shared;
@@ -251,10 +251,10 @@ with `import-c`.
 ghidra-cli tag list
 ghidra-cli tag get <name>
 ghidra-cli tag create <name> --comment "…"
-ghidra-cli tag attach <func> <tag>...      # Attach existing tags
-ghidra-cli tag detach <func> <tag>...      # Detach tags (--all clears every tag)
+ghidra-cli tag attach <tag>... --function <func>      # Attach existing tags
+ghidra-cli tag detach <tag>... --function <func>      # Detach tags (--all clears every tag)
 ghidra-cli tag rename <old> <new>
-ghidra-cli tag set-comment <name> "…"
+ghidra-cli tag set-comment <name> --text "…"
 ghidra-cli tag delete <name>               # Delete tag, detaching from all functions
 ghidra-cli function list --tag <name>      # Functions carrying a tag (repeatable = AND)
 ghidra-cli function list --untagged

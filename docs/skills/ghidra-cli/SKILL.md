@@ -25,7 +25,7 @@ running the CLI.
 
 ```bash
 ghidra-cli program import ./target.bin --project target --name target.bin
-ghidra-cli program info --project target --program target.bin
+ghidra-cli program info target.bin --project target
 ```
 
 Import creates the project and starts its bridge as needed, and runs analysis
@@ -47,7 +47,7 @@ find string "password"
 decompile main
 graph callees main
 xref to 0x404000
-memory read 0x404000 32
+memory read 0x404000 --size 32
 ```
 
 ```bash

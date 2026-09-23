@@ -125,10 +125,10 @@ For analyzer settings and full, range, or pending analysis, see
 ## Memory layout
 
 ```bash
-ghidra-cli memory block create .ram ram:0x20000000 65536 --uninitialized --permissions rw
-ghidra-cli memory block create .mmio ram:0x40000000 4096 --uninitialized --permissions rw --volatile
-ghidra-cli memory block create .bank1 ram:0x1000 8192 --overlay bank1 --fill 0xff --permissions rx
-ghidra-cli memory block create .bank1_data bank1:0x4000 256 --uninitialized --permissions rw
+ghidra-cli memory block create .ram --start ram:0x20000000 --size 65536 --uninitialized --permissions rw
+ghidra-cli memory block create .mmio --start ram:0x40000000 --size 4096 --uninitialized --permissions rw --volatile
+ghidra-cli memory block create .bank1 --start ram:0x1000 --size 8192 --overlay bank1 --fill 0xff --permissions rx
+ghidra-cli memory block create .bank1_data --start bank1:0x4000 --size 256 --uninitialized --permissions rw
 ghidra-cli memory block move ram:0x20000000 ram:0x21000000
 ```
 
@@ -145,7 +145,7 @@ For whole-image relocation, use `program rebase`.
 ## Patching
 
 ```bash
-ghidra-cli memory write 0x401234 "90 90" --project target
+ghidra-cli memory write 0x401234 --bytes "90 90" --project target
 ```
 
 `memory write` requires mapped, initialized memory. It preserves data definitions
@@ -160,4 +160,4 @@ String edits must preserve their occupied length. To change the length or data
 layout, use `listing undefine`, write the bytes, then
 [apply the intended type](refinement.md#types).
 
-Use [program export binary](programs.md#export) to write the edited binary.
+Use [binary export](programs.md#export) to write the edited binary.
