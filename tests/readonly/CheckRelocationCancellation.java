@@ -13,10 +13,12 @@ public class CheckRelocationCancellation extends GhidraScript {
         Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                 .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                    && type.getPackageName().equals("ghidracli"))
+                    && type.getPackageName().equals("ghidracli.script"))
                 .findFirst().orElseThrow());
         ClassLoader loader = caller.getClassLoader();
-        String prefix = caller.getPackageName() + ".";
+        String prefix = caller.getPackageName()
+            .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
+
         Object reader = new Object();
         Program program = (Program) currentProgram.getDomainFile()
             .getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
@@ -29,10 +31,10 @@ public class CheckRelocationCancellation extends GhidraScript {
                 super.checkCancelled();
             }
         }};
-        Class<?> sessionClass = loader.loadClass(prefix + "ProgramSession");
+        Class<?> sessionClass = loader.loadClass(prefix + "session.ProgramSession");
         Object session = null;
         try {
-            Class<?> accessClass = loader.loadClass(prefix + "ScriptAccess");
+            Class<?> accessClass = loader.loadClass(prefix + "session.ScriptAccess");
             Object access = Proxy.newProxyInstance(loader, new Class<?>[] {accessClass},
                 (proxy, method, args) -> {
                     switch (method.getName()) {
@@ -45,7 +47,7 @@ public class CheckRelocationCancellation extends GhidraScript {
             var sessionConstructor = sessionClass.getDeclaredConstructor(accessClass);
             sessionConstructor.setAccessible(true);
             session = sessionConstructor.newInstance(access);
-            Class<?> commandsClass = loader.loadClass(prefix + "ProgramCommands");
+            Class<?> commandsClass = loader.loadClass(prefix + "program.ProgramCommands");
             var commandsConstructor = commandsClass.getDeclaredConstructor(sessionClass);
             commandsConstructor.setAccessible(true);
             Object commands = commandsConstructor.newInstance(session);

@@ -98,8 +98,10 @@ public class RequestTransactionProbe extends GhidraScript {
     }
 
     private void rollbackPending(Throwable failure) throws Exception {
+        String sessionPackage = session.getClass().getPackageName();
         Class<?> protocol = session.getClass().getClassLoader()
-            .loadClass(session.getClass().getPackageName() + ".JsonProtocol");
+            .loadClass(sessionPackage.substring(0, sessionPackage.lastIndexOf('.') + 1)
+                + "protocol.JsonProtocol");
         Method detail = protocol.getDeclaredMethod("errorDetail", Throwable.class);
         detail.setAccessible(true);
         rollbackPending((JsonObject) detail.invoke(null, failure));
@@ -123,12 +125,14 @@ public class RequestTransactionProbe extends GhidraScript {
         Class<?> bridgeCaller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                 .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                    && type.getPackageName().equals("ghidracli"))
+                    && type.getPackageName().equals("ghidracli.script"))
                 .findFirst().orElseThrow());
         ClassLoader bridgeLoader = bridgeCaller.getClassLoader();
         // Build class names at runtime so bnd does not infer a hard OSGi import
         // of the bridge's private source bundle from a qualified name literal.
-        String bridgePackage = bridgeCaller.getPackageName() + ".";
+        String bridgePackage = bridgeCaller.getPackageName()
+            .substring(0, bridgeCaller.getPackageName().lastIndexOf('.') + 1);
+
         Listing listing = (Listing) Proxy.newProxyInstance(Listing.class.getClassLoader(),
             new Class<?>[] { Listing.class }, (proxy, method, args) -> {
                 Object result = invoke(method, real.getListing(), args);
@@ -214,7 +218,7 @@ public class RequestTransactionProbe extends GhidraScript {
                 }
                 return invoke(method, real, args);
             });
-        Class<?> accessClass = bridgeLoader.loadClass(bridgePackage + "ScriptAccess");
+        Class<?> accessClass = bridgeLoader.loadClass(bridgePackage + "session.ScriptAccess");
         Object access = Proxy.newProxyInstance(bridgeLoader, new Class<?>[] { accessClass },
             (proxy, method, args) -> {
                 switch (method.getName()) {
@@ -226,11 +230,11 @@ public class RequestTransactionProbe extends GhidraScript {
                     default: throw new UnsupportedOperationException(method.getName());
                 }
             });
-        Class<?> sessionClass = bridgeLoader.loadClass(bridgePackage + "ProgramSession");
+        Class<?> sessionClass = bridgeLoader.loadClass(bridgePackage + "session.ProgramSession");
         Constructor<?> sessionConstructor = sessionClass.getDeclaredConstructor(accessClass);
         sessionConstructor.setAccessible(true);
         session = sessionConstructor.newInstance(access);
-        Class<?> dispatcherClass = bridgeLoader.loadClass(bridgePackage + "CommandDispatcher");
+        Class<?> dispatcherClass = bridgeLoader.loadClass(bridgePackage + "runtime.CommandDispatcher");
         Constructor<?> dispatcherConstructor = dispatcherClass.getDeclaredConstructor(sessionClass);
         dispatcherConstructor.setAccessible(true);
         dispatcher = dispatcherConstructor.newInstance(session);

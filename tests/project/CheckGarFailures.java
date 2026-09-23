@@ -12,10 +12,10 @@ public class CheckGarFailures extends GhidraScript {
         Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                 .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                    && type.getPackageName().equals("ghidracli")).findFirst().orElseThrow());
+                    && type.getPackageName().equals("ghidracli.script")).findFirst().orElseThrow());
         ClassLoader loader = caller.getClassLoader();
-        var run = loader.loadClass("ghidracli.ProjectArchive").getMethod("run", JsonObject.class, TaskMonitor.class);
-        var failure = loader.loadClass("ghidracli.ImportSupport").getMethod("failure", Exception.class);
+        var run = loader.loadClass("ghidracli.project.ProjectArchive").getMethod("run", JsonObject.class, TaskMonitor.class);
+        var failure = loader.loadClass("ghidracli.project.ImportSupport").getMethod("failure", Exception.class);
         Path root = Path.of(getScriptArgs()[0]);
         Path source = Path.of(getScriptArgs()[1]);
         Path gar = Path.of(getScriptArgs()[2]);

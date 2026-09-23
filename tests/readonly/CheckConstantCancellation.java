@@ -14,10 +14,12 @@ public class CheckConstantCancellation extends GhidraScript {
         Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                 .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                    && type.getPackageName().equals("ghidracli"))
+                    && type.getPackageName().equals("ghidracli.script"))
                 .findFirst().orElseThrow());
         ClassLoader loader = caller.getClassLoader();
-        String prefix = caller.getPackageName() + ".";
+        String prefix = caller.getPackageName()
+            .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
+
         Object reader = new Object();
         Program program = (Program) currentProgram.getDomainFile()
             .getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
@@ -30,10 +32,10 @@ public class CheckConstantCancellation extends GhidraScript {
                 super.checkCancelled();
             }
         }};
-        Class<?> sessionClass = loader.loadClass(prefix + "ProgramSession");
+        Class<?> sessionClass = loader.loadClass(prefix + "session.ProgramSession");
         Object session = null;
         try {
-            Class<?> accessClass = loader.loadClass(prefix + "ScriptAccess");
+            Class<?> accessClass = loader.loadClass(prefix + "session.ScriptAccess");
             Object access = Proxy.newProxyInstance(loader, new Class<?>[] {accessClass},
                 (proxy, method, args) -> {
                     switch (method.getName()) {
@@ -46,11 +48,11 @@ public class CheckConstantCancellation extends GhidraScript {
             var constructor = sessionClass.getDeclaredConstructor(accessClass);
             constructor.setAccessible(true);
             session = constructor.newInstance(access);
-            Class<?> resolverClass = loader.loadClass(prefix + "AddressResolver");
+            Class<?> resolverClass = loader.loadClass(prefix + "query.AddressResolver");
             var resolverConstructor = resolverClass.getDeclaredConstructor(sessionClass);
             resolverConstructor.setAccessible(true);
             Object resolver = resolverConstructor.newInstance(session);
-            var find = loader.loadClass(prefix + "ConstantSearch")
+            var find = loader.loadClass(prefix + "listing.ConstantSearch")
                 .getDeclaredMethod("find", sessionClass, resolverClass, JsonObject.class);
             find.setAccessible(true);
             JsonObject args = new JsonObject();

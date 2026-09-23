@@ -20,7 +20,7 @@ Acceptance:
 
 ## 2. Multi-source module runtime
 
-Extend the [single-file `script run` implementation](../src/ghidra/scripts/ghidracli/ScriptCommands.java).
+Extend the [single-file `script run` implementation](../src/ghidra/scripts/ghidracli/script/ScriptCommands.java).
 
 Add a checked-in module root, for example:
 

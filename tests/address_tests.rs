@@ -389,11 +389,13 @@ fn check_mutation_targets(client: &BridgeClient, harness: &common::DaemonTestHar
 fn check_address_codec(client: &BridgeClient) {
     // Compile the production codec beside this script, avoiding reflective access
     // to the bridge's private OSGi bundle and exercising real Ghidra address types.
-    let codec = include_str!("../src/ghidra/scripts/ghidracli/AddressCodec.java").replacen(
-        "package ghidracli;",
-        "",
-        1,
-    );
+    let codec = include_str!("../src/ghidra/scripts/ghidracli/query/AddressCodec.java")
+        .replacen("package ghidracli.query;", "", 1)
+        .replacen(
+            "public final class AddressCodec",
+            "final class AddressCodec",
+            1,
+        );
     let script = format!("{codec}\n{}", CODEC_CHECKS);
     client
         .script_run_source(&script, &[], &[], false)

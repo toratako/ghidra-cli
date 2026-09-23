@@ -93,7 +93,7 @@ identity. Filter a domain with, for example,
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
 | `routing_tests` | Recorded bridge requests: management/jobs, batch targets, list pagination, and client file paths without Ghidra |
-| `src/ghidra/bridge/sources.rs` | Embedded Java inventory and source publication |
+| `src/ghidra/bridge/sources.rs` | Embedded Java inventory, package/path consistency, acyclic package imports, and source publication |
 
 For narrower regression work, these modules cover the non-obvious boundaries:
 
@@ -133,6 +133,11 @@ reopen projects rather than relying only on live responses. Project deletion tes
 hold an external Ghidra owner and retry after lock release. Batch tests verify
 that save/transaction failures and timeouts stop later commands, including nested
 batches.
+
+Java fault probes locate the bridge classloader through `ghidracli.script.ScriptCommands`.
+When reflecting into other bridge packages, preserve runtime construction of
+qualified class names: constant reflective names can make bnd infer an OSGi import
+of the bridge's private bundle. Update these probes alongside package moves.
 
 Batch restart coverage lives in `tests/routing/batch.rs` (selected ranges,
 target preservation, nested/continued execution, and lost replies) and

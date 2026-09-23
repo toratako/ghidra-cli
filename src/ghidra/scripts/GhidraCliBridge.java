@@ -6,8 +6,8 @@ import ghidra.app.script.GhidraState;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
-import ghidracli.BridgeRuntime;
-import ghidracli.ScriptAccess;
+import ghidracli.runtime.BridgeRuntime;
+import ghidracli.session.ScriptAccess;
 
 /** Persistent bridge entry point; bootstrap uses a separate short-lived script. */
 public class GhidraCliBridge extends GhidraScript {

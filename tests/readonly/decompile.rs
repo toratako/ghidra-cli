@@ -241,9 +241,9 @@ public class CheckApiDecompileWarning extends GhidraScript {
     public void run() throws Exception {
         Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
-                .filter(type -> type.getName().equals("ghidracli.ScriptCommands"))
+                .filter(type -> type.getName().equals("ghidracli.script.ScriptCommands"))
                 .findFirst().orElseThrow());
-        var collect = caller.getClassLoader().loadClass("ghidracli.DecompileWarnings")
+        var collect = caller.getClassLoader().loadClass("ghidracli.analysis.DecompileWarnings")
             .getDeclaredMethod("collect", DecompileResults.class);
         collect.setAccessible(true);
         var engine = new DecompInterface();

@@ -9,320 +9,320 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/GhidraCliBootstrap.java"),
     ),
     (
-        "ghidracli/ImportSupport.java",
-        include_str!("../scripts/ghidracli/ImportSupport.java"),
-    ),
-    (
-        "ghidracli/ProjectDeletion.java",
-        include_str!("../scripts/ghidracli/ProjectDeletion.java"),
-    ),
-    (
-        "ghidracli/ProjectArchive.java",
-        include_str!("../scripts/ghidracli/ProjectArchive.java"),
-    ),
-    (
-        "ghidracli/GarFile.java",
-        include_str!("../scripts/ghidracli/GarFile.java"),
-    ),
-    (
         "GhidraCliBridge.java",
         include_str!("../scripts/GhidraCliBridge.java"),
     ),
     (
-        "ghidracli/AddressCodec.java",
-        include_str!("../scripts/ghidracli/AddressCodec.java"),
+        "ghidracli/analysis/AnalysisCommands.java",
+        include_str!("../scripts/ghidracli/analysis/AnalysisCommands.java"),
     ),
     (
-        "ghidracli/AddressResolver.java",
-        include_str!("../scripts/ghidracli/AddressResolver.java"),
+        "ghidracli/analysis/AnalysisContext.java",
+        include_str!("../scripts/ghidracli/analysis/AnalysisContext.java"),
     ),
     (
-        "ghidracli/AnalysisCommands.java",
-        include_str!("../scripts/ghidracli/AnalysisCommands.java"),
+        "ghidracli/analysis/AnalysisLimits.java",
+        include_str!("../scripts/ghidracli/analysis/AnalysisLimits.java"),
     ),
     (
-        "ghidracli/AnalysisContext.java",
-        include_str!("../scripts/ghidracli/AnalysisContext.java"),
+        "ghidracli/analysis/CallReferences.java",
+        include_str!("../scripts/ghidracli/analysis/CallReferences.java"),
     ),
     (
-        "ghidracli/AnalysisLimits.java",
-        include_str!("../scripts/ghidracli/AnalysisLimits.java"),
+        "ghidracli/analysis/DecompileCommands.java",
+        include_str!("../scripts/ghidracli/analysis/DecompileCommands.java"),
     ),
     (
-        "ghidracli/InstructionCfg.java",
-        include_str!("../scripts/ghidracli/InstructionCfg.java"),
+        "ghidracli/analysis/DecompileWarnings.java",
+        include_str!("../scripts/ghidracli/analysis/DecompileWarnings.java"),
     ),
     (
-        "ghidracli/HighPcodeModel.java",
-        include_str!("../scripts/ghidracli/HighPcodeModel.java"),
+        "ghidracli/analysis/GraphCommands.java",
+        include_str!("../scripts/ghidracli/analysis/GraphCommands.java"),
     ),
     (
-        "ghidracli/HighPcodeOutput.java",
-        include_str!("../scripts/ghidracli/HighPcodeOutput.java"),
+        "ghidracli/analysis/HighPcodeModel.java",
+        include_str!("../scripts/ghidracli/analysis/HighPcodeModel.java"),
     ),
     (
-        "ghidracli/ArtifactManifest.java",
-        include_str!("../scripts/ghidracli/ArtifactManifest.java"),
+        "ghidracli/analysis/HighPcodeOutput.java",
+        include_str!("../scripts/ghidracli/analysis/HighPcodeOutput.java"),
     ),
     (
-        "ghidracli/BridgeRuntime.java",
-        include_str!("../scripts/ghidracli/BridgeRuntime.java"),
+        "ghidracli/analysis/InstructionCfg.java",
+        include_str!("../scripts/ghidracli/analysis/InstructionCfg.java"),
     ),
     (
-        "ghidracli/BookmarkCommands.java",
-        include_str!("../scripts/ghidracli/BookmarkCommands.java"),
+        "ghidracli/analysis/PcodeCommands.java",
+        include_str!("../scripts/ghidracli/analysis/PcodeCommands.java"),
     ),
     (
-        "ghidracli/BridgeServer.java",
-        include_str!("../scripts/ghidracli/BridgeServer.java"),
+        "ghidracli/function/FunctionBodyCommands.java",
+        include_str!("../scripts/ghidracli/function/FunctionBodyCommands.java"),
     ),
     (
-        "ghidracli/CallReferences.java",
-        include_str!("../scripts/ghidracli/CallReferences.java"),
+        "ghidracli/function/FunctionCallSignatureCommands.java",
+        include_str!("../scripts/ghidracli/function/FunctionCallSignatureCommands.java"),
     ),
     (
-        "ghidracli/CommandDispatcher.java",
-        include_str!("../scripts/ghidracli/CommandDispatcher.java"),
+        "ghidracli/function/FunctionCommands.java",
+        include_str!("../scripts/ghidracli/function/FunctionCommands.java"),
     ),
     (
-        "ghidracli/CommentCommands.java",
-        include_str!("../scripts/ghidracli/CommentCommands.java"),
+        "ghidracli/function/FunctionQueries.java",
+        include_str!("../scripts/ghidracli/function/FunctionQueries.java"),
     ),
     (
-        "ghidracli/DecompileCommands.java",
-        include_str!("../scripts/ghidracli/DecompileCommands.java"),
+        "ghidracli/function/FunctionReturnType.java",
+        include_str!("../scripts/ghidracli/function/FunctionReturnType.java"),
     ),
     (
-        "ghidracli/DataCommands.java",
-        include_str!("../scripts/ghidracli/DataCommands.java"),
+        "ghidracli/function/FunctionSignatureCommands.java",
+        include_str!("../scripts/ghidracli/function/FunctionSignatureCommands.java"),
     ),
     (
-        "ghidracli/DecompileWarnings.java",
-        include_str!("../scripts/ghidracli/DecompileWarnings.java"),
+        "ghidracli/function/FunctionSignatureSupport.java",
+        include_str!("../scripts/ghidracli/function/FunctionSignatureSupport.java"),
     ),
     (
-        "ghidracli/DecompilerSession.java",
-        include_str!("../scripts/ghidracli/DecompilerSession.java"),
+        "ghidracli/function/FunctionVariableCommands.java",
+        include_str!("../scripts/ghidracli/function/FunctionVariableCommands.java"),
     ),
     (
-        "ghidracli/EquateCommands.java",
-        include_str!("../scripts/ghidracli/EquateCommands.java"),
+        "ghidracli/function/TagCommands.java",
+        include_str!("../scripts/ghidracli/function/TagCommands.java"),
     ),
     (
-        "ghidracli/FunctionCommands.java",
-        include_str!("../scripts/ghidracli/FunctionCommands.java"),
+        "ghidracli/function/TagSupport.java",
+        include_str!("../scripts/ghidracli/function/TagSupport.java"),
     ),
     (
-        "ghidracli/FunctionQueries.java",
-        include_str!("../scripts/ghidracli/FunctionQueries.java"),
+        "ghidracli/listing/ConstantSearch.java",
+        include_str!("../scripts/ghidracli/listing/ConstantSearch.java"),
     ),
     (
-        "ghidracli/FunctionReturnType.java",
-        include_str!("../scripts/ghidracli/FunctionReturnType.java"),
+        "ghidracli/listing/DataCommands.java",
+        include_str!("../scripts/ghidracli/listing/DataCommands.java"),
     ),
     (
-        "ghidracli/FunctionBodyCommands.java",
-        include_str!("../scripts/ghidracli/FunctionBodyCommands.java"),
+        "ghidracli/listing/InstructionFlow.java",
+        include_str!("../scripts/ghidracli/listing/InstructionFlow.java"),
     ),
     (
-        "ghidracli/FunctionCallSignatureCommands.java",
-        include_str!("../scripts/ghidracli/FunctionCallSignatureCommands.java"),
+        "ghidracli/listing/InstructionListing.java",
+        include_str!("../scripts/ghidracli/listing/InstructionListing.java"),
     ),
     (
-        "ghidracli/FunctionSignatureSupport.java",
-        include_str!("../scripts/ghidracli/FunctionSignatureSupport.java"),
+        "ghidracli/listing/ListingCommands.java",
+        include_str!("../scripts/ghidracli/listing/ListingCommands.java"),
     ),
     (
-        "ghidracli/FunctionVariableCommands.java",
-        include_str!("../scripts/ghidracli/FunctionVariableCommands.java"),
+        "ghidracli/listing/ListingFlowCommands.java",
+        include_str!("../scripts/ghidracli/listing/ListingFlowCommands.java"),
     ),
     (
-        "ghidracli/InstructionFlow.java",
-        include_str!("../scripts/ghidracli/InstructionFlow.java"),
+        "ghidracli/listing/SearchCommands.java",
+        include_str!("../scripts/ghidracli/listing/SearchCommands.java"),
     ),
     (
-        "ghidracli/ListingFlowCommands.java",
-        include_str!("../scripts/ghidracli/ListingFlowCommands.java"),
+        "ghidracli/listing/StringQueries.java",
+        include_str!("../scripts/ghidracli/listing/StringQueries.java"),
     ),
     (
-        "ghidracli/FunctionSignatureCommands.java",
-        include_str!("../scripts/ghidracli/FunctionSignatureCommands.java"),
+        "ghidracli/memory/FileMappingCommands.java",
+        include_str!("../scripts/ghidracli/memory/FileMappingCommands.java"),
     ),
     (
-        "ghidracli/GraphCommands.java",
-        include_str!("../scripts/ghidracli/GraphCommands.java"),
+        "ghidracli/memory/MemoryBlockCommands.java",
+        include_str!("../scripts/ghidracli/memory/MemoryBlockCommands.java"),
     ),
     (
-        "ghidracli/IntegerLiteral.java",
-        include_str!("../scripts/ghidracli/IntegerLiteral.java"),
+        "ghidracli/memory/MemoryBlockInfo.java",
+        include_str!("../scripts/ghidracli/memory/MemoryBlockInfo.java"),
     ),
     (
-        "ghidracli/JobScheduler.java",
-        include_str!("../scripts/ghidracli/JobScheduler.java"),
+        "ghidracli/memory/MemoryCommands.java",
+        include_str!("../scripts/ghidracli/memory/MemoryCommands.java"),
     ),
     (
-        "ghidracli/JobTaskMonitor.java",
-        include_str!("../scripts/ghidracli/JobTaskMonitor.java"),
+        "ghidracli/memory/MemoryInfoCommands.java",
+        include_str!("../scripts/ghidracli/memory/MemoryInfoCommands.java"),
     ),
     (
-        "ghidracli/JsonProtocol.java",
-        include_str!("../scripts/ghidracli/JsonProtocol.java"),
+        "ghidracli/memory/MemoryPatch.java",
+        include_str!("../scripts/ghidracli/memory/MemoryPatch.java"),
     ),
     (
-        "ghidracli/ListQuery.java",
-        include_str!("../scripts/ghidracli/ListQuery.java"),
+        "ghidracli/memory/MemorySources.java",
+        include_str!("../scripts/ghidracli/memory/MemorySources.java"),
     ),
     (
-        "ghidracli/StringQueries.java",
-        include_str!("../scripts/ghidracli/StringQueries.java"),
+        "ghidracli/program/ProgramCommands.java",
+        include_str!("../scripts/ghidracli/program/ProgramCommands.java"),
     ),
     (
-        "ghidracli/ListingCommands.java",
-        include_str!("../scripts/ghidracli/ListingCommands.java"),
+        "ghidracli/program/ProgramContextCommands.java",
+        include_str!("../scripts/ghidracli/program/ProgramContextCommands.java"),
     ),
     (
-        "ghidracli/MemoryCommands.java",
-        include_str!("../scripts/ghidracli/MemoryCommands.java"),
+        "ghidracli/program/ProgramExportCommands.java",
+        include_str!("../scripts/ghidracli/program/ProgramExportCommands.java"),
     ),
     (
-        "ghidracli/MemoryBlockInfo.java",
-        include_str!("../scripts/ghidracli/MemoryBlockInfo.java"),
+        "ghidracli/program/ProgramRebaseCommands.java",
+        include_str!("../scripts/ghidracli/program/ProgramRebaseCommands.java"),
     ),
     (
-        "ghidracli/MemoryBlockCommands.java",
-        include_str!("../scripts/ghidracli/MemoryBlockCommands.java"),
+        "ghidracli/project/GarFile.java",
+        include_str!("../scripts/ghidracli/project/GarFile.java"),
     ),
     (
-        "ghidracli/FileMappingCommands.java",
-        include_str!("../scripts/ghidracli/FileMappingCommands.java"),
+        "ghidracli/project/ImportSupport.java",
+        include_str!("../scripts/ghidracli/project/ImportSupport.java"),
     ),
     (
-        "ghidracli/MemoryInfoCommands.java",
-        include_str!("../scripts/ghidracli/MemoryInfoCommands.java"),
+        "ghidracli/project/ProjectArchive.java",
+        include_str!("../scripts/ghidracli/project/ProjectArchive.java"),
     ),
     (
-        "ghidracli/MemorySources.java",
-        include_str!("../scripts/ghidracli/MemorySources.java"),
+        "ghidracli/project/ProjectDeletion.java",
+        include_str!("../scripts/ghidracli/project/ProjectDeletion.java"),
     ),
     (
-        "ghidracli/MemoryPatch.java",
-        include_str!("../scripts/ghidracli/MemoryPatch.java"),
+        "ghidracli/protocol/JsonProtocol.java",
+        include_str!("../scripts/ghidracli/protocol/JsonProtocol.java"),
     ),
     (
-        "ghidracli/NameSuggestions.java",
-        include_str!("../scripts/ghidracli/NameSuggestions.java"),
+        "ghidracli/query/AddressCodec.java",
+        include_str!("../scripts/ghidracli/query/AddressCodec.java"),
     ),
     (
-        "ghidracli/NamespaceCommands.java",
-        include_str!("../scripts/ghidracli/NamespaceCommands.java"),
+        "ghidracli/query/AddressResolver.java",
+        include_str!("../scripts/ghidracli/query/AddressResolver.java"),
     ),
     (
-        "ghidracli/NamespaceSupport.java",
-        include_str!("../scripts/ghidracli/NamespaceSupport.java"),
+        "ghidracli/query/IntegerLiteral.java",
+        include_str!("../scripts/ghidracli/query/IntegerLiteral.java"),
     ),
     (
-        "ghidracli/PcodeCommands.java",
-        include_str!("../scripts/ghidracli/PcodeCommands.java"),
+        "ghidracli/query/ListQuery.java",
+        include_str!("../scripts/ghidracli/query/ListQuery.java"),
     ),
     (
-        "ghidracli/ProgramCommands.java",
-        include_str!("../scripts/ghidracli/ProgramCommands.java"),
+        "ghidracli/query/NameSuggestions.java",
+        include_str!("../scripts/ghidracli/query/NameSuggestions.java"),
     ),
     (
-        "ghidracli/ProgramContextCommands.java",
-        include_str!("../scripts/ghidracli/ProgramContextCommands.java"),
+        "ghidracli/runtime/BridgeRuntime.java",
+        include_str!("../scripts/ghidracli/runtime/BridgeRuntime.java"),
     ),
     (
-        "ghidracli/ProgramRebaseCommands.java",
-        include_str!("../scripts/ghidracli/ProgramRebaseCommands.java"),
+        "ghidracli/runtime/BridgeServer.java",
+        include_str!("../scripts/ghidracli/runtime/BridgeServer.java"),
     ),
     (
-        "ghidracli/ProgramExportCommands.java",
-        include_str!("../scripts/ghidracli/ProgramExportCommands.java"),
+        "ghidracli/runtime/CommandDispatcher.java",
+        include_str!("../scripts/ghidracli/runtime/CommandDispatcher.java"),
     ),
     (
-        "ghidracli/ProgramSession.java",
-        include_str!("../scripts/ghidracli/ProgramSession.java"),
+        "ghidracli/runtime/JobScheduler.java",
+        include_str!("../scripts/ghidracli/runtime/JobScheduler.java"),
     ),
     (
-        "ghidracli/ProgramTransaction.java",
-        include_str!("../scripts/ghidracli/ProgramTransaction.java"),
+        "ghidracli/runtime/JobTaskMonitor.java",
+        include_str!("../scripts/ghidracli/runtime/JobTaskMonitor.java"),
     ),
     (
-        "ghidracli/ScriptAccess.java",
-        include_str!("../scripts/ghidracli/ScriptAccess.java"),
+        "ghidracli/script/ArtifactManifest.java",
+        include_str!("../scripts/ghidracli/script/ArtifactManifest.java"),
     ),
     (
-        "ghidracli/ScriptCommands.java",
-        include_str!("../scripts/ghidracli/ScriptCommands.java"),
+        "ghidracli/script/ScriptCommands.java",
+        include_str!("../scripts/ghidracli/script/ScriptCommands.java"),
     ),
     (
-        "ghidracli/SearchCommands.java",
-        include_str!("../scripts/ghidracli/SearchCommands.java"),
+        "ghidracli/session/DecompilerSession.java",
+        include_str!("../scripts/ghidracli/session/DecompilerSession.java"),
     ),
     (
-        "ghidracli/ConstantSearch.java",
-        include_str!("../scripts/ghidracli/ConstantSearch.java"),
+        "ghidracli/session/ProgramSession.java",
+        include_str!("../scripts/ghidracli/session/ProgramSession.java"),
     ),
     (
-        "ghidracli/SymbolCommands.java",
-        include_str!("../scripts/ghidracli/SymbolCommands.java"),
+        "ghidracli/session/ProgramTransaction.java",
+        include_str!("../scripts/ghidracli/session/ProgramTransaction.java"),
     ),
     (
-        "ghidracli/TagCommands.java",
-        include_str!("../scripts/ghidracli/TagCommands.java"),
+        "ghidracli/session/ScriptAccess.java",
+        include_str!("../scripts/ghidracli/session/ScriptAccess.java"),
     ),
     (
-        "ghidracli/TagSupport.java",
-        include_str!("../scripts/ghidracli/TagSupport.java"),
+        "ghidracli/symbol/BookmarkCommands.java",
+        include_str!("../scripts/ghidracli/symbol/BookmarkCommands.java"),
     ),
     (
-        "ghidracli/TypeCommands.java",
-        include_str!("../scripts/ghidracli/TypeCommands.java"),
+        "ghidracli/symbol/CommentCommands.java",
+        include_str!("../scripts/ghidracli/symbol/CommentCommands.java"),
     ),
     (
-        "ghidracli/TypeDefinitionCommands.java",
-        include_str!("../scripts/ghidracli/TypeDefinitionCommands.java"),
+        "ghidracli/symbol/EquateCommands.java",
+        include_str!("../scripts/ghidracli/symbol/EquateCommands.java"),
     ),
     (
-        "ghidracli/TypeResizeCommands.java",
-        include_str!("../scripts/ghidracli/TypeResizeCommands.java"),
+        "ghidracli/symbol/NamespaceCommands.java",
+        include_str!("../scripts/ghidracli/symbol/NamespaceCommands.java"),
     ),
     (
-        "ghidracli/BitFieldCommands.java",
-        include_str!("../scripts/ghidracli/BitFieldCommands.java"),
+        "ghidracli/symbol/NamespaceSupport.java",
+        include_str!("../scripts/ghidracli/symbol/NamespaceSupport.java"),
     ),
     (
-        "ghidracli/TypeFields.java",
-        include_str!("../scripts/ghidracli/TypeFields.java"),
+        "ghidracli/symbol/SymbolCommands.java",
+        include_str!("../scripts/ghidracli/symbol/SymbolCommands.java"),
     ),
     (
-        "ghidracli/StructureFields.java",
-        include_str!("../scripts/ghidracli/StructureFields.java"),
+        "ghidracli/symbol/XrefCommands.java",
+        include_str!("../scripts/ghidracli/symbol/XrefCommands.java"),
     ),
     (
-        "ghidracli/UnionFields.java",
-        include_str!("../scripts/ghidracli/UnionFields.java"),
+        "ghidracli/types/BitFieldCommands.java",
+        include_str!("../scripts/ghidracli/types/BitFieldCommands.java"),
     ),
     (
-        "ghidracli/TypeImportCommands.java",
-        include_str!("../scripts/ghidracli/TypeImportCommands.java"),
+        "ghidracli/types/BitFields.java",
+        include_str!("../scripts/ghidracli/types/BitFields.java"),
     ),
     (
-        "ghidracli/TypeResolver.java",
-        include_str!("../scripts/ghidracli/TypeResolver.java"),
+        "ghidracli/types/StructureFields.java",
+        include_str!("../scripts/ghidracli/types/StructureFields.java"),
     ),
     (
-        "ghidracli/XrefCommands.java",
-        include_str!("../scripts/ghidracli/XrefCommands.java"),
+        "ghidracli/types/TypeCommands.java",
+        include_str!("../scripts/ghidracli/types/TypeCommands.java"),
     ),
     (
-        "ghidracli/InstructionListing.java",
-        include_str!("../scripts/ghidracli/InstructionListing.java"),
+        "ghidracli/types/TypeDefinitionCommands.java",
+        include_str!("../scripts/ghidracli/types/TypeDefinitionCommands.java"),
     ),
     (
-        "ghidracli/BitFields.java",
-        include_str!("../scripts/ghidracli/BitFields.java"),
+        "ghidracli/types/TypeFields.java",
+        include_str!("../scripts/ghidracli/types/TypeFields.java"),
+    ),
+    (
+        "ghidracli/types/TypeImportCommands.java",
+        include_str!("../scripts/ghidracli/types/TypeImportCommands.java"),
+    ),
+    (
+        "ghidracli/types/TypeResizeCommands.java",
+        include_str!("../scripts/ghidracli/types/TypeResizeCommands.java"),
+    ),
+    (
+        "ghidracli/types/TypeResolver.java",
+        include_str!("../scripts/ghidracli/types/TypeResolver.java"),
+    ),
+    (
+        "ghidracli/types/UnionFields.java",
+        include_str!("../scripts/ghidracli/types/UnionFields.java"),
     ),
 ];
 
@@ -485,5 +485,72 @@ mod tests {
         let mut embedded: Vec<_> = SOURCES.iter().map(|(name, _)| name.to_string()).collect();
         embedded.sort();
         assert_eq!(files, embedded);
+    }
+
+    #[test]
+    fn java_packages_match_paths_and_have_no_cycles() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let mut dependencies: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (path, source) in SOURCES {
+            let expected = path
+                .rsplit_once('/')
+                .map(|(parent, _)| parent.replace('/', "."));
+            let declared = source.lines().find_map(|line| {
+                line.strip_prefix("package ")
+                    .and_then(|s| s.strip_suffix(';'))
+            });
+            assert_eq!(
+                declared,
+                expected.as_deref(),
+                "package/source mismatch: {path}"
+            );
+            if let Some(package) = expected {
+                dependencies.entry(package).or_default();
+            }
+        }
+
+        let packages: Vec<_> = dependencies.keys().cloned().collect();
+        for (path, source) in SOURCES {
+            let Some((parent, _)) = path.rsplit_once('/') else {
+                continue; // Ghidra's default-package entry scripts.
+            };
+            let package = parent.replace('/', ".");
+            for line in source.lines() {
+                let Some(import) = line.strip_prefix("import ") else {
+                    continue;
+                };
+                let import = import.strip_prefix("static ").unwrap_or(import);
+                if !import.starts_with("ghidracli.") {
+                    continue;
+                }
+                let target = packages
+                    .iter()
+                    .find(|candidate| import.starts_with(&format!("{candidate}.")))
+                    .unwrap_or_else(|| panic!("unknown bridge package in {path}: {line}"));
+                if target != &package {
+                    dependencies
+                        .get_mut(&package)
+                        .unwrap()
+                        .insert(target.clone());
+                }
+            }
+        }
+
+        while !dependencies.is_empty() {
+            let leaves: BTreeSet<_> = dependencies
+                .iter()
+                .filter(|(_, targets)| targets.is_empty())
+                .map(|(package, _)| package.clone())
+                .collect();
+            assert!(
+                !leaves.is_empty(),
+                "cyclic Java package dependencies: {dependencies:#?}"
+            );
+            dependencies.retain(|package, _| !leaves.contains(package));
+            for targets in dependencies.values_mut() {
+                targets.retain(|target| !leaves.contains(target));
+            }
+        }
     }
 }

@@ -3,9 +3,9 @@
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import ghidra.app.script.GhidraScript;
-import ghidracli.ImportSupport;
-import ghidracli.ProjectDeletion;
-import ghidracli.ProjectArchive;
+import ghidracli.project.ImportSupport;
+import ghidracli.project.ProjectDeletion;
+import ghidracli.project.ProjectArchive;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

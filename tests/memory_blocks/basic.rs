@@ -574,9 +574,11 @@ public class BlockCreateRollbackProbe extends GhidraScript {
             Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
                 .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                     .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                        && type.getPackageName().equals("ghidracli")).findFirst().orElseThrow());
+                        && type.getPackageName().equals("ghidracli.script")).findFirst().orElseThrow());
             var loader = caller.getClassLoader();
-            String prefix = caller.getPackageName() + ".";
+            String prefix = caller.getPackageName()
+                .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
+
             Memory memory = (Memory) Proxy.newProxyInstance(Memory.class.getClassLoader(),
                 new Class<?>[]{Memory.class}, (proxy, method, args) -> {
                     Object result;
@@ -603,7 +605,7 @@ public class BlockCreateRollbackProbe extends GhidraScript {
                     try { return method.invoke(real, args); }
                     catch (InvocationTargetException error) { throw error.getCause(); }
                 });
-            var accessClass = loader.loadClass(prefix + "ScriptAccess");
+            var accessClass = loader.loadClass(prefix + "session.ScriptAccess");
             Object access = Proxy.newProxyInstance(loader, new Class<?>[]{accessClass}, (proxy, method, args) -> {
                 switch (method.getName()) {
                     case "program": return selected;
@@ -614,11 +616,11 @@ public class BlockCreateRollbackProbe extends GhidraScript {
                     default: throw new UnsupportedOperationException(method.getName());
                 }
             });
-            var sessionClass = loader.loadClass(prefix + "ProgramSession");
+            var sessionClass = loader.loadClass(prefix + "session.ProgramSession");
             var sessionConstructor = sessionClass.getDeclaredConstructor(accessClass);
             sessionConstructor.setAccessible(true);
             session = sessionConstructor.newInstance(access);
-            var dispatcherClass = loader.loadClass(prefix + "CommandDispatcher");
+            var dispatcherClass = loader.loadClass(prefix + "runtime.CommandDispatcher");
             var dispatcherConstructor = dispatcherClass.getDeclaredConstructor(sessionClass);
             dispatcherConstructor.setAccessible(true);
             Object dispatcher = dispatcherConstructor.newInstance(session);

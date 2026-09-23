@@ -7,6 +7,48 @@ diagnostic project creation.
 Both share the source bundle, with no separate Java build, JAR installation, or
 per-handler script instance.
 
+## Packages and dependencies
+
+Directories match Java packages. Register each source at that same relative path
+in [the embedded inventory](../../bridge/sources.rs); startup and doctor use one
+complete source tree. Its unit tests check source coverage, package paths, and
+acyclic imports between bridge packages.
+
+| Package | Ownership |
+|---|---|
+| [runtime](runtime/) | Bridge startup, sockets, job scheduling, command construction and dispatch |
+| [session](session/) | Live script state, Program selection, transactions, saving, and native decompiler lifetime |
+| [protocol](protocol/) | JSON arguments, error diagnostics, and response envelopes |
+| [query](query/) | Shared address/numeric parsing, target resolution, paging, and name suggestions |
+| [project](project/) | Durable import, project archives, and project deletion, also used by bootstrap |
+| [program](program/) | Program metadata, processor context, rebase, and export commands |
+| [function](function/) | Function queries/edits, signatures, variables, and function tags |
+| [types](types/) | Type resolution/definitions and composite field layouts |
+| [memory](memory/) | Byte reads/patches, blocks, original file bytes, and mappings |
+| [listing](listing/) | Instruction/data/string listings, searches, code definition, and flow edits |
+| [symbol](symbol/) | Symbols, namespaces, references, equates, comments, and bookmarks |
+| [analysis](analysis/) | Analysis execution, decompilation, p-code, CFG, and call graphs |
+| [script](script/) | User script execution and artifact validation |
+
+`runtime` constructs handlers, which depend on `session`, never on `runtime`.
+`session` depends only on `protocol` within the bridge. `query` uses the live
+session for lookup/cancellation and does not depend on feature packages.
+Shared domain helpers stay with their domain: `FunctionQueries` in `function`,
+`TypeResolver` in `types`, and `MemoryBlockInfo` in `memory`.
+
+Function disassembly resolves the function in `function` and reads instruction
+rows through `listing.InstructionListing`. `listing` and `memory` do not depend
+on `function`. Function tags belong to `function`; symbol and analysis commands
+can use function lookup without a reverse dependency. Handlers do not call other
+handlers; shared bit-field editing lives in `types.BitFields`.
+
+Public classes/methods are the entry points used by another package or a headless
+entry script. Keep domain-only helpers and methods package-private. The native
+decompiler stays with its owner in `session`, independently of which feature
+requests decompilation.
+
+## Project archives
+
 `ProjectArchive` owns one-shot GAR creation/restoration and Ghidra's target lock.
 `GarFile` implements the standard `ArchiveTask`/`RestoreTask` layout: `JAR_FORMAT`,
 a `.gpr` marker, and `.rep` subdirectory contents at the ZIP root. It excludes
@@ -134,50 +176,51 @@ another consumer or terminate its checkout.
 
 | Classes | Responsibility |
 |---|---|
-| `CommandDispatcher`, `JsonProtocol` | Explicit command table, arguments, success/error envelopes |
-| `ProgramCommands`, `ProgramSession` | Program metadata, import/analysis, selection and release |
-| `ProgramContextCommands` | Processor-context registers, interval values/masks, and context edits |
-| `ProgramRebaseCommands` | Image-base preflight and block movement receipts |
-| `ProgramExportCommands` | Native exporters, artifact receipts, and GZF publication |
-| `ImportSupport` | Name/loader selection and saving of detached imported programs; shared with bootstrap |
-| `ProjectDeletion` | Bootstrap-only project removal under Ghidra's project lock |
-| `FunctionCommands`, `FunctionSignatureCommands`, `DecompileCommands` | Function CRUD, whole-function signature changes, decompilation |
-| `FunctionBodyCommands` | Whole-body union validation and observed native annotation/reference effects |
-| `FunctionCallSignatureCommands`, `FunctionSignatureSupport` | Exact caller/site prototype overrides and shared signature parsing |
-| `FunctionVariableCommands` | Decompiler variable discovery, guarded single-target selection, and saved variable edits |
-| `FunctionReturnType` | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
-| `DecompilerSession` | Session-owned native decompiler reuse, invalidation and shutdown |
-| `InstructionCfg` | Native instruction blocks, intrafunction edges, calls and body boundaries |
-| `HighPcodeModel`, `HighPcodeOutput` | Request-local High IR identities and bounded serialization of their relationships |
-| `AnalysisContext`, `AnalysisLimits` | Analysis provenance, result identity and shared output limits |
-| `DecompileWarnings` | API diagnostics and warning-comment extraction from C markup, preserving provenance |
-| `MemoryBlockInfo` | Small block summaries for function queries and full descriptions for memory queries/receipts |
-| `MemoryBlockCommands` | Exact-start block creation/attribute changes and native movement/deletion |
-| `MemoryInfoCommands`, `MemorySources`, `FileMappingCommands` | Listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
-| `DataCommands` | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
-| `TypeCommands`, `TypeImportCommands`, `TypeResolver`, `TypeFields`, `StructureFields`, `UnionFields` | Data types, C parsing/import, type-name resolution, validated struct/union edits |
-| `TypeDefinitionCommands`, `TypeResizeCommands`, `BitFieldCommands` | Definition identity/settings, category operations, guarded size propagation, and explicit bitfield layouts |
-| `TagCommands`, `TagSupport`, `SymbolCommands`, `CommentCommands`, `BookmarkCommands` | Program annotations and symbols |
-| `NamespaceCommands`, `NamespaceSupport` | Root-relative namespace lookup, creation, and shared identity serialization |
-| `EquateCommands` | Exact named constants, operand associations, and native dynamic-reference preservation |
-| `ListingCommands`, `SearchCommands`, `XrefCommands` | Listings, searches, references |
-| `ListingFlowCommands`, `InstructionFlow` | Flow/fallthrough edits and shared raw/effective instruction flow evidence |
-| `ConstantSearch` | Signed/unsigned value matching over existing instruction Scalar operands |
-| `ListQuery` | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
-| `StringQueries` | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
-| `GraphCommands`, `DiffCommands`, `PcodeCommands` | Graph traversal, comparisons, p-code |
-| `MemoryCommands`, `MemoryPatch` | Memory/disassembly operations and preservation checks for byte edits |
-| `AnalysisCommands` | Full/range/pending analysis dispatch and typed analyzer configuration |
-| `ScriptCommands`, `ArtifactManifest` | Script compilation/execution and output-artifact validation |
-| `AddressCodec`, `AddressResolver`, `FunctionQueries`, `NameSuggestions` | Explicit address syntax/formatting, shared lookup and diagnostics; no handler-to-handler dependencies |
-| `CallReferences` | Shared call-site validation, endpoint resolution, and incoming/outgoing enumeration for all call graphs |
+| [`CommandDispatcher`](runtime/CommandDispatcher.java), [`JsonProtocol`](protocol/JsonProtocol.java) | Explicit command table, arguments, success/error envelopes |
+| [`ProgramCommands`](program/ProgramCommands.java), [`ProgramSession`](session/ProgramSession.java) | Program metadata, import/analysis, selection and release |
+| [`ProgramContextCommands`](program/ProgramContextCommands.java) | Processor-context registers, interval values/masks, and context edits |
+| [`ProgramRebaseCommands`](program/ProgramRebaseCommands.java) | Image-base preflight and block movement receipts |
+| [`ProgramExportCommands`](program/ProgramExportCommands.java) | Native exporters, artifact receipts, and GZF publication |
+| [`ImportSupport`](project/ImportSupport.java) | Name/loader selection and saving of detached imported programs; shared with bootstrap |
+| [`ProjectDeletion`](project/ProjectDeletion.java) | Bootstrap-only project removal under Ghidra's project lock |
+| [`FunctionCommands`](function/FunctionCommands.java), [`FunctionSignatureCommands`](function/FunctionSignatureCommands.java), [`DecompileCommands`](analysis/DecompileCommands.java) | Function CRUD, whole-function signature changes, decompilation |
+| [`FunctionBodyCommands`](function/FunctionBodyCommands.java) | Whole-body union validation and observed native annotation/reference effects |
+| [`FunctionCallSignatureCommands`](function/FunctionCallSignatureCommands.java), [`FunctionSignatureSupport`](function/FunctionSignatureSupport.java) | Exact caller/site prototype overrides and shared signature parsing |
+| [`FunctionVariableCommands`](function/FunctionVariableCommands.java) | Decompiler variable discovery, guarded single-target selection, and saved variable edits |
+| [`FunctionReturnType`](function/FunctionReturnType.java) | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
+| [`DecompilerSession`](session/DecompilerSession.java) | Session-owned native decompiler reuse, invalidation and shutdown |
+| [`InstructionCfg`](analysis/InstructionCfg.java) | Native instruction blocks, intrafunction edges, calls and body boundaries |
+| [`HighPcodeModel`](analysis/HighPcodeModel.java), [`HighPcodeOutput`](analysis/HighPcodeOutput.java) | Request-local High IR identities and bounded serialization of their relationships |
+| [`AnalysisContext`](analysis/AnalysisContext.java), [`AnalysisLimits`](analysis/AnalysisLimits.java) | Analysis provenance, result identity and shared output limits |
+| [`DecompileWarnings`](analysis/DecompileWarnings.java) | API diagnostics and warning-comment extraction from C markup, preserving provenance |
+| [`MemoryBlockInfo`](memory/MemoryBlockInfo.java) | Small block summaries for function queries and full descriptions for memory queries/receipts |
+| [`MemoryBlockCommands`](memory/MemoryBlockCommands.java) | Exact-start block creation/attribute changes and native movement/deletion |
+| [`MemoryInfoCommands`](memory/MemoryInfoCommands.java), [`MemorySources`](memory/MemorySources.java), [`FileMappingCommands`](memory/FileMappingCommands.java) | Memory map, listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
+| [`DataCommands`](listing/DataCommands.java) | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
+| [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
+| [`TypeDefinitionCommands`](types/TypeDefinitionCommands.java), [`TypeResizeCommands`](types/TypeResizeCommands.java), [`BitFieldCommands`](types/BitFieldCommands.java), [`BitFields`](types/BitFields.java) | Definition identity/settings, category operations, guarded size propagation, and shared explicit bitfield layouts |
+| [`TagCommands`](function/TagCommands.java), [`TagSupport`](function/TagSupport.java), [`SymbolCommands`](symbol/SymbolCommands.java), [`CommentCommands`](symbol/CommentCommands.java), [`BookmarkCommands`](symbol/BookmarkCommands.java) | Program annotations and symbols |
+| [`NamespaceCommands`](symbol/NamespaceCommands.java), [`NamespaceSupport`](symbol/NamespaceSupport.java) | Root-relative namespace lookup, creation, and shared identity serialization |
+| [`EquateCommands`](symbol/EquateCommands.java) | Exact named constants, operand associations, and native dynamic-reference preservation |
+| [`ListingCommands`](listing/ListingCommands.java), [`InstructionListing`](listing/InstructionListing.java), [`SearchCommands`](listing/SearchCommands.java), [`XrefCommands`](symbol/XrefCommands.java) | Instruction/string listings, code definition/clearing, shared instruction rows, searches, references |
+| [`ListingFlowCommands`](listing/ListingFlowCommands.java), [`InstructionFlow`](listing/InstructionFlow.java) | Flow/fallthrough edits and shared raw/effective instruction flow evidence |
+| [`ConstantSearch`](listing/ConstantSearch.java) | Signed/unsigned value matching over existing instruction Scalar operands |
+| [`ListQuery`](query/ListQuery.java) | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
+| [`StringQueries`](listing/StringQueries.java) | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
+| [`GraphCommands`](analysis/GraphCommands.java), [`PcodeCommands`](analysis/PcodeCommands.java) | Graph traversal and p-code |
+| [`MemoryCommands`](memory/MemoryCommands.java), [`MemoryPatch`](memory/MemoryPatch.java) | Current/original byte reads and preservation checks for byte edits |
+| [`AnalysisCommands`](analysis/AnalysisCommands.java) | Full/range/pending analysis dispatch and typed analyzer configuration |
+| [`ScriptCommands`](script/ScriptCommands.java), [`ArtifactManifest`](script/ArtifactManifest.java) | Script compilation/execution and output-artifact validation |
+| [`AddressCodec`](query/AddressCodec.java), [`AddressResolver`](query/AddressResolver.java), [`IntegerLiteral`](query/IntegerLiteral.java), [`FunctionQueries`](function/FunctionQueries.java), [`NameSuggestions`](query/NameSuggestions.java) | Explicit address syntax/formatting, integer spelling, shared lookup and diagnostics; no handler-to-handler dependencies |
+| [`CallReferences`](analysis/CallReferences.java) | Shared call-site validation, endpoint resolution, and incoming/outgoing enumeration for all call graphs |
 
 Handlers construct domain results; the dispatcher adds the wire envelope.
 Errors use `error` for messages and `detail` for diagnostics. Additional fields
 (e.g. script `stdout`/`artifacts`) merge into wire `detail`, whose existing fields
-take precedence. Shared helpers own lookup/serialization, not routing. Only
-`BridgeRuntime` and `ScriptAccess` cross the default-package entry point boundary;
-most classes are package-private.
+take precedence. Shared helpers own lookup/serialization, not routing.
+The default-package bridge entry script uses `runtime.BridgeRuntime` and
+`session.ScriptAccess`; bootstrap uses the public import/archive/deletion
+operations in `project`.
 
 `data list` adds `incoming_reference_count` by iterating recorded reference
 destinations within each top-level Data's inclusive address range and summing

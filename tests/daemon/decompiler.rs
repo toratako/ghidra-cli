@@ -118,10 +118,12 @@ public class DecompilerSessionProbe extends GhidraScript {
         Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
             .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
                 .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                    && type.getPackageName().equals("ghidracli"))
+                    && type.getPackageName().equals("ghidracli.script"))
                 .findFirst().orElseThrow());
         ClassLoader loader = caller.getClassLoader();
-        String pkg = caller.getPackageName() + ".";
+        String pkg = caller.getPackageName()
+            .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
+
         Listing listing = (Listing) Proxy.newProxyInstance(Listing.class.getClassLoader(),
             new Class<?>[] { Listing.class }, (proxy, method, args) -> {
                 if (method.getName().equals("getInstructionAt") && fault != null) {
@@ -150,7 +152,7 @@ public class DecompilerSessionProbe extends GhidraScript {
                 }
                 return invoke(method, real, args);
             });
-        Class<?> accessClass = loader.loadClass(pkg + "ScriptAccess");
+        Class<?> accessClass = loader.loadClass(pkg + "session.ScriptAccess");
         Object access = Proxy.newProxyInstance(loader, new Class<?>[] { accessClass },
             (proxy, method, args) -> {
                 switch (method.getName()) {
@@ -161,11 +163,11 @@ public class DecompilerSessionProbe extends GhidraScript {
                     default: throw new UnsupportedOperationException(method.getName());
                 }
             });
-        Class<?> sessionClass = loader.loadClass(pkg + "ProgramSession");
+        Class<?> sessionClass = loader.loadClass(pkg + "session.ProgramSession");
         var constructor = sessionClass.getDeclaredConstructor(accessClass);
         constructor.setAccessible(true);
         session = constructor.newInstance(access);
-        Class<?> dispatcherClass = loader.loadClass(pkg + "CommandDispatcher");
+        Class<?> dispatcherClass = loader.loadClass(pkg + "runtime.CommandDispatcher");
         var dispatcherConstructor = dispatcherClass.getDeclaredConstructor(sessionClass);
         dispatcherConstructor.setAccessible(true);
         dispatcher = dispatcherConstructor.newInstance(session);
@@ -232,7 +234,7 @@ public class DecompilerSessionProbe extends GhidraScript {
 
     private void cancelledRead(String commandName, JsonObject arguments, String className,
             String methodName, String collection) throws Exception {
-        cancelClass = "ghidracli." + className;
+        cancelClass = "ghidracli.analysis." + className;
         cancelMethod = methodName;
         cancelledInPhase = false;
         JsonObject response = command(commandName, arguments);
