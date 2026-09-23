@@ -14,6 +14,8 @@ const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 #[path = "types/application.rs"]
 mod application;
+#[path = "types/archives.rs"]
+mod archives;
 #[path = "types/bitfields.rs"]
 mod bitfields;
 #[path = "types/calling_conventions.rs"]

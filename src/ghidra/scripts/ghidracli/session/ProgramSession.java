@@ -141,7 +141,7 @@ public final class ProgramSession {
         // Atomic by default, including future ordinary commands. These explicit
         // exceptions have analysis, arbitrary-script, project or filesystem effects.
         boolean atomic = switch (command == null ? "" : command) {
-            case "analysis_run", "script_run", "import", "program_export",
+            case "analysis_run", "script_run", "import", "program_export", "type_export_gdt",
                  "open_program", "program_close", "program_save", "program_delete" -> false;
             default -> true;
         };

@@ -207,6 +207,30 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
+### Reusing archived types
+
+```bash
+ghidra-cli type archive list sdk.gdt --filter 'category^"/SDK"' --project target
+ghidra-cli type import-gdt sdk.gdt --where 'path="/SDK/Header"' --project target
+ghidra-cli type apply 0x404000 --type /SDK/Header --project target
+ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
+```
+
+Selection chooses root definitions; referenced types travel with them, including
+dependencies outside the selected category. Use `--all` to select every root.
+Import registers definitions in the Program; apply them where the binary supports
+that interpretation. Archive listing needs a project bridge but no loaded Program.
+
+Conflicting definitions or origins, and changes to ABI layout, reject the entire
+import. Inspect the reported dependency path before changing the root selection;
+an incompatible dependency can be shared by several roots. Use an archive built
+for the target ABI when layout differs. An equivalent local definition can adopt
+the archive's identity; `associated` reports that change. Export gives local
+definitions new archive identities while preserving existing file-archive origins.
+GDT cannot retain field-specific interpretation settings such as an endian override;
+a settings conflict on export means those definitions need a representation the
+archive can preserve before sharing them.
+
 ### Trying a separate type definition
 
 ```bash

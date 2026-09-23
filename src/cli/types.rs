@@ -18,6 +18,13 @@ pub enum TypeCommands {
     Apply(ApplyTypeArgs),
     /// Import C type definitions
     ImportC(ImportCArgs),
+    /// Import selected types and their dependencies from a Ghidra data type archive
+    ImportGdt(TypeGdtArgs),
+    /// Export selected types and their dependencies to a new Ghidra data type archive
+    ExportGdt(TypeGdtArgs),
+    /// Inspect Ghidra data type archives
+    #[command(subcommand)]
+    Archive(TypeArchiveCommands),
     /// Delete a data type
     Delete(TypeDeleteArgs),
     /// Rename a data type
@@ -37,6 +44,90 @@ pub enum TypeCommands {
     /// Edit enum definitions
     #[command(subcommand)]
     Enum(TypeEnumCommands),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("selection").required(true).args(["where_expr", "all"])))]
+pub struct TypeGdtArgs {
+    /// Ghidra data type archive (.gdt), relative to the CLI working directory
+    #[arg(value_name = "FILE")]
+    pub file: std::path::PathBuf,
+    /// Select root types by name, path, category, kind, size, or source metadata
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
+    /// Select all named definitions as roots
+    #[arg(long)]
+    pub all: bool,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TypeArchiveCommands {
+    /// List named type definitions in an archive without loading a program
+    List(TypeArchiveListArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeArchiveListArgs {
+    /// Ghidra data type archive (.gdt), relative to the CLI working directory
+    #[arg(value_name = "FILE")]
+    pub file: std::path::PathBuf,
+    #[command(flatten)]
+    pub options: TypeArchiveQueryOptions,
+}
+
+/// Archive inspection has a project bridge, but no program target.
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeArchiveQueryOptions {
+    /// Project name
+    #[arg(long)]
+    pub project: Option<String>,
+    /// Filter expression, e.g. 'category^"/Protocol" AND kind=struct'
+    #[arg(short, long)]
+    pub filter: Option<String>,
+    /// Include only these fields (comma-separated)
+    #[arg(long, conflicts_with = "exclude_fields")]
+    pub fields: Option<String>,
+    /// Exclude these fields (comma-separated)
+    #[arg(long)]
+    pub exclude_fields: Option<String>,
+    /// Output format (omitted: compact on TTY, json-compact otherwise)
+    #[arg(long, value_enum, ignore_case = true)]
+    pub format: Option<super::OutputFormat>,
+    /// Maximum number of results (0 = unlimited; default 1000)
+    #[arg(long, value_parser = numeric::parse::<usize>)]
+    pub limit: Option<usize>,
+    /// Skip first N results
+    #[arg(long, value_parser = numeric::parse::<usize>)]
+    pub skip: Option<usize>,
+    /// Sort by field(s) (comma-separated, prefix with - for descending)
+    #[arg(long, allow_hyphen_values = true)]
+    pub sort: Option<String>,
+    /// Only return count
+    #[arg(long)]
+    pub count: bool,
+    /// Output compact JSON (shorthand for --format=json-compact)
+    #[arg(long)]
+    pub json: bool,
+}
+
+impl From<&TypeArchiveQueryOptions> for QueryOptions {
+    fn from(options: &TypeArchiveQueryOptions) -> Self {
+        Self {
+            program: None,
+            project: options.project.clone(),
+            filter: options.filter.clone(),
+            fields: options.fields.clone(),
+            exclude_fields: options.exclude_fields.clone(),
+            format: options.format,
+            limit: options.limit,
+            skip: options.skip,
+            sort: options.sort.clone(),
+            count: options.count,
+            json: options.json,
+        }
+    }
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]

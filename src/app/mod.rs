@@ -62,6 +62,7 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                         requires_bridge(&sub_cli.command),
                         "This command cannot run inside a batch"
                     );
+                    validate_target_scope(sub_cli)?;
                     if let Commands::Program(cli::ProgramCommands::Import(args)) = &sub_cli.command
                     {
                         import::validate_options(args)?;
@@ -151,6 +152,15 @@ fn parse_command_query(command: &Commands) -> anyhow::Result<CommandQuery> {
     })
 }
 
+fn validate_target_scope(cli: &Cli) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !matches!(cli.command, Commands::Type(cli::TypeCommands::Archive(_)))
+            || cli.program.is_none(),
+        "`type archive list` reads a file and does not accept --program"
+    );
+    Ok(())
+}
+
 fn execute_bridge_command(
     cli: &Cli,
     prepared_batch: Option<&batch::PreparedBatch>,
@@ -158,6 +168,8 @@ fn execute_bridge_command(
     programs: &mut HashMap<String, String>,
 ) -> anyhow::Result<CommandResult> {
     let output = Output::new(cli);
+    let archive_listing = matches!(&cli.command, Commands::Type(cli::TypeCommands::Archive(_)));
+    validate_target_scope(cli)?;
     let query = parse_command_query(&cli.command)?;
     let shape = ResultShape::for_command(&cli.command);
     let paged = shape.supports_paging() && query.has_options;
@@ -216,7 +228,9 @@ fn execute_bridge_command(
             Commands::Program(cli::ProgramCommands::Delete(_) | cli::ProgramCommands::List(_))
         );
         let inherited_program = programs.get(&project_key).cloned();
-        let selected_program = if project_operation {
+        let selected_program = if archive_listing {
+            None
+        } else if project_operation {
             inherited_program
         } else {
             extract_program_from_command(&cli.command)
@@ -239,7 +253,7 @@ fn execute_bridge_command(
             return import::run_import(cli, args, &project_path, &ghidra_install_dir, &selection);
         }
 
-        let startup_program = if project_operation {
+        let startup_program = if project_operation || archive_listing {
             None
         } else {
             selected_program
@@ -262,8 +276,14 @@ fn execute_bridge_command(
             let port = bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
             output.progress("Bridge ready.");
             connect_program_bridge(port)?
-        }
-        .with_selection(selection.clone());
+        };
+        // A file archive query must not replace a batch's intended Program
+        // with the unrelated Program currently open in the bridge.
+        let client = if archive_listing {
+            client
+        } else {
+            client.with_selection(selection.clone())
+        };
         let client = match selected_program {
             Some(program)
                 if !matches!(

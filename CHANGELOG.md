@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `type archive list`, `type import-gdt`, and `type export-gdt` for
+  inspecting and transferring Ghidra data type archives. Explicit root selection
+  includes dependencies; imports reject definition, provenance, and ABI conflicts
+  atomically, and exports publish a validated new archive without overwriting files.
 - Add `decompile --with-addresses` to relate C lines to native instruction
   positions, with a structured JSON mapping, human-readable address gutters,
   and inline address comments in C output.

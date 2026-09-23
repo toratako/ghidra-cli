@@ -149,12 +149,17 @@ native false returns and cancellation as failures so the shared boundary can
 roll back compound edits such as clearing before redisassembly.
 
 The explicit non-atomic exceptions are `analysis_run`, `script_run`, `import`,
-`program_export`, `open_program`, `program_close`, `program_save`, and
+`program_export`, `type_export_gdt`, `open_program`, `program_close`, `program_save`, and
 `program_delete`. Their analysis, arbitrary script, project, or filesystem effects
 can outlive failure or cancellation. Retained Program changes are saved through
 the session boundary and reported as `partial_changes_saved` on errors when saved;
 external effects are not rolled back. A batch has one boundary per request, never
 one transaction covering every command.
+
+`type_archive_list` reads an external file on the same script lane without a
+Program request boundary. It neither selects nor saves the current Program.
+GDT export flushes the Program through `ProgramSession` before the handler runs;
+a save failure therefore cannot publish an archive.
 
 Atomic failures report `detail.rolled_back: true`, plus `cancelled: true` when
 applicable. Rolled-back errors include the selected DomainFile path as `program`,
@@ -221,6 +226,7 @@ another consumer or terminate its checkout.
 | [`MemoryInfoCommands`](memory/MemoryInfoCommands.java), [`MemorySources`](memory/MemorySources.java), [`FileMappingCommands`](memory/FileMappingCommands.java) | Memory map, listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
 | [`DataCommands`](listing/DataCommands.java) | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
 | [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
+| [`TypeArchiveCommands`](types/TypeArchiveCommands.java), [`TypeArchiveGraph`](types/TypeArchiveGraph.java) | GDT snapshots/publication, guarded root selection, dependency and ABI/identity validation |
 | [`TypeDefinitionCommands`](types/TypeDefinitionCommands.java), [`TypeResizeCommands`](types/TypeResizeCommands.java), [`BitFieldCommands`](types/BitFieldCommands.java), [`BitFields`](types/BitFields.java) | Definition identity/settings, category operations, guarded size propagation, and shared explicit bitfield layouts |
 | [`TypeUsesCommands`](types/TypeUsesCommands.java), [`TypeUseMatcher`](types/TypeUseMatcher.java) | Registered type identity, declaration wrapper paths, and applied-data/function-signature uses |
 | [`SemanticTypeUsesCommands`](analysis/SemanticTypeUsesCommands.java), [`FieldUses`](analysis/FieldUses.java), [`TypeFieldTarget`](types/TypeFieldTarget.java) | Decompiler variable searches, native field access evidence, and unambiguous read-only component selection |
@@ -266,6 +272,33 @@ with the Program's data organization. It assigns destination categories to new
 definitions and their anonymous dependencies before resolving into the Program.
 References to existing types retain their source identity; explicitly declared
 types resolve within the requested category instead of replacing a same-named root.
+
+`TypeArchiveCommands` copies GDT input to a unique private path, hashes the copy,
+and checks it against the source before reading and before completion. Opening
+the original path is insufficient: Ghidra's packed-database cache can retain an
+old archive when a replacement preserves its modification time. Read-only
+snapshots also keep Ghidra's lock/cache side effects away from the source directory.
+The immutable reader opens an uncached native `PackedDatabase` handle so closing
+also removes its unpacked database. The regular file-manager factory caches even
+unique temporary paths and can leave orphaned cache directories in a long-lived
+JVM; no process-wide cache setting is changed.
+
+`TypeArchiveGraph` collects roots and dependencies through defined components,
+without expanding sparse undefined filler. It preflights both paths and source
+IDs, resolves roots together with one conflict policy, and checks the resulting
+graph, native layout, signedness, calling conventions, settings and FILE identities.
+Ghidra equivalence alone omits some ABI/layout differences and uses a recursive
+cache during resolve; conflict callbacks must not use it as an independent check.
+Equivalent local definitions can adopt the incoming FILE identity. Different FILE
+identities at one path, or one identity at different paths, are conflicts.
+
+Export creates a new archive with the Program's architecture in a private sibling
+directory. Program-local definitions acquire new file identities; existing FILE
+origins are retained without editing the Program. Save/close/reopen validation
+precedes atomic no-clobber hard-link publication. Unsupported hard-link filesystems
+fail; cleanup removes only owned staging paths and reports any published output
+and remaining paths. GDT cannot store component settings; unsupported settings
+must not silently disappear in an otherwise successful export.
 
 `TypeResizeCommands` follows native size propagation through composite, array,
 and typedef parents and scans their applied Listing data. Before committing it

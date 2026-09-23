@@ -46,6 +46,7 @@ import ghidracli.symbol.NamespaceCommands;
 import ghidracli.symbol.SymbolCommands;
 import ghidracli.symbol.XrefCommands;
 import ghidracli.types.BitFieldCommands;
+import ghidracli.types.TypeArchiveCommands;
 import ghidracli.types.TypeCommands;
 import ghidracli.types.TypeDefinitionCommands;
 import ghidracli.types.TypeImportCommands;
@@ -102,6 +103,7 @@ final class CommandDispatcher {
     private final StructureInferenceCommands structureInferenceCommands;
     private final ListingFlowCommands listingFlowCommands;
     private final TypeImportCommands typeImportCommands;
+    private final TypeArchiveCommands typeArchiveCommands;
 
     CommandDispatcher(ProgramSession session) {
         this.session = session;
@@ -120,6 +122,7 @@ final class CommandDispatcher {
         structureInferenceCommands = new StructureInferenceCommands(session, functionQueries);
         listingFlowCommands = new ListingFlowCommands(session);
         typeImportCommands = new TypeImportCommands(session);
+        typeArchiveCommands = new TypeArchiveCommands(session);
         programCommands = new ProgramCommands(session);
         programContextCommands = new ProgramContextCommands(session);
         programRebaseCommands = new ProgramRebaseCommands(session);
@@ -243,6 +246,14 @@ final class CommandDispatcher {
             case "type_create":     return typeCommands.handleTypeCreate(args);
             case "type_apply":      return typeCommands.handleTypeApply(args);
             case "type_import_c":   return typeImportCommands.handleTypeImportC(args);
+            case "type_archive_list": return typeArchiveCommands.handleList(args);
+            case "type_gdt_candidates": return typeArchiveCommands.handleCandidates(args);
+            case "type_import_gdt": return typeArchiveCommands.handleImport(args);
+            case "type_export_gdt":
+                // External publication must follow successful Program saving;
+                // its files cannot be undone by a Program transaction.
+                session.save();
+                return typeArchiveCommands.handleExport(args);
             case "type_delete":     return typeCommands.handleTypeDelete(args);
             case "type_rename":     return typeCommands.handleTypeRename(args);
             case "type_create_enum": return typeCommands.handleTypeCreateEnum(args);
@@ -331,6 +342,22 @@ final class CommandDispatcher {
     }
 
     JsonObject execute(String command, JsonObject args, String program) {
+        // An archive listing owns no Program state, even if the bridge already
+        // has a Program open with pending edits. Keep it on the script lane but
+        // do not select, transact, or save that unrelated Program.
+        if ("type_archive_list".equals(command)) {
+            if (program != null) return errorResponse("Archive listing does not accept a Program target");
+            JsonObject response = executeCommand(command, args);
+            if (session.monitor().isCancelled()) {
+                if ("success".equals(response.get("status").getAsString()))
+                    response = errorResponse("Command cancelled");
+                JsonObject detail = response.has("detail")
+                    ? response.getAsJsonObject("detail") : new JsonObject();
+                detail.addProperty("cancelled", true);
+                response.add("detail", detail);
+            }
+            return response;
+        }
         try {
             session.beginRequest(command, program);
         } catch (ProgramSession.SaveFailure e) {

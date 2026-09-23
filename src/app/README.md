@@ -17,6 +17,7 @@ and target checks in `src/cli/tests.rs`.
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/functions.rs` | Function dispatch and guarded selection of one decompiler variable |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
+| `execute/type_archives.rs` | Resolve GDT paths and select roots with guarded source snapshots |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
@@ -70,6 +71,14 @@ Import binds follow-up analysis or information requests to the imported program.
 `program save` saves in place and does nothing for a stopped bridge.
 `program list/delete` ignore a direct `--program`; deletion uses its positional
 file operand. In a batch they still carry the inherited selection context.
+
+`type archive list` uses the project bridge without selecting a Program and
+preserves batch selection intent. Explicit `--program` is rejected before
+execution; configured and inherited targets do not apply. GDT transfers parse
+`--where` during preflight, evaluate it on uncapped candidates, and pass exact
+paths plus the source guard to the final request. File validation happens when
+the line executes, allowing export followed by import in the same batch. Output
+projection and configured display limits never select mutation roots.
 
 `src/address.rs` validates explicit address syntax for client-side selectors,
 import base addresses, and `listing undefine START --end END`; Ghidra validates

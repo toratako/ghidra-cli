@@ -2,6 +2,7 @@ mod functions;
 mod memory;
 mod scripts;
 mod symbols;
+mod type_archives;
 
 use crate::cli::{self, Commands};
 use crate::ipc::client::BridgeClient;
@@ -41,6 +42,11 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Type(cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args)) =
+        command
+    {
+        type_archives::parse_selection(args)?;
+    }
     if let Commands::Find(cli::FindCommands::VirtualCallers(args)) = command {
         args.validate().map_err(anyhow::Error::msg)?;
     }
@@ -316,6 +322,11 @@ pub(super) fn execute_via_bridge(
                 }
                 TypeCommands::ImportC(args) => {
                     client.type_import_c(&resolve_c_source(args)?, args.category.as_deref())
+                }
+                TypeCommands::ImportGdt(args) => type_archives::transfer(client, args, true),
+                TypeCommands::ExportGdt(args) => type_archives::transfer(client, args, false),
+                TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
+                    type_archives::list(client, args)
                 }
                 TypeCommands::Delete(args) => {
                     client.send_command("type_delete", Some(json!({"name": args.name})))

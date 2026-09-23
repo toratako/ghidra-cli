@@ -365,6 +365,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/types/StructureFields.java"),
     ),
     (
+        "ghidracli/types/TypeArchiveCommands.java",
+        include_str!("../scripts/ghidracli/types/TypeArchiveCommands.java"),
+    ),
+    (
+        "ghidracli/types/TypeArchiveGraph.java",
+        include_str!("../scripts/ghidracli/types/TypeArchiveGraph.java"),
+    ),
+    (
         "ghidracli/types/TypeCommands.java",
         include_str!("../scripts/ghidracli/types/TypeCommands.java"),
     ),

@@ -141,6 +141,12 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             },
             cli::TypeCommands::Apply(args) => args.project.clone(),
             cli::TypeCommands::ImportC(args) => args.project.clone(),
+            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
+                args.options.project.clone()
+            }
+            cli::TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
+                args.options.project.clone()
+            }
             cli::TypeCommands::Delete(args) => args.project.clone(),
             cli::TypeCommands::Rename(args) => args.project.clone(),
             cli::TypeCommands::Clone(args) => args.options.project.clone(),
@@ -342,6 +348,10 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             },
             cli::TypeCommands::Apply(args) => args.program.clone(),
             cli::TypeCommands::ImportC(args) => args.program.clone(),
+            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
+                args.options.program.clone()
+            }
+            cli::TypeCommands::Archive(_) => None,
             cli::TypeCommands::Delete(args) => args.program.clone(),
             cli::TypeCommands::Rename(args) => args.program.clone(),
             cli::TypeCommands::Clone(args) => args.options.program.clone(),
@@ -545,6 +555,12 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::TypeCommands::List(opts) => Some(opts.clone()),
             cli::TypeCommands::Get(args) => Some((&args.options).into()),
             cli::TypeCommands::Uses(args) => Some(args.options.clone()),
+            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
+                Some((&args.options).into())
+            }
+            cli::TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
+                Some((&args.options).into())
+            }
             cli::TypeCommands::Clone(args) => Some((&args.options).into()),
             cli::TypeCommands::Resize(args) => Some((&args.options).into()),
             cli::TypeCommands::Move(args) => Some((&args.options).into()),

@@ -124,6 +124,10 @@ ghidra-cli
 │   │   └── typedef
 │   ├── apply
 │   ├── import-c
+│   ├── import-gdt
+│   ├── export-gdt
+│   ├── archive
+│   │   └── list
 │   ├── delete
 │   ├── rename
 │   ├── clone
@@ -210,4 +214,4 @@ ghidra-cli
     └── cancel
 ```
 
-198 command nodes (excluding the root), 0 aliases.
+202 command nodes (excluding the root), 0 aliases.

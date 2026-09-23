@@ -510,6 +510,28 @@ offset is not relative to the entire base type or structure.
 does not describe an open archive connection. Struct and union sizes report
 logical zero for empty definitions.
 
+`type_archive_list` takes an absolute `.gdt` `file` and returns `types` rows
+(`name`, `path`, `category`, `kind`, `size`, and the same identity fields), with
+`archive` context. It has no Program target. Named composites, enums, typedefs,
+and function definitions are selectable roots; generated wrappers are reached
+through dependencies. The CLI applies the ordinary result query independently.
+
+`type_gdt_candidates` returns uncapped `types` plus a `source` guard. With `file`,
+the source is a GDT snapshot identified by canonical path, archive ID and SHA-256;
+otherwise it is the selected Program's path, data-type-manager ID and modification
+number. `type_import_gdt` and `type_export_gdt` take `file` with either `all: true`
+or nonempty exact `paths` plus the returned `source`. Changed guards fail before
+transfer; omitted or mixed selection modes are errors. The CLI evaluates `--where`
+before submitting paths, without applying display limits or projection.
+
+Transfer receipts are single objects with `roots`, `dependencies`, and `types`.
+Type rows identify their root/dependency role, source definition, and whether the
+destination type was `created`, `reused`, or `associated` with the incoming archive.
+Import reports `changed`; export reports the resulting output path, byte size and
+SHA-256. Conflict failures roll back the import request. Export's external effects
+cannot roll back: errors preserve `published`, any `published_paths`, and remaining
+temporary paths so callers do not retry a completed publication.
+
 Function-definition types additionally include `return`, ordered `params`,
 `calling_convention`, `variadic`, `no_return`, and nullable `comment`.
 Return/parameter records contain `type`, `type_path`, and byte `size`; parameters

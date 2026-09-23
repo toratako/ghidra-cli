@@ -582,6 +582,12 @@ impl RecordedBridge {
                         json!({"id": "9007199254740993", "name": "Widget", "path": args["path"], "parent": "app", "kind": "class"})
                     }
                     "type_category_list" => types::category_list_fixture(args),
+                    "type_archive_list" | "type_gdt_candidates" => {
+                        types::gdt_candidates_fixture(args)
+                    }
+                    "type_import_gdt" | "type_export_gdt" => {
+                        types::gdt_transfer_fixture(request["command"].as_str().unwrap(), args)
+                    }
                     "type_uses" => types::uses_fixture(args),
                     "type_field_uses" => types::field_uses_fixture(args),
                     "type_clone"

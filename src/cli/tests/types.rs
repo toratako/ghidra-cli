@@ -1,6 +1,93 @@
 use super::*;
 
 #[test]
+fn gdt_transfers_require_explicit_root_selection_and_object_output() {
+    for command in ["import-gdt", "export-gdt"] {
+        for (selection, all) in [
+            (vec!["--all"], true),
+            (vec!["--where", "category^\"/Protocol\""], false),
+        ] {
+            let cli = Cli::try_parse_from(
+                ["ghidra-cli", "type", command, "types.gdt"]
+                    .into_iter()
+                    .chain(selection)
+                    .chain([
+                        "--fields",
+                        "selected",
+                        "--project",
+                        "test",
+                        "--program",
+                        "sample",
+                    ]),
+            )
+            .unwrap();
+            let Commands::Type(TypeCommands::ImportGdt(args) | TypeCommands::ExportGdt(args)) =
+                cli.command
+            else {
+                panic!("expected GDT transfer");
+            };
+            assert_eq!(args.file, std::path::Path::new("types.gdt"));
+            assert_eq!(args.all, all);
+            assert_eq!(
+                args.where_expr.as_deref(),
+                (!all).then_some("category^\"/Protocol\"")
+            );
+            assert_eq!(args.options.fields.as_deref(), Some("selected"));
+            assert_eq!(args.options.project.as_deref(), Some("test"));
+            assert_eq!(args.options.program.as_deref(), Some("sample"));
+        }
+        for selection in [
+            vec![],
+            vec!["--all", "--where", "kind=struct"],
+            vec!["--all", "--limit", "1"],
+        ] {
+            assert!(Cli::try_parse_from(
+                ["ghidra-cli", "type", command, "types.gdt"]
+                    .into_iter()
+                    .chain(selection)
+            )
+            .is_err());
+        }
+    }
+}
+
+#[test]
+fn archive_inspection_accepts_archive_operand_and_row_queries() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "archive",
+        "list",
+        "sdk types.gdt",
+        "--filter",
+        "kind=struct",
+        "--sort",
+        "path",
+        "--skip",
+        "2",
+        "--limit",
+        "0x10",
+        "--fields",
+        "path,size",
+        "--project",
+        "test",
+    ])
+    .unwrap();
+    let Commands::Type(TypeCommands::Archive(TypeArchiveCommands::List(args))) = cli.command else {
+        panic!("expected archive inspection");
+    };
+    assert_eq!(args.file, std::path::Path::new("sdk types.gdt"));
+    let options = QueryOptions::from(&args.options);
+    assert_eq!(options.filter.as_deref(), Some("kind=struct"));
+    assert_eq!(options.fields.as_deref(), Some("path,size"));
+    assert_eq!(options.sort.as_deref(), Some("path"));
+    assert_eq!(options.skip, Some(2));
+    assert_eq!(options.limit, Some(16));
+    assert_eq!(options.project.as_deref(), Some("test"));
+    assert_eq!(options.program, None);
+}
+
+#[test]
 fn semantic_type_uses_accept_explicit_variable_mode_and_function_scope() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",
