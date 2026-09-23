@@ -5,6 +5,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
@@ -154,20 +155,28 @@ final class SearchCommands {
                 if (!val.toLowerCase(Locale.ROOT).contains(needle)) continue;
 
                 Address strAddr = data.getAddress();
-                for (Reference ref : refMgr.getReferencesTo(strAddr)) {
+                var destinations = refMgr.getReferenceDestinationIterator(
+                    new AddressSet(data.getMinAddress(), data.getMaxAddress()), true);
+                while (destinations.hasNext()) {
                     session.monitor().checkCancelled();
-                    JsonObject item = new JsonObject();
-                    item.addProperty("string_address", AddressCodec.format(strAddr));
-                    item.addProperty("string_value", val);
-                    item.addProperty("from", AddressCodec.format(ref.getFromAddress()));
-                    item.addProperty("ref_type", ref.getReferenceType().toString());
-                    Function fn = fm.getFunctionContaining(ref.getFromAddress());
-                    if (fn != null) {
-                        item.addProperty("from_function", fn.getName());
-                    } else {
-                        item.add("from_function", JsonNull.INSTANCE);
+                    Address destination = destinations.next();
+                    for (Reference ref : refMgr.getReferencesTo(destination)) {
+                        session.monitor().checkCancelled();
+                        JsonObject item = new JsonObject();
+                        item.addProperty("string_address", AddressCodec.format(strAddr));
+                        item.addProperty("string_value", val);
+                        item.addProperty("from", AddressCodec.format(ref.getFromAddress()));
+                        item.addProperty("to", AddressCodec.format(ref.getToAddress()));
+                        item.addProperty("string_offset", ref.getToAddress().subtract(strAddr));
+                        item.addProperty("ref_type", ref.getReferenceType().toString());
+                        Function fn = fm.getFunctionContaining(ref.getFromAddress());
+                        if (fn != null) {
+                            item.addProperty("from_function", fn.getName());
+                        } else {
+                            item.add("from_function", JsonNull.INSTANCE);
+                        }
+                        results.add(item);
                     }
-                    results.add(item);
                 }
             }
 

@@ -506,6 +506,9 @@ bridge with pending edits.
 `xrefs_from` reads references from the exact resolved `address`. With `function: true`,
 it resolves the containing function and reads its full body, including disjoint ranges.
 `string_refs` takes `pattern`, a case-insensitive substring of defined string values.
+It includes references to any byte within each matching definition. Rows retain
+`string_address` and `string_value`, while `to` is the actual destination and
+`string_offset` is its byte displacement from the string start, not a character index.
 `comment_delete` requires exactly one of `comment_type` (EOL/PRE/POST/PLATE,
 case-insensitive) or `all: true`. Invalid or missing scope fails before deletion.
 
