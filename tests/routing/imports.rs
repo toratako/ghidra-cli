@@ -153,9 +153,9 @@ fn explicit_address_import_bases_are_checked_before_import_or_bridge_changes() {
     for flags in [
         vec!["--base-address", "8000"],
         vec!["--base-address", "FUN_00008000"],
-        vec!["--loader-option", "baseAddr=8000"],
-        vec!["--loader-option", "BASEADDR=8000"],
-        vec!["--loader-option", "baseAddr=ram:8000"],
+        vec!["--loader-option", "baseAddr", "8000"],
+        vec!["--loader-option", "BASEADDR", "8000"],
+        vec!["--loader-option", "baseAddr", "ram:8000"],
     ] {
         let output = bridge
             .command()

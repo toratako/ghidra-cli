@@ -1,6 +1,7 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
@@ -415,9 +416,11 @@ final class TypeCommands {
     JsonObject handleTypeCreateEnum(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
-        String valuesStr = getArgString(args, "values");
+        JsonElement members = args.get("members");
         int size = getArgInt(args, "size", 4);
-        if (name == null || valuesStr == null) return errorResult("name and values required");
+        if (name == null || members == null || !members.isJsonArray()
+                || members.getAsJsonArray().size() == 0)
+            return errorResult("name and nonempty members array required");
 
         if (size != 1 && size != 2 && size != 4 && size != 8)
             return errorResult("Enum size must be 1, 2, 4, or 8");
@@ -425,14 +428,14 @@ final class TypeCommands {
         try {
             DataTypeManager dtm = session.program().getDataTypeManager();
             EnumDataType enumDt = new EnumDataType(name, size);
-            String[] pairs = valuesStr.split(",");
-            for (String pair : pairs) {
-                String[] kv = pair.trim().split("=", 2);
-                if (kv.length != 2)
-                    throw new IllegalArgumentException("Invalid KEY=VALUE pair: " + pair.trim());
-                String key = kv[0].trim();
-                long value = Long.decode(kv[1].trim());
-                enumDt.add(key, value);
+            for (JsonElement element : members.getAsJsonArray()) {
+                JsonObject member = element.getAsJsonObject();
+                String memberName = getArgString(member, "name");
+                String memberValue = getArgString(member, "value");
+                if (memberName == null || memberName.trim().isEmpty() || memberValue == null)
+                    throw new IllegalArgumentException("Each enum member requires a name and value");
+                long value = Long.decode(memberValue.trim());
+                enumDt.add(memberName.trim(), value);
             }
             DataType registered = dtm.addDataType(enumDt, null);
 

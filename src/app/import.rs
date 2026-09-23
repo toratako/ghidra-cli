@@ -255,10 +255,11 @@ fn build_oneshot_import_options(
         loader_options.push(("length".to_string(), value.clone()));
     }
 
-    for raw in &args.loader_options {
-        let (name, value) = raw.split_once('=').ok_or_else(|| {
-            anyhow::anyhow!("Invalid --loader-option '{}': expected NAME=VALUE", raw)
-        })?;
+    anyhow::ensure!(
+        args.loader_options.len().is_multiple_of(2),
+        "--loader-option requires NAME VALUE"
+    );
+    for [name, value] in args.loader_options.as_chunks::<2>().0 {
         if name.is_empty()
             || !name
                 .chars()
@@ -270,7 +271,10 @@ fn build_oneshot_import_options(
             );
         }
         if value.is_empty() {
-            anyhow::bail!("Invalid --loader-option '{}': value must not be empty", raw);
+            anyhow::bail!(
+                "Invalid --loader-option '{}': value must not be empty",
+                name
+            );
         }
         loader_options.push((name.to_string(), value.to_string()));
     }

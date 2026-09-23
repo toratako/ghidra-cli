@@ -189,3 +189,37 @@ fn project_archives_have_explicit_operands_independent_of_global_selection() {
         Some(std::path::Path::new("copies"))
     );
 }
+
+#[test]
+fn loader_options_preserve_pairs_and_literal_delimiters() {
+    let parsed = Cli::try_parse_from([
+        "ghidra-cli",
+        "program",
+        "import",
+        "sample.bin",
+        "--loader-option",
+        "first",
+        "path=with:delimiters",
+        "--loader-option",
+        "second",
+        "space in value",
+        "--loader-option",
+        "blockName",
+        "-scratch",
+    ])
+    .unwrap();
+    let Commands::Program(ProgramCommands::Import(args)) = parsed.command else {
+        unreachable!();
+    };
+    assert_eq!(
+        args.loader_options,
+        [
+            "first",
+            "path=with:delimiters",
+            "second",
+            "space in value",
+            "blockName",
+            "-scratch"
+        ]
+    );
+}

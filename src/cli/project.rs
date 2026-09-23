@@ -176,9 +176,9 @@ pub struct ImportArgs {
     /// BinaryLoader length in bytes (implies --loader BinaryLoader if omitted)
     #[arg(long)]
     pub length: Option<String>,
-    /// Additional loader argument as NAME=VALUE; repeat for multiple arguments.
+    /// Additional loader argument; repeat for multiple arguments.
     /// baseAddr requires an explicit 0x-prefixed address.
-    #[arg(long = "loader-option", value_name = "NAME=VALUE")]
+    #[arg(long = "loader-option", num_args = 2, value_names = ["NAME", "VALUE"], action = clap::ArgAction::Append, allow_hyphen_values = true)]
     pub loader_options: Vec<String>,
     /// Import only — skip auto-analysis (the program is still persisted)
     #[arg(long, default_value = "false")]

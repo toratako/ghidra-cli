@@ -18,13 +18,8 @@ fn enum_member_deletion_preserves_same_valued_names_and_saved_metadata() {
     type_command(
         &program,
         &[
-            "create",
-            "enum",
-            "Mode",
-            "--values",
-            "Keep=1,Remove=1,Negative=-1",
-            "--size",
-            "8",
+            "create", "enum", "Mode", "--member", "Keep", "1", "--member", "Remove", "1",
+            "--member", "Negative", "-1", "--size", "8",
         ],
     )
     .assert_success();
@@ -53,7 +48,7 @@ public class SetEnumMetadata extends GhidraScript {
 
     let deleted = type_command(
         &program,
-        &["enum", "member", "delete", "Mode", "--name", "Remove"],
+        &["enum", "member", "delete", "Mode", "--member", "Remove"],
     );
     deleted.assert_success();
     let deleted: Value = deleted.data();
@@ -71,7 +66,7 @@ public class SetEnumMetadata extends GhidraScript {
 
     let missing = type_command(
         &program,
-        &["enum", "member", "delete", "Mode", "--name", "Remove"],
+        &["enum", "member", "delete", "Mode", "--member", "Remove"],
     );
     missing
         .assert_failure()
@@ -105,7 +100,7 @@ public class CheckEnumMetadata extends GhidraScript {
     for member in ["Keep", "Negative"] {
         type_command(
             &program,
-            &["enum", "member", "delete", "Mode", "--name", member],
+            &["enum", "member", "delete", "Mode", "--member", member],
         )
         .assert_success();
     }
@@ -139,7 +134,7 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
     for (name, message) in [("Mode", "Ambiguous"), ("Holder", "not an enum")] {
         let result = type_command(
             &program,
-            &["enum", "member", "delete", name, "--name", "Remove"],
+            &["enum", "member", "delete", name, "--member", "Remove"],
         );
         result.assert_failure().assert_stderr_contains(message);
         let error: Value = serde_json::from_str(&result.stderr).unwrap();
@@ -155,7 +150,7 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
             "member",
             "delete",
             "/First/Mode",
-            "--name",
+            "--member",
             "Remove",
         ],
     )

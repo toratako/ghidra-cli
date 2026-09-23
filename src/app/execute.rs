@@ -122,7 +122,7 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         symbols::parse_selector(address, filter)?;
     }
     if let Commands::Script(cli::ScriptCommands::Run(args)) = command {
-        scripts::validate_expect_specs(&args.expect)?;
+        scripts::validate_expect_specs(&args.expect_rows)?;
     }
     Ok(())
 }
@@ -286,7 +286,7 @@ pub(super) fn execute_via_bridge(
                         "type_create_enum",
                         Some(json!({
                             "name": args.name,
-                            "values": args.values,
+                            "members": args.members(),
                             "size": args.size,
                         })),
                     ),

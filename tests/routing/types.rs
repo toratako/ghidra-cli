@@ -60,22 +60,17 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
         ),
         (
             vec![
-                "type",
-                "create",
-                "enum",
-                "Mode",
-                "--values",
-                "Read=1,Write=2",
+                "type", "create", "enum", "Mode", "--member", "Read", "1", "--member", "Write", "2",
             ],
             "type_create_enum",
-            json!({"name": "Mode", "values": "Read=1,Write=2", "size": 4}),
+            json!({"name": "Mode", "members": [{"name": "Read", "value": "1"}, {"name": "Write", "value": "2"}], "size": 4}),
         ),
         (
             vec![
-                "type", "create", "enum", "WideMode", "--values", "Read=1", "--size", "8",
+                "type", "create", "enum", "WideMode", "--member", "Read", "1", "--size", "8",
             ],
             "type_create_enum",
-            json!({"name": "WideMode", "values": "Read=1", "size": 8}),
+            json!({"name": "WideMode", "members": [{"name": "Read", "value": "1"}], "size": 8}),
         ),
         (
             vec!["type", "create", "typedef", "HeaderPointer", "Header *"],
@@ -177,7 +172,7 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
                 "member",
                 "delete",
                 "/Recovered/Mode",
-                "--name",
+                "--member",
                 "Read",
             ],
             "type_enum_member_delete",

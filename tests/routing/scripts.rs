@@ -24,10 +24,14 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
                 "script",
                 "run",
                 path,
+                "--expect-rows",
+                "rows.jsonl",
+                "2",
+                "--expect-rows",
+                "more rows.ndjson",
+                "0",
                 "--expect",
-                "rows.csv:2",
-                "--expect",
-                "artifact:name",
+                "artifact:10",
                 "--allow-empty",
                 "--",
                 "argument with spaces",
@@ -42,8 +46,9 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
         let mut expected = json!({
             "args": ["argument with spaces"],
             "expect": [
-                {"path": bridge.root.path().join("rows.csv"), "min_rows": 2},
-                {"path": bridge.root.path().join("artifact:name")},
+                {"path": bridge.root.path().join("artifact:10")},
+                {"path": bridge.root.path().join("rows.jsonl"), "min_rows": 2},
+                {"path": bridge.root.path().join("more rows.ndjson"), "min_rows": 0},
             ],
             "allow_empty": true,
         });
@@ -61,6 +66,7 @@ fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
 fn script_expect_row_bounds_are_checked_before_sending_the_script() {
     let bridge = RecordedBridge::new();
     for minimum in [
+        "1.5",
         "9223372036854775808",
         "18446744073709551615",
         "18446744073709551616",
@@ -72,8 +78,9 @@ fn script_expect_row_bounds_are_checked_before_sending_the_script() {
                     "script",
                     "run",
                     path,
-                    "--expect",
-                    &format!("rows.jsonl:{minimum}"),
+                    "--expect-rows",
+                    "rows.jsonl",
+                    minimum,
                 ])
                 .write_stdin("must not execute")
                 .output()
@@ -104,8 +111,9 @@ fn script_expect_row_bounds_are_checked_before_sending_the_script() {
             "script",
             "run",
             "missing.java",
-            "--expect",
-            &format!("rows.jsonl:{minimum}"),
+            "--expect-rows",
+            "rows.jsonl",
+            &minimum.to_string(),
         ]);
         let requests = bridge.requests.lock().unwrap();
         assert_eq!(

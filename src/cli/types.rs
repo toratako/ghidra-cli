@@ -225,9 +225,9 @@ pub struct TypeMoveArgs {
 pub struct CreateEnumArgs {
     /// Enum type name
     pub name: String,
-    /// Comma-separated KEY=VALUE pairs, e.g. "RED=0,GREEN=1,BLUE=2"
-    #[arg(long)]
-    pub values: String,
+    /// Enum member name and value; repeat for each member
+    #[arg(long, required = true, num_args = 2, value_names = ["NAME", "VALUE"], action = clap::ArgAction::Append, allow_hyphen_values = true)]
+    pub member: Vec<String>,
     /// Size in bytes (1, 2, 4, or 8)
     #[arg(long, default_value = "4")]
     pub size: i32,
@@ -235,6 +235,23 @@ pub struct CreateEnumArgs {
     pub program: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct EnumMember<'a> {
+    pub name: &'a str,
+    pub value: &'a str,
+}
+
+impl CreateEnumArgs {
+    pub fn members(&self) -> Vec<EnumMember<'_>> {
+        self.member
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[name, value]| EnumMember { name, value })
+            .collect()
+    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -314,7 +331,7 @@ pub struct TypeEnumMemberDeleteArgs {
     /// Enum name or full type path
     pub type_name: String,
     /// Exact member name to remove
-    #[arg(long)]
+    #[arg(long = "member")]
     pub name: String,
     #[arg(long)]
     pub program: Option<String>,

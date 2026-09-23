@@ -16,8 +16,12 @@ fn type_creation_parses_struct_enum_and_typedef_arguments() {
             "create",
             "enum",
             "Mode",
-            "--values",
-            "Read=1,Write=2",
+            "--member",
+            "Read",
+            "1",
+            "--member",
+            "Write",
+            "2",
         ];
         if let Some(size) = size {
             args.extend(["--size", size]);
@@ -28,7 +32,10 @@ fn type_creation_parses_struct_enum_and_typedef_arguments() {
             panic!("expected enum creation");
         };
         assert_eq!(args.name, "Mode");
-        assert_eq!(args.values, "Read=1,Write=2");
+        assert_eq!(
+            serde_json::to_value(args.members()).unwrap(),
+            serde_json::json!([{"name": "Read", "value": "1"}, {"name": "Write", "value": "2"}])
+        );
         assert_eq!(args.size, size.unwrap_or("4").parse::<i32>().unwrap());
     }
 
@@ -56,7 +63,7 @@ fn type_creation_requires_kind_and_arguments() {
         vec!["struct"],
         vec!["enum"],
         vec!["enum", "Mode"],
-        vec!["enum", "--values", "Read=1"],
+        vec!["enum", "--member", "Read", "1"],
         vec!["typedef"],
         vec!["typedef", "HeaderAlias"],
     ] {
@@ -74,7 +81,7 @@ fn type_creation_requires_kind_and_arguments() {
 fn type_creation_accepts_global_options_at_each_command_level() {
     for command in [
         vec!["type", "create", "struct", "Header"],
-        vec!["type", "create", "enum", "Mode", "--values", "Read=1"],
+        vec!["type", "create", "enum", "Mode", "--member", "Read", "1"],
         vec!["type", "create", "typedef", "HeaderAlias", "Header"],
     ] {
         for position in [0, 1, 2, 3, command.len()] {
@@ -297,4 +304,45 @@ fn type_category_requires_a_path_and_exposes_queries_only_for_lists() {
         ])
         .is_err());
     }
+}
+
+#[test]
+fn enum_members_preserve_signed_and_prefixed_values_as_separate_operands() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "create",
+        "enum",
+        "State",
+        "--member",
+        "Unknown",
+        "-1",
+        "--member",
+        "Ready",
+        "0x10",
+        "--member",
+        "Failed",
+        "-0x2",
+    ])
+    .unwrap();
+    let Commands::Type(TypeCommands::Create(TypeCreateCommands::Enum(args))) = cli.command else {
+        panic!("expected enum creation");
+    };
+    assert_eq!(
+        serde_json::to_value(args.members()).unwrap(),
+        serde_json::json!([
+            {"name": "Unknown", "value": "-1"}, {"name": "Ready", "value": "0x10"},
+            {"name": "Failed", "value": "-0x2"}
+        ])
+    );
+    assert!(Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "create",
+        "enum",
+        "State",
+        "--member",
+        "Unknown",
+    ])
+    .is_err());
 }

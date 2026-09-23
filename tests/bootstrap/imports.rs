@@ -286,7 +286,8 @@ fn unsupported_loader_options_never_save_a_program() {
             "--language",
             "x86:LE:32:default",
             "--loader-option",
-            "baseAdrr=0x9000",
+            "baseAdrr",
+            "0x9000",
             "--no-analyze",
         ]);
         assert!(!output.status.success(), "{output:?}");
@@ -306,7 +307,8 @@ fn unsupported_loader_options_never_save_a_program() {
                 "--language",
                 "x86:LE:32:default",
                 "--loader-option",
-                "baseAddr=0x9000",
+                "baseAddr",
+                "0x9000",
                 "--no-analyze",
             ]);
         } else {

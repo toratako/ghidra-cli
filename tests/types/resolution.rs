@@ -453,7 +453,7 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
     for (name, args, kind) in [
         (
             "EnumCollision",
-            vec!["create", "enum", "EnumCollision", "--values", "ONE=1"],
+            vec!["create", "enum", "EnumCollision", "--member", "ONE", "1"],
             "enum",
         ),
         (
