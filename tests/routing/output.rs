@@ -133,8 +133,8 @@ fn compact_fallback_displays_receipt_fields_once() {
 fn json_results_match_batch_entries_and_retain_context_after_queries() {
     let bridge = RecordedBridge::new();
     for args in [
-        vec!["tag", "get", "review"],
-        vec!["tag", "get", "review", "--fields", "name"],
+        vec!["function", "tag", "get", "review"],
+        vec!["function", "tag", "get", "review", "--fields", "name"],
         vec!["memory", "read", "0x1000", "--size", "8"],
         vec!["decompile", "warned", "--fields", "code,warnings"],
         vec!["function", "list"],
@@ -194,7 +194,10 @@ fn json_results_match_batch_entries_and_retain_context_after_queries() {
         document(&bridge, &["string", "refs", "absent"]),
         json!({"data": [], "meta": {"pattern": "absent", "returned": 0, "offset": 0, "limit": 1}})
     );
-    let tag = document(&bridge, &["tag", "get", "review", "--fields", "name"]);
+    let tag = document(
+        &bridge,
+        &["function", "tag", "get", "review", "--fields", "name"],
+    );
     assert_eq!(tag, json!({"data": {"name": "review"}}));
 }
 
@@ -211,7 +214,7 @@ fn ndjson_preserves_values_and_escaping_without_result_metadata() {
         (vec!["string", "refs", "absent"], vec![]),
         (vec!["comment", "get", "0x1000", "--count"], vec![json!(2)]),
         (
-            vec!["tag", "get", "review", "--fields", "name"],
+            vec!["function", "tag", "get", "review", "--fields", "name"],
             vec![json!({"name": "review"})],
         ),
         (

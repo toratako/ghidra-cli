@@ -323,14 +323,14 @@ with `import-c`.
 ## Function tags
 
 ```text
-ghidra-cli tag list
-ghidra-cli tag get <name>
-ghidra-cli tag create <name> --comment "…"
-ghidra-cli tag attach <tag>... --function <func>      # Attach existing tags
-ghidra-cli tag detach <tag>... --function <func>      # Detach tags (--all clears every tag)
-ghidra-cli tag rename <old> <new>
-ghidra-cli tag set-comment <name> --text "…"
-ghidra-cli tag delete <name>               # Delete tag, detaching from all functions
+ghidra-cli function tag list
+ghidra-cli function tag get <name>
+ghidra-cli function tag create <name> --comment "…"
+ghidra-cli function tag attach <tag>... --function <func>      # Attach existing tags
+ghidra-cli function tag detach <tag>... --function <func>      # Detach tags (--all clears every tag)
+ghidra-cli function tag rename <old> <new>
+ghidra-cli function tag set-comment <name> --text "…"
+ghidra-cli function tag delete <name>               # Delete tag, detaching from all functions
 ghidra-cli function list --tag <name>      # Functions carrying a tag (repeatable = AND)
 ghidra-cli function list --untagged
 ```

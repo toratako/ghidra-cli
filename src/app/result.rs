@@ -64,7 +64,7 @@ impl ResultShape {
             Commands::Type(TypeCommands::Category(TypeCategoryCommands::List(_))) => {
                 Self::context("categories", &["path"])
             }
-            Commands::Tag(TagCommands::List(_)) => Self::rows("tags"),
+            Commands::Function(FunctionCommands::Tag(TagCommands::List(_))) => Self::rows("tags"),
             Commands::Analysis(AnalysisCommands::Option(AnalysisOptionCommands::List(_))) => {
                 Self::rows("options")
             }
@@ -128,7 +128,6 @@ impl ResultShape {
             | Commands::Data(_)
             | Commands::Listing(_)
             | Commands::Type(_)
-            | Commands::Tag(_)
             | Commands::Pcode(_)
             | Commands::Analysis(_)
             | Commands::Comment(_)

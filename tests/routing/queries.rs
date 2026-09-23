@@ -7,7 +7,7 @@ fn bounded_queries_reject_oversized_limits_before_bridge_work() {
     for args in [
         vec!["symbol", "externals"],
         vec!["symbol", "entry-points"],
-        vec!["tag", "list"],
+        vec!["function", "tag", "list"],
         vec!["graph", "calls"],
         vec!["graph", "callers", "main"],
         vec!["graph", "callees", "main"],

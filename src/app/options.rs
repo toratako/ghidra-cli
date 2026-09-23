@@ -14,7 +14,6 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Equate(_)
             | Commands::Namespace(_)
             | Commands::Type(_)
-            | Commands::Tag(_)
             | Commands::Pcode(_)
             | Commands::Analysis(_)
             | Commands::Comment(_)
@@ -34,6 +33,16 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
     match command {
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
+            cli::FunctionCommands::Tag(cmd) => match cmd {
+                cli::TagCommands::List(args) => args.options.project.clone(),
+                cli::TagCommands::Get(args) => args.options.project.clone(),
+                cli::TagCommands::Create(args) => args.project.clone(),
+                cli::TagCommands::Delete(args) => args.project.clone(),
+                cli::TagCommands::Rename(args) => args.project.clone(),
+                cli::TagCommands::SetComment(args) => args.project.clone(),
+                cli::TagCommands::Attach(args) => args.project.clone(),
+                cli::TagCommands::Detach(args) => args.project.clone(),
+            },
             cli::FunctionCommands::List(args) => args.options.project.clone(),
             cli::FunctionCommands::Get(args) => args.options.project.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.project.clone(),
@@ -168,16 +177,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
                 cli::TypeEnumMemberCommands::Delete(args) => args.project.clone(),
             },
         },
-        Commands::Tag(cmd) => match cmd {
-            cli::TagCommands::List(args) => args.options.project.clone(),
-            cli::TagCommands::Get(args) => args.options.project.clone(),
-            cli::TagCommands::Create(args) => args.project.clone(),
-            cli::TagCommands::Delete(args) => args.project.clone(),
-            cli::TagCommands::Rename(args) => args.project.clone(),
-            cli::TagCommands::SetComment(args) => args.project.clone(),
-            cli::TagCommands::Attach(args) => args.project.clone(),
-            cli::TagCommands::Detach(args) => args.project.clone(),
-        },
         Commands::Pcode(cmd) => match cmd {
             cli::PcodeCommands::At(args) => args.project.clone(),
             cli::PcodeCommands::Function(args) => args.project.clone(),
@@ -241,6 +240,16 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
     match command {
         Commands::Decompile(args) => args.options.program.clone(),
         Commands::Function(cmd) => match cmd {
+            cli::FunctionCommands::Tag(cmd) => match cmd {
+                cli::TagCommands::List(args) => args.options.program.clone(),
+                cli::TagCommands::Get(args) => args.options.program.clone(),
+                cli::TagCommands::Create(args) => args.program.clone(),
+                cli::TagCommands::Delete(args) => args.program.clone(),
+                cli::TagCommands::Rename(args) => args.program.clone(),
+                cli::TagCommands::SetComment(args) => args.program.clone(),
+                cli::TagCommands::Attach(args) => args.program.clone(),
+                cli::TagCommands::Detach(args) => args.program.clone(),
+            },
             cli::FunctionCommands::List(args) => args.options.program.clone(),
             cli::FunctionCommands::Get(args) => args.options.program.clone(),
             cli::FunctionCommands::Disasm(args) => args.options.program.clone(),
@@ -373,16 +382,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 cli::TypeEnumMemberCommands::Delete(args) => args.program.clone(),
             },
         },
-        Commands::Tag(cmd) => match cmd {
-            cli::TagCommands::List(args) => args.options.program.clone(),
-            cli::TagCommands::Get(args) => args.options.program.clone(),
-            cli::TagCommands::Create(args) => args.program.clone(),
-            cli::TagCommands::Delete(args) => args.program.clone(),
-            cli::TagCommands::Rename(args) => args.program.clone(),
-            cli::TagCommands::SetComment(args) => args.program.clone(),
-            cli::TagCommands::Attach(args) => args.program.clone(),
-            cli::TagCommands::Detach(args) => args.program.clone(),
-        },
         Commands::Pcode(cmd) => match cmd {
             cli::PcodeCommands::At(args) => args.program.clone(),
             cli::PcodeCommands::Function(args) => args.program.clone(),
@@ -488,6 +487,11 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::SymbolCommands::Externals(opts) | cli::SymbolCommands::EntryPoints(opts),
         ) => Some(opts.clone()),
         Commands::Function(cmd) => match cmd {
+            cli::FunctionCommands::Tag(cmd) => match cmd {
+                cli::TagCommands::List(args) => Some(args.options.clone()),
+                cli::TagCommands::Get(args) => Some((&args.options).into()),
+                _ => None,
+            },
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some((&args.options).into()),
             cli::FunctionCommands::SetBody(args) => Some((&args.options).into()),
@@ -577,11 +581,6 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             }
             _ => None,
         },
-        Commands::Tag(cmd) => match cmd {
-            cli::TagCommands::List(args) => Some(args.options.clone()),
-            cli::TagCommands::Get(args) => Some((&args.options).into()),
-            _ => None,
-        },
         Commands::Bookmark(cmd) => match cmd {
             cli::BookmarkCommands::List(opts) => Some(opts.clone()),
             cli::BookmarkCommands::Get(args) => Some(args.options.clone()),
@@ -640,7 +639,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             cli::SymbolCommands::Externals(_) | cli::SymbolCommands::EntryPoints(_),
         ) => Limit,
         Commands::Function(cli::FunctionCommands::Disasm(_))
-        | Commands::Tag(cli::TagCommands::List(_))
+        | Commands::Function(cli::FunctionCommands::Tag(cli::TagCommands::List(_)))
         | Commands::Graph(
             cli::GraphCommands::Calls(_)
             | cli::GraphCommands::Callers(_)
@@ -675,7 +674,7 @@ pub(super) fn validate_query_bounds(
     let int_limit = matches!(
         command,
         Commands::Symbol(cli::SymbolCommands::Externals(_) | cli::SymbolCommands::EntryPoints(_))
-            | Commands::Tag(cli::TagCommands::List(_))
+            | Commands::Function(cli::FunctionCommands::Tag(cli::TagCommands::List(_)))
             | Commands::Graph(_)
             | Commands::Find(cli::FindCommands::Instruction(_) | cli::FindCommands::Constant(_))
     );

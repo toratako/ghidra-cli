@@ -128,10 +128,6 @@ pub enum Commands {
     #[command(subcommand)]
     Type(TypeCommands),
 
-    /// Function tag operations
-    #[command(subcommand)]
-    Tag(TagCommands),
-
     /// PCode operations (intermediate representation)
     #[command(subcommand)]
     Pcode(PcodeCommands),

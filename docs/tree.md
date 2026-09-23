@@ -35,6 +35,15 @@ ghidra-cli
 │   ├── export
 │   └── save
 ├── function
+│   ├── tag
+│   │   ├── list
+│   │   ├── get
+│   │   ├── create
+│   │   ├── delete
+│   │   ├── rename
+│   │   ├── set-comment
+│   │   ├── attach
+│   │   └── detach
 │   ├── list
 │   ├── get
 │   ├── disassemble
@@ -147,15 +156,6 @@ ghidra-cli
 │   └── enum
 │       └── member
 │           └── delete
-├── tag
-│   ├── list
-│   ├── get
-│   ├── create
-│   ├── delete
-│   ├── rename
-│   ├── set-comment
-│   ├── attach
-│   └── detach
 ├── pcode
 │   ├── at
 │   └── function

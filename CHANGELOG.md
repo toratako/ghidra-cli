@@ -53,6 +53,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move function tag operations from `tag` to `function tag`. Keep shared
+  program-level definitions separate from function attachments through
+  `create` and `attach`; remove the top-level command.
 - Move calling-convention discovery to `program list-calling-conventions [NAME]`,
   matching its compiler-specification scope and supporting explicit program operands.
 - Move `type apply` to `listing define-data`, preserving its arguments, data

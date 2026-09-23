@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FunctionCommands {
+    /// Function tag definitions and their attachments
+    #[command(subcommand)]
+    Tag(TagCommands),
     /// List all functions
     List(FunctionListArgs),
     /// Get function details
@@ -381,4 +384,120 @@ pub struct DecompileArgs {
     pub with_addresses: bool,
     #[command(flatten)]
     pub options: ObjectOptions,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
+pub enum TagCommands {
+    /// List tag definitions in the program (or one function's tags with --function)
+    List(TagListArgs),
+    /// Get function tag details
+    Get(TagGetArgs),
+    /// Create a shared function tag definition in the program
+    Create(TagCreateArgs),
+    /// Delete a tag (detaches it from all functions)
+    Delete(TagDeleteArgs),
+    /// Rename a tag everywhere it is used
+    Rename(TagRenameArgs),
+    /// Set or clear a tag's comment ("" clears)
+    SetComment(TagSetCommentArgs),
+    /// Attach existing tags to a function
+    Attach(TagAttachArgs),
+    /// Detach tags from a function
+    Detach(TagDetachArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagListArgs {
+    /// Only tags attached to this exact function name or explicit 0x-prefixed address
+    #[arg(long = "function", value_name = "TARGET")]
+    pub function: Option<String>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagGetArgs {
+    /// Tag name (case-sensitive)
+    pub name: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagCreateArgs {
+    /// Tag name (case-sensitive; commas and semicolons not allowed)
+    pub name: String,
+    /// Optional comment describing the tag's meaning
+    #[arg(long)]
+    pub comment: Option<String>,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagDeleteArgs {
+    /// Tag name
+    pub name: String,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagRenameArgs {
+    /// Current tag name
+    pub old_name: String,
+    /// New tag name
+    pub new_name: String,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagSetCommentArgs {
+    /// Tag name
+    pub name: String,
+    /// New comment text; empty string clears the comment
+    #[arg(long = "text")]
+    pub comment: String,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagAttachArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(long = "function", value_name = "TARGET")]
+    pub target: String,
+    /// One or more tag names to attach
+    #[arg(value_name = "TAG", required = true, num_args = 1..)]
+    pub tags: Vec<String>,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TagDetachArgs {
+    /// Exact function name or explicit 0x-prefixed address
+    #[arg(long = "function", value_name = "TARGET")]
+    pub target: String,
+    /// Tag names to detach
+    #[arg(value_name = "TAG", num_args = 0.., required_unless_present = "all")]
+    pub tags: Vec<String>,
+    /// Detach every tag from the function
+    #[arg(long, conflicts_with = "tags")]
+    pub all: bool,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
 }

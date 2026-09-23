@@ -12,6 +12,43 @@ pub(super) fn execute(
 ) -> anyhow::Result<Value> {
     let list_limit = fetch.limit;
     match cmd {
+        FunctionCommands::Tag(cmd) => {
+            use cli::TagCommands;
+            match cmd {
+                TagCommands::List(args) => client.tag_list(list_limit, args.function.as_deref()),
+                TagCommands::Get(args) => client.tag_get(&args.name),
+                TagCommands::Create(args) => client.send_command(
+                    "tag_create",
+                    Some(json!({"name": args.name, "comment": args.comment})),
+                ),
+                TagCommands::Delete(args) => {
+                    client.send_command("tag_delete", Some(json!({"name": args.name})))
+                }
+                TagCommands::Rename(args) => client.send_command(
+                    "tag_rename",
+                    Some(json!({"name": args.old_name, "new_name": args.new_name})),
+                ),
+                TagCommands::SetComment(args) => client.send_command(
+                    "tag_set_comment",
+                    Some(json!({"name": args.name, "comment": args.comment})),
+                ),
+                TagCommands::Attach(args) => client.send_command(
+                    "tag_attach",
+                    Some(json!({
+                        "function": args.target,
+                        "tags": args.tags,
+                    })),
+                ),
+                TagCommands::Detach(args) => client.send_command(
+                    "tag_detach",
+                    Some(json!({
+                        "function": args.target,
+                        "tags": args.tags,
+                        "all": args.all,
+                    })),
+                ),
+            }
+        }
         FunctionCommands::List(args) => client.list_functions(
             list_limit,
             fetch.filter.clone(),

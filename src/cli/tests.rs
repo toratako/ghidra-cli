@@ -154,7 +154,7 @@ fn canonical_commands_parse() {
         vec!["bookmark", "get", "overlay:0x1000"],
         vec!["memory", "info", "main"],
         vec!["type", "delete", "Word"],
-        vec!["tag", "rename", "old", "new"],
+        vec!["function", "tag", "rename", "old", "new"],
         vec!["analysis", "option", "list"],
         vec!["analysis", "run"],
         vec!["decompile", "main"],

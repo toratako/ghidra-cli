@@ -67,7 +67,15 @@ fn tag_get_preserves_details_and_projection_in_standalone_and_batch() {
     for fields in [None, Some("comment,use_count")] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
-            let mut args = vec!["tag", "get", "review", "--program", "B", "--json"];
+            let mut args = vec![
+                "function",
+                "tag",
+                "get",
+                "review",
+                "--program",
+                "B",
+                "--json",
+            ];
             let mut expected = json!({"name": "review", "comment": "Review queue", "use_count": 2});
             if let Some(fields) = fields {
                 args.extend(["--fields", fields, "--format", "json-compact"]);
