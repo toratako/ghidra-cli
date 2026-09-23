@@ -16,11 +16,7 @@ pub enum TypeCommands {
     Create(TypeCreateCommands),
     /// Import C type definitions
     ImportC(ImportCArgs),
-    /// Import selected types and their dependencies from a Ghidra data type archive
-    ImportGdt(TypeGdtArgs),
-    /// Export selected types and their dependencies to a new Ghidra data type archive
-    ExportGdt(TypeGdtArgs),
-    /// Inspect Ghidra data type archives
+    /// Inspect and transfer Ghidra data type archives
     #[command(subcommand)]
     Archive(TypeArchiveCommands),
     /// Delete a data type
@@ -46,7 +42,7 @@ pub enum TypeCommands {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[command(group(clap::ArgGroup::new("selection").required(true).args(["where_expr", "all"])))]
-pub struct TypeGdtArgs {
+pub struct TypeArchiveTransferArgs {
     /// Ghidra data type archive (.gdt), relative to the CLI working directory
     #[arg(value_name = "FILE")]
     pub file: std::path::PathBuf,
@@ -62,12 +58,16 @@ pub struct TypeGdtArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum TypeArchiveCommands {
-    /// List named type definitions in an archive without loading a program
-    List(TypeArchiveListArgs),
+    /// List named type definitions in a Ghidra data type archive without loading a program
+    Inspect(TypeArchiveInspectArgs),
+    /// Import selected types and their dependencies from an archive into the target program
+    Import(TypeArchiveTransferArgs),
+    /// Export selected types and their dependencies from the target program to a new archive
+    Export(TypeArchiveTransferArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct TypeArchiveListArgs {
+pub struct TypeArchiveInspectArgs {
     /// Ghidra data type archive (.gdt), relative to the CLI working directory
     #[arg(value_name = "FILE")]
     pub file: std::path::PathBuf,

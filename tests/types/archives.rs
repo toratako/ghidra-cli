@@ -80,7 +80,7 @@ fn packed_database_cache_entries() -> Vec<String> {
 
 #[test]
 #[serial]
-fn archive_list_queries_a_read_only_file_without_a_loaded_program() {
+fn archive_inspect_queries_a_read_only_file_without_a_loaded_program() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
     let directory = tempfile::tempdir().unwrap();
@@ -93,7 +93,7 @@ fn archive_list_queries_a_read_only_file_without_a_loaded_program() {
     let client = harness().client().unwrap();
     client.program_close().unwrap();
     let result = ghidra(harness())
-        .args(["type", "archive", "list"])
+        .args(["type", "archive", "inspect"])
         .arg(file.to_string_lossy())
         .args([
             "--filter",
@@ -119,7 +119,7 @@ fn archive_list_queries_a_read_only_file_without_a_loaded_program() {
     assert!(root["universal_id"].is_string());
     assert_eq!(root["source_archive"]["kind"], "file");
     let count = ghidra(harness())
-        .args(["type", "archive", "list"])
+        .args(["type", "archive", "inspect"])
         .arg(file.to_string_lossy())
         .args(["--filter", "kind=struct", "--count", "--json"])
         .run();
@@ -136,11 +136,14 @@ fn archive_list_queries_a_read_only_file_without_a_loaded_program() {
             .send_command("type_archive_list", Some(json!({"file": file})))
             .unwrap();
         candidates(Some(&file));
-        command(&program, &["import-gdt", file.to_str().unwrap(), "--all"]);
+        command(
+            &program,
+            &["archive", "import", file.to_str().unwrap(), "--all"],
+        );
         let exported = directory.path().join(format!("cache-check-{index}.gdt"));
         command(
             &program,
-            &["export-gdt", exported.to_str().unwrap(), "--all"],
+            &["archive", "export", exported.to_str().unwrap(), "--all"],
         );
         candidates(Some(&exported));
         assert_eq!(
@@ -166,7 +169,8 @@ fn selected_import_roundtrips_shared_recursive_dependencies_and_reuses_them() {
     let receipt = command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -187,7 +191,8 @@ fn selected_import_roundtrips_shared_recursive_dependencies_and_reuses_them() {
     let repeated = command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -203,7 +208,8 @@ fn selected_import_roundtrips_shared_recursive_dependencies_and_reuses_them() {
     command(
         &program,
         &[
-            "export-gdt",
+            "archive",
+            "export",
             exported.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -219,7 +225,7 @@ fn selected_import_roundtrips_shared_recursive_dependencies_and_reuses_them() {
     let target = create_type_edit_program("x86:LE:64:default");
     command(
         &target,
-        &["import-gdt", exported.to_str().unwrap(), "--all"],
+        &["archive", "import", exported.to_str().unwrap(), "--all"],
     );
     reopen(&target);
     fixture(&target, "check-import", &file);
@@ -239,7 +245,10 @@ fn all_import_includes_unrelated_roots_and_equivalent_local_types_adopt_origin()
     let local = command(&program, &["get", ROOT]);
     assert_eq!(local["source_archive"]["kind"], "program");
     let before_count = list(&program).as_array().unwrap().len();
-    let receipt = command(&program, &["import-gdt", file.to_str().unwrap(), "--all"]);
+    let receipt = command(
+        &program,
+        &["archive", "import", file.to_str().unwrap(), "--all"],
+    );
     assert_eq!(
         receipt["changed"], true,
         "Origin adoption is a saved change: {receipt}"
@@ -271,7 +280,8 @@ fn dependency_conflict_and_divergent_same_origin_fail_without_saved_changes() {
     type_command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -288,7 +298,8 @@ fn dependency_conflict_and_divergent_same_origin_fail_without_saved_changes() {
     command(
         &target,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -318,7 +329,8 @@ fn dependency_conflict_and_divergent_same_origin_fail_without_saved_changes() {
     type_command(
         &target,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -343,11 +355,17 @@ fn different_file_origins_and_moved_identities_are_not_silently_reassociated() {
     let second = directory.path().join("second.gdt");
     fixture(&program, "create", &first);
     fixture(&program, "create", &second);
-    command(&program, &["import-gdt", first.to_str().unwrap(), "--all"]);
+    command(
+        &program,
+        &["archive", "import", first.to_str().unwrap(), "--all"],
+    );
     let before = definitions(&program);
-    type_command(&program, &["import-gdt", second.to_str().unwrap(), "--all"])
-        .assert_failure()
-        .assert_stderr_contains("conflict");
+    type_command(
+        &program,
+        &["archive", "import", second.to_str().unwrap(), "--all"],
+    )
+    .assert_failure()
+    .assert_stderr_contains("conflict");
     reopen(&program);
     assert_eq!(definitions(&program), before);
     fixture(&program, "check-import", &first);
@@ -358,7 +376,8 @@ fn different_file_origins_and_moved_identities_are_not_silently_reassociated() {
     type_command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             first.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -385,7 +404,8 @@ fn incompatible_layout_endianness_and_scalar_semantics_are_rejected_before_impor
     type_command(
         &target,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Node""#,
@@ -399,7 +419,8 @@ fn incompatible_layout_endianness_and_scalar_semantics_are_rejected_before_impor
     command(
         &target,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Payload""#,
@@ -412,7 +433,8 @@ fn incompatible_layout_endianness_and_scalar_semantics_are_rejected_before_impor
     type_command(
         &big_endian,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Payload""#,
@@ -431,7 +453,8 @@ fn incompatible_layout_endianness_and_scalar_semantics_are_rejected_before_impor
     type_command(
         &unsigned_char,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             chars.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Character""#,
@@ -457,7 +480,8 @@ fn local_export_owns_fresh_archive_identities_and_preserves_the_saved_program() 
     command(
         &program,
         &[
-            "export-gdt",
+            "archive",
+            "export",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,
@@ -469,13 +493,19 @@ fn local_export_owns_fresh_archive_identities_and_preserves_the_saved_program() 
     reopen(&program);
     assert_eq!(definitions(&program), before);
     let bytes = std::fs::read(&file).unwrap();
-    type_command(&program, &["export-gdt", file.to_str().unwrap(), "--all"])
-        .assert_failure()
-        .assert_stderr_contains("exists");
+    type_command(
+        &program,
+        &["archive", "export", file.to_str().unwrap(), "--all"],
+    )
+    .assert_failure()
+    .assert_stderr_contains("exists");
     assert_eq!(std::fs::read(&file).unwrap(), bytes);
     assert_eq!(definitions(&program), before);
     let target = create_type_edit_program("x86:LE:64:default");
-    command(&target, &["import-gdt", file.to_str().unwrap(), "--all"]);
+    command(
+        &target,
+        &["archive", "import", file.to_str().unwrap(), "--all"],
+    );
     reopen(&target);
     fixture(&target, "check-import", &file);
     restore_program();
@@ -514,7 +544,10 @@ fn selection_guards_reject_missing_paths_and_changed_sources_without_mutation() 
     reopen(&program);
     assert_eq!(list(&program), before);
 
-    command(&program, &["import-gdt", file.to_str().unwrap(), "--all"]);
+    command(
+        &program,
+        &["archive", "import", file.to_str().unwrap(), "--all"],
+    );
     let snapshot = candidates(None);
     command(&program, &["create", "struct", "AfterSelection"]);
     let before = list(&program);
@@ -547,12 +580,17 @@ fn invalid_sources_and_empty_selections_leave_no_types_or_archive() {
     std::fs::write(&invalid, b"This is not a native Ghidra type archive.").unwrap();
     let before = list(&program);
     for source in [&invalid, &missing] {
-        type_command(&program, &["import-gdt", source.to_str().unwrap(), "--all"]).assert_failure();
+        type_command(
+            &program,
+            &["archive", "import", source.to_str().unwrap(), "--all"],
+        )
+        .assert_failure();
     }
     type_command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/absent/Type""#,
@@ -562,7 +600,8 @@ fn invalid_sources_and_empty_selections_leave_no_types_or_archive() {
     type_command(
         &program,
         &[
-            "export-gdt",
+            "archive",
+            "export",
             output.to_str().unwrap(),
             "--where",
             r#"path="/absent/Type""#,
@@ -631,7 +670,8 @@ fn replacing_archive_bytes_with_the_same_mtime_does_not_reuse_cached_definitions
     command(
         &program,
         &[
-            "import-gdt",
+            "archive",
+            "import",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Payload""#,
@@ -658,7 +698,8 @@ fn unrepresentable_component_endianness_is_rejected_without_publishing() {
     type_command(
         &program,
         &[
-            "export-gdt",
+            "archive",
+            "export",
             file.to_str().unwrap(),
             "--where",
             r#"path="/Gdt/Root""#,

@@ -133,10 +133,10 @@ ghidra-cli
 │   │   ├── enum
 │   │   └── typedef
 │   ├── import-c
-│   ├── import-gdt
-│   ├── export-gdt
 │   ├── archive
-│   │   └── list
+│   │   ├── inspect
+│   │   ├── import
+│   │   └── export
 │   ├── delete
 │   ├── rename
 │   ├── clone

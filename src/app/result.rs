@@ -53,7 +53,7 @@ impl ResultShape {
             Commands::Equate(EquateCommands::List(_)) => Self::rows("equates"),
             Commands::Namespace(NamespaceCommands::List(_)) => Self::rows("namespaces"),
             Commands::Type(TypeCommands::List(_)) => Self::rows("types"),
-            Commands::Type(TypeCommands::Archive(TypeArchiveCommands::List(_))) => {
+            Commands::Type(TypeCommands::Archive(TypeArchiveCommands::Inspect(_))) => {
                 Self::context("types", &["archive"])
             }
             Commands::Type(TypeCommands::Uses(_)) => {

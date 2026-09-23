@@ -154,9 +154,13 @@ fn parse_command_query(command: &Commands) -> anyhow::Result<CommandQuery> {
 
 fn validate_target_scope(cli: &Cli) -> anyhow::Result<()> {
     anyhow::ensure!(
-        !matches!(cli.command, Commands::Type(cli::TypeCommands::Archive(_)))
-            || cli.program.is_none(),
-        "`type archive list` reads a file and does not accept --program"
+        !matches!(
+            cli.command,
+            Commands::Type(cli::TypeCommands::Archive(
+                cli::TypeArchiveCommands::Inspect(_)
+            ))
+        ) || cli.program.is_none(),
+        "`type archive inspect` reads a file and does not accept --program"
     );
     Ok(())
 }
@@ -168,7 +172,12 @@ fn execute_bridge_command(
     programs: &mut HashMap<String, String>,
 ) -> anyhow::Result<CommandResult> {
     let output = Output::new(cli);
-    let archive_listing = matches!(&cli.command, Commands::Type(cli::TypeCommands::Archive(_)));
+    let archive_inspection = matches!(
+        &cli.command,
+        Commands::Type(cli::TypeCommands::Archive(
+            cli::TypeArchiveCommands::Inspect(_)
+        ))
+    );
     validate_target_scope(cli)?;
     let query = parse_command_query(&cli.command)?;
     let shape = ResultShape::for_command(&cli.command);
@@ -228,7 +237,7 @@ fn execute_bridge_command(
             Commands::Program(cli::ProgramCommands::Delete(_) | cli::ProgramCommands::List(_))
         );
         let inherited_program = programs.get(&project_key).cloned();
-        let selected_program = if archive_listing {
+        let selected_program = if archive_inspection {
             None
         } else if project_operation {
             inherited_program
@@ -253,7 +262,7 @@ fn execute_bridge_command(
             return import::run_import(cli, args, &project_path, &ghidra_install_dir, &selection);
         }
 
-        let startup_program = if project_operation || archive_listing {
+        let startup_program = if project_operation || archive_inspection {
             None
         } else {
             selected_program
@@ -279,7 +288,7 @@ fn execute_bridge_command(
         };
         // A file archive query must not replace a batch's intended Program
         // with the unrelated Program currently open in the bridge.
-        let client = if archive_listing {
+        let client = if archive_inspection {
             client
         } else {
             client.with_selection(selection.clone())

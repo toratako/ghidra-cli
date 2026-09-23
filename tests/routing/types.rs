@@ -33,8 +33,8 @@ fn gdt_transfers_select_uncapped_roots_and_forward_the_source_guard() {
     let selected = RecordedBridge::new();
     std::fs::write(outer.root.path().join("sdk 日本語's types.gdt"), "archive").unwrap();
     for (command, wire, file) in [
-        ("import-gdt", "type_import_gdt", "sdk 日本語's types.gdt"),
-        ("export-gdt", "type_export_gdt", "new 日本語's types.gdt"),
+        ("import", "type_import_gdt", "sdk 日本語's types.gdt"),
+        ("export", "type_export_gdt", "new 日本語's types.gdt"),
     ] {
         let absolute = outer.root.path().join(file);
         for all in [false, true] {
@@ -42,6 +42,7 @@ fn gdt_transfers_select_uncapped_roots_and_forward_the_source_guard() {
                 selected.requests.lock().unwrap().clear();
                 let mut args = vec![
                     "type",
+                    "archive",
                     command,
                     file,
                     "--project",
@@ -75,7 +76,7 @@ fn gdt_transfers_select_uncapped_roots_and_forward_the_source_guard() {
                 let expected = if all {
                     json!({"file": absolute, "all": true})
                 } else {
-                    let candidate_args = if command == "import-gdt" {
+                    let candidate_args = if command == "import" {
                         json!({"file": absolute})
                     } else {
                         json!({})
@@ -104,7 +105,9 @@ fn gdt_selection_errors_never_send_a_mutation() {
     ] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
-            let args = ["type", "import-gdt", "sdk.gdt", "--where", expression];
+            let args = [
+                "type", "archive", "import", "sdk.gdt", "--where", expression,
+            ];
             let output = if batch {
                 std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
                     .unwrap();
@@ -169,7 +172,7 @@ fn gdt_archive_queries_retain_archive_context_and_query_all_rows() {
             let mut args = vec![
                 "type",
                 "archive",
-                "list",
+                "inspect",
                 "sdk types.gdt",
                 "--project",
                 selected.project.to_str().unwrap(),
@@ -214,7 +217,7 @@ fn gdt_archive_inspection_ignores_default_and_inherited_program_without_changing
         "default_limit: 1\ndefault_program: configured\n",
     )
     .unwrap();
-    run_envelope(&bridge, &["type", "archive", "list", "sdk.gdt"], false);
+    run_envelope(&bridge, &["type", "archive", "inspect", "sdk.gdt"], false);
     {
         let mut requests = bridge.requests.lock().unwrap();
         assert!(
@@ -225,7 +228,7 @@ fn gdt_archive_inspection_ignores_default_and_inherited_program_without_changing
     }
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        "program info\ntype archive list sdk.gdt\nprogram info\n",
+        "program info\ntype archive inspect sdk.gdt\nprogram info\n",
     )
     .unwrap();
     bridge
@@ -249,7 +252,7 @@ fn gdt_archive_inspection_ignores_default_and_inherited_program_without_changing
 fn gdt_archive_inspection_rejects_explicit_program_before_bridge_work() {
     let bridge = RecordedBridge::new();
     for batch in [false, true] {
-        let args = ["--program", "B", "type", "archive", "list", "sdk.gdt"];
+        let args = ["--program", "B", "type", "archive", "inspect", "sdk.gdt"];
         if batch {
             std::fs::write(
                 bridge.root.path().join("batch.txt"),
@@ -274,12 +277,12 @@ fn gdt_paths_reject_invalid_input_and_existing_output_before_archive_requests() 
     std::fs::write(bridge.root.path().join("existing.gdt"), "preserve").unwrap();
     std::fs::create_dir(bridge.root.path().join("directory.gdt")).unwrap();
     for args in [
-        vec!["type", "import-gdt", "missing.gdt", "--all"],
-        vec!["type", "archive", "list", "directory.gdt"],
-        vec!["type", "export-gdt", "existing.gdt", "--all"],
-        vec!["type", "export-gdt", "directory.gdt", "--all"],
-        vec!["type", "export-gdt", "missing/new.gdt", "--all"],
-        vec!["type", "export-gdt", "without-extension", "--all"],
+        vec!["type", "archive", "import", "missing.gdt", "--all"],
+        vec!["type", "archive", "inspect", "directory.gdt"],
+        vec!["type", "archive", "export", "existing.gdt", "--all"],
+        vec!["type", "archive", "export", "directory.gdt", "--all"],
+        vec!["type", "archive", "export", "missing/new.gdt", "--all"],
+        vec!["type", "archive", "export", "without-extension", "--all"],
     ] {
         bridge.requests.lock().unwrap().clear();
         bridge.command().args(&args).assert().failure();
@@ -310,13 +313,13 @@ fn gdt_paths_follow_parent_symlinks_and_reject_dangling_outputs() {
     symlink("absent.gdt", bridge.root.path().join("dangling.gdt")).unwrap();
     bridge
         .command()
-        .args(["type", "export-gdt", "dangling.gdt", "--all"])
+        .args(["type", "archive", "export", "dangling.gdt", "--all"])
         .assert()
         .failure();
     bridge.requests.lock().unwrap().clear();
     run_envelope(
         &bridge,
-        &["type", "export-gdt", "alias/../created.gdt", "--all"],
+        &["type", "archive", "export", "alias/../created.gdt", "--all"],
         false,
     );
     {
@@ -332,7 +335,7 @@ fn gdt_paths_follow_parent_symlinks_and_reject_dangling_outputs() {
     }
     std::fs::write(bridge.root.path().join("real/input.gdt"), "archive").unwrap();
     symlink("real/input.gdt", bridge.root.path().join("input.gdt")).unwrap();
-    run_envelope(&bridge, &["type", "archive", "list", "input.gdt"], false);
+    run_envelope(&bridge, &["type", "archive", "inspect", "input.gdt"], false);
     let requests = bridge.requests.lock().unwrap();
     let list = requests
         .iter()
@@ -351,8 +354,8 @@ fn gdt_non_utf8_missing_paths_fail_without_panicking_or_sending_archive_requests
     let bridge = RecordedBridge::new();
     let file = std::ffi::OsString::from_vec(b"type-\xff.gdt".to_vec());
     for (command, diagnostic) in [
-        ("export-gdt", "cannot be represented as UTF-8"),
-        ("import-gdt", "Cannot resolve archive"),
+        ("export", "cannot be represented as UTF-8"),
+        ("import", "Cannot resolve archive"),
     ] {
         assert_non_utf8_gdt_path_rejected(&bridge, command, &file, diagnostic);
     }
@@ -367,12 +370,7 @@ fn gdt_non_utf8_existing_input_fails_without_panicking_or_sending_archive_reques
     let bridge = RecordedBridge::new();
     let file = std::ffi::OsString::from_vec(b"type-\xff.gdt".to_vec());
     std::fs::write(bridge.root.path().join(&file), "archive").unwrap();
-    assert_non_utf8_gdt_path_rejected(
-        &bridge,
-        "import-gdt",
-        &file,
-        "cannot be represented as UTF-8",
-    );
+    assert_non_utf8_gdt_path_rejected(&bridge, "import", &file, "cannot be represented as UTF-8");
 }
 
 #[cfg(unix)]
@@ -384,7 +382,7 @@ fn assert_non_utf8_gdt_path_rejected(
 ) {
     let output = bridge
         .command()
-        .args(["type", command])
+        .args(["type", "archive", command])
         .arg(file)
         .arg("--all")
         .output()

@@ -72,7 +72,7 @@ Import binds follow-up analysis or information requests to the imported program.
 `program list/delete` ignore a direct `--program`; deletion uses its positional
 file operand. In a batch they still carry the inherited selection context.
 
-`type archive list` uses the project bridge without selecting a Program and
+`type archive inspect` uses the project bridge without selecting a Program and
 preserves batch selection intent. Explicit `--program` is rejected before
 execution; configured and inherited targets do not apply. GDT transfers parse
 `--where` during preflight, evaluate it on uncapped candidates, and pass exact

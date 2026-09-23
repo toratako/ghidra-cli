@@ -7,7 +7,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Add `type archive list`, `type import-gdt`, and `type export-gdt` for
+- Add `type archive inspect`, `type archive import`, and `type archive export` for
   inspecting and transferring Ghidra data type archives. Explicit root selection
   includes dependencies; imports reject definition, provenance, and ABI conflicts
   atomically, and exports publish a validated new archive without overwriting files.

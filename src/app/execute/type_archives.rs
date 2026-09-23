@@ -1,14 +1,14 @@
 //! Archive paths and guarded root selection are resolved in the invoking client.
 
 use crate::app::output::describe_selector_error;
-use crate::cli::{TypeArchiveListArgs, TypeGdtArgs};
+use crate::cli::{TypeArchiveInspectArgs, TypeArchiveTransferArgs};
 use crate::filter::Filter;
 use crate::ipc::client::BridgeClient;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-pub(super) fn parse_selection(args: &TypeGdtArgs) -> Result<Option<Filter>> {
+pub(super) fn parse_selection(args: &TypeArchiveTransferArgs) -> Result<Option<Filter>> {
     anyhow::ensure!(
         args.all != args.where_expr.is_some(),
         "Specify exactly one of --where or --all"
@@ -19,7 +19,7 @@ pub(super) fn parse_selection(args: &TypeGdtArgs) -> Result<Option<Filter>> {
         .transpose()
 }
 
-pub(super) fn list(client: &BridgeClient, args: &TypeArchiveListArgs) -> Result<Value> {
+pub(super) fn inspect(client: &BridgeClient, args: &TypeArchiveInspectArgs) -> Result<Value> {
     let file = input_path(&args.file)?;
     // Query processing stays client-side so filters, sorting and counts always
     // see the full archive, independently of the configured display limit.
@@ -29,7 +29,11 @@ pub(super) fn list(client: &BridgeClient, args: &TypeArchiveListArgs) -> Result<
     )
 }
 
-pub(super) fn transfer(client: &BridgeClient, args: &TypeGdtArgs, import: bool) -> Result<Value> {
+pub(super) fn transfer(
+    client: &BridgeClient,
+    args: &TypeArchiveTransferArgs,
+    import: bool,
+) -> Result<Value> {
     let filter = parse_selection(args)?;
     let file = if import {
         input_path(&args.file)?

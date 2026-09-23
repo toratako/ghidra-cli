@@ -2,13 +2,13 @@ use super::*;
 
 #[test]
 fn gdt_transfers_require_explicit_root_selection_and_object_output() {
-    for command in ["import-gdt", "export-gdt"] {
+    for command in ["import", "export"] {
         for (selection, all) in [
             (vec!["--all"], true),
             (vec!["--where", "category^\"/Protocol\""], false),
         ] {
             let cli = Cli::try_parse_from(
-                ["ghidra-cli", "type", command, "types.gdt"]
+                ["ghidra-cli", "type", "archive", command, "types.gdt"]
                     .into_iter()
                     .chain(selection)
                     .chain([
@@ -21,8 +21,9 @@ fn gdt_transfers_require_explicit_root_selection_and_object_output() {
                     ]),
             )
             .unwrap();
-            let Commands::Type(TypeCommands::ImportGdt(args) | TypeCommands::ExportGdt(args)) =
-                cli.command
+            let Commands::Type(TypeCommands::Archive(
+                TypeArchiveCommands::Import(args) | TypeArchiveCommands::Export(args),
+            )) = cli.command
             else {
                 panic!("expected GDT transfer");
             };
@@ -42,7 +43,7 @@ fn gdt_transfers_require_explicit_root_selection_and_object_output() {
             vec!["--all", "--limit", "1"],
         ] {
             assert!(Cli::try_parse_from(
-                ["ghidra-cli", "type", command, "types.gdt"]
+                ["ghidra-cli", "type", "archive", command, "types.gdt"]
                     .into_iter()
                     .chain(selection)
             )
@@ -57,7 +58,7 @@ fn archive_inspection_accepts_archive_operand_and_row_queries() {
         "ghidra-cli",
         "type",
         "archive",
-        "list",
+        "inspect",
         "sdk types.gdt",
         "--filter",
         "kind=struct",
@@ -73,7 +74,8 @@ fn archive_inspection_accepts_archive_operand_and_row_queries() {
         "test",
     ])
     .unwrap();
-    let Commands::Type(TypeCommands::Archive(TypeArchiveCommands::List(args))) = cli.command else {
+    let Commands::Type(TypeCommands::Archive(TypeArchiveCommands::Inspect(args))) = cli.command
+    else {
         panic!("expected archive inspection");
     };
     assert_eq!(args.file, std::path::Path::new("sdk types.gdt"));

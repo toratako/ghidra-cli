@@ -119,10 +119,10 @@ or reapply loader relocations. Re-import can reapply relocations.
 ## Reusing archived types
 
 ```bash
-ghidra-cli type archive list sdk.gdt --filter 'category^"/SDK"' --project target
-ghidra-cli type import-gdt sdk.gdt --where 'path="/SDK/Header"' --project target
+ghidra-cli type archive inspect sdk.gdt --filter 'category^"/SDK"' --project target
+ghidra-cli type archive import sdk.gdt --where 'path="/SDK/Header"' --project target
 ghidra-cli listing define-data 0x404000 --type /SDK/Header --project target
-ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
+ghidra-cli type archive export protocol.gdt --where 'category^"/Protocol"' --project target
 ```
 
 Selected roots bring their dependencies, even from other categories. Conflicting

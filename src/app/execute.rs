@@ -42,8 +42,9 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::Type(cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args)) =
-        command
+    if let Commands::Type(cli::TypeCommands::Archive(
+        cli::TypeArchiveCommands::Import(args) | cli::TypeArchiveCommands::Export(args),
+    )) = command
     {
         type_archives::parse_selection(args)?;
     }
@@ -321,10 +322,10 @@ pub(super) fn execute_via_bridge(
                 TypeCommands::ImportC(args) => {
                     client.type_import_c(&resolve_c_source(args)?, args.category.as_deref())
                 }
-                TypeCommands::ImportGdt(args) => type_archives::transfer(client, args, true),
-                TypeCommands::ExportGdt(args) => type_archives::transfer(client, args, false),
-                TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
-                    type_archives::list(client, args)
+                TypeCommands::Archive(cli::TypeArchiveCommands::Import(args)) => type_archives::transfer(client, args, true),
+                TypeCommands::Archive(cli::TypeArchiveCommands::Export(args)) => type_archives::transfer(client, args, false),
+                TypeCommands::Archive(cli::TypeArchiveCommands::Inspect(args)) => {
+                    type_archives::inspect(client, args)
                 }
                 TypeCommands::Delete(args) => {
                     client.send_command("type_delete", Some(json!({"name": args.name})))

@@ -148,10 +148,10 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
                 cli::TypeCreateCommands::Typedef(args) => args.project.clone(),
             },
             cli::TypeCommands::ImportC(args) => args.project.clone(),
-            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
-                args.options.project.clone()
-            }
-            cli::TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
+            cli::TypeCommands::Archive(
+                cli::TypeArchiveCommands::Import(args) | cli::TypeArchiveCommands::Export(args),
+            ) => args.options.project.clone(),
+            cli::TypeCommands::Archive(cli::TypeArchiveCommands::Inspect(args)) => {
                 args.options.project.clone()
             }
             cli::TypeCommands::Delete(args) => args.project.clone(),
@@ -354,10 +354,10 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 cli::TypeCreateCommands::Typedef(args) => args.program.clone(),
             },
             cli::TypeCommands::ImportC(args) => args.program.clone(),
-            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
-                args.options.program.clone()
-            }
-            cli::TypeCommands::Archive(_) => None,
+            cli::TypeCommands::Archive(
+                cli::TypeArchiveCommands::Import(args) | cli::TypeArchiveCommands::Export(args),
+            ) => args.options.program.clone(),
+            cli::TypeCommands::Archive(cli::TypeArchiveCommands::Inspect(_)) => None,
             cli::TypeCommands::Delete(args) => args.program.clone(),
             cli::TypeCommands::Rename(args) => args.program.clone(),
             cli::TypeCommands::Clone(args) => args.options.program.clone(),
@@ -556,10 +556,10 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::TypeCommands::List(opts) => Some(opts.clone()),
             cli::TypeCommands::Get(args) => Some((&args.options).into()),
             cli::TypeCommands::Uses(args) => Some(args.options.clone()),
-            cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
-                Some((&args.options).into())
-            }
-            cli::TypeCommands::Archive(cli::TypeArchiveCommands::List(args)) => {
+            cli::TypeCommands::Archive(
+                cli::TypeArchiveCommands::Import(args) | cli::TypeArchiveCommands::Export(args),
+            ) => Some((&args.options).into()),
+            cli::TypeCommands::Archive(cli::TypeArchiveCommands::Inspect(args)) => {
                 Some((&args.options).into())
             }
             cli::TypeCommands::Clone(args) => Some((&args.options).into()),
