@@ -11,6 +11,7 @@ import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.exception.CancelledException;
+import ghidracli.listing.InstructionFlow;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
 import ghidracli.session.ProgramSession;
@@ -202,7 +203,7 @@ final class CallReferences {
         if (instruction == null) return false;
         RefType type = ref.getReferenceType();
         if (type.isCall()) {
-            return instruction.getFlowType().isCall() || (type.isOverride() && ref.isPrimary());
+            return InstructionFlow.isCallReference(instruction, ref);
         }
         // PARAM describes an argument even when attached to a call instruction.
         return instruction.getFlowType().isCall() && instruction.getFlowType().isComputed()

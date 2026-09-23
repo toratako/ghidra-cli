@@ -37,7 +37,7 @@ public class CreateCallSearchFixture extends GhidraScript {
                     fm.createFunction(names[i], entry, new AddressSet(entry, entry.add(0xff)), source);
                 }
                 for (int address : new int[] {0x1000, 0x1008, 0x1010, 0x1100, 0x1060,
-                        0x1090, 0x1098, 0x10a0, 0x10a8, 0x10b0, 0x10b8, 0x2100, 0x2500}) {
+                        0x1090, 0x1098, 0x10a0, 0x10a8, 0x10b0, 0x10b8, 0x10c0, 0x2100, 0x2500}) {
                     var site = space.getAddress(address);
                     program.getMemory().setBytes(site, new byte[] {(byte)0xff, (byte)0xd0});
                     if (!new DisassembleCommand(site, new AddressSet(site, site.add(1)), false).applyTo(program, monitor)) {
@@ -104,7 +104,7 @@ public class CreateCallSearchFixture extends GhidraScript {
                 refs.addMemoryReference(space.getAddress(0x3040), space.getAddress(0x3030), RefType.DATA, source, 0);
                 refs.addMemoryReference(space.getAddress(0x10b8), space.getAddress(0x3030), RefType.READ, source, 0);
                 // Argument references do not call the API, including on an unrelated CALL.
-                for (int address : new int[] {0x1030, 0x1050, 0x1070, 0x10c0, 0x10c8}) {
+                for (int address : new int[] {0x1030, 0x1050, 0x1070, 0x10c8, 0x10d0}) {
                     var site = space.getAddress(address);
                     program.getMemory().setByte(site, (byte)0x90);
                     new DisassembleCommand(site, new AddressSet(site, site), false).applyTo(program, monitor);
@@ -116,6 +116,21 @@ public class CreateCallSearchFixture extends GhidraScript {
                 refs.setPrimary(override, true);
                 var inactive = refs.addMemoryReference(space.getAddress(0x10c8), space.getAddress(0x1200), RefType.CALL_OVERRIDE_UNCONDITIONAL, source, 0);
                 refs.setPrimary(inactive, false);
+                // A primary call override on NOP has no CALL/CALLIND to override.
+                var inert = refs.addMemoryReference(space.getAddress(0x10d0), space.getAddress(0x1200), RefType.CALL_OVERRIDE_UNCONDITIONAL, source, 0);
+                refs.setPrimary(inert, true);
+                // A direct call can have symbolic EXTERNAL relocation evidence,
+                // whose EXTERNAL address is not represented in memory-space p-code.
+                var relocated = space.getAddress(0x10d8);
+                program.getMemory().setBytes(relocated, new byte[] {(byte)0xe8, 0x23, 1, 0, 0});
+                if (!new DisassembleCommand(relocated, new AddressSet(relocated, relocated.add(4)), false).applyTo(program, monitor)) {
+                    throw new IllegalStateException("Could not disassemble relocated call");
+                }
+                if (!program.getListing().getInstructionAt(relocated).getFlowType().isCall()) {
+                    throw new IllegalStateException("Relocated instruction must be an effective CALL");
+                }
+                refs.removeAllReferencesFrom(relocated);
+                refs.addExternalReference(relocated, 0, external, source, RefType.UNCONDITIONAL_CALL);
                 // Even a mislabeled CALL reference from a NOP or undefined bytes is not a call.
                 refs.addExternalReference(space.getAddress(0x1070), 0, external, source, RefType.UNCONDITIONAL_CALL);
                 refs.addExternalReference(space.getAddress(0x1080), 0, external, source, RefType.UNCONDITIONAL_CALL);
@@ -155,6 +170,7 @@ public class CreateCallSearchFixture extends GhidraScript {
                 (0x10b0, Some("CreateProcessA")),
                 (0x10b8, None),
                 (0x10c0, Some("search_leaf")),
+                (0x10d8, Some("CreateProcessA")),
                 (0x2500, Some("search_leaf")),
             ],
             "{outgoing}"
@@ -248,7 +264,7 @@ public class CreateCallSearchFixture extends GhidraScript {
         let deep = client
             .graph_callees("search_caller", Some(0), None)
             .unwrap();
-        assert_eq!(deep["count"], 16, "{deep}");
+        assert_eq!(deep["count"], 17, "{deep}");
         let second = deep["calls"]
             .as_array()
             .unwrap()
@@ -261,7 +277,7 @@ public class CreateCallSearchFixture extends GhidraScript {
         // Whole-program function graphs use the same edges, including undefined destinations.
         let graph = client.graph_calls(None).unwrap();
         let edges = graph["edges"].as_array().unwrap();
-        assert_eq!(edges.len(), 16, "{graph}");
+        assert_eq!(edges.len(), 17, "{graph}");
         for node in graph["nodes"].as_array().unwrap() {
             let outgoing = client
                 .graph_callees(node["address"].as_str().unwrap(), None, None)
@@ -320,7 +336,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             .json_format()
             .run();
         count.assert_success();
-        assert_eq!(count.data::<Value>(), json!(15));
+        assert_eq!(count.data::<Value>(), json!(16));
         let dir = tempfile::tempdir().unwrap();
         let batch_file = dir.path().join("calls.txt");
         std::fs::write(&batch_file,
