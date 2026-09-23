@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-24
+
 ### Added
 
 - Add `namespace rename`, `namespace move`, and `namespace delete` for local
@@ -121,6 +123,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Exclude stale call targets and inactive CALL overrides from `graph callers`,
+  `graph callees`, and `graph calls` by checking the instruction's effective flow.
+  Keep computed-call targets and symbolic external relocation calls visible.
 - Parse nested function-pointer parameters in function and call-site signatures,
   and resolve existing type names with shared ambiguity checks and candidate paths.
 - Preserve Unicode JAR paths and headless arguments when launching standalone
@@ -1256,7 +1261,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...v0.7.0
 [0.7.0-rc.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.1...v0.7.0-rc.1
