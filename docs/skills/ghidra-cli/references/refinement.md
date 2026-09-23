@@ -209,6 +209,18 @@ Unnamed union members require `--ordinal` from `type get`; deletion renumbers or
 
 ### Growing recovered structures
 
+Inspect Ghidra's layout candidate for a variable before defining its type:
+
+```bash
+ghidra-cli function var infer-struct dispatch --var manager --with-accesses
+```
+
+The candidate comes from the selected function. Its size is not the object's
+proven allocation size, and gaps are not recovered fields. Access records are
+the LOAD/STORE evidence retained by Ghidra's helper, not an exhaustive access
+search. If the variable is split into partial HighVariables, inspect
+`pcode function dispatch --high` before choosing a different root.
+
 ```bash
 ghidra-cli type field set Manager --offset 0x1c --name hook --type 'Hook *'
 ghidra-cli type field set Manager --field hook --comment 'Called during shutdown'

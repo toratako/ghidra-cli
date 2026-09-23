@@ -52,6 +52,8 @@ mod search;
 mod search_limits;
 #[path = "readonly/strings.rs"]
 mod strings;
+#[path = "readonly/structure_inference.rs"]
+mod structure_inference;
 
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 

@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `function var infer-struct` to read Ghidra's structure recovery candidate
+  for one variable without registering a type or editing the program. Optional
+  bounded LOAD/STORE evidence retains native instruction locations.
 - Add `type uses TYPE` to find registered types in applied data and database
   function signatures, following typedefs, pointers, and arrays. Results retain
   declaration paths, ABI and thunk provenance, and scan completion.

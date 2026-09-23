@@ -57,6 +57,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/analysis/PcodeCommands.java"),
     ),
     (
+        "ghidracli/analysis/StructureInferenceCommands.java",
+        include_str!("../scripts/ghidracli/analysis/StructureInferenceCommands.java"),
+    ),
+    (
         "ghidracli/function/FunctionBodyCommands.java",
         include_str!("../scripts/ghidracli/function/FunctionBodyCommands.java"),
     ),
@@ -87,6 +91,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/function/FunctionVariableCommands.java",
         include_str!("../scripts/ghidracli/function/FunctionVariableCommands.java"),
+    ),
+    (
+        "ghidracli/function/FunctionVariables.java",
+        include_str!("../scripts/ghidracli/function/FunctionVariables.java"),
     ),
     (
         "ghidracli/function/TagCommands.java",

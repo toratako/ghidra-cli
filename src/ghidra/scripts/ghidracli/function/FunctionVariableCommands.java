@@ -4,52 +4,49 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Variable;
-import ghidra.program.model.pcode.EquateSymbol;
-import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.pcode.HighSymbol;
-import ghidra.program.model.pcode.UnionFacetSymbol;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolUtilities;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import ghidracli.types.TypeResolver;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
-import static ghidracli.protocol.JsonProtocol.getDecompileTimeoutArg;
+import static ghidracli.function.FunctionVariables.context;
+import static ghidracli.function.FunctionVariables.describe;
+import static ghidracli.function.FunctionVariables.describeType;
+import static ghidracli.function.FunctionVariables.variableName;
 
 /** Decompiler variable discovery and edits to their corresponding database definitions. */
 public final class FunctionVariableCommands {
     private final ProgramSession session;
-    private final FunctionQueries functionQueries;
+    private final FunctionVariables variables;
     private final TypeResolver typeResolver;
 
     public FunctionVariableCommands(ProgramSession session, FunctionQueries functionQueries,
             TypeResolver typeResolver) {
         this.session = session;
-        this.functionQueries = functionQueries;
+        this.variables = new FunctionVariables(session, functionQueries);
         this.typeResolver = typeResolver;
     }
 
     public JsonObject handleFunctionVarList(JsonObject args) {
         try {
-            Function function = function(args);
-            List<HighSymbol> symbols = decompile(function, args);
+            Function function = variables.function(args);
+            List<HighSymbol> symbols = variables.decompile(function, args).symbols();
             JsonArray rows = new JsonArray();
             for (HighSymbol symbol : symbols) rows.add(describe(symbol));
             JsonObject result = context(function);
             result.addProperty("program", session.programPath());
-            result.addProperty("modification", modification());
+            result.addProperty("modification", variables.modification());
             result.add("variables", rows);
             return result;
         } catch (Exception e) {
@@ -59,14 +56,14 @@ public final class FunctionVariableCommands {
 
     public JsonObject handleFunctionVarGet(JsonObject args) {
         try {
-            Function function = function(args);
+            Function function = variables.function(args);
             String name = variableName(args);
-            List<HighSymbol> symbols = decompile(function, args);
-            Selection selected = select(function, symbols, name, args);
-            if (selected.error != null) return selected.error;
+            List<HighSymbol> symbols = variables.decompile(function, args).symbols();
+            FunctionVariables.Selection selected = variables.select(function, symbols, name, args);
+            if (selected.error() != null) return selected.error();
             JsonObject result = context(function);
-            result.add("decompiler", describe(selected.symbol));
-            result.add("database", describeDatabase(function, savedVariable(function, selected.symbol)));
+            result.add("decompiler", describe(selected.symbol()));
+            result.add("database", describeDatabase(function, savedVariable(function, selected.symbol())));
             return result;
         } catch (Exception e) {
             return errorResult("Failed to get variable: " + e.getMessage(), e);
@@ -75,7 +72,7 @@ public final class FunctionVariableCommands {
 
     public JsonObject handleFunctionVarSet(JsonObject args) {
         try {
-            Function function = function(args);
+            Function function = variables.function(args);
             String name = variableName(args);
             String newName = getArgString(args, "new_name");
             String typeName = getArgString(args, "type_name");
@@ -94,10 +91,10 @@ public final class FunctionVariableCommands {
                 }
             }
 
-            List<HighSymbol> symbols = decompile(function, args);
-            Selection selected = select(function, symbols, name, args);
-            if (selected.error != null) return selected.error;
-            HighSymbol target = selected.symbol;
+            List<HighSymbol> symbols = variables.decompile(function, args).symbols();
+            FunctionVariables.Selection selected = variables.select(function, symbols, name, args);
+            if (selected.error() != null) return selected.error();
+            HighSymbol target = selected.symbol();
             String effectiveName = newName != null ? newName : target.getName();
             Variable saved = savedVariable(function, target);
             if (saved instanceof Parameter parameter && parameter.isAutoParameter()) {
@@ -147,113 +144,6 @@ public final class FunctionVariableCommands {
         }
     }
 
-    private Function function(JsonObject args) throws Exception {
-        if (session.program() == null) throw new IllegalArgumentException("No program loaded");
-        String target = getArgString(args, "target");
-        if (target == null || target.isBlank()) throw new IllegalArgumentException("Function target required");
-        Function function = functionQueries.findFunctionByNameOrAddress(target);
-        if (function == null) throw new IllegalArgumentException(functionQueries.buildFunctionTargetHint(target));
-        return function;
-    }
-
-    private static String variableName(JsonObject args) {
-        String name = getArgString(args, "var_name");
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("Variable name required (--var)");
-        return name;
-    }
-
-    private List<HighSymbol> decompile(Function function, JsonObject args) throws Exception {
-        DecompileResults results = session.decompile(function, getDecompileTimeoutArg(args));
-        if (!results.decompileCompleted()) {
-            String reason = results.isTimedOut() ? "Decompilation timed out" : "Decompilation failed";
-            throw new IllegalStateException(reason + " for " + function.getName() + ": " + results.getErrorMessage());
-        }
-        HighFunction high = results.getHighFunction();
-        if (high == null) throw new IllegalStateException("Could not get high-level function representation");
-        List<HighSymbol> symbols = new ArrayList<>();
-        var iterator = high.getLocalSymbolMap().getSymbols();
-        while (iterator.hasNext()) {
-            session.monitor().checkCancelled();
-            HighSymbol symbol = iterator.next();
-            // Constants and union-field annotations share the local symbol map
-            // but do not represent editable local/parameter variables.
-            if (!symbol.isGlobal() && !(symbol instanceof EquateSymbol)
-                    && !(symbol instanceof UnionFacetSymbol)) symbols.add(symbol);
-        }
-        return symbols;
-    }
-
-    private Selection select(Function function, List<HighSymbol> symbols, String name, JsonObject args) {
-        JsonObject expected = null;
-        if (args.has("selection")) {
-            JsonElement value = args.get("selection");
-            if (!value.isJsonObject()) return Selection.error(errorResult("selection must be a variable snapshot"));
-            JsonObject selection = value.getAsJsonObject();
-            if (!selection.keySet().equals(Set.of("program", "function_address", "modification", "variable"))
-                    || !isString(selection.get("program")) || !isString(selection.get("function_address"))
-                    || !isString(selection.get("modification")) || !selection.get("variable").isJsonObject()) {
-                return Selection.error(errorResult("selection must contain program, function_address, modification and a complete variable row"));
-            }
-            if (!session.programPath().equals(selection.get("program").getAsString())
-                    || !AddressCodec.format(function.getEntryPoint()).equals(selection.get("function_address").getAsString())
-                    || !modification().equals(selection.get("modification").getAsString())) {
-                return stale();
-            }
-            expected = selection.getAsJsonObject("variable");
-        }
-
-        JsonArray candidates = new JsonArray();
-        HighSymbol match = null;
-        for (HighSymbol symbol : symbols) {
-            if (!symbol.getName().equals(name)) continue;
-            JsonObject row = describe(symbol);
-            if (expected != null && !expected.equals(row)) continue;
-            candidates.add(row);
-            match = symbol;
-        }
-        if (candidates.size() == 1) return new Selection(match, null);
-        if (expected != null) return stale();
-        if (candidates.isEmpty()) {
-            return Selection.error(errorResult("Variable not found: " + name + " in function " + function.getName()));
-        }
-        JsonObject error = errorResult("Ambiguous variable name: " + name);
-        JsonObject detail = new JsonObject();
-        detail.add("candidates", candidates);
-        error.add("detail", detail);
-        return Selection.error(error);
-    }
-
-    private static Selection stale() {
-        return Selection.error(errorResult("Variable selection is stale or no longer unique; list variables again"));
-    }
-
-    private static boolean isString(JsonElement value) {
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString();
-    }
-
-    private String modification() {
-        return Long.toString(session.program().getModificationNumber());
-    }
-
-    private static JsonObject context(Function function) {
-        JsonObject result = new JsonObject();
-        result.addProperty("function", function.getName());
-        result.addProperty("address", AddressCodec.format(function.getEntryPoint()));
-        return result;
-    }
-
-    private static JsonObject describe(HighSymbol symbol) {
-        JsonObject result = describeType(symbol.getName(), symbol.getDataType(), symbol.getSize(),
-            symbol.getStorage().toString());
-        result.addProperty("kind", symbol.isParameter() ? "parameter" : "local");
-        if (symbol.isParameter()) {
-            result.addProperty("ordinal", symbol.getCategoryIndex());
-        } else {
-            result.addProperty("first_use", symbol.getPCAddress() == null ? null : AddressCodec.format(symbol.getPCAddress()));
-        }
-        return result;
-    }
-
     private static Variable savedVariable(Function function, HighSymbol high) {
         Symbol symbol = high.getSymbol();
         if (symbol != null && symbol.getObject() instanceof Variable variable) return variable;
@@ -280,19 +170,5 @@ public final class FunctionVariableCommands {
             result.addProperty("first_use", AddressCodec.format(function.getEntryPoint().addWrap(variable.getFirstUseOffset())));
         }
         return result;
-    }
-
-    private static JsonObject describeType(String name, DataType type, int size, String storage) {
-        JsonObject result = new JsonObject();
-        result.addProperty("name", name);
-        result.addProperty("type", type.getName());
-        result.addProperty("type_path", type.getPathName());
-        result.addProperty("size", size);
-        result.addProperty("storage", storage);
-        return result;
-    }
-
-    private record Selection(HighSymbol symbol, JsonObject error) {
-        static Selection error(JsonObject error) { return new Selection(null, error); }
     }
 }

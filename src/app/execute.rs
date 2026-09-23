@@ -102,6 +102,9 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         Commands::Function(cli::FunctionCommands::Var(cli::FunctionVarCommands::Set(args))) => {
             Some((None, args.selection.where_expr.as_deref()))
         }
+        Commands::Function(cli::FunctionCommands::Var(cli::FunctionVarCommands::InferStruct(
+            args,
+        ))) => Some((None, args.selection.where_expr.as_deref())),
         Commands::Symbol(cli::SymbolCommands::Rename(args)) => {
             Some((args.address.as_deref(), args.where_expr.as_deref()))
         }

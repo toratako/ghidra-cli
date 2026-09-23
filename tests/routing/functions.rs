@@ -267,6 +267,10 @@ fn decompiler_commands_share_native_timeout_configuration() {
             "function_var_get",
         ),
         (
+            vec!["function", "var", "infer-struct", "main", "--var", "value"],
+            "function_var_infer_struct",
+        ),
+        (
             vec!["function", "set-return-type", "main", "--type", "void"],
             "function_set_return_type",
         ),
@@ -600,7 +604,7 @@ fn variable_list_queries_preserve_context_and_filter_before_paging() {
 #[test]
 fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queries() {
     let bridge = RecordedBridge::new();
-    for operation in ["get", "set"] {
+    for operation in ["get", "set", "infer-struct"] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
             let mut args = vec![
@@ -617,6 +621,8 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
             ];
             if operation == "set" {
                 args.extend(["--name", "length", "--fields", "after"]);
+            } else if operation == "infer-struct" {
+                args.extend(["--with-accesses", "--max-accesses", "0x1"]);
             }
             let receipt = if batch {
                 std::fs::write(
@@ -630,6 +636,11 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
             };
             if operation == "set" {
                 assert_eq!(receipt, json!({"after": {"name": "length", "type": null}}));
+            } else if operation == "infer-struct" {
+                assert_eq!(receipt["variable"]["name"], "value");
+                assert_eq!(receipt["structure"]["components"][0]["offset"], 16);
+                assert_eq!(receipt["accesses_status"]["truncated"], true);
+                assert_eq!(receipt["accesses"].as_array().unwrap().len(), 1);
             } else {
                 assert_eq!(receipt["decompiler"]["name"], "value");
                 assert_eq!(receipt["decompiler"]["kind"], "local");
@@ -644,7 +655,7 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
             assert_eq!(operations[0]["command"], "function_var_list");
             assert_eq!(
                 operations[1]["command"],
-                format!("function_var_{operation}")
+                format!("function_var_{}", operation.replace('-', "_"))
             );
             assert_eq!(operations[1]["args"]["var_name"], "value");
             assert_eq!(
@@ -655,6 +666,10 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
                 })
             );
             assert_eq!(operations[1]["args"]["timeout_secs"], 0);
+            if operation == "infer-struct" {
+                assert_eq!(operations[1]["args"]["with_accesses"], true);
+                assert_eq!(operations[1]["args"]["max_accesses"], 1);
+            }
         }
     }
 }
@@ -715,6 +730,16 @@ fn function_edit_selectors_are_validated_before_program_selection_and_batch_exec
         vec![
             "function", "var", "set", "main", "--var", "value", "--where", "invalid", "--name",
             "length",
+        ],
+        vec![
+            "function",
+            "var",
+            "infer-struct",
+            "main",
+            "--var",
+            "value",
+            "--where",
+            "invalid",
         ],
     ] {
         let mut args = args;

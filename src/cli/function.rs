@@ -276,6 +276,8 @@ pub enum FunctionVarCommands {
     Get(FunctionVarGetArgs),
     /// Rename and/or retype one variable; returns saved definitions before and after
     Set(FunctionVarSetArgs),
+    /// Infer a structure with Ghidra from one variable, without registering or applying it
+    InferStruct(FunctionVarInferStructArgs),
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -304,6 +306,20 @@ pub struct FunctionVarSelection {
 pub struct FunctionVarGetArgs {
     #[command(flatten)]
     pub selection: FunctionVarSelection,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FunctionVarInferStructArgs {
+    #[command(flatten)]
+    pub selection: FunctionVarSelection,
+    /// Include LOAD/STORE evidence recorded by Ghidra's structure recovery
+    #[arg(long)]
+    pub with_accesses: bool,
+    /// Maximum returned access records (default: 1000); does not limit inference
+    #[arg(long, value_name = "N", requires = "with_accesses", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, i32::MAX as i128))]
+    pub max_accesses: Option<u32>,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

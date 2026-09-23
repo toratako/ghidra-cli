@@ -325,6 +325,21 @@ impl RecordedBridge {
                         "function": args["target"], "address": "0x1000",
                         "decompiler": args["selection"]["variable"], "database": null,
                     }),
+                    "function_var_infer_struct" => {
+                        let mut result = json!({
+                            "function": args["target"], "address": "0x1000",
+                            "variable": args["selection"]["variable"],
+                            "structure": {"kind":"struct", "size":32, "packing_enabled":false,
+                                "components":[{"offset":16,"size":4,"type":"int","name":null}]},
+                            "warnings": [],
+                        });
+                        if args["with_accesses"] == true {
+                            result["accesses"] = json!([{"offset":16,"size":4,"mnemonic":"LOAD","instruction_address":"0x1004","sequence":2}]);
+                            result["accesses_status"] =
+                                json!({"returned":1,"total":2,"max_accesses":1,"truncated":true});
+                        }
+                        result
+                    }
                     "function_var_set" => json!({
                         "status": "updated", "function": args["target"], "address": "0x1000", "kind": "local",
                         "decompiler": args["selection"]["variable"], "before": null,

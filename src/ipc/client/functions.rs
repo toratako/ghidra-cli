@@ -234,6 +234,26 @@ impl BridgeClient {
         }
         self.send_decompile_command("function_var_set", args)
     }
+
+    pub fn function_var_infer_struct(
+        &self,
+        target: &str,
+        var_name: &str,
+        selection: Option<&serde_json::Value>,
+        with_accesses: bool,
+        max_accesses: Option<u32>,
+    ) -> Result<serde_json::Value> {
+        let mut args = json!({
+            "target": target, "var_name": var_name, "with_accesses": with_accesses,
+        });
+        if let Some(selection) = selection {
+            args["selection"] = selection.clone();
+        }
+        if let Some(max_accesses) = max_accesses {
+            args["max_accesses"] = json!(max_accesses);
+        }
+        self.send_decompile_command("function_var_infer_struct", args)
+    }
 }
 
 #[cfg(test)]

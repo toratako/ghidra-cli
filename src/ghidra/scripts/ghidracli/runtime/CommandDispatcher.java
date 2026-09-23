@@ -6,6 +6,7 @@ import ghidracli.analysis.DecompileCommands;
 import ghidracli.analysis.GraphCommands;
 import ghidracli.analysis.InstructionCfg;
 import ghidracli.analysis.PcodeCommands;
+import ghidracli.analysis.StructureInferenceCommands;
 import ghidracli.function.FunctionBodyCommands;
 import ghidracli.function.FunctionCallSignatureCommands;
 import ghidracli.function.FunctionCommands;
@@ -85,6 +86,7 @@ final class CommandDispatcher {
     private final FunctionCallSignatureCommands functionCallSignatureCommands;
     private final FunctionBodyCommands functionBodyCommands;
     private final FunctionVariableCommands functionVariableCommands;
+    private final StructureInferenceCommands structureInferenceCommands;
     private final ListingFlowCommands listingFlowCommands;
     private final TypeImportCommands typeImportCommands;
 
@@ -101,6 +103,7 @@ final class CommandDispatcher {
         functionCallSignatureCommands = new FunctionCallSignatureCommands(session, functionQueries);
         functionBodyCommands = new FunctionBodyCommands(session, functionQueries);
         functionVariableCommands = new FunctionVariableCommands(session, functionQueries, typeResolver);
+        structureInferenceCommands = new StructureInferenceCommands(session, functionQueries);
         listingFlowCommands = new ListingFlowCommands(session);
         typeImportCommands = new TypeImportCommands(session);
         programCommands = new ProgramCommands(session);
@@ -251,6 +254,7 @@ final class CommandDispatcher {
             case "function_var_list": return functionVariableCommands.handleFunctionVarList(args);
             case "function_var_get": return functionVariableCommands.handleFunctionVarGet(args);
             case "function_var_set": return functionVariableCommands.handleFunctionVarSet(args);
+            case "function_var_infer_struct": return structureInferenceCommands.handleInfer(args);
             case "listing_flow_get": return listingFlowCommands.handleGet(args);
             case "listing_flow_set": return listingFlowCommands.handleSet(args);
             case "listing_flow_clear": return listingFlowCommands.handleClear(args);

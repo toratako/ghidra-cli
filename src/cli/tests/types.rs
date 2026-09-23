@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn structure_inference_uses_variable_selection_and_explicit_evidence_limits() {
+    let args = [
+        "ghidra-cli",
+        "function",
+        "var",
+        "infer-struct",
+        "process",
+        "--var",
+        "ctx",
+    ];
+    let cli = Cli::try_parse_from(args.into_iter().chain([
+        "--where",
+        "kind=parameter AND ordinal=0",
+        "--with-accesses",
+        "--max-accesses",
+        "0x10",
+    ]))
+    .unwrap();
+    let Commands::Function(FunctionCommands::Var(FunctionVarCommands::InferStruct(parsed))) =
+        cli.command
+    else {
+        panic!("expected structure inference");
+    };
+    assert_eq!(parsed.selection.target, "process");
+    assert_eq!(parsed.selection.var_name, "ctx");
+    assert_eq!(parsed.max_accesses, Some(16));
+    assert!(parsed.with_accesses);
+    assert!(Cli::try_parse_from(args.into_iter().chain(["--max-accesses", "1"])).is_err());
+    assert!(Cli::try_parse_from(args.into_iter().chain([
+        "--with-accesses",
+        "--max-accesses",
+        "0"
+    ]))
+    .is_err());
+}
+
+#[test]
 fn type_creation_parses_struct_enum_and_typedef_arguments() {
     let cli = Cli::try_parse_from(["ghidra-cli", "type", "create", "struct", "Header"]).unwrap();
     assert!(matches!(

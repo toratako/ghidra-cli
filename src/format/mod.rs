@@ -8,6 +8,7 @@ mod flow;
 mod frame;
 mod human;
 mod signature;
+mod structure;
 mod tabular;
 
 use code::format_code;

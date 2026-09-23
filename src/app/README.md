@@ -47,7 +47,7 @@ Symbol deletion validates its `--where` predicate before bridge work and consume
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
-`function var list` applies ordinary list queries to decompiler rows. Get/set
+`function var list` applies ordinary list queries to decompiler rows. Get/set/infer-struct
 use `--where` only to narrow the exact `--var` name to one candidate, then send
 its program/function/modification/row guard for bridge revalidation. Their
 projection-only output controls never change target selection or filter receipts.

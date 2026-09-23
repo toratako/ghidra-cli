@@ -91,6 +91,16 @@ pub(super) fn execute(
         },
         FunctionCommands::Var(cmd) => match cmd {
             cli::FunctionVarCommands::List(args) => client.function_var_list(&args.target),
+            cli::FunctionVarCommands::InferStruct(args) => {
+                let selection = resolve_variable(client, &args.selection)?;
+                client.function_var_infer_struct(
+                    &args.selection.target,
+                    &args.selection.var_name,
+                    selection.as_ref(),
+                    args.with_accesses,
+                    args.max_accesses,
+                )
+            }
             cli::FunctionVarCommands::Get(args) => {
                 let selection = resolve_variable(client, &args.selection)?;
                 client.function_var_get(

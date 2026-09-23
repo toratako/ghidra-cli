@@ -11,8 +11,8 @@ import ghidra.program.model.symbol.SymbolUtilities;
 import ghidracli.protocol.JsonProtocol;
 import java.util.Objects;
 
-/** Validate field edits on a detached copy before changing the program database. */
-final class StructureFields {
+/** Shared component serialization and detached field-edit validation. */
+public final class StructureFields {
     private StructureFields() {}
 
     static int length(Structure struct) {
@@ -37,7 +37,7 @@ final class StructureFields {
         return size;
     }
 
-    static JsonObject describe(DataTypeComponent field) {
+    public static JsonObject describe(DataTypeComponent field) {
         if (field == null) return null;
         DataType type = field.getDataType();
         BitFieldDataType bitfield = type instanceof BitFieldDataType

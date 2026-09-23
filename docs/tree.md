@@ -53,7 +53,8 @@ ghidra-cli
 │   ├── var
 │   │   ├── list
 │   │   ├── get
-│   │   └── set
+│   │   ├── set
+│   │   └── infer-struct
 │   └── set-noreturn
 ├── string
 │   ├── list
@@ -201,4 +202,4 @@ ghidra-cli
     └── cancel
 ```
 
-189 command nodes (excluding the root), 0 aliases.
+190 command nodes (excluding the root), 0 aliases.

@@ -186,7 +186,8 @@ another consumer or terminate its checkout.
 | [`FunctionCommands`](function/FunctionCommands.java), [`FunctionSignatureCommands`](function/FunctionSignatureCommands.java), [`DecompileCommands`](analysis/DecompileCommands.java) | Function CRUD, whole-function signature changes, decompilation |
 | [`FunctionBodyCommands`](function/FunctionBodyCommands.java) | Whole-body union validation and observed native annotation/reference effects |
 | [`FunctionCallSignatureCommands`](function/FunctionCallSignatureCommands.java), [`FunctionSignatureSupport`](function/FunctionSignatureSupport.java) | Exact caller/site prototype overrides and shared signature parsing |
-| [`FunctionVariableCommands`](function/FunctionVariableCommands.java) | Decompiler variable discovery, guarded single-target selection, and saved variable edits |
+| [`FunctionVariableCommands`](function/FunctionVariableCommands.java), [`FunctionVariables`](function/FunctionVariables.java) | Shared decompiler variable discovery/selection, saved definitions, and variable edits |
+| [`StructureInferenceCommands`](analysis/StructureInferenceCommands.java) | Detached native structure recovery and bounded recorded LOAD/STORE evidence |
 | [`FunctionReturnType`](function/FunctionReturnType.java) | Preserve uncommitted parameters before return edits lock a signature; validate compiler-specific calling convention names |
 | [`DecompilerSession`](session/DecompilerSession.java) | Session-owned native decompiler reuse, invalidation and shutdown |
 | [`InstructionCfg`](analysis/InstructionCfg.java) | Native instruction blocks, intrafunction edges, calls and body boundaries |
@@ -268,16 +269,32 @@ locals or renaming symbols; the GUI's commit helper permits both side effects.
 Existing explicit declarations, external functions, and undefined return types
 do not require decompilation; undefined return types do not raise signature source.
 
-`FunctionVariableCommands` uses the same decompiler symbol population for list,
-get, and set. Name matching and optional selection guards must resolve one fresh
-row; guards include program identity, function entry, modification number, and
-the complete row. Check them again on the program lane before any mutation.
+`FunctionVariables` supplies the same decompiler symbol population for list,
+get, set, and structure inference. Name matching and optional selection guards
+must resolve one fresh row; guards include program identity, function entry,
+modification number, and the complete row. Check them again on the program lane
+before any mutation.
 Database snapshots remain separate from decompiler inference. A rename retains
 an existing saved type; a newly saved inferred local uses sized undefined storage
 instead of locking the inferred type. If an inferred parameter lacks a matching
 saved slot, the native helper can commit all inferred input parameters with
 their types and storage. Reject unsupported automatic parameter
 edits without implicitly switching ABI storage to custom.
+
+`StructureInferenceCommands` requires one whole HighVariable for the selected
+symbol; `HighSymbol.getHighVariable()` alone can silently select the largest
+partial variable. Eligibility follows the native GUI's pointer-size bound without
+requiring a pointer type. It calls `FillOutStructureHelper.processStructure` with
+new-structure enabled, class creation disabled, and no recursive decompiler.
+Serialize only defined candidate components through `StructureFields.describe`;
+the detached structure has no public registered name or path. The native size is
+an inferred layout size, not a proven allocation bound. Native null with size zero
+is an empty result; unrepresentable sizes fail. Keep helper-recorded LOAD/STORE
+evidence separate from its conflict-resolved layout. `accesses_status` counts
+recorded evidence, not all accesses; its limit affects output only.
+Reject an unexpected Program modification so the ordinary request boundary rolls
+it back. Poll cancellation before and after native recovery and during root and
+output traversal; the helper itself does not poll throughout intrafunction work.
 
 `FunctionBodyCommands` validates mapped, same-space range unions, entry retention,
 other-function overlap, and complete instruction boundaries before `setBody`.

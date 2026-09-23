@@ -1,4 +1,4 @@
-use super::{flow, format_json_value, frame, signature};
+use super::{flow, format_json_value, frame, signature, structure};
 use crate::error::Result;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -132,6 +132,9 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
         match item {
             JsonValue::Object(map) => {
                 if flow::format_result(item, &mut result, false) {
+                    continue;
+                }
+                if structure::format_result(item, &mut result, false) {
                     continue;
                 }
                 // Special case: decompile response with "code" key
@@ -309,6 +312,9 @@ pub(super) fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
         match item {
             JsonValue::Object(map) => {
                 if flow::format_result(item, &mut result, true) {
+                    continue;
+                }
+                if structure::format_result(item, &mut result, true) {
                     continue;
                 }
                 // Special case: decompile response

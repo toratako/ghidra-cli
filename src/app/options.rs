@@ -51,6 +51,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
                 cli::FunctionVarCommands::List(args) => args.options.project.clone(),
                 cli::FunctionVarCommands::Get(args) => args.options.project.clone(),
                 cli::FunctionVarCommands::Set(args) => args.options.project.clone(),
+                cli::FunctionVarCommands::InferStruct(args) => args.options.project.clone(),
             },
             cli::FunctionCommands::SetNoReturn(args) => args.project.clone(),
         },
@@ -245,6 +246,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 cli::FunctionVarCommands::List(args) => args.options.program.clone(),
                 cli::FunctionVarCommands::Get(args) => args.options.program.clone(),
                 cli::FunctionVarCommands::Set(args) => args.options.program.clone(),
+                cli::FunctionVarCommands::InferStruct(args) => args.options.program.clone(),
             },
             cli::FunctionCommands::SetNoReturn(args) => args.program.clone(),
         },
@@ -471,6 +473,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
                 cli::FunctionVarCommands::List(args) => Some(args.options.clone()),
                 cli::FunctionVarCommands::Get(args) => Some((&args.options).into()),
                 cli::FunctionVarCommands::Set(args) => Some((&args.options).into()),
+                cli::FunctionVarCommands::InferStruct(args) => Some((&args.options).into()),
             },
             cli::FunctionCommands::Disasm(args) => Some(args.options.clone()),
             cli::FunctionCommands::Delete(args) => Some(QueryOptions {
