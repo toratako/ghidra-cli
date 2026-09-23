@@ -4,7 +4,6 @@
 //! 1. Using typed schemas to validate JSON output structure
 //! 2. Dynamically resolving addresses instead of using hardcoded values
 //! 3. Verifying actual effects through round-trip testing
-//! 4. Using snapshot testing for output format regression detection
 
 use serial_test::serial;
 use std::sync::OnceLock;

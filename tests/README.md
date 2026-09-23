@@ -45,15 +45,7 @@ missing-installation failures and project-file preservation belong to
 `output_format_integration`. Successful project deletion requires Ghidra's lock
 API and belongs to `project_tests`.
 
-Five `readonly_tests` Insta tests remain `#[ignore]` pending snapshot bootstrapping;
-reference `.snap` files are not tracked. To run without accepting snapshots:
-
-```bash
-INSTA_UPDATE=no cargo test --test readonly_tests -- --ignored
-```
-
-These fail until reviewed snapshots are added; normal schema tests need no
-snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
+CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
 tests, and the generated command tree check on Linux, Windows, and macOS 26 ARM64.
 See [the test workflow](../.github/workflows/test.yml) for suite groupings.
 
@@ -75,8 +67,7 @@ Suite roots own their fixtures and serial locks; domain modules remain in the
 original test executables. `routing_tests.rs` owns the recorded bridge shared by
 `routing/`, and `output_format_integration.rs` keeps presentation tests alongside
 the configuration, installation, project, and validation modules in `output/`.
-Keep snapshot assertions at their original source/module path to preserve Insta
-identity. Filter a domain with, for example,
+Filter a domain with, for example,
 `cargo test --test daemon_tests program_session::`.
 
 ## Coverage and fixtures

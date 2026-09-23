@@ -33,7 +33,7 @@ fn test_function_list() {
 the full document when checking metadata or the public envelope.
 `ghidra(&harness)` supplies the project; `timeout` sets the command budget.
 See [suite guidance](../README.md) for
-fixture compilation, serial execution, commands, and unbootstrapped snapshots.
+fixture compilation, serial execution, and commands.
 
 ## Lifecycle boundaries
 
