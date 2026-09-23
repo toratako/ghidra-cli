@@ -275,10 +275,11 @@ final class ProgramCommands {
         }
     }
 
-    JsonObject handleStats() {
+    JsonObject handleStats() throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
         try {
+            session.monitor().checkCancelled();
             FunctionManager fm = session.program().getFunctionManager();
             SymbolTable symbolTable = session.program().getSymbolTable();
             Memory memory = session.program().getMemory();
@@ -289,34 +290,52 @@ final class ProgramCommands {
 
             int symbolCount = 0;
             SymbolIterator symIter = symbolTable.getAllSymbols(true);
-            while (symIter.hasNext()) { symIter.next(); symbolCount++; }
+            while (symIter.hasNext()) {
+                session.monitor().checkCancelled();
+                symIter.next();
+                symbolCount++;
+            }
 
             int stringCount = 0;
             DataIterator dataIter = listing.getDefinedData(true);
             while (dataIter.hasNext()) {
+                session.monitor().checkCancelled();
                 if (dataIter.next().hasStringValue()) stringCount++;
             }
 
             long memorySize = 0;
             int sectionCount = 0;
             for (MemoryBlock block : memory.getBlocks()) {
+                session.monitor().checkCancelled();
                 memorySize += block.getSize();
                 sectionCount++;
             }
 
             int importCount = 0;
             SymbolIterator extSyms = symbolTable.getExternalSymbols();
-            while (extSyms.hasNext()) { extSyms.next(); importCount++; }
+            while (extSyms.hasNext()) {
+                session.monitor().checkCancelled();
+                extSyms.next();
+                importCount++;
+            }
 
             int exportCount = 0;
             ghidra.program.model.address.AddressIterator epIter = symbolTable.getExternalEntryPointIterator();
-            while (epIter.hasNext()) { epIter.next(); exportCount++; }
+            while (epIter.hasNext()) {
+                session.monitor().checkCancelled();
+                epIter.next();
+                exportCount++;
+            }
 
             int dataTypeCount = dtm.getDataTypeCount(false);
 
             int instructionCount = 0;
             InstructionIterator instrIter = listing.getInstructions(true);
-            while (instrIter.hasNext()) { instrIter.next(); instructionCount++; }
+            while (instrIter.hasNext()) {
+                session.monitor().checkCancelled();
+                instrIter.next();
+                instructionCount++;
+            }
 
             JsonObject stats = new JsonObject();
             stats.addProperty("functions", functionCount);
@@ -336,6 +355,8 @@ final class ProgramCommands {
             JsonObject result = new JsonObject();
             result.add("stats", stats);
             return result;
+        } catch (CancelledException e) {
+            throw e;
         } catch (Exception e) {
             return errorResult("Failed to gather statistics: " + e.getMessage());
         }

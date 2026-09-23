@@ -3,8 +3,8 @@ use crate::common::{ensure_test_project, test_project};
 use serial_test::serial;
 
 // Exercise the production dispatcher against a separate, real Ghidra database.
-// Java interface proxies inject failures only after real edits, without adding
-// test switches to the bridge or nesting under the enclosing script's request.
+// Java interface proxies inject failures after real edits or iterator reads,
+// without bridge test switches or nesting under the enclosing script's request.
 const TRANSACTION_PROBE: &str = r#"
 import com.google.gson.JsonObject;
 import ghidra.app.script.GhidraScript;
@@ -39,6 +39,7 @@ public class RequestTransactionProbe extends GhidraScript {
     private int saveCalls;
     private int commentWrites;
     private int memoryWrites;
+    private int statsEntriesRead;
     private Address address;
     private String prior;
 
@@ -131,6 +132,19 @@ public class RequestTransactionProbe extends GhidraScript {
         Listing listing = (Listing) Proxy.newProxyInstance(Listing.class.getClassLoader(),
             new Class<?>[] { Listing.class }, (proxy, method, args) -> {
                 Object result = invoke(method, real.getListing(), args);
+                if (("stats-" + method.getName()).equals(fault)) {
+                    fault = null;
+                    return Proxy.newProxyInstance(method.getReturnType().getClassLoader(),
+                        new Class<?>[] { method.getReturnType() }, (iterator, operation, inputs) -> {
+                            Object entry = invoke(operation, result, inputs);
+                            if (operation.getName().equals("next") && ++statsEntriesRead == 1) {
+                                check(((java.util.Iterator<?>) result).hasNext(),
+                                    "Stats cancellation fixture needs remaining entries");
+                                requestMonitor.cancel();
+                            }
+                            return entry;
+                        });
+                }
                 if (method.getName().equals("setComment")) {
                     commentWrites++;
                     if ("late-error".equals(fault)) {
@@ -244,6 +258,24 @@ public class RequestTransactionProbe extends GhidraScript {
         // A fresh successful request still commits after cancellation/failure.
         success(command("comment_set", comment("next-request", "PRE")));
         savedComment(CodeUnit.PRE_COMMENT, "next-request");
+    }
+
+    private void testStatsCancellation() throws Exception {
+        for (String scan : new String[] { "getDefinedData", "getInstructions" }) {
+            statsEntriesRead = 0;
+            fault = "stats-" + scan;
+            JsonObject response = command("stats", new JsonObject());
+            rolledBack(response);
+            check(response.getAsJsonObject("detail").get("cancelled").getAsBoolean(),
+                "Missing stats cancellation detail: " + response);
+            check(statsEntriesRead == 1, "Cancelled " + scan + " read " + statsEntriesRead + " entries");
+            check(real.getCurrentTransactionInfo() == null, "Cancelled stats left a transaction open");
+            requestMonitor.clearCancelled();
+            success(command("stats", new JsonObject()));
+        }
+        success(command("comment_set", comment("after-stats-cancellation", "PRE")));
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, "after-stats-cancellation");
     }
 
     private void testMemoryFailure(String mode) throws Exception {
@@ -485,6 +517,7 @@ public class RequestTransactionProbe extends GhidraScript {
             savedComment(CodeUnit.EOL_COMMENT, prior);
             switch (mode) {
                 case "late-error": case "cancel": case "native-false": testLateFailure(mode); break;
+                case "stats-cancel": testStatsCancellation(); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": testSaveRecovery(); break;
                 case "foreign-transaction": testForeignTransaction(); break;
@@ -590,6 +623,12 @@ fn test_memory_write_reference_failure_restores_bytes_definitions_and_references
 #[serial]
 fn test_cancellation_after_edit_rolls_back_only_the_cancelled_request() {
     run_transaction_probe("cancel");
+}
+
+#[test]
+#[serial]
+fn test_program_stats_cancellation_stops_scanning_and_preserves_later_requests() {
+    run_transaction_probe("stats-cancel");
 }
 
 #[test]
