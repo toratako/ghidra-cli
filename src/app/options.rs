@@ -87,6 +87,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Disasm(args) => args.options.project.clone(),
         Commands::Listing(cmd) => match cmd {
             cli::ListingCommands::DefineCode(args) => args.project.clone(),
+            cli::ListingCommands::DefineData(args) => args.project.clone(),
             cli::ListingCommands::Undefine(args) => args.project.clone(),
             cli::ListingCommands::Flow(cmd) => cmd.options().project.clone(),
         },
@@ -139,7 +140,6 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
                 cli::TypeCreateCommands::Enum(args) => args.project.clone(),
                 cli::TypeCreateCommands::Typedef(args) => args.project.clone(),
             },
-            cli::TypeCommands::Apply(args) => args.project.clone(),
             cli::TypeCommands::ImportC(args) => args.project.clone(),
             cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
                 args.options.project.clone()
@@ -294,6 +294,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Disasm(args) => args.options.program.clone(),
         Commands::Listing(cmd) => match cmd {
             cli::ListingCommands::DefineCode(args) => args.program.clone(),
+            cli::ListingCommands::DefineData(args) => args.program.clone(),
             cli::ListingCommands::Undefine(args) => args.program.clone(),
             cli::ListingCommands::Flow(cmd) => cmd.options().program.clone(),
         },
@@ -346,7 +347,6 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 cli::TypeCreateCommands::Enum(args) => args.program.clone(),
                 cli::TypeCreateCommands::Typedef(args) => args.program.clone(),
             },
-            cli::TypeCommands::Apply(args) => args.program.clone(),
             cli::TypeCommands::ImportC(args) => args.program.clone(),
             cli::TypeCommands::ImportGdt(args) | cli::TypeCommands::ExportGdt(args) => {
                 args.options.program.clone()

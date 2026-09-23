@@ -25,7 +25,7 @@ acyclic imports between bridge packages.
 | [function](function/) | Function queries/edits, signatures, variables, and function tags |
 | [types](types/) | Type resolution/definitions and composite field layouts |
 | [memory](memory/) | Byte reads/patches, blocks, original file bytes, and mappings |
-| [listing](listing/) | Instruction/data/string listings, searches, code definition, and flow edits |
+| [listing](listing/) | Instruction/data/string listings, searches, code/data definition, and flow edits |
 | [symbol](symbol/) | Symbols, namespaces, references, equates, comments, and bookmarks |
 | [analysis](analysis/) | Analysis execution, decompilation, p-code, CFG, and call graphs |
 | [script](script/) | User script execution and artifact validation |

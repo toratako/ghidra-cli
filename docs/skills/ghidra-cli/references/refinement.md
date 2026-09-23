@@ -178,8 +178,8 @@ ghidra-cli type enum member delete Mode --member Unknown --project target
 ghidra-cli type create typedef HeaderAlias --type Header --project target
 ghidra-cli type rename HeaderAlias PacketHeader --project target
 ghidra-cli type delete PacketHeader --project target
-ghidra-cli type apply 0x404000 --type Header --project target
-ghidra-cli type apply 0x404000 --type Header --force --project target
+ghidra-cli listing define-data 0x404000 --type Header --project target
+ghidra-cli listing define-data 0x404000 --type Header --force --project target
 ghidra-cli type import-c --category /Recovered \
   --code 'struct Vec3 { float x; float y; float z; }; typedef Vec3 *Vec3Ptr;' \
   --project target
@@ -193,7 +193,7 @@ ghidra-cli type import-c --file recovered_types.h --category /Recovered
 ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 ```
 
-`type apply --force` clears conflicting code or data units, including instructions,
+`listing define-data --force` clears conflicting code or data units, including instructions,
 before applying the type.
 
 Type expressions accept `byte[16]`, `Hook *[8]`, and `byte[2][3]`;
@@ -212,7 +212,7 @@ ordinary C spellings such as `unsigned int` use the target ABI.
 ```bash
 ghidra-cli type archive list sdk.gdt --filter 'category^"/SDK"' --project target
 ghidra-cli type import-gdt sdk.gdt --where 'path="/SDK/Header"' --project target
-ghidra-cli type apply 0x404000 --type /SDK/Header --project target
+ghidra-cli listing define-data 0x404000 --type /SDK/Header --project target
 ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
 ```
 

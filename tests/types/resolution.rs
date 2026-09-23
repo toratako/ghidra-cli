@@ -6,8 +6,11 @@ use serde_json::{json, Value};
 use serial_test::serial;
 
 fn type_command(program: &str, args: &[&str]) -> GhidraResult {
+    program_command(program, &[&["type"], args].concat())
+}
+
+fn program_command(program: &str, args: &[&str]) -> GhidraResult {
     ghidra(harness())
-        .arg("type")
         .args(args.iter().copied())
         .with_project(test_project(), program)
         .arg("--json")
@@ -239,18 +242,32 @@ public class CreateAmbiguousTypes extends GhidraScript {
 
     let before = get_type(&program, "Holder");
     for args in [
-        vec!["get", "Shared"],
-        vec!["get", "Shared *[2]"],
+        vec!["type", "get", "Shared"],
+        vec!["type", "get", "Shared *[2]"],
         vec![
-            "field", "append", "Holder", "--name", "bad", "--type", "Shared",
+            "type", "field", "append", "Holder", "--name", "bad", "--type", "Shared",
         ],
-        vec!["create", "typedef", "AmbiguousAlias", "--type", "Shared"],
-        vec!["rename", "Shared", "Renamed"],
-        vec!["delete", "Shared"],
-        vec!["field", "delete", "Shared", "--field", "missing"],
-        vec!["apply", "0x1000", "--type", "Shared", "--force"],
+        vec![
+            "type",
+            "create",
+            "typedef",
+            "AmbiguousAlias",
+            "--type",
+            "Shared",
+        ],
+        vec!["type", "rename", "Shared", "Renamed"],
+        vec!["type", "delete", "Shared"],
+        vec!["type", "field", "delete", "Shared", "--field", "missing"],
+        vec![
+            "listing",
+            "define-data",
+            "0x1000",
+            "--type",
+            "Shared",
+            "--force",
+        ],
     ] {
-        let failed = type_command(&program, &args);
+        let failed = program_command(&program, &args);
         failed.assert_failure();
         let error: Value = serde_json::from_str(&failed.stderr).unwrap();
         assert!(
@@ -375,7 +392,7 @@ fn fixed_width_aliases_preserve_width_and_signedness_on_a_16_bit_abi() {
 
 #[test]
 #[serial]
-fn rejected_force_apply_preserves_instructions_and_data() {
+fn rejected_force_define_data_preserves_instructions_and_data() {
     require_ghidra!();
     let program = create_program(32);
     let client = harness().client().unwrap();
@@ -385,7 +402,7 @@ fn rejected_force_apply_preserves_instructions_and_data() {
             r#"
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.data.DWordDataType;
-public class PrepareTypeApplyMemory extends GhidraScript {
+public class PrepareDefineDataMemory extends GhidraScript {
     public void run() throws Exception {
         var memory = currentProgram.getMemory();
         memory.createInitializedBlock("first", toAddr(0x1000), 8, (byte) 0xc3, monitor, false);
@@ -410,7 +427,10 @@ public class PrepareTypeApplyMemory extends GhidraScript {
         ("0x1004", "byte[2147483647]"),
         ("0xfffffffc", "byte[8]"),
     ] {
-        let failed = type_command(&program, &["apply", address, "--type", ty, "--force"]);
+        let failed = program_command(
+            &program,
+            &["listing", "define-data", address, "--type", ty, "--force"],
+        );
         failed.assert_failure();
         let error: Value = serde_json::from_str(&failed.stderr).unwrap();
         assert!(
@@ -421,7 +441,7 @@ public class PrepareTypeApplyMemory extends GhidraScript {
             .script_run_source(
                 r#"
 import ghidra.app.script.GhidraScript;
-public class CheckTypeApplyPreservation extends GhidraScript {
+public class CheckDefineDataPreservation extends GhidraScript {
     public void run() throws Exception {
         if (getInstructionAt(toAddr(0x1000)) == null)
             throw new IllegalStateException("Rejected apply removed instruction");
@@ -441,9 +461,16 @@ public class CheckTypeApplyPreservation extends GhidraScript {
             .unwrap();
     }
     // Valid forced replacement still succeeds after all rejected requests.
-    type_command(
+    program_command(
         &program,
-        &["apply", "0x1004", "--type", "byte[4]", "--force"],
+        &[
+            "listing",
+            "define-data",
+            "0x1004",
+            "--type",
+            "byte[4]",
+            "--force",
+        ],
     )
     .assert_success();
     client.open_program(TEST_PROGRAM).unwrap();

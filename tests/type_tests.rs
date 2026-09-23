@@ -12,8 +12,6 @@ use common::{ensure_test_project, ghidra, DaemonTestHarness};
 use common::test_project;
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
-#[path = "types/application.rs"]
-mod application;
 #[path = "types/archives.rs"]
 mod archives;
 #[path = "types/bitfields.rs"]
@@ -22,6 +20,8 @@ mod bitfields;
 mod calling_conventions;
 #[path = "types/components.rs"]
 mod components;
+#[path = "listing/define_data.rs"]
+mod define_data;
 #[path = "types/definitions.rs"]
 mod definitions;
 #[path = "types/enums.rs"]

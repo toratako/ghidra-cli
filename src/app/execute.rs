@@ -317,9 +317,6 @@ pub(super) fn execute_via_bridge(
                         })),
                     ),
                 },
-                TypeCommands::Apply(args) => {
-                    client.type_apply_force(&args.address, &args.type_name, args.force)
-                }
                 TypeCommands::ImportC(args) => {
                     client.type_import_c(&resolve_c_source(args)?, args.category.as_deref())
                 }
@@ -587,6 +584,9 @@ pub(super) fn execute_via_bridge(
                         "fallthrough": args.fallthrough})),
                 ),
             },
+            cli::ListingCommands::DefineData(args) => {
+                client.define_data(&args.address, &args.type_name, args.force)
+            }
             cli::ListingCommands::DefineCode(args) => {
                 client.define_code(&args.target, args.end.as_deref())
             }

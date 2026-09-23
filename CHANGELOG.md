@@ -53,6 +53,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move `type apply` to `listing define-data`, preserving its arguments, data
+  definition behavior, and result fields.
+
 - Include the current class/namespace, calling convention, and parameter type
   when rejecting an automatic `this` edit, with guidance for correcting class
   membership through namespace operations.

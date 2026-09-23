@@ -9,7 +9,7 @@ only a liveness probe.
 
 Typed adapters remain methods on `BridgeClient`, grouped under `client/`:
 `functions.rs` owns function/decompiler, p-code, xref and graph requests;
-`memory.rs` owns memory and instruction operations; `annotations.rs` owns
+`memory.rs` owns memory and listing operations; `annotations.rs` owns
 symbols, types, tags, bookmarks and comments; `program.rs` owns program lifecycle
 and analysis; `search.rs` owns strings and searches; `scripts.rs` owns scripts.
 

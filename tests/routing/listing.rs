@@ -2,6 +2,60 @@ use super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
 #[test]
+fn listing_define_data_preserves_targets_and_type_arguments_in_standalone_and_batch() {
+    let outer = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    for force in [false, true] {
+        let mut args = vec![
+            "listing",
+            "define-data",
+            "0x1000",
+            "--type",
+            "/Recovered/Header *[2]",
+            "--project",
+            selected.project.to_str().unwrap(),
+            "--program",
+            "B",
+        ];
+        if force {
+            args.push("--force");
+        }
+        for batch in [false, true] {
+            outer.requests.lock().unwrap().clear();
+            selected.requests.lock().unwrap().clear();
+            let receipt = if batch {
+                std::fs::write(outer.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                let report = outer.run(&["batch", "batch.txt"]);
+                assert_eq!(report["failed"], 0, "{report}");
+                report["results"][0]["result"]["data"].clone()
+            } else {
+                outer.run(&args)
+            };
+            assert_eq!(receipt["observed_program"], "B");
+            assert!(outer
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|request| request["command"] == "bridge_info"));
+            let requests = selected.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 1, "{requests:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "define_data");
+            assert_eq!(
+                domain[0]["args"],
+                json!({"address": "0x1000", "type_name": "/Recovered/Header *[2]", "force": force})
+            );
+        }
+    }
+}
+
+#[test]
 fn listing_undefine_preserves_targets_and_atomic_redisassembly_in_standalone_and_batch() {
     let outer = RecordedBridge::new();
     let selected = RecordedBridge::new();

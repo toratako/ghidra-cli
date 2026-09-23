@@ -7,12 +7,29 @@ pub enum ListingCommands {
     /// Define instructions by following code flow from a name or address.
     /// Returns a change receipt; use disassemble to read the instructions.
     DefineCode(DefineCodeArgs),
+    /// Define data at an explicit address using a data type
+    DefineData(DefineDataArgs),
     /// Undefine instructions and data overlapping an inclusive address range,
     /// optionally re-disassembling at a precise address
     Undefine(UndefineArgs),
     /// Inspect and override instruction flow without changing bytes
     #[command(subcommand)]
     Flow(ListingFlowCommands),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct DefineDataArgs {
+    /// Explicit address, e.g. 0x404000 or overlay:0x1000
+    pub address: String,
+    #[arg(long = "type", value_name = "TYPE")]
+    pub type_name: String,
+    /// Clear conflicting code/data units (including instructions) before defining data
+    #[arg(long)]
+    pub force: bool,
+    #[arg(long)]
+    pub program: Option<String>,
+    #[arg(long)]
+    pub project: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

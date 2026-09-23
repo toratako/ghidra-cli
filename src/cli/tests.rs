@@ -165,7 +165,7 @@ fn canonical_commands_parse() {
 }
 
 #[test]
-fn import_and_type_apply_options_parse() {
+fn import_and_define_data_options_parse() {
     let cli = Cli::try_parse_from([
         "ghidra-cli",
         "program",
@@ -187,20 +187,20 @@ fn import_and_type_apply_options_parse() {
     assert_eq!(args.compiler_spec.as_deref(), Some("gcc"));
     let cli = Cli::try_parse_from([
         "ghidra-cli",
-        "type",
-        "apply",
+        "listing",
+        "define-data",
         "0x1000",
         "--type",
         "int",
         "--force",
     ])
     .unwrap();
-    let Commands::Type(TypeCommands::Apply(args)) = cli.command else {
-        panic!("expected type apply")
+    let Commands::Listing(ListingCommands::DefineData(args)) = cli.command else {
+        panic!("expected listing define-data")
     };
     assert!(args.force);
 
-    let help = Cli::try_parse_from(["ghidra-cli", "type", "apply", "--help"])
+    let help = Cli::try_parse_from(["ghidra-cli", "listing", "define-data", "--help"])
         .err()
         .unwrap()
         .to_string();

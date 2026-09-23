@@ -14,8 +14,6 @@ pub enum TypeCommands {
     /// Create a struct, union, enum, or typedef
     #[command(subcommand)]
     Create(TypeCreateCommands),
-    /// Apply type to address
-    Apply(ApplyTypeArgs),
     /// Import C type definitions
     ImportC(ImportCArgs),
     /// Import selected types and their dependencies from a Ghidra data type archive
@@ -258,21 +256,6 @@ pub struct CreateStructArgs {
 pub struct CreateUnionArgs {
     /// Bare identifier for the new empty union
     pub name: String,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct ApplyTypeArgs {
-    /// Explicit address, e.g. 0x404000 or overlay:0x1000
-    pub address: String,
-    #[arg(long = "type", value_name = "TYPE")]
-    pub type_name: String,
-    /// Clear conflicting code/data units (including instructions) before applying the type
-    #[arg(long)]
-    pub force: bool,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]

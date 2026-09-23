@@ -33,7 +33,7 @@ pub struct BridgeResponse<T = serde_json::Value> {
     pub message: Option<String>,
     /// Structured detail attached to an error response (e.g. the containing
     /// function's name/entry/size on a "function already exists" error, or the
-    /// conflicting data unit's type/range on a "type apply" conflict). Absent
+    /// conflicting data unit's type/range on a "listing define-data" conflict). Absent
     /// on success responses and on errors that carry only a message.
     #[serde(default)]
     pub detail: Option<serde_json::Value>,

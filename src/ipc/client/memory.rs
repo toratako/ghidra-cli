@@ -138,6 +138,20 @@ impl BridgeClient {
         )
     }
 
+    /// Define data at an address. With `force`, clears conflicting code/data
+    /// units first instead of failing on them.
+    pub fn define_data(
+        &self,
+        address: &str,
+        type_name: &str,
+        force: bool,
+    ) -> Result<serde_json::Value> {
+        self.send_command(
+            "define_data",
+            Some(json!({"address": address, "type_name": type_name, "force": force})),
+        )
+    }
+
     /// Define instructions from `target`, optionally bounded by inclusive `end`.
     /// Returns a change receipt only; use `disasm` to read instruction rows.
     pub fn define_code(&self, target: &str, end: Option<&str>) -> Result<serde_json::Value> {

@@ -4,15 +4,15 @@ use serial_test::serial;
 
 #[test]
 #[serial]
-fn test_type_apply() {
+fn test_define_data() {
     require_ghidra!();
     let harness = harness();
 
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("type")
-        .arg("apply")
+        .arg("listing")
+        .arg("define-data")
         .arg(&addr)
         .arg("--type")
         .arg("int")
@@ -62,7 +62,7 @@ fn restore_disassembly(harness: &DaemonTestHarness, addr: &str) {
 #[test]
 #[serial]
 // This suite owns its project, so clearing main cannot affect another suite.
-fn test_type_apply_force_on_function_entry_warns() {
+fn test_define_data_force_on_function_entry_warns() {
     require_ghidra!();
     let harness = harness();
 
@@ -75,8 +75,8 @@ fn test_type_apply_force_on_function_entry_warns() {
     // conflicting data unit) -- the response must flag that distinctly so a
     // caller doesn't mistake it for a normal conflict-clear (ghidra-bug.md).
     let result = ghidra(harness)
-        .arg("type")
-        .arg("apply")
+        .arg("listing")
+        .arg("define-data")
         .arg(&addr)
         .arg("--type")
         .arg("int")

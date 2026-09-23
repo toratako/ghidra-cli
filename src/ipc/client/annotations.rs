@@ -110,20 +110,6 @@ impl BridgeClient {
         )
     }
 
-    /// Apply a type at an address. With `force`, clears any conflicting data
-    /// unit first instead of failing on it.
-    pub fn type_apply_force(
-        &self,
-        address: &str,
-        type_name: &str,
-        force: bool,
-    ) -> Result<serde_json::Value> {
-        self.send_command(
-            "type_apply",
-            Some(json!({"address": address, "type_name": type_name, "force": force})),
-        )
-    }
-
     pub fn bookmark_list(&self) -> Result<serde_json::Value> {
         self.send_command("bookmark_list", None)
     }

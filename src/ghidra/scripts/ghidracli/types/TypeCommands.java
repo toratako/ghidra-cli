@@ -5,19 +5,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.database.data.DataTypeUtilities;
-import ghidra.program.model.address.Address;
 import ghidra.program.model.data.Array;
-import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
-import ghidra.program.model.data.Dynamic;
 import ghidra.program.model.data.EnumDataType;
-import ghidra.program.model.data.FactoryDataType;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.ParameterDefinition;
 import ghidra.program.model.data.Pointer;
-import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.SourceArchive;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.StructureDataType;
@@ -25,12 +20,6 @@ import ghidra.program.model.data.TypeDef;
 import ghidra.program.model.data.TypedefDataType;
 import ghidra.program.model.data.Union;
 import ghidra.program.model.data.UnionDataType;
-import ghidra.program.model.listing.CodeUnit;
-import ghidra.program.model.listing.Data;
-import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.Listing;
-import ghidra.program.model.mem.MemoryBufferImpl;
-import ghidracli.query.AddressCodec;
 import ghidracli.query.IntegerLiteral;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
@@ -38,7 +27,6 @@ import java.util.Iterator;
 import java.util.Locale;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
-import static ghidracli.protocol.JsonProtocol.getArgBool;
 import static ghidracli.protocol.JsonProtocol.getArgInt;
 import static ghidracli.protocol.JsonProtocol.getArgString;
 
@@ -230,91 +218,6 @@ public final class TypeCommands {
         }
     }
 
-    public JsonObject handleTypeApply(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String addressStr = getArgString(args, "address");
-        String typeName = getArgString(args, "type_name");
-        boolean force = getArgBool(args, "force", false);
-        if (addressStr == null || typeName == null) {
-            return errorResult("Address and type_name required");
-        }
-
-        try {
-            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
-            if (addr == null) return errorResult("Invalid address: " + addressStr);
-
-            DataType dataType = typeResolver.resolveDataType(typeName);
-            if (dataType == null) {
-                return errorResult("Type not found: " + typeName);
-            }
-
-            // Mirror listing applicability and sizing before any destructive clear.
-            if (dataType instanceof FactoryDataType) {
-                dataType = ((FactoryDataType) dataType).getDataType(
-                    new MemoryBufferImpl(session.program().getMemory(), addr));
-                if (dataType == null) return errorResult("Failed to resolve data type: " + typeName);
-                dataType = dataType.clone(session.program().getDataTypeManager());
-            }
-            if (dataType instanceof BitFieldDataType)
-                return errorResult("Bitfields not supported for Data");
-            DataType baseType = dataType instanceof TypeDef
-                ? ((TypeDef) dataType).getBaseDataType() : dataType;
-            if (baseType instanceof FunctionDefinition)
-                dataType = new PointerDataType(dataType, session.program().getDataTypeManager());
-            int length = dataType instanceof Dynamic
-                ? ((Dynamic) dataType).getLength(new MemoryBufferImpl(session.program().getMemory(), addr), -1)
-                : dataType.getLength();
-            if (length <= 0 || dataType.isZeroLength())
-                return errorResult("Type must have a positive applicable data length: " + typeName);
-            Address clearEnd = addr.addNoWrap(length - 1);
-            if (!session.program().getMemory().contains(addr, clearEnd))
-                return errorResult("Type range extends outside program memory: "
-                    + AddressCodec.format(addr) + "-" + AddressCodec.format(clearEnd));
-
-            // Captured before the clear below (which can silently remove the Function
-            // object along with its code) so a `--force` that lands on a function's own
-            // entry -- rather than an actual conflicting data unit -- is still reported.
-            ghidra.program.model.listing.Function forcedFunctionEntry = force
-                ? session.program().getFunctionManager().getFunctionAt(addr)
-                : null;
-
-            Listing listing = session.program().getListing();
-            try {
-                if (force) {
-                    listing.clearCodeUnits(addr, clearEnd, false);
-                }
-                listing.createData(addr, dataType, length);
-            } catch (ghidra.program.model.util.CodeUnitInsertionException e) {
-                // Surface the conflicting code unit's own type/length/range.
-                return typeApplyConflictError(addr, typeName, e);
-            }
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "applied");
-            result.addProperty("address", AddressCodec.format(addr));
-            result.addProperty("type", typeName);
-            if (force) {
-                result.addProperty("cleared_conflicting", true);
-                // `--force` means force: clearing a function's own entry point (as opposed
-                // to an actual conflicting data unit) "succeeds" the same way, but silently
-                // -- `function get` still reports the function's old name/size afterward,
-                // and only a later `function disassemble` failing with "No instruction at
-                // address" exposes the corruption. Flag it here instead.
-                if (forcedFunctionEntry != null) {
-                    result.addProperty("is_function_entry", true);
-                    result.addProperty("warning", "Cleared the entry point of function '"
-                        + forcedFunctionEntry.getName() + "' (code, not a conflicting data "
-                        + "unit) and replaced it with " + typeName
-                        + " data -- the function's code is gone, not just its conflicting bytes.");
-                }
-            }
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to apply type: " + e.getMessage(), e);
-        }
-    }
-
     public JsonObject handleTypeCreateUnion(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
@@ -333,37 +236,6 @@ public final class TypeCommands {
         } catch (Exception e) {
             return errorResult("Failed to create union: " + e.getMessage(), e);
         }
-    }
-
-    private JsonObject typeApplyConflictError(Address addr, String typeName, Exception cause) {
-        Listing listing = session.program().getListing();
-        CodeUnit cu = listing.getCodeUnitContaining(addr);
-
-        JsonObject detail = new JsonObject();
-        String description = "unknown";
-        if (cu != null) {
-            detail.addProperty("conflicting_start", AddressCodec.format(cu.getMinAddress()));
-            detail.addProperty("conflicting_end", AddressCodec.format(cu.getMaxAddress()));
-            detail.addProperty("conflicting_length", cu.getLength());
-            if (cu instanceof Instruction) {
-                detail.addProperty("conflicting_kind", "instruction");
-                detail.addProperty("conflicting_mnemonic", ((Instruction) cu).getMnemonicString());
-                description = "an instruction (" + ((Instruction) cu).getMnemonicString() + ")";
-            } else if (cu instanceof Data) {
-                Data d = (Data) cu;
-                detail.addProperty("conflicting_kind", "data");
-                detail.addProperty("conflicting_type", d.getDataType().getName());
-                detail.addProperty("conflicting_defined", d.isDefined());
-                description = (d.isDefined() ? "defined data of type " + d.getDataType().getName()
-                    : "undefined data") + " spanning " + AddressCodec.format(cu.getMinAddress())
-                    + "-" + AddressCodec.format(cu.getMaxAddress());
-            }
-        }
-
-        JsonObject err = errorResult("Conflicting data exists at " + AddressCodec.format(addr) + " for type " + typeName
-            + ": conflicts with " + description + ". Use --force to clear the conflicting range first.");
-        err.add("detail", detail);
-        return err;
     }
 
     public JsonObject handleTypeDelete(JsonObject args) {

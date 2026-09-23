@@ -127,7 +127,7 @@ final class CommandDispatcher {
         programContextCommands = new ProgramContextCommands(session);
         programRebaseCommands = new ProgramRebaseCommands(session);
         programExportCommands = new ProgramExportCommands(session);
-        listingCommands = new ListingCommands(session, addressResolver, stringQueries, instructions);
+        listingCommands = new ListingCommands(session, addressResolver, stringQueries, instructions, typeResolver);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         addressTableSearch = new AddressTableSearch(session, addressResolver);
@@ -244,7 +244,6 @@ final class CommandDispatcher {
             case "type_category_create": return typeDefinitionCommands.handleCategoryCreate(args);
             case "type_category_delete": return typeDefinitionCommands.handleCategoryDelete(args);
             case "type_create":     return typeCommands.handleTypeCreate(args);
-            case "type_apply":      return typeCommands.handleTypeApply(args);
             case "type_import_c":   return typeImportCommands.handleTypeImportC(args);
             case "type_archive_list": return typeArchiveCommands.handleList(args);
             case "type_gdt_candidates": return typeArchiveCommands.handleCandidates(args);
@@ -320,6 +319,7 @@ final class CommandDispatcher {
             // Other commands
             case "disasm":          return listingCommands.handleDisasm(args);
             case "disasm_range":    return listingCommands.handleDisasmRange(args);
+            case "define_data":     return listingCommands.handleDefineData(args);
             case "define_code":     return listingCommands.handleDefineCode(args);
             case "clear_range":     return listingCommands.handleClearRange(args);
             case "stats":           return programCommands.handleStats();

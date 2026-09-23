@@ -274,7 +274,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
             ),
             ("comment_delete", json!({"address": address, "all": true})),
             (
-                "type_apply",
+                "define_data",
                 json!({"address": address, "type_name": "int", "force": true}),
             ),
             (
@@ -332,7 +332,7 @@ fn check_address_only_ipc(client: &BridgeClient) {
             .len(),
         2
     );
-    // Failed type_apply must also leave the listing undefined, not just retain bytes.
+    // Failed define_data must also leave the listing undefined, not just retain bytes.
     client.script_run_source(r#"
 import ghidra.app.script.GhidraScript;
 public class VerifyAddressFailures extends GhidraScript {

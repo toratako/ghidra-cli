@@ -121,6 +121,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [routing/program_analysis.rs](routing/program_analysis.rs), [routing/analysis.rs](routing/analysis.rs) | Standalone/batch context, rebase and analysis-mode routing, target selection, list metadata and nested edit receipts |
 | [bootstrap/imports.rs](bootstrap/imports.rs), [bootstrap/analysis.rs](bootstrap/analysis.rs) | Import names, collisions and durable failure checkpoints; analysis settings and completion flags across startup routes |
 | [readonly/functions.rs](readonly/functions.rs), [readonly/decompile_cli.rs](readonly/decompile_cli.rs), [readonly/disassembly.rs](readonly/disassembly.rs) | Function-list schemas and filters, decompiler targets/timeouts, and whole-body/ranged disassembly with query and output options |
+| [listing/define_data.rs](listing/define_data.rs) (in `type_tests`) | Data definition conflicts and forced replacement of function entries |
 | [patch/define_code.rs](patch/define_code.rs) | Bounded code definitions, rollback/persistence, Thumb context and MIPS delay slots |
 | [patch/memory_write.rs](patch/memory_write.rs) | Preserved component settings and instructions, pointer references across widths/byte orders, string storage, shared memory, overlays and delay slots |
 | [symbols/targets.rs](symbols/targets.rs), [symbols/deletion.rs](symbols/deletion.rs) | Exact mutation targets and namespace revalidation; thunk/dynamic symbols and transactional deletion |

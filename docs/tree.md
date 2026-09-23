@@ -101,6 +101,7 @@ ghidra-cli
 │   └── read
 ├── listing
 │   ├── define-code
+│   ├── define-data
 │   ├── undefine
 │   └── flow
 │       ├── get
@@ -122,7 +123,6 @@ ghidra-cli
 │   │   ├── union
 │   │   ├── enum
 │   │   └── typedef
-│   ├── apply
 │   ├── import-c
 │   ├── import-gdt
 │   ├── export-gdt
