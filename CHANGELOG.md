@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `function set-thunk FUNCTION --target FUNCTION` and `function clear-thunk`
+  to edit a function's direct forwarding relationship, with before/after
+  signatures, ABI storage, and direct/final targets. Clearing exposes the
+  function's own saved definition without copying the destination's signature.
 - Add `job result ID` to recover completed bridge responses after a disconnect
   or timeout, including structured failures and cancellation results. Bounded
   in-memory retention ends with the bridge; unknown outcomes include a recovery

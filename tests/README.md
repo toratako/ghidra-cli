@@ -93,6 +93,7 @@ identity. Filter a domain with, for example,
 | `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |
 | `data_tests` | Applied data values, interior components, exact scalars, bounded aggregate expansion, and whole-object reference counts including operands, overlays and sparse arrays |
 | `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |
+| `thunk_tests` | Direct/final thunk ownership, retarget/clear persistence, saved signature/storage restoration, class parameters, external targets and rollback |
 | `function_body_tests` | Disjoint body replacement, space-aware boundaries, native annotation/reference losses and rollback |
 | `call_signature_tests` | Caller/site ownership, shared override types, direct/indirect decompiler effects, stale cleanup and saved/rolled-back edits |
 | `listing_flow_tests` | Independent flow/fallthrough edits, native reference/decompiler effects, delay slots and atomic persistence |

@@ -52,6 +52,8 @@ mod search;
 mod symbols;
 #[path = "routing/tables.rs"]
 mod tables;
+#[path = "routing/thunks.rs"]
+mod thunks;
 #[path = "routing/types.rs"]
 mod types;
 
@@ -359,6 +361,9 @@ impl RecordedBridge {
                         "decompiler": args["selection"]["variable"], "before": null,
                         "after": {"name": args["new_name"], "type": args["type_name"]},
                     }),
+                    "function_set_thunk" | "function_clear_thunk" => {
+                        thunks::receipt_fixture(request["command"] == "function_set_thunk")
+                    }
                     "decompile" if args["address"] == "warned" => {
                         json!({
                             "name": "warned", "address": "0x1000",

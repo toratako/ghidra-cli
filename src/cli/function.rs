@@ -30,6 +30,10 @@ pub enum FunctionCommands {
     SetStackPurge(SetStackPurgeArgs),
     /// Replace the whole function body with inclusive address ranges
     SetBody(SetBodyArgs),
+    /// Set or replace the function's direct thunk target
+    SetThunk(SetThunkArgs),
+    /// Clear the thunk relationship and use the function's own saved signature
+    ClearThunk(ClearThunkArgs),
     /// Read and edit a prototype override at one call site
     #[command(subcommand)]
     CallSignature(CallSignatureCommands),
@@ -208,6 +212,27 @@ pub struct SetBodyArgs {
     /// Shrinking may delete labels and stack/register references outside the new body.
     #[arg(long = "range", required = true, num_args = 2, value_names = ["START", "END"], action = clap::ArgAction::Append)]
     pub ranges: Vec<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SetThunkArgs {
+    /// Function to change: exact name or explicit 0x-prefixed address
+    #[arg(value_name = "FUNCTION")]
+    pub target: String,
+    /// Direct thunk target: exact function name or explicit 0x-prefixed address
+    #[arg(long = "target", value_name = "FUNCTION")]
+    pub thunk_target: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ClearThunkArgs {
+    /// Function to change: exact name or explicit 0x-prefixed address
+    #[arg(value_name = "FUNCTION")]
+    pub target: String,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

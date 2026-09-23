@@ -46,6 +46,8 @@ ghidra-cli
 │   ├── set-calling-convention
 │   ├── set-stack-purge
 │   ├── set-body
+│   ├── set-thunk
+│   ├── clear-thunk
 │   ├── call-signature
 │   │   ├── get
 │   │   ├── set
@@ -206,4 +208,4 @@ ghidra-cli
     └── cancel
 ```
 
-194 command nodes (excluding the root), 0 aliases.
+196 command nodes (excluding the root), 0 aliases.

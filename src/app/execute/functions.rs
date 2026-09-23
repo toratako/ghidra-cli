@@ -74,6 +74,13 @@ pub(super) fn execute(
                 .map(|range| json!({"start": range[0], "end": range[1]})).collect::<Vec<_>>()}),
             ),
         ),
+        FunctionCommands::SetThunk(args) => client.send_command(
+            "function_set_thunk",
+            Some(json!({"target": args.target, "thunk_target": args.thunk_target})),
+        ),
+        FunctionCommands::ClearThunk(args) => {
+            client.send_command("function_clear_thunk", Some(json!({"target": args.target})))
+        }
         FunctionCommands::CallSignature(cmd) => match cmd {
             cli::CallSignatureCommands::Get(args) => client.send_command(
                 "function_call_signature_get",

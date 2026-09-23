@@ -191,7 +191,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run mutation integration tests
-        run: cargo xtask test --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --test stack_purge_tests --test xref_tests --test equate_tests --test bookmark_tests --test namespace_tests --test memory_block_tests --test function_body_tests --test call_signature_tests --test listing_flow_tests --verbose -- --nocapture
+        run: cargo xtask test --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --test stack_purge_tests --test thunk_tests --test xref_tests --test equate_tests --test bookmark_tests --test namespace_tests --test memory_block_tests --test function_body_tests --test call_signature_tests --test listing_flow_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info

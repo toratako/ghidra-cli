@@ -146,6 +146,8 @@ fn canonical_commands_parse() {
         vec!["type", "import-c", "--code", "typedef int Word;"],
         vec!["function", "list"],
         vec!["function", "get", "main"],
+        vec!["function", "set-thunk", "wrapper", "--target", "main"],
+        vec!["function", "clear-thunk", "wrapper"],
         vec!["function", "list-calling-conventions"],
         vec!["program", "list-relocations"],
         vec!["bookmark", "list"],

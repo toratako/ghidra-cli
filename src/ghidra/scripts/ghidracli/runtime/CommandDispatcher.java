@@ -14,6 +14,7 @@ import ghidracli.function.FunctionCallSignatureCommands;
 import ghidracli.function.FunctionCommands;
 import ghidracli.function.FunctionQueries;
 import ghidracli.function.FunctionSignatureCommands;
+import ghidracli.function.FunctionThunkCommands;
 import ghidracli.function.FunctionVariableCommands;
 import ghidracli.function.TagCommands;
 import ghidracli.listing.DataCommands;
@@ -91,6 +92,7 @@ final class CommandDispatcher {
     private final FunctionSignatureCommands functionSignatureCommands;
     private final FunctionCallSignatureCommands functionCallSignatureCommands;
     private final FunctionBodyCommands functionBodyCommands;
+    private final FunctionThunkCommands functionThunkCommands;
     private final FunctionVariableCommands functionVariableCommands;
     private final StructureInferenceCommands structureInferenceCommands;
     private final ListingFlowCommands listingFlowCommands;
@@ -108,6 +110,7 @@ final class CommandDispatcher {
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         functionCallSignatureCommands = new FunctionCallSignatureCommands(session, functionQueries);
         functionBodyCommands = new FunctionBodyCommands(session, functionQueries);
+        functionThunkCommands = new FunctionThunkCommands(session, functionQueries);
         functionVariableCommands = new FunctionVariableCommands(session, functionQueries, typeResolver);
         structureInferenceCommands = new StructureInferenceCommands(session, functionQueries);
         listingFlowCommands = new ListingFlowCommands(session);
@@ -260,6 +263,8 @@ final class CommandDispatcher {
             case "function_set_stack_purge": return functionSignatureCommands.handleFunctionSetStackPurge(args);
             case "function_set_noreturn": return functionSignatureCommands.handleFunctionSetNoReturn(args);
             case "function_set_body": return functionBodyCommands.handleSet(args);
+            case "function_set_thunk": return functionThunkCommands.handleSet(args);
+            case "function_clear_thunk": return functionThunkCommands.handleClear(args);
             case "function_call_signature_get": return functionCallSignatureCommands.handleGet(args);
             case "function_call_signature_set": return functionCallSignatureCommands.handleSet(args);
             case "function_call_signature_clear": return functionCallSignatureCommands.handleClear(args);

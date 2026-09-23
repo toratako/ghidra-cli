@@ -197,6 +197,7 @@ another consumer or terminate its checkout.
 | [`ProjectDeletion`](project/ProjectDeletion.java) | Bootstrap-only project removal under Ghidra's project lock |
 | [`FunctionCommands`](function/FunctionCommands.java), [`FunctionSignatureCommands`](function/FunctionSignatureCommands.java), [`DecompileCommands`](analysis/DecompileCommands.java) | Function CRUD, whole-function signature changes, decompilation |
 | [`FunctionBodyCommands`](function/FunctionBodyCommands.java) | Whole-body union validation and observed native annotation/reference effects |
+| [`FunctionThunkCommands`](function/FunctionThunkCommands.java) | Direct thunk relation updates and before/after signature ownership and ABI snapshots |
 | [`FunctionCallSignatureCommands`](function/FunctionCallSignatureCommands.java), [`FunctionSignatureSupport`](function/FunctionSignatureSupport.java) | Exact caller/site prototype overrides and shared signature parsing |
 | [`FunctionVariableCommands`](function/FunctionVariableCommands.java), [`FunctionVariables`](function/FunctionVariables.java) | Shared decompiler variable discovery/selection, saved definitions, and variable edits |
 | [`StructureInferenceCommands`](analysis/StructureInferenceCommands.java) | Detached native structure recovery and bounded recorded LOAD/STORE evidence |
@@ -236,6 +237,14 @@ take precedence. Shared helpers own lookup/serialization, not routing.
 The default-package bridge entry script uses `runtime.BridgeRuntime` and
 `session.ScriptAccess`; bootstrap uses the public import/archive/deletion
 operations in `project`.
+
+`function_set_thunk` and `function_clear_thunk` edit the selected function's
+direct relation; they never follow it to the signature owner before writing.
+Native thunk validation rejects cycles and cross-program destinations. Clear
+removes only the relation, exposing the source's saved definition without
+copying parameters, convention, or storage from the destination. Edit snapshots
+read parameters through the selected function to retain native class-specific
+`this` types, and identify both the direct target and final signature owner.
 
 `data list` adds `incoming_reference_count` by iterating recorded reference
 destinations within each top-level Data's inclusive address range and summing

@@ -44,6 +44,21 @@ ghidra-cli function var set parse_header --var value \
 Automatic `this` parameters derive their type from the [class namespace](#symbols)
 and calling convention.
 
+### Thunk relationships
+
+```bash
+ghidra-cli function set-thunk 0x401000 --target 0x402000 --project target
+ghidra-cli function get 0x401000 --with-signature --project target
+ghidra-cli function clear-thunk 0x401000 --project target
+```
+
+Set the relationship after identifying the forwarding destination. Editing a
+thunk changes its direct target; other thunks that forward through it also resolve
+through the new destination. This updates Ghidra's analysis model, not the branch
+instruction. Clearing an incorrect relationship exposes the function's own saved
+definition without copying the destination's signature. Inspect the returned
+`after` signature before correcting its types or calling convention.
+
 ### One call site's prototype
 
 ```bash
