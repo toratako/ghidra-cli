@@ -606,6 +606,15 @@ memory failures become field/slot evidence; cancellation and unexpected API
 failures propagate. Root completeness counts slot reads separately from header
 completeness. Shared session ownership and transactions remain unchanged.
 
+`AddressTableSearch` loads the native `AddressTable` detector through Ghidra's
+application classloader without importing its private GUI package into the
+bridge bundle. It follows the native GUI settings and skips the full returned
+table/index extent before continuing. Bounds select candidate starts in loaded,
+initialized memory, not an internal detector read boundary. Check cancellation
+after native detection because the API can return a partial table on cancellation.
+Do not infer an internal stop reason the API does not expose. Native 24-bit
+padded layouts and 1-/2-byte pointers are outside this detector adapter's contract.
+
 `CallReferences` owns call validation and thunk/typed-pointer resolution for
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows
 reverse references to function bodies (including interior destinations), thunks,

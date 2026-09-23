@@ -26,6 +26,43 @@ pub(super) fn vtable_fixture(args: &Value, program: &str) -> Value {
     })
 }
 
+pub(super) fn address_tables_fixture(args: &Value) -> Value {
+    let mut rows: Vec<_> = [4, 6, 8]
+        .into_iter()
+        .enumerate()
+        .map(|(index, entries)| {
+            let address = 0x1000 + index * 0x1000;
+            json!({
+                "address": format!("bank1:0x{address:x}"),
+                "end": format!("bank1:0x{:x}", address + entries * 8 - 1),
+                "entry_count": entries, "byte_length": entries * 8,
+            })
+        })
+        .collect();
+    let limited = args["limit"].as_u64().is_some_and(|limit| {
+        if limit > 0 && limit < rows.len() as u64 {
+            rows.truncate(limit as usize);
+            true
+        } else {
+            false
+        }
+    });
+    let scan = if limited {
+        json!({"complete": false, "stop_reason": "limit"})
+    } else {
+        json!({"complete": true})
+    };
+    json!({
+        "results": rows, "count": rows.len(),
+        "detector": "ghidra-address-table", "scope": "candidate-starts",
+        "ranges": [{"start": "bank1:0x1000", "end": "bank1:0x7000"}],
+        "pointer_size": 8, "endian": "little", "pointer_shift": 0,
+        "min_entries": args["min_entries"],
+        "alignment": args["alignment"].as_u64().unwrap_or(1),
+        "scan": scan,
+    })
+}
+
 fn run(bridge: &RecordedBridge, args: &[&str], batched: bool) -> Value {
     let output = if batched {
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(args)).unwrap();
@@ -118,6 +155,122 @@ fn vtable_reads_preserve_targets_and_nested_slots_in_standalone_and_batch() {
                 assert_eq!(domain[1]["command"], "vtable_read");
                 assert_eq!(domain[1]["args"], expected_args);
             }
+        }
+    }
+}
+
+#[test]
+fn address_table_queries_keep_detector_context_and_fetch_before_selection() {
+    let bridge = RecordedBridge::new();
+    let all_args = json!({"min_entries": 4, "alignment": 8});
+    let fixture = address_tables_fixture(&all_args);
+    let all = &fixture["results"];
+    for (flags, expected, fetch_limit, offset, page_limit) in [
+        (vec![], json!([all[0]]), json!(1), 0, json!(1)),
+        (
+            vec!["--limit", "0"],
+            all.clone(),
+            Value::Null,
+            0,
+            Value::Null,
+        ),
+        (
+            vec!["--fields", "address"],
+            json!([{"address": "bank1:0x1000"}]),
+            json!(1),
+            0,
+            json!(1),
+        ),
+        (
+            vec![
+                "--filter",
+                "entry_count>=6",
+                "--sort=-address",
+                "--skip",
+                "1",
+                "--limit",
+                "1",
+                "--fields",
+                "address,entry_count",
+            ],
+            json!([{"address": "bank1:0x2000", "entry_count": 6}]),
+            Value::Null,
+            1,
+            json!(1),
+        ),
+        (vec!["--count"], json!(3), Value::Null, 0, Value::Null),
+        (
+            vec!["--filter", "entry_count>8"],
+            json!([]),
+            Value::Null,
+            0,
+            json!(1),
+        ),
+    ] {
+        for batched in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let args: Vec<_> = [
+                "find",
+                "address-tables",
+                "--start",
+                "bank1:0x1000",
+                "--end",
+                "upper_bound",
+                "--min-entries",
+                "0x4",
+                "--alignment",
+                "08",
+                "--program",
+                "B",
+            ]
+            .into_iter()
+            .chain(flags.iter().copied())
+            .collect();
+            let result = run(&bridge, &args, batched);
+            assert_eq!(result["data"], expected, "{args:?}, batch={batched}");
+            for key in [
+                "detector",
+                "scope",
+                "ranges",
+                "pointer_size",
+                "endian",
+                "pointer_shift",
+                "min_entries",
+                "alignment",
+            ] {
+                assert_eq!(result["meta"][key], fixture[key], "{key}: {result}");
+            }
+            assert_eq!(result["meta"]["offset"], offset);
+            assert_eq!(result["meta"]["limit"], page_limit);
+            assert_eq!(
+                result["meta"]["scan"],
+                if fetch_limit.is_null() {
+                    json!({"complete": true})
+                } else {
+                    json!({"complete": false, "stop_reason": "limit"})
+                }
+            );
+            if let Some(rows) = expected.as_array() {
+                assert_eq!(result["meta"]["returned"], rows.len());
+            } else {
+                assert!(result["meta"].get("returned").is_none());
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|request| request["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{requests:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"], json!({"program": "B"}));
+            assert_eq!(domain[1]["command"], "find_address_tables");
+            assert_eq!(
+                domain[1]["args"],
+                json!({
+                    "start": "bank1:0x1000", "end": "upper_bound", "min_entries": 4,
+                    "alignment": 8, "limit": fetch_limit,
+                })
+            );
         }
     }
 }

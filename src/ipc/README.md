@@ -346,6 +346,18 @@ and 64-bit self-RVA consistency without traversing the class hierarchy. Absolute
 slots are plain 4- or 8-byte native pointers in byte-addressed memory; the decoder
 does not strip authentication bits or follow function descriptors.
 
+`find_address_tables` accepts optional `start`/`end`, `min_entries` (default 3,
+at least 2), `alignment` (1..8, default native instruction alignment or 1 for
+low-bit code modes), and `limit`. It returns `results` containing candidate
+`address`, inclusive `end`, `entry_count`, `byte_length`, optional `name`, and
+optional `index_address`/`index_length`. Extents include the native byte-index
+array when found. The native detector supports 4- and 8-byte byte-addressed
+pointers. Rust applies filtering, sorting and pagination to candidate rows and
+retains `detector`, `scope`, `ranges`, `pointer_size`, `endian`, `pointer_shift`,
+`min_entries`, `alignment`, and `scan` in metadata. Scope is `candidate-starts`:
+native detection may read beyond the selected end. `scan.complete` and a `limit`
+stop reason describe the outer scan, not Ghidra's internal table boundaries.
+
 `memory_file_mappings` accepts optional `file_offset` (a nonnegative decimal or
 `0x` integer string) and `source_at` (an explicit address with a direct FileBytes
 mapping). It returns `{mappings, count, unsupported_mappings}`. Each row has

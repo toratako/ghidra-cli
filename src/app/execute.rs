@@ -487,6 +487,16 @@ pub(super) fn execute_via_bridge(
         Commands::Find(cmd) => {
             use cli::FindCommands;
             match cmd {
+                FindCommands::AddressTables(args) => client.send_command(
+                    "find_address_tables",
+                    Some(json!({
+                        "start": args.start,
+                        "end": args.end,
+                        "min_entries": args.min_entries,
+                        "alignment": args.alignment,
+                        "limit": list_limit,
+                    })),
+                ),
                 FindCommands::String(args) => client.find_string_page(
                     &args.pattern,
                     list_limit,

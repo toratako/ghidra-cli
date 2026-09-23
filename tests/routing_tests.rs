@@ -496,6 +496,7 @@ impl RecordedBridge {
                         json!({key: rows, "count": rows.len()})
                     }
                     "vtable_read" => tables::vtable_fixture(args, &program),
+                    "find_address_tables" => tables::address_tables_fixture(args),
                     "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
                     "memory_block_create"
                     | "memory_block_rename"

@@ -95,6 +95,8 @@ pub struct XRefFromArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FindCommands {
+    /// Find candidate address tables using Ghidra's native search
+    AddressTables(FindAddressTablesArgs),
     /// Find a case-insensitive substring in defined strings
     String(FindStringArgs),
     /// Find literal encoded text in program memory, including undefined data
@@ -105,6 +107,24 @@ pub enum FindCommands {
     Instruction(FindInstructionArgs),
     /// Find immediate values and displacements in already-disassembled instructions
     Constant(FindConstantArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindAddressTablesArgs {
+    /// Inclusive bound on candidate starts: exact symbol name or explicit address
+    #[arg(long)]
+    pub start: Option<String>,
+    /// Inclusive bound on candidate starts; detected tables may extend beyond it
+    #[arg(long)]
+    pub end: Option<String>,
+    /// Minimum number of address entries in a candidate
+    #[arg(long, value_name = "N", default_value_t = 3, value_parser = |value: &str| super::numeric::ranged::<u32>(value, 2, i32::MAX as i128))]
+    pub min_entries: u32,
+    /// Alignment of candidate starts and pointer targets (default: Ghidra's language alignment)
+    #[arg(long, value_name = "N", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, 8))]
+    pub alignment: Option<u32>,
+    #[command(flatten)]
+    pub options: QueryOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

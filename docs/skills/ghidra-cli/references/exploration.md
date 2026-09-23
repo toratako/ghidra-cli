@@ -135,6 +135,7 @@ for byte edits, see [patching](low-level.md#patching).
 
 ```bash
 ghidra-cli memory read 0x405020 --size 64 --project target
+ghidra-cli find address-tables --start 0x405000 --end 0x405fff --min-entries 3 --project target
 ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --project target
 ghidra-cli vtable read 0x140005020 --entries 8 --abi msvc --project target
 ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
@@ -151,6 +152,12 @@ ABI metadata. A readable table alone does not establish its class or callers.
 `memory read` preserves the encoded pointer value and distinguishes its target
 from Ghidra's normalized code address and thunk destinations. Use these when a
 Thumb pointer or adjustment thunk differs from the eventual function entry.
+
+`find address-tables` returns Ghidra's candidates, which can include callback
+and dispatch tables. Its bounds select candidate starts: a detected table can
+extend past `--end`. Native boundary rules can split or miss a table, so inspect
+the bytes before choosing a VTable interpretation. Search context and
+completion are retained in `.meta`; filtering or sorting can require a full scan.
 
 ## Analysis diagnostics
 

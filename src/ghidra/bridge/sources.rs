@@ -113,6 +113,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/function/TagSupport.java"),
     ),
     (
+        "ghidracli/listing/AddressTableSearch.java",
+        include_str!("../scripts/ghidracli/listing/AddressTableSearch.java"),
+    ),
+    (
         "ghidracli/listing/ConstantSearch.java",
         include_str!("../scripts/ghidracli/listing/ConstantSearch.java"),
     ),

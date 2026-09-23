@@ -70,6 +70,20 @@ impl ResultShape {
             Commands::Graph(GraphCommands::Callers(_) | GraphCommands::Callees(_)) => {
                 Self::context("calls", &["target"])
             }
+            Commands::Find(FindCommands::AddressTables(_)) => Self::context(
+                "results",
+                &[
+                    "detector",
+                    "scope",
+                    "ranges",
+                    "pointer_size",
+                    "endian",
+                    "pointer_shift",
+                    "min_entries",
+                    "alignment",
+                    "scan",
+                ],
+            ),
             Commands::Find(_) => Self::rows("results"),
             Commands::Program(ProgramCommands::List(_)) => {
                 Self::context("programs", &["has_current_program", "current_program_name"])

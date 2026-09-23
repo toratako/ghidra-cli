@@ -41,7 +41,41 @@ fn vtable_requires_an_address_point_count_and_explicit_abi() {
 }
 
 #[test]
-fn table_read_counts_respect_native_bounds() {
+fn address_table_search_defaults_and_numeric_operands_are_unambiguous() {
+    let cli = Cli::try_parse_from(["ghidra-cli", "find", "address-tables"]).unwrap();
+    let Commands::Find(FindCommands::AddressTables(args)) = cli.command else {
+        panic!("expected find address-tables");
+    };
+    assert_eq!(args.min_entries, 3);
+    assert_eq!(args.alignment, None);
+    assert_eq!(args.start, None);
+    assert_eq!(args.end, None);
+
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "find",
+        "address-tables",
+        "--min-entries",
+        "010",
+        "--alignment",
+        "0x8",
+        "--start",
+        "bank1:0x1000",
+        "--end",
+        "table_end",
+    ])
+    .unwrap();
+    let Commands::Find(FindCommands::AddressTables(args)) = cli.command else {
+        panic!("expected find address-tables");
+    };
+    assert_eq!(args.min_entries, 10);
+    assert_eq!(args.alignment, Some(8));
+    assert_eq!(args.start.as_deref(), Some("bank1:0x1000"));
+    assert_eq!(args.end.as_deref(), Some("table_end"));
+}
+
+#[test]
+fn table_read_and_detector_counts_respect_native_bounds() {
     for count in ["0", "0x10001"] {
         assert!(Cli::try_parse_from([
             "ghidra-cli",
@@ -54,5 +88,15 @@ fn table_read_counts_respect_native_bounds() {
             "itanium",
         ])
         .is_err());
+    }
+    for (option, value) in [
+        ("--min-entries", "1"),
+        ("--min-entries", "0x80000000"),
+        ("--alignment", "0"),
+        ("--alignment", "9"),
+    ] {
+        assert!(
+            Cli::try_parse_from(["ghidra-cli", "find", "address-tables", option, value,]).is_err()
+        );
     }
 }

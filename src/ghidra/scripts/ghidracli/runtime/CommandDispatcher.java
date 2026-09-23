@@ -16,6 +16,7 @@ import ghidracli.function.FunctionSignatureCommands;
 import ghidracli.function.FunctionVariableCommands;
 import ghidracli.function.TagCommands;
 import ghidracli.listing.DataCommands;
+import ghidracli.listing.AddressTableSearch;
 import ghidracli.listing.InstructionListing;
 import ghidracli.listing.ListingCommands;
 import ghidracli.listing.ListingFlowCommands;
@@ -61,6 +62,7 @@ final class CommandDispatcher {
     private final ListingCommands listingCommands;
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
+    private final AddressTableSearch addressTableSearch;
     private final VtableCommands vtableCommands;
     private final SymbolCommands symbolCommands;
     private final NamespaceCommands namespaceCommands;
@@ -115,6 +117,7 @@ final class CommandDispatcher {
         listingCommands = new ListingCommands(session, addressResolver, stringQueries, instructions);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
+        addressTableSearch = new AddressTableSearch(session, addressResolver);
         vtableCommands = new VtableCommands(session, addressResolver);
         symbolCommands = new SymbolCommands(session);
         namespaceCommands = new NamespaceCommands(session);
@@ -299,6 +302,7 @@ final class CommandDispatcher {
             // Memory read
             case "read_memory":     return memoryCommands.handleReadMemory(args);
             case "vtable_read":     return vtableCommands.handleRead(args);
+            case "find_address_tables": return addressTableSearch.handleFindAddressTables(args);
             default:                return null;
         }
     }
