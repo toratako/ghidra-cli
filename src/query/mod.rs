@@ -147,10 +147,10 @@ impl Query {
                 let b_val = self.get_field_for_sort(b, &sort_key.field);
 
                 let cmp = match (&a_val, &b_val) {
-                    (Some(JsonValue::Number(a)), Some(JsonValue::Number(b))) => a
-                        .as_f64()
-                        .partial_cmp(&b.as_f64())
-                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Some(JsonValue::Number(a)), Some(JsonValue::Number(b))) => {
+                        compare_numbers(a, b)
+                    }
+                    (Some(JsonValue::Bool(a)), Some(JsonValue::Bool(b))) => a.cmp(b),
                     (Some(JsonValue::String(a)), Some(JsonValue::String(b))) => a.cmp(b),
                     _ => std::cmp::Ordering::Equal,
                 };
@@ -190,6 +190,28 @@ impl Query {
         };
 
         data.iter().skip(offset).take(limit).cloned().collect()
+    }
+}
+
+fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> std::cmp::Ordering {
+    fn integer(number: &serde_json::Number) -> Option<i128> {
+        number
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| number.as_u64().map(i128::from))
+            .or_else(|| {
+                // Integral floats can also be compared exactly to JSON integers.
+                let value = number.as_f64()?;
+                (value.fract() == 0.0 && value >= i128::MIN as f64 && value < -(i128::MIN as f64))
+                    .then_some(value as i128)
+            })
+    }
+    match (integer(a), integer(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        _ => a
+            .as_f64()
+            .partial_cmp(&b.as_f64())
+            .unwrap_or(std::cmp::Ordering::Equal),
     }
 }
 
@@ -286,6 +308,51 @@ mod tests {
         assert!(!keys[0].descending);
         assert_eq!(keys[1].field, "size");
         assert!(keys[1].descending);
+    }
+
+    #[test]
+    fn boolean_sort_selects_the_page_before_projection() {
+        let query = Query {
+            sort: Some(SortKey::parse("-no_return,name")),
+            limit: Some(1),
+            fields: Some(FieldSelector::include(vec!["name".into()])),
+            ..Query::default()
+        };
+        let result = query
+            .apply(vec![
+                serde_json::json!({"name": "ordinary", "no_return": false}),
+                serde_json::json!({"name": "exit", "no_return": true}),
+                serde_json::json!({"name": "abort", "no_return": true}),
+            ])
+            .unwrap();
+        assert_eq!(result, serde_json::json!([{"name": "abort"}]));
+    }
+
+    #[test]
+    fn numeric_sort_preserves_integer_precision_and_mixed_numeric_order() {
+        let expected = vec![
+            serde_json::json!({"value": i64::MIN}),
+            serde_json::json!({"value": -1}),
+            serde_json::json!({"value": -0.5}),
+            serde_json::json!({"value": 0}),
+            serde_json::json!({"value": 0.5}),
+            serde_json::json!({"value": 9007199254740992.0}),
+            serde_json::json!({"value": 9007199254740993_u64}),
+            serde_json::json!({"value": u64::MAX}),
+        ];
+        for descending in [false, true] {
+            let mut expected = expected.clone();
+            if descending {
+                expected.reverse();
+            }
+            let mut input = expected.clone();
+            input.reverse();
+            let query = Query {
+                sort: Some(SortKey::parse(if descending { "-value" } else { "value" })),
+                ..Query::default()
+            };
+            assert_eq!(query.apply(input).unwrap(), serde_json::json!(expected));
+        }
     }
 
     fn rows(n: usize) -> Vec<JsonValue> {
