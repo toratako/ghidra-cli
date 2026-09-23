@@ -7,6 +7,7 @@ mod memory;
 mod output;
 mod references;
 mod types;
+mod vtable;
 
 #[test]
 fn targets_require_one_positional() {

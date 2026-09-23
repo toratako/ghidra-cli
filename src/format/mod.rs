@@ -10,6 +10,7 @@ mod human;
 mod signature;
 mod structure;
 mod tabular;
+mod vtable;
 
 use code::format_code;
 pub(crate) use human::format_decompile_warning;

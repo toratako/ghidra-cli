@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `vtable read TARGET --entries N --abi itanium|msvc` for explicit table
+  slots and ABI metadata, including LLVM relative32 encoding.
 - Add `function var infer-struct` to read Ghidra's structure recovery candidate
   for one variable without registering a type or editing the program. Optional
   bounded LOAD/STORE evidence retains native instruction locations.

@@ -61,6 +61,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/analysis/StructureInferenceCommands.java"),
     ),
     (
+        "ghidracli/analysis/VtableCommands.java",
+        include_str!("../scripts/ghidracli/analysis/VtableCommands.java"),
+    ),
+    (
+        "ghidracli/analysis/VtableHeaders.java",
+        include_str!("../scripts/ghidracli/analysis/VtableHeaders.java"),
+    ),
+    (
         "ghidracli/function/FunctionBodyCommands.java",
         include_str!("../scripts/ghidracli/function/FunctionBodyCommands.java"),
     ),

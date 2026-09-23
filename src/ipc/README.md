@@ -326,6 +326,26 @@ normalized code entry, never a containing function. Normalization cannot escape
 an overlay. Unavailable metadata is null; thunk identities contain `address`
 and qualified `name`. Original-source reads do not decode pointer candidates.
 
+`vtable_read` takes an address-point `target`, `entries` (1..65536), required
+`abi` (`itanium` or `msvc`), and `encoding` (`absolute` by default, or
+`relative32` for Itanium). It reads explicit slots without registering data or
+inferring table boundaries. The single-object response contains `address`,
+`abi`, `encoding`, `pointer_size`, `entry_size`, `endian`, `requested_entries`,
+`read_entries`, `complete`, `header`, and `entries`. Every requested slot retains
+its `index`, byte `offset`, `address`, raw `value`, `readable`, `is_null`, and
+shared pointer metadata. Expected read failures stay on the affected row as
+`error`; null and unreadable are distinct. Address-range overflow rejects the
+request, and cancellation fails through the normal request boundary.
+
+Root `complete` means all requested slot bytes were read; target resolution and
+`header.complete` are independent. Itanium headers contain `offset_to_top` and
+`rtti`; relative32 also retains `rtti_reference` to the native-pointer proxy.
+Relative displacements use the address point as their base. MSVC headers retain
+`complete_object_locator` and shallow `locator` fields, descriptor references,
+and 64-bit self-RVA consistency without traversing the class hierarchy. Absolute
+slots are plain 4- or 8-byte native pointers in byte-addressed memory; the decoder
+does not strip authentication bits or follow function descriptors.
+
 `memory_file_mappings` accepts optional `file_offset` (a nonnegative decimal or
 `0x` integer string) and `source_at` (an explicit address with a direct FileBytes
 mapping). It returns `{mappings, count, unsupported_mappings}`. Each row has

@@ -93,6 +93,8 @@ ghidra-cli
 │   ├── info
 │   ├── read
 │   └── write
+├── vtable
+│   └── read
 ├── data
 │   ├── list
 │   └── read
@@ -202,4 +204,4 @@ ghidra-cli
     └── cancel
 ```
 
-190 command nodes (excluding the root), 0 aliases.
+192 command nodes (excluding the root), 0 aliases.

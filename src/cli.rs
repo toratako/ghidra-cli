@@ -17,6 +17,7 @@ mod output;
 mod project;
 mod references;
 mod types;
+mod vtable;
 
 // Keep command types available through crate::cli while their definitions
 // live with the command family that owns them.
@@ -35,6 +36,7 @@ pub use output::OutputFormat;
 pub use project::*;
 pub use references::*;
 pub use types::*;
+pub use vtable::*;
 
 #[derive(Parser, Clone)]
 #[command(name = "ghidra-cli")]
@@ -111,6 +113,10 @@ pub enum Commands {
     /// Memory operations
     #[command(subcommand)]
     Memory(MemoryCommands),
+
+    /// Inspect virtual-function tables using an explicit ABI
+    #[command(subcommand)]
+    Vtable(VtableCommands),
 
     /// Inspect defined data and read typed values
     #[command(subcommand)]

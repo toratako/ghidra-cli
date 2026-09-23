@@ -7,6 +7,7 @@ import ghidracli.analysis.GraphCommands;
 import ghidracli.analysis.InstructionCfg;
 import ghidracli.analysis.PcodeCommands;
 import ghidracli.analysis.StructureInferenceCommands;
+import ghidracli.analysis.VtableCommands;
 import ghidracli.function.FunctionBodyCommands;
 import ghidracli.function.FunctionCallSignatureCommands;
 import ghidracli.function.FunctionCommands;
@@ -60,6 +61,7 @@ final class CommandDispatcher {
     private final ListingCommands listingCommands;
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
+    private final VtableCommands vtableCommands;
     private final SymbolCommands symbolCommands;
     private final NamespaceCommands namespaceCommands;
     private final EquateCommands equateCommands;
@@ -113,6 +115,7 @@ final class CommandDispatcher {
         listingCommands = new ListingCommands(session, addressResolver, stringQueries, instructions);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
+        vtableCommands = new VtableCommands(session, addressResolver);
         symbolCommands = new SymbolCommands(session);
         namespaceCommands = new NamespaceCommands(session);
         equateCommands = new EquateCommands(session);
@@ -295,6 +298,7 @@ final class CommandDispatcher {
             case "batch":           return errorResult("Batch operations are handled by the CLI, not via bridge script");
             // Memory read
             case "read_memory":     return memoryCommands.handleReadMemory(args);
+            case "vtable_read":     return vtableCommands.handleRead(args);
             default:                return null;
         }
     }

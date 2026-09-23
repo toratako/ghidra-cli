@@ -8,6 +8,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
             | Commands::Function(_)
             | Commands::Strings(_)
             | Commands::Memory(_)
+            | Commands::Vtable(_)
             | Commands::Data(_)
             | Commands::XRef(_)
             | Commands::Symbol(_)
@@ -32,6 +33,7 @@ pub(super) fn requires_bridge(command: &Commands) -> bool {
 /// Extract the project name from a command's args (if present).
 pub(super) fn extract_project_from_command(command: &Commands) -> Option<String> {
     match command {
+        Commands::Vtable(cli::VtableCommands::Read(args)) => args.options.project.clone(),
         Commands::Decompile(args) => args.options.project.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.project.clone(),
@@ -227,6 +229,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
 /// program differs from the bridge's current program.
 pub(super) fn extract_program_from_command(command: &Commands) -> Option<String> {
     match command {
+        Commands::Vtable(cli::VtableCommands::Read(args)) => args.options.program.clone(),
         Commands::Decompile(args) => args.options.program.clone(),
         Commands::Function(cmd) => match cmd {
             cli::FunctionCommands::List(args) => args.options.program.clone(),
@@ -424,6 +427,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
 /// Extract QueryOptions from a command, if it has them.
 pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> {
     match command {
+        Commands::Vtable(cli::VtableCommands::Read(args)) => Some((&args.options).into()),
         Commands::Program(cli::ProgramCommands::Context(cmd)) => match cmd {
             cli::ProgramContextCommands::List(opts) => Some(opts.clone()),
             cli::ProgramContextCommands::Get(args) => Some(args.options.clone()),

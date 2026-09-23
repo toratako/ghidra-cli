@@ -589,11 +589,22 @@ image-base movement has no task monitor; cancellation checks before and after it
 allow the ordinary request boundary to roll back a cancelled edit. The handler
 does not rewrite bytes, reapply relocations, run analysis, or own transactions.
 
-`PointerValues` owns native pointer decoding and exact target metadata for
-memory reads. Preserve the encoded value, decoded address, normalized
+`PointerValues` shares native pointer decoding and exact target metadata between
+memory and VTable reads. Preserve the encoded value, decoded address, normalized
 code entry, and direct/final thunk identities separately. Use Ghidra's pointer
 and code-mode APIs, retaining overlays; do not resolve a containing function as
-the pointer's target. Reads do not define instructions or data.
+the pointer's target. Neither reader defines instructions or data.
+
+`VtableCommands` reads a caller-selected address point and count;
+`VtableHeaders` owns the explicit Itanium/MSVC layouts. Absolute Itanium uses
+native-width header fields. LLVM relative32 components are relative to the
+address point (including nonzero slot indices), and RTTI goes through a
+native-pointer proxy. MSVC uses signature-0 32-bit absolute references or
+signature-1 64-bit image-relative references plus self-RVA consistency. These
+are shallow reads; no table-length heuristic or class recovery runs. Expected
+memory failures become field/slot evidence; cancellation and unexpected API
+failures propagate. Root completeness counts slot reads separately from header
+completeness. Shared session ownership and transactions remain unchanged.
 
 `CallReferences` owns call validation and thunk/typed-pointer resolution for
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows

@@ -50,6 +50,8 @@ mod scripts;
 mod search;
 #[path = "routing/symbols.rs"]
 mod symbols;
+#[path = "routing/tables.rs"]
+mod tables;
 #[path = "routing/types.rs"]
 mod types;
 
@@ -493,6 +495,7 @@ impl RecordedBridge {
                         let key = "blocks";
                         json!({key: rows, "count": rows.len()})
                     }
+                    "vtable_read" => tables::vtable_fixture(args, &program),
                     "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
                     "memory_block_create"
                     | "memory_block_rename"

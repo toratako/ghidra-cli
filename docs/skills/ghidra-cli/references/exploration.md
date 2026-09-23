@@ -131,6 +131,23 @@ an empty result proves only the absence of a direct mapping.
 For changing RAM/MMIO or overlays, see [memory layout](low-level.md#memory-layout);
 for byte edits, see [patching](low-level.md#patching).
 
+## Pointer and virtual-function tables
+
+```bash
+ghidra-cli memory read 0x405020 --size 64 --project target
+ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --project target
+ghidra-cli vtable read 0x140005020 --entries 8 --abi msvc --project target
+ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
+```
+
+For `vtable read`, supply the address point (slot 0, where an object's vptr
+points), which can differ from a symbol marking the start of the whole table.
+Choose the ABI and encoding from the binary's layout. `relative32` reads LLVM's
+32-bit relative layout, including its RTTI proxy. The requested slot count is
+your scope, not an inferred table length; null and undefined targets keep their
+slot positions. `complete` concerns slot bytes, while `header.complete` concerns
+ABI metadata. A readable table alone does not establish its class or callers.
+
 `memory read` preserves the encoded pointer value and distinguishes its target
 from Ghidra's normalized code address and thunk destinations. Use these when a
 Thumb pointer or adjustment thunk differs from the eventual function entry.
