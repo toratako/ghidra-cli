@@ -20,6 +20,8 @@ mod batch_execution;
 mod batch_syntax;
 #[path = "routing/commands.rs"]
 mod commands;
+#[path = "routing/function_candidates.rs"]
+mod function_candidates;
 #[path = "routing/functions.rs"]
 mod functions;
 #[path = "routing/imports.rs"]
@@ -531,6 +533,7 @@ impl RecordedBridge {
                     }
                     "vtable_read" => tables::vtable_fixture(args, &program),
                     "find_address_tables" => tables::address_tables_fixture(args),
+                    "find_function_candidates" => function_candidates::fixture(args),
                     "find_virtual_callers" => virtual_callers::fixture(args),
                     "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
                     "memory_block_create"

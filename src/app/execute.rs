@@ -515,6 +515,14 @@ pub(super) fn execute_via_bridge(
                         "limit": list_limit,
                     })),
                 ),
+                FindCommands::FunctionCandidates(args) => client.send_command(
+                    "find_function_candidates",
+                    Some(json!({
+                        "start": args.start,
+                        "end": args.end,
+                        "limit": list_limit,
+                    })),
+                ),
                 FindCommands::String(args) => client.find_string_page(
                     &args.pattern,
                     list_limit,

@@ -93,6 +93,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::VirtualCallers(args) => args.options.project.clone(),
             cli::FindCommands::AddressTables(args) => args.options.project.clone(),
+            cli::FindCommands::FunctionCandidates(args) => args.options.project.clone(),
             cli::FindCommands::String(args) => args.options.project.clone(),
             cli::FindCommands::Text(args) => args.options.project.clone(),
             cli::FindCommands::Bytes(args) => args.options.project.clone(),
@@ -293,6 +294,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::VirtualCallers(args) => args.options.program.clone(),
             cli::FindCommands::AddressTables(args) => args.options.program.clone(),
+            cli::FindCommands::FunctionCandidates(args) => args.options.program.clone(),
             cli::FindCommands::String(args) => args.options.program.clone(),
             cli::FindCommands::Text(args) => args.options.program.clone(),
             cli::FindCommands::Bytes(args) => args.options.program.clone(),
@@ -597,6 +599,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Find(cmd) => match cmd {
             cli::FindCommands::VirtualCallers(args) => Some(args.options.clone()),
             cli::FindCommands::AddressTables(args) => Some(args.options.clone()),
+            cli::FindCommands::FunctionCandidates(args) => Some(args.options.clone()),
             cli::FindCommands::String(args) => Some(args.options.clone()),
             cli::FindCommands::Text(args) => Some(args.options.clone()),
             cli::FindCommands::Bytes(args) => Some(args.options.clone()),
@@ -630,6 +633,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         | Commands::Find(
             cli::FindCommands::VirtualCallers(_)
             | cli::FindCommands::AddressTables(_)
+            | cli::FindCommands::FunctionCandidates(_)
             | cli::FindCommands::Text(_)
             | cli::FindCommands::Bytes(_)
             | cli::FindCommands::Instruction(_)

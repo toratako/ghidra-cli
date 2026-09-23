@@ -185,11 +185,8 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
         _ if result.is_count => Ok(serde_json::to_string(&result.data)?),
         OutputFormat::Compact | OutputFormat::Full => {
             let mut text = DefaultFormatter.format(result.rows(), format)?;
-            if result
-                .meta
-                .get("detector")
-                .and_then(serde_json::Value::as_str)
-                == Some("ghidra-address-table")
+            if result.meta.get("scope").and_then(serde_json::Value::as_str)
+                == Some("candidate-starts")
             {
                 if let Some(ranges) = result
                     .meta
@@ -398,6 +395,66 @@ mod tests {
     use super::*;
     use crate::filter;
     use clap::Parser;
+
+    #[test]
+    fn candidate_search_human_output_keeps_scope_and_scan_state_after_projection() {
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "find",
+            "function-candidates",
+            "--fields",
+            "address",
+        ])
+        .unwrap();
+        let query = Query::from_options(&extract_query_options(&cli.command).unwrap()).unwrap();
+        for (complete, rows) in [
+            (true, serde_json::json!([])),
+            (
+                false,
+                serde_json::json!([{
+                    "address": "0x401800", "block": ".text", "call_count": 3,
+                    "evidence": [{"from": "0x401120", "source": "ANALYSIS"}],
+                    "evidence_omitted": 2
+                }]),
+            ),
+        ] {
+            let scan = if complete {
+                serde_json::json!({"complete": true})
+            } else {
+                serde_json::json!({"complete": false, "stop_reason": "limit"})
+            };
+            let result = CommandOutput::prepare(
+                serde_json::json!({
+                    "results": rows, "scope": "candidate-starts",
+                    "ranges": [{"start": "0x401000", "end": "0x401fff"}],
+                    "scan": scan
+                }),
+                ResultShape::for_command(&cli.command),
+                query.as_ref(),
+                None,
+            )
+            .unwrap();
+            for format in [OutputFormat::Compact, OutputFormat::Full] {
+                let text = render(&result, format).unwrap();
+                assert!(
+                    text.contains("Candidate start ranges: 0x401000 .. 0x401fff"),
+                    "{text}"
+                );
+                if complete {
+                    assert!(text.contains("No results"), "{text}");
+                    assert!(
+                        text.contains("Scan complete for these candidate start ranges."),
+                        "{text}"
+                    );
+                } else {
+                    assert!(text.contains("0x401800"), "{text}");
+                    assert!(text.contains("Scan stopped at the result limit"), "{text}");
+                    assert!(text.contains("--limit 0"), "{text}");
+                    assert!(!text.contains("call_count"), "{text}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn virtual_caller_human_output_keeps_scope_and_incomplete_empty_evidence() {

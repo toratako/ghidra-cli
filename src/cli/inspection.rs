@@ -99,6 +99,8 @@ pub enum FindCommands {
     VirtualCallers(FindVirtualCallersArgs),
     /// Find candidate address tables using Ghidra's native search
     AddressTables(FindAddressTablesArgs),
+    /// Find unowned instruction starts with call evidence as function candidates
+    FunctionCandidates(FindFunctionCandidatesArgs),
     /// Find a case-insensitive substring in defined strings
     String(FindStringArgs),
     /// Find literal encoded text in program memory, including undefined data
@@ -164,6 +166,18 @@ pub struct FindAddressTablesArgs {
     /// Alignment of candidate starts and pointer targets (default: Ghidra's language alignment)
     #[arg(long, value_name = "N", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, 8))]
     pub alignment: Option<u32>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindFunctionCandidatesArgs {
+    /// Inclusive bound on candidate starts: exact symbol name or explicit address
+    #[arg(long)]
+    pub start: Option<String>,
+    /// Inclusive bound on candidate starts; callers may lie outside the range
+    #[arg(long)]
+    pub end: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
 }

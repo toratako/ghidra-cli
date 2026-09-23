@@ -32,6 +32,21 @@ transfers and body crossings. Output budgets do not limit native analysis time.
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 
+To recover missing function definitions from existing calls:
+
+```bash
+ghidra-cli find function-candidates --sort=-call_count,address --limit 20 --project target
+ghidra-cli disassemble 0x401800 --limit 20 --project target
+ghidra-cli xref to 0x401800 --project target
+ghidra-cli function create 0x401800 --project target
+```
+
+`call_count` counts distinct evidenced call sites, not confidence. Bounds select
+destinations; their callers may lie outside the range. Candidates require existing
+instructions outside every function body and exclude incoming fallthrough,
+including decoded padding. An empty result does not rule out missing functions
+in undisassembled bytes or reached only through unresolved indirect calls.
+
 ## Search, strings, xrefs, and graphs
 
 Call queries resolve thunks and typed pointers using Ghidra's references;

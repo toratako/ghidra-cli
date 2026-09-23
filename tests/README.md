@@ -91,6 +91,7 @@ identity. Filter a domain with, for example,
 | `vtable_tests` | Explicit Itanium/MSVC and LLVM relative32 layouts, compiler-produced C++ tables, null/unreadable slots, thunk targets, endian/Thumb, cancellation and DB invariance |
 | `virtual_callers_tests` | Native x86-32/x86-64/AArch64 indirect calls, scoped/whole-program searches, table values/types/offset evidence, unrelated tables, branch merges, thunks, incomplete scans and read-only cancellation/timeout recovery |
 | `address_table_tests` | Native address-table detection, indexed tables, candidate-start bounds, alignment, queries, overlays, cancellation and DB invariance |
+| `function_candidates_tests` | CALL-backed unowned entry candidates, effective overrides and stale references, body/fallthrough/delay-slot exclusions, distinct evidence, destination bounds, queries, cancellation and DB invariance across x86, Thumb and MIPS |
 | `memory_block_tests` | Block initialization/attributes, exact space-aware targets, overlays, native move/delete analysis effects, mapped-memory protection and rollback |
 | `data_tests` | Applied data values, interior components, exact scalars, bounded aggregate expansion, and whole-object reference counts including operands, overlays and sparse arrays |
 | `stack_purge_tests` | Explicit stack metadata, caller decompilation, thunk ownership and saved/reopened edits |

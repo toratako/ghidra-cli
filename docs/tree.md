@@ -174,6 +174,7 @@ ghidra-cli
 ├── find
 │   ├── virtual-callers
 │   ├── address-tables
+│   ├── function-candidates
 │   ├── string
 │   ├── text
 │   ├── bytes
@@ -209,4 +210,4 @@ ghidra-cli
     └── cancel
 ```
 
-197 command nodes (excluding the root), 0 aliases.
+198 command nodes (excluding the root), 0 aliases.

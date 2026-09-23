@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `find function-candidates` to find unowned instruction starts backed by
+  effective CALL references. Candidates retain call-site evidence and distinct
+  call counts; destination bounds and scan completion support focused recovery
+  without disassembling code or creating functions.
 - Add `find virtual-callers FUNCTION --vtable ADDRESS --entries N --abi itanium|msvc`
   to search indirect calls through explicit absolute-pointer table slots. Optional
   `--within FUNCTION` restricts the caller scope; results distinguish traced table

@@ -78,6 +78,15 @@ matches for residual selection in Rust.
 `find bytes --regex` applies its native Ghidra regex before the fetch cap;
 residual selection still requests all matches.
 
+`find function-candidates` uses limit-only fetching over reference destinations
+in address order. Bounds select candidate starts, independently of their call
+sites. Each admitted destination is inspected fully before counting distinct
+call sites and retaining up to five evidence records; `evidence_omitted` counts
+the remaining sites. Scope, effective ranges and `scan` remain context after row
+projection or counting. A limit can stop before unvisited destinations;
+`scan.complete` describes traversal of the eligible database references, not
+exhaustive discovery of functions in the binary.
+
 `type uses` and `type field uses` also use limit-only fetching. The former's
 `--kind` selects database declarations or decompiler variables before matching;
 field uses resolves one component before scanning. Row filters, sorting, offsets

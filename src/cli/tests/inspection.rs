@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn function_candidates_accepts_independent_candidate_bounds_and_shared_queries() {
+    for (start, end) in [
+        (None, None),
+        (Some("bank1:0x1000"), None),
+        (None, Some("upper_bound")),
+        (Some("lower_bound"), Some("bank1:0x2000")),
+    ] {
+        let mut argv = vec![
+            "ghidra-cli",
+            "find",
+            "function-candidates",
+            "--program",
+            "sample",
+            "--project",
+            "selected",
+            "--filter",
+            "call_count>=2",
+            "--sort=-call_count,address",
+            "--skip",
+            "01",
+            "--limit",
+            "0x10",
+            "--fields",
+            "address,evidence",
+        ];
+        if let Some(start) = start {
+            argv.extend(["--start", start]);
+        }
+        if let Some(end) = end {
+            argv.extend(["--end", end]);
+        }
+        let cli = Cli::try_parse_from(argv).unwrap();
+        let Commands::Find(FindCommands::FunctionCandidates(args)) = cli.command else {
+            panic!("expected function candidates");
+        };
+        assert_eq!(args.start.as_deref(), start);
+        assert_eq!(args.end.as_deref(), end);
+        assert_eq!(args.options.program.as_deref(), Some("sample"));
+        assert_eq!(args.options.project.as_deref(), Some("selected"));
+        assert_eq!(args.options.filter.as_deref(), Some("call_count>=2"));
+        assert_eq!(args.options.sort.as_deref(), Some("-call_count,address"));
+        assert_eq!(args.options.skip, Some(1));
+        assert_eq!(args.options.limit, Some(16));
+        assert_eq!(args.options.fields.as_deref(), Some("address,evidence"));
+    }
+}
+
+#[test]
 fn virtual_callers_separates_callee_vtable_and_optional_caller_scope() {
     for (abi, expected_abi) in [("itanium", VtableAbi::Itanium), ("msvc", VtableAbi::Msvc)] {
         for within in [None, Some("dispatch")] {

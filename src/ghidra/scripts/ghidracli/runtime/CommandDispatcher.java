@@ -13,6 +13,7 @@ import ghidracli.analysis.VtableCommands;
 import ghidracli.analysis.VirtualCallersCommands;
 import ghidracli.function.FunctionBodyCommands;
 import ghidracli.function.FunctionCallSignatureCommands;
+import ghidracli.function.FunctionCandidateSearch;
 import ghidracli.function.FunctionCommands;
 import ghidracli.function.FunctionQueries;
 import ghidracli.function.FunctionSignatureCommands;
@@ -67,6 +68,7 @@ final class CommandDispatcher {
     private final XrefCommands xrefCommands;
     private final SearchCommands searchCommands;
     private final AddressTableSearch addressTableSearch;
+    private final FunctionCandidateSearch functionCandidateSearch;
     private final VtableCommands vtableCommands;
     private final VirtualCallersCommands virtualCallersCommands;
     private final SymbolCommands symbolCommands;
@@ -126,6 +128,7 @@ final class CommandDispatcher {
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         addressTableSearch = new AddressTableSearch(session, addressResolver);
+        functionCandidateSearch = new FunctionCandidateSearch(session, addressResolver);
         vtableCommands = new VtableCommands(session, addressResolver);
         virtualCallersCommands = new VirtualCallersCommands(session, addressResolver, functionQueries);
         symbolCommands = new SymbolCommands(session);
@@ -318,6 +321,7 @@ final class CommandDispatcher {
             case "read_memory":     return memoryCommands.handleReadMemory(args);
             case "vtable_read":     return vtableCommands.handleRead(args);
             case "find_address_tables": return addressTableSearch.handleFindAddressTables(args);
+            case "find_function_candidates": return functionCandidateSearch.handleFindFunctionCandidates(args);
             case "find_virtual_callers": return virtualCallersCommands.handle(args);
             default:                return null;
         }

@@ -77,6 +77,9 @@ impl ResultShape {
             Commands::Find(FindCommands::VirtualCallers(_)) => {
                 Self::context("calls", &["target", "vtable", "slots", "scope", "scan"])
             }
+            Commands::Find(FindCommands::FunctionCandidates(_)) => {
+                Self::context("results", &["scope", "ranges", "scan"])
+            }
             Commands::Find(FindCommands::AddressTables(_)) => Self::context(
                 "results",
                 &[

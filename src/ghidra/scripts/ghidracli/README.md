@@ -681,7 +681,17 @@ after native detection because the API can return a partial table on cancellatio
 Do not infer an internal stop reason the API does not expose. Native 24-bit
 padded layouts and 1-/2-byte pointers are outside this detector adapter's contract.
 
-`CallReferences` owns call validation and thunk/typed-pointer resolution for
+`FunctionCandidateSearch` visits reference destinations within loaded, initialized,
+executable memory. It admits exact instruction starts outside all function bodies,
+excluding delay slots and both ordinary and remote overridden fallthrough.
+`InstructionFlow.isCallReference` checks saved CALL evidence against effective
+p-code, including native override selection; ordinary EXTERNAL relocation
+references retain their symbolic meaning for call graphs. Candidate search keeps
+the literal destination instead of resolving pointers or canonicalizing thunks.
+It counts distinct call sites and retains five sample references per destination.
+No disassembly, analysis, or function creation runs during the search.
+
+`CallReferences` owns thunk/typed-pointer resolution and uses shared call validation for
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows
 reverse references to function bodies (including interior destinations), thunks,
 and typed pointer slots; every candidate is checked by the same outgoing edge
