@@ -346,35 +346,59 @@ fn gdt_paths_follow_parent_symlinks_and_reject_dangling_outputs() {
 
 #[cfg(unix)]
 #[test]
-fn gdt_non_utf8_paths_fail_without_panicking_or_sending_archive_requests() {
+fn gdt_non_utf8_missing_paths_fail_without_panicking_or_sending_archive_requests() {
     use std::os::unix::ffi::OsStringExt;
     let bridge = RecordedBridge::new();
     let file = std::ffi::OsString::from_vec(b"type-\xff.gdt".to_vec());
-    for import in [false, true] {
-        if import {
-            std::fs::write(bridge.root.path().join(&file), "archive").unwrap();
-        }
-        let output = bridge
-            .command()
-            .args(["type", if import { "import-gdt" } else { "export-gdt" }])
-            .arg(&file)
-            .arg("--all")
-            .output()
-            .unwrap();
-        assert!(!output.status.success());
-        let diagnostics = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            diagnostics.contains("cannot be represented as UTF-8"),
-            "{diagnostics}"
-        );
-        assert!(!diagnostics.contains("panicked"));
-        assert!(bridge
-            .requests
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|r| r["command"] == "bridge_info"));
+    for (command, diagnostic) in [
+        ("export-gdt", "cannot be represented as UTF-8"),
+        ("import-gdt", "Cannot resolve archive"),
+    ] {
+        assert_non_utf8_gdt_path_rejected(&bridge, command, &file, diagnostic);
     }
+}
+
+// macOS filesystems can reject non-UTF-8 names during fixture creation.
+// Linux exercises the wire-path check after resolving an existing input file.
+#[cfg(target_os = "linux")]
+#[test]
+fn gdt_non_utf8_existing_input_fails_without_panicking_or_sending_archive_requests() {
+    use std::os::unix::ffi::OsStringExt;
+    let bridge = RecordedBridge::new();
+    let file = std::ffi::OsString::from_vec(b"type-\xff.gdt".to_vec());
+    std::fs::write(bridge.root.path().join(&file), "archive").unwrap();
+    assert_non_utf8_gdt_path_rejected(
+        &bridge,
+        "import-gdt",
+        &file,
+        "cannot be represented as UTF-8",
+    );
+}
+
+#[cfg(unix)]
+fn assert_non_utf8_gdt_path_rejected(
+    bridge: &RecordedBridge,
+    command: &str,
+    file: &std::ffi::OsStr,
+    diagnostic: &str,
+) {
+    let output = bridge
+        .command()
+        .args(["type", command])
+        .arg(file)
+        .arg("--all")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let diagnostics = String::from_utf8_lossy(&output.stderr);
+    assert!(diagnostics.contains(diagnostic), "{diagnostics}");
+    assert!(!diagnostics.contains("panicked"));
+    assert!(bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r["command"] == "bridge_info"));
 }
 
 pub(super) fn category_list_fixture(args: &Value) -> Value {
