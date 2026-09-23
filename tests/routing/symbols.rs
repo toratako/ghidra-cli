@@ -23,7 +23,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
                 "rename",
                 "shared",
                 "renamed",
-                "--filter",
+                "--where",
                 "kind=function",
             ],
             "symbol_rename",
@@ -59,7 +59,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
 }
 
 #[test]
-fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
+fn symbol_deletion_selectors_select_targets_and_preserve_receipts() {
     let bridge = RecordedBridge::new();
     for filter in [
         "kind=label",
@@ -69,7 +69,7 @@ fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
         "address IN [0XAB]",
     ] {
         for fields in [None, Some("status,count")] {
-            let mut args = vec!["symbol", "delete", "shared", "--filter", filter];
+            let mut args = vec!["symbol", "delete", "shared", "--where", filter];
             let mut receipt = json!({"status": "deleted", "name": "shared", "count": 1});
             if let Some(fields) = fields {
                 args.extend(["--fields", fields]);
@@ -96,7 +96,7 @@ fn symbol_deletion_filters_select_targets_and_preserve_receipts() {
 }
 
 #[test]
-fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
+fn symbol_deletion_rejects_invalid_selectors_before_selecting_a_program() {
     let bridge = RecordedBridge::new();
     for filter in [
         "invalid",
@@ -111,7 +111,7 @@ fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
                 "symbol",
                 "delete",
                 "shared",
-                "--filter",
+                "--where",
                 filter,
                 "--program",
                 "B",
@@ -124,7 +124,7 @@ fn symbol_deletion_rejects_invalid_filters_before_selecting_a_program() {
             error["message"]
                 .as_str()
                 .unwrap()
-                .contains("invalid --filter expression"),
+                .contains("invalid --where expression"),
             "{filter}: {error}"
         );
         assert!(bridge.requests.lock().unwrap().is_empty(), "{filter}");
@@ -186,10 +186,10 @@ fn symbol_resolution_errors_never_send_a_mutation() {
                 "rename",
                 "shared",
                 "renamed",
-                "--filter",
+                "--where",
                 "kind=absent",
             ],
-            "No symbol named 'shared' matches filter 'kind=absent'",
+            "No symbol named 'shared' matches --where 'kind=absent'",
         ),
     ] {
         bridge.requests.lock().unwrap().clear();

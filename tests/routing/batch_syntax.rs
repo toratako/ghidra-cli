@@ -127,7 +127,7 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
         // Nested files use the invocation's cwd, including names containing an apostrophe.
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            "function list --filter invalid\nsymbol delete existing --filter invalid\nsymbol rename existing renamed --filter invalid\nsymbol delete existing --address invalid\ngraph callers main --depth 2147483648\nlisting undefine 0x1000 --end invalid\nbatch \"scripts/./batch.txt\"\nbatch \"nested valid's.txt\"\nprogram import generated.bin --loader-option malformed\nprogram import generated.bin --base-address invalid\nscript run generated.java --expect-rows results.jsonl 9223372036854775808\n",
+            "function list --filter invalid\nsymbol delete existing --where invalid\nsymbol rename existing renamed --where invalid\nsymbol delete existing --address invalid\ngraph callers main --depth 2147483648\nlisting undefine 0x1000 --end invalid\nbatch \"scripts/./batch.txt\"\nbatch \"nested valid's.txt\"\nprogram import generated.bin --loader-option malformed\nprogram import generated.bin --base-address invalid\nscript run generated.java --expect-rows results.jsonl 9223372036854775808\n",
         )
         .unwrap();
         std::fs::write(
@@ -158,8 +158,8 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
         assert_eq!(errors.len(), 12, "{errors:?}");
         for (error, (file, line, message)) in errors.iter().zip([
             ("nested.txt", 1, "invalid --filter expression"),
-            ("nested.txt", 2, "invalid --filter expression"),
-            ("nested.txt", 3, "invalid --filter expression"),
+            ("nested.txt", 2, "invalid --where expression"),
+            ("nested.txt", 3, "invalid --where expression"),
             ("nested.txt", 4, "Invalid --address"),
             ("nested.txt", 5, "--depth must be between"),
             ("nested.txt", 6, "Invalid --end address"),

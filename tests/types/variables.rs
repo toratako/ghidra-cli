@@ -149,7 +149,7 @@ fn function_variables_read_inferred_definitions_and_persist_selected_edits() {
     let parameter = edit(
         "input",
         &[
-            "--filter",
+            "--where",
             "kind=parameter AND ordinal=0",
             "--name",
             "count",

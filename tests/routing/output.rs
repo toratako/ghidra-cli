@@ -159,7 +159,7 @@ fn json_results_match_batch_entries_and_retain_context_after_queries() {
             "comment", "get", "0x1000", "--limit", "0", "--fields", "text",
         ],
         vec!["comment", "get", "0x1000", "--count"],
-        vec!["symbol", "delete", "shared", "--filter", "kind=label"],
+        vec!["symbol", "delete", "shared", "--where", "kind=label"],
     ] {
         let standalone = document(&bridge, &args);
         assert!(standalone.get("data").is_some(), "{standalone}");

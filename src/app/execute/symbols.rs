@@ -1,7 +1,7 @@
 //! Symbol dispatch and guarded target selection shared by symbol mutations.
 
 use crate::address::ExplicitAddress;
-use crate::app::output::describe_query_error;
+use crate::app::output::describe_selector_error;
 use crate::cli::{RenameArgs, SymbolCommands};
 use crate::filter;
 use crate::ipc::client::BridgeClient;
@@ -24,7 +24,7 @@ pub(super) fn execute(
                 client,
                 &args.name,
                 args.address.as_deref(),
-                args.filter.as_deref(),
+                args.where_expr.as_deref(),
                 args.all,
             )?;
             client.symbol_delete_targets(&args.name, &targets)
@@ -36,7 +36,7 @@ pub(super) fn execute(
                 client,
                 &selection.name,
                 selection.address.as_deref(),
-                selection.filter.as_deref(),
+                selection.where_expr.as_deref(),
                 false,
             )?;
             client.send_command(
@@ -53,7 +53,7 @@ pub(super) fn execute(
                 client,
                 &selection.name,
                 selection.address.as_deref(),
-                selection.filter.as_deref(),
+                selection.where_expr.as_deref(),
                 false,
             )?;
             client.send_command(
@@ -74,14 +74,14 @@ pub(super) fn rename(
         client,
         &args.old_name,
         args.address.as_deref(),
-        args.filter.as_deref(),
+        args.where_expr.as_deref(),
         args.all,
     )?;
     client.symbol_rename_targets(&args.old_name, &args.new_name, &targets)
 }
 
 /// Resolve which address(es) a symbol mutation (`symbol rename`/`symbol
-/// delete`) should touch, given the caller's optional `--address`/`--filter`
+/// delete`) should touch, given the caller's optional `--address`/`--where`
 /// disambiguators and `--all` opt-in.
 ///
 /// Ghidra auto-generates names (`caseD_XX`, `LAB_XXXX`, ...) that are
@@ -95,10 +95,10 @@ fn resolve_symbol_targets(
     client: &BridgeClient,
     name: &str,
     address: Option<&str>,
-    filter_expr: Option<&str>,
+    where_expr: Option<&str>,
     all: bool,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    let filter = parse_selector(address, filter_expr)?;
+    let filter = parse_selector(address, where_expr)?;
     let response = client.symbol_get_by_name(name)?;
     let mut candidates: Vec<serde_json::Value> = response
         .get("symbols")
@@ -117,10 +117,14 @@ fn resolve_symbol_targets(
         }
     }
 
-    if let Some((expression, parsed)) = filter_expr.zip(filter) {
+    if let Some((expression, parsed)) = where_expr.zip(filter) {
         candidates.retain(|s| parsed.evaluate(s).unwrap_or(false));
         if candidates.is_empty() {
-            anyhow::bail!("No symbol named '{}' matches filter '{}'", name, expression);
+            anyhow::bail!(
+                "No symbol named '{}' matches --where '{}'",
+                name,
+                expression
+            );
         }
     }
 
@@ -138,7 +142,7 @@ fn resolve_symbol_targets(
             .collect::<Vec<_>>()
             .join("; ");
         anyhow::bail!(
-            "'{}' matches {} symbols [{}] -- use --address or a narrower --filter to select one",
+            "'{}' matches {} symbols [{}] -- use --address or a narrower --where to select one",
             name,
             candidates.len(),
             details,
@@ -158,7 +162,7 @@ fn resolve_symbol_targets(
 
 pub(super) fn parse_selector(
     address: Option<&str>,
-    filter_expr: Option<&str>,
+    where_expr: Option<&str>,
 ) -> anyhow::Result<Option<filter::Filter>> {
     if let Some(address) = address {
         anyhow::ensure!(
@@ -167,8 +171,8 @@ pub(super) fn parse_selector(
             address
         );
     }
-    filter_expr
-        .map(|expression| filter::Filter::parse(expression).map_err(describe_query_error))
+    where_expr
+        .map(|expression| filter::Filter::parse(expression).map_err(describe_selector_error))
         .transpose()
 }
 

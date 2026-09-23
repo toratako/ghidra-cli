@@ -349,7 +349,7 @@ fn symbol_moves_preserve_identity_references_and_reject_ambiguous_stale_or_confl
                 "shared",
                 "--namespace",
                 "destination",
-                "--filter",
+                "--where",
                 &filter,
             ],
         );
@@ -391,7 +391,7 @@ fn symbol_moves_preserve_identity_references_and_reject_ambiguous_stale_or_confl
                 "set-namespace",
                 "shared",
                 "--global",
-                "--filter",
+                "--where",
                 &filter,
             ],
         );

@@ -296,8 +296,8 @@ pub struct FunctionVarSelection {
     #[arg(long = "var", value_name = "NAME", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub var_name: String,
     /// Narrow same-name candidates using their list fields; must select exactly one
-    #[arg(long, short = 'f')]
-    pub filter: Option<String>,
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

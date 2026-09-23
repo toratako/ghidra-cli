@@ -14,13 +14,13 @@ pub struct RenameArgs {
     /// Segmented selectors require the space name, e.g. ram:0x1234:0x0005.
     #[arg(long)]
     pub address: Option<String>,
-    /// Filter expression (same syntax as `--filter` on query commands) used
+    /// Selection expression (same syntax as `--filter` on query commands) used
     /// to narrow which of the name's matches get renamed, e.g.
-    /// `--filter 'address=0xc200'`.
-    #[arg(short, long)]
-    pub filter: Option<String>,
+    /// `--where 'address=0xc200'`.
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
     /// Rename every symbol named `old_name`, program-wide. Without this (or
-    /// `--address`/`--filter`), an ambiguous name is a hard error rather
+    /// `--address`/`--where`), an ambiguous name is a hard error rather
     /// than silently renaming every match.
     #[arg(long)]
     pub all: bool,
@@ -59,9 +59,9 @@ pub struct SymbolSelectionArgs {
     /// Explicit address to narrow the selection; segmented addresses require their space name
     #[arg(long)]
     pub address: Option<String>,
-    /// Filter selecting one symbol, e.g. id='12345' or namespace=app
-    #[arg(short, long)]
-    pub filter: Option<String>,
+    /// Expression selecting one symbol, e.g. id='12345' or namespace=app
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -105,12 +105,12 @@ pub struct SymbolDeleteArgs {
     /// Segmented selectors require the space name, e.g. ram:0x1234:0x0005.
     #[arg(long)]
     pub address: Option<String>,
-    /// Filter expression used to narrow which of the name's matches get deleted,
-    /// e.g. --filter 'address=0xc200'.
-    #[arg(short, long)]
-    pub filter: Option<String>,
+    /// Selection expression used to narrow which of the name's matches get deleted,
+    /// e.g. --where 'address=0xc200'.
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
     /// Delete every symbol named `name`, program-wide. Without this (or
-    /// `--address`/`--filter`), an ambiguous name is a hard error rather
+    /// `--address`/`--where`), an ambiguous name is a hard error rather
     /// than silently deleting every match.
     #[arg(long)]
     pub all: bool,

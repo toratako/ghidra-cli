@@ -598,7 +598,7 @@ fn variable_list_queries_preserve_context_and_filter_before_paging() {
 }
 
 #[test]
-fn variable_selection_sends_full_snapshot_and_keeps_filter_out_of_result_queries() {
+fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queries() {
     let bridge = RecordedBridge::new();
     for operation in ["get", "set"] {
         for batch in [false, true] {
@@ -610,7 +610,7 @@ fn variable_selection_sends_full_snapshot_and_keeps_filter_out_of_result_queries
                 "main",
                 "--var",
                 "value",
-                "--filter",
+                "--where",
                 "kind=local",
                 "--program",
                 "B",
@@ -670,7 +670,7 @@ fn variable_selection_requires_exactly_one_same_name_candidate_before_mutation()
         let output = bridge
             .command()
             .args([
-                "function", "var", "set", "main", "--var", "value", "--filter", filter, "--name",
+                "function", "var", "set", "main", "--var", "value", "--where", filter, "--name",
                 "length",
             ])
             .output()
@@ -713,7 +713,7 @@ fn function_edit_selectors_are_validated_before_program_selection_and_batch_exec
             "1010",
         ],
         vec![
-            "function", "var", "set", "main", "--var", "value", "--filter", "invalid", "--name",
+            "function", "var", "set", "main", "--var", "value", "--where", "invalid", "--name",
             "length",
         ],
     ] {

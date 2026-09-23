@@ -76,13 +76,21 @@ impl Output {
 /// Make filter parse failures actionable: the DSL needs a field and operator,
 /// so a bare word like `PK` is invalid (use `name~PK` instead).
 pub(super) fn describe_query_error(err: GhidraError) -> anyhow::Error {
+    describe_expression_error(err, "--filter")
+}
+
+pub(super) fn describe_selector_error(err: GhidraError) -> anyhow::Error {
+    describe_expression_error(err, "--where")
+}
+
+fn describe_expression_error(err: GhidraError, option: &str) -> anyhow::Error {
     match &err {
         GhidraError::FilterParseError(_) | GhidraError::InvalidFilter(_) => anyhow::anyhow!(err)
-            .context(
-                "invalid --filter expression: expected <field><operator><value>, \
-                 e.g. --filter 'name~PK' (contains), --filter 'name=~\"^PK_\"' (regex), \
-                 --filter 'size>100'; combine with AND/OR/NOT",
-            ),
+            .context(format!(
+                "invalid {option} expression: expected <field><operator><value>, \
+                 e.g. {option} 'name~PK' (contains), {option} 'name=~\"^PK_\"' (regex), \
+                 {option} 'size>100'; combine with AND/OR/NOT",
+            )),
         _ => anyhow::anyhow!(err),
     }
 }
@@ -268,13 +276,28 @@ mod tests {
     }
 
     #[test]
-    fn describe_query_error_mentions_filter_usage() {
+    fn expression_errors_mention_the_correct_option() {
         // Regression (TODO.md Bug 2): a bare word is not a valid filter and the
         // error must surface (previously swallowed, dumping the whole dataset).
-        let Err(err) = filter::Filter::parse("PK") else {
-            panic!("bare word must not parse");
-        };
-        let msg = format!("{:#}", describe_query_error(err));
-        assert!(msg.contains("invalid --filter expression"), "got: {msg}");
+        for (option, describe) in [
+            (
+                "--filter",
+                describe_query_error as fn(GhidraError) -> anyhow::Error,
+            ),
+            (
+                "--where",
+                describe_selector_error as fn(GhidraError) -> anyhow::Error,
+            ),
+        ] {
+            let Err(err) = filter::Filter::parse("PK") else {
+                panic!("bare word must not parse");
+            };
+            let msg = format!("{:#}", describe(err));
+            assert!(
+                msg.contains(&format!("invalid {option} expression")),
+                "got: {msg}"
+            );
+            assert!(msg.contains(&format!("{option} 'name~PK'")), "got: {msg}");
+        }
     }
 }

@@ -120,17 +120,17 @@ pub(super) fn execute(
     }
 }
 
-/// A filter selects from the full list, before any output projection or limit.
+/// A --where expression selects from the full list, before any output projection or limit.
 /// The bridge revalidates this snapshot; stale selections are never replayed.
 fn resolve_variable(
     client: &BridgeClient,
     selection: &cli::FunctionVarSelection,
 ) -> anyhow::Result<Option<Value>> {
-    let Some(expression) = selection.filter.as_deref() else {
+    let Some(expression) = selection.where_expr.as_deref() else {
         return Ok(None);
     };
     let filter = crate::filter::Filter::parse(expression)
-        .map_err(crate::app::output::describe_query_error)?;
+        .map_err(crate::app::output::describe_selector_error)?;
     let response = client.function_var_list(&selection.target)?;
     let rows = response["variables"]
         .as_array()
@@ -140,20 +140,20 @@ fn resolve_variable(
         if row["name"].as_str() == Some(selection.var_name.as_str())
             && filter
                 .evaluate(row)
-                .map_err(crate::app::output::describe_query_error)?
+                .map_err(crate::app::output::describe_selector_error)?
         {
             matches.push(row);
         }
     }
     anyhow::ensure!(
         !matches.is_empty(),
-        "No variable named '{}' matches filter '{}'",
+        "No variable named '{}' matches --where '{}'",
         selection.var_name,
         expression
     );
     anyhow::ensure!(
         matches.len() == 1,
-        "Variable '{}' matches {} candidates: {}. Use a narrower --filter to select one",
+        "Variable '{}' matches {} candidates: {}. Use a narrower --where to select one",
         selection.var_name,
         matches.len(),
         serde_json::to_string(&matches)?

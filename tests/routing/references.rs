@@ -153,14 +153,14 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
                 "set-namespace",
                 "shared",
                 "--global",
-                "--filter",
+                "--where",
                 "id='9007199254740994'",
             ],
             "symbol_set_namespace",
             json!({"name":"shared", "targets":[symbol_fixture("9007199254740994", "0x00cd", "function")], "namespace":null, "global":true}),
         ),
         (
-            vec!["symbol", "set-primary", "shared", "--filter", "kind=label"],
+            vec!["symbol", "set-primary", "shared", "--where", "kind=label"],
             "symbol_set_primary",
             json!({"name":"shared", "targets":[symbol_fixture("9007199254740993", "0x00ab", "label")]}),
         ),
@@ -355,7 +355,7 @@ fn invalid_annotation_edits_fail_during_preflight_before_program_selection() {
             "shared",
             "--namespace",
             "app",
-            "--filter",
+            "--where",
             "invalid",
         ],
         vec!["symbol", "set-primary", "shared", "--address", "dead"],
@@ -483,7 +483,7 @@ fn symbols_sharing_an_address_still_require_a_unique_namespace_or_id() {
             r["command"].as_str(),
             Some("bridge_info" | "symbol_get_by_name")
         )));
-        args.extend(["--filter", "namespace='app::Widget'"]);
+        args.extend(["--where", "namespace='app::Widget'"]);
         for batched in [false, true] {
             bridge.requests.lock().unwrap().clear();
             run(&bridge, &args, batched);

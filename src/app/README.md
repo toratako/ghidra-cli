@@ -43,12 +43,12 @@ capabilities. `program save` uses the direct management path without this gate,
 preserving in-place recovery of pending edits before an explicit restart.
 Dispatch each command once and propagate its result or error. Do not restart
 the bridge or replay a command after a response failure.
-Symbol deletion validates its target filter before bridge work and consumes it
+Symbol deletion validates its `--where` predicate before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
 `function var list` applies ordinary list queries to decompiler rows. Get/set
-use `--filter` only to narrow the exact `--var` name to one candidate, then send
+use `--where` only to narrow the exact `--var` name to one candidate, then send
 its program/function/modification/row guard for bridge revalidation. Their
 projection-only output controls never change target selection or filter receipts.
 Decompilation diagnostics are result fields in JSON and human formats. C-only

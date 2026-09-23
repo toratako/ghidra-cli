@@ -38,7 +38,7 @@ parameters, including their types and storage; inspect
 
 ```bash
 ghidra-cli function var set parse_header --var value \
-  --filter 'kind=local AND first_use=0x00401234' --name length --project target
+  --where 'kind=local AND first_use=0x00401234' --name length --project target
 ```
 
 Automatic `this` parameters derive their type from the [class namespace](#symbols)
@@ -89,7 +89,7 @@ ghidra-cli symbol set-namespace dispatch --namespace app::Widget --address 0x401
 ghidra-cli symbol set-primary message_header --address 0x404000
 ```
 
-Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
+Ambiguous symbol rename/delete requires `--address` or `--where`, or explicit
 `--all` to affect every match. Rename/delete take exact names (even `0x...`);
 `symbol get` accepts names or addresses.
 
