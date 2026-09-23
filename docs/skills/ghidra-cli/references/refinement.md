@@ -13,10 +13,7 @@ ghidra-cli function var get parse_header --var local_10 --project target
 ghidra-cli function var set parse_header --var local_10 \
   --name header --type "Header *" --project target
 ghidra-cli function set-return-type abort_path --type void --project target
-ghidra-cli program list-calling-conventions --project target
-ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
-ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
-ghidra-cli function get parse_header --with-signature --with-frame --project target
+ghidra-cli function get parse_header --with-signature --project target
 ghidra-cli function set-noreturn abort_path --value true --project target
 ```
 
@@ -26,15 +23,12 @@ their types.
 `function get --with-signature` reads the Program prototype and ABI storage,
 including hidden arguments and indirect returns; decompiler output can still
 refine saved undefined parameter types. For thunks, the immediate target and final
-signature owner can differ; signature edits affect the final owner.
-`--with-frame` reads saved stack layout, including ABI-reserved space. Its size
-is neither runtime stack usage nor stack purge; its owner identifies whose frame
-is shown when inspecting a thunk.
+signature owner can differ; signature edits affect the final owner. See
+[thunk relationships](calls.md#thunk-relationships) to change the forwarding target.
 
 Renaming an inferred local saves an undefined type so the decompiler continues
 inferring it. Editing an inferred parameter can save the other inferred
-parameters, including their types and storage; inspect
-`function get --with-signature` afterward.
+parameters, including their types and storage.
 
 ```bash
 ghidra-cli function var set parse_header --var value \
@@ -42,38 +36,11 @@ ghidra-cli function var set parse_header --var value \
 ```
 
 Automatic `this` parameters derive their type from the [class namespace](#symbols)
-and calling convention.
+and calling convention. For ABI edits and saved stack layout, see
+[calling convention and stack metadata](calls.md#calling-convention-and-stack-metadata).
 
-### Thunk relationships
-
-```bash
-ghidra-cli function set-thunk 0x401000 --target 0x402000 --project target
-ghidra-cli function get 0x401000 --with-signature --project target
-ghidra-cli function clear-thunk 0x401000 --project target
-```
-
-`set-thunk` changes the direct target, affecting thunks that forward through it,
-without changing branch bytes. `clear-thunk` exposes the function's own saved
-definition without copying the destination's signature; inspect `after` before
-editing its prototype.
-
-### One call site's prototype
-
-```bash
-ghidra-cli function call-signature get dispatch --at 0x401234 --project target
-ghidra-cli function call-signature set dispatch --at 0x401234 \
-  --signature 'int handler(Context *, int)' --convention __cdecl --project target
-ghidra-cli decompile dispatch --project target
-ghidra-cli function call-signature clear dispatch --at 0x401234 --project target
-```
-
-The target is the caller; the override applies only at `--at`, leaving the
-callee's signature unchanged.
-Omitting `--convention` uses the Program default rather than a callee or
-decompiler guess.
-
-Saved overrides can outlive a patched call or body change; inspect their
-applicability with `get` and use `clear` with the original caller and address.
+For type definitions and data layouts, see [types](types.md#define-and-apply-types).
+To check where a changed type or field is used, see [type usage searches](types.md#find-uses).
 
 ## Comments
 
@@ -119,7 +86,7 @@ ghidra-cli xref create memory 0x401234 0x401300 --operand 0 --type COMPUTED_CALL
 ghidra-cli xref delete 0x401234 0x401300 --operand 0
 ```
 
-Use the zero-based `operand_index` and `source` from `xref from` to select an
+The zero-based `operand_index` and `source` from `xref from` identify an
 existing reference. Editing an analysis-created reference requires
 `--source ANALYSIS`.
 `xref set-primary` chooses the representative destination for one operand,
@@ -137,171 +104,8 @@ ghidra-cli equate detach READ_MODE --at 0x401234 --operand 1
 
 `delete` removes the definition and all its uses. Decompiler-specific references
 can have `operand_selectable: false`; an operand index cannot identify those uses safely.
-Inspect named constants with `equate get` and `decompile`; `disassemble` keeps
-the instruction's numeric operand representation.
-
-## Types
-
-```bash
-ghidra-cli type uses /Recovered/Header --kind signature --filter 'role=parameter'
-ghidra-cli type uses /Recovered/Header --kind data
-ghidra-cli type uses /Recovered/Header --kind variable --filter 'role=local'
-ghidra-cli type field uses /Recovered/Header --field flags --function parse_packet
-ghidra-cli type field uses /Recovered/Header --field flags --filter 'access=write'
-```
-
-`type uses` follows typedefs, pointers and arrays. It searches top-level data and
-saved signatures by default; `--kind variable` includes inferred decompiler
-parameters and locals.
-
-Field uses depend on current decompiler types. Passing a field's address to a call
-does not establish the callee's access; `unknown` means an identified use could
-not be classified. Check `meta.scan` for failed decompilations or unresolved field
-identities; narrow searches with `--function`. High P-code locations can identify
-a consuming instruction; inspect disassembly to locate the exact load or store.
-
-```bash
-ghidra-cli type get Header --project target
-ghidra-cli type create struct Header --project target
-ghidra-cli type field append Header --name magic --type uint --project target
-ghidra-cli type field delete Header --field magic --project target
-ghidra-cli type create enum Mode --member Unknown 0 --member Read 1 --member Write 2 --project target
-ghidra-cli type enum member delete Mode --member Unknown --project target
-ghidra-cli type create typedef HeaderAlias --type Header --project target
-ghidra-cli type rename HeaderAlias PacketHeader --project target
-ghidra-cli type delete PacketHeader --project target
-ghidra-cli listing define-data 0x404000 --type Header --project target
-ghidra-cli listing define-data 0x404000 --type Header --force --project target
-ghidra-cli type import-c --category /Recovered \
-  --code 'struct Vec3 { float x; float y; float z; }; typedef Vec3 *Vec3Ptr;' \
-  --project target
-```
-
-`type import-c` parses C declarations without preprocessing or include-path
-resolution. `--file` input is UTF-8 and resolves from the CLI working directory.
-
-```bash
-ghidra-cli type import-c --file recovered_types.h --category /Recovered
-ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
-```
-
-`listing define-data --force` clears conflicting code or data units, including instructions,
-before applying the type.
-
-Type expressions accept `byte[16]`, `Hook *[8]`, and `byte[2][3]`;
-sizes follow the program's data organization. Use paths such as
-`/Recovered/Hook *[8]` to disambiguate categories.
-
-Fallback aliases `uintN_t`/`uN` and `intN_t`/`sN` have fixed widths for N = 8, 16,
-32, or 64 bits. Existing types with the requested name take precedence;
-ordinary C spellings such as `unsigned int` use the target ABI.
-
-`type rename` cannot rename primitive, array, or pointer types; use
-`type create typedef` for an alias.
-
-### Reusing archived types
-
-```bash
-ghidra-cli type archive list sdk.gdt --filter 'category^"/SDK"' --project target
-ghidra-cli type import-gdt sdk.gdt --where 'path="/SDK/Header"' --project target
-ghidra-cli listing define-data 0x404000 --type /SDK/Header --project target
-ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
-```
-
-Selected roots bring their dependencies, even from other categories. Conflicting
-definitions/origins or ABI layout changes reject the entire import. Inspect the
-dependency path: changing roots can still select the conflicting dependency.
-Layout conflicts require an archive compatible with the target ABI.
-
-Equivalent local definitions can adopt the archive's identity. Export gives local
-types new archive identities and preserves existing file-archive origins.
-GDT cannot retain field-specific interpretation settings such as endian overrides.
-
-### Trying a separate type definition
-
-```bash
-ghidra-cli type category create /Draft
-ghidra-cli type clone /Recovered/Header HeaderV2 --category /Draft
-ghidra-cli type resize /Draft/HeaderV2 --size 64
-ghidra-cli type move /Draft/HeaderV2 --category /Recovered
-```
-
-Clone separates only the top-level definition. Referenced types remain shared;
-cloning `Node` to `NodeV2` leaves `next` pointing to `Node *`.
-
-Resize adjusts the undefined tail of a non-packed structure. It cannot remove
-defined fields, including explicit padding arrays. Size changes propagate to
-containing types and applied data. Use an unapplied clone when experimenting
-with a layout that cannot fit existing uses.
-
-### Recovering unions
-
-```bash
-ghidra-cli type create union Payload
-ghidra-cli type field append Payload --name integer --type uint32_t
-ghidra-cli type field append Payload --name bytes --type 'byte[8]'
-ghidra-cli type get Payload
-ghidra-cli type field set Payload --ordinal 1 --type 'Header *' --name header
-ghidra-cli type field set Payload --ordinal 1 --comment 'Used when tag == 2'
-ghidra-cli type field delete Payload --ordinal 0
-```
-
-Unnamed union members require `--ordinal` from `type get`; deletion renumbers ordinals.
-
-### Growing recovered structures
-
-```bash
-ghidra-cli function var infer-struct dispatch --var manager --with-accesses
-```
-
-The candidate uses only the selected function; its size does not prove allocation
-size, and gaps are not recovered fields. Access records contain Ghidra's retained
-LOAD/STORE evidence, not all accesses. For partial HighVariables, inspect
-`pcode function dispatch --high` before choosing another root.
-
-```bash
-ghidra-cli type field set Manager --offset 0x1c --name hook --type 'Hook *'
-ghidra-cli type field set Manager --field hook --comment 'Called during shutdown'
-ghidra-cli type field set Manager --field hook --comment ''
-ghidra-cli type field clear Manager --offset 0x1c
-```
-
-Field offsets must be exact starts. In undefined space, `field set` requires `--type`.
-
-Shrinking a field leaves undefined bytes. Growing consumes undefined space or
-extends the structure, but cannot overwrite another defined field.
-For types that need an explicit length, use `--type string --size 8` with
-`field append` or `field set`.
-
-`field clear` replaces the field with undefined bytes and preserves structure
-size and later offsets, though component ordinals can change. `field delete`
-removes ordinary fields' bytes and shifts later fields. Deleting a bitfield in
-a non-packed structure leaves the byte layout unchanged.
-
-Packed structures allow name/comment edits, but reject field type changes and
-clearing defined fields. Bit-fields and zero-length fields cannot be edited with
-offset commands.
-
-In `type get`, an unnamed field has `name: null`; `display_name` gives its
-generated name, which cannot be used with `--field`.
-
-### Placing recovered bitfields
-
-```bash
-ghidra-cli type field create-bitfield Flags --offset 0 --storage-size 4 \
-  --bit-offset 0 --bit-size 3 --type uint32_t --name mode
-ghidra-cli type field set Flags --field mode --bit-size 4
-ghidra-cli type field clear Flags --field mode
-```
-
-The placement range is read as a Program-endian integer; bit offset zero is its
-least significant bit. Ghidra normalizes the result to the smallest byte range,
-so the example's field starts at byte 0 on little-endian and byte 3 on big-endian.
-
-Width edits stay within that current minimal range, even if creation specified
-a larger storage size. Select bitfields by real name or a fresh ordinal because
-several fields can share one byte. For ABI-driven packing, use a C declaration
-with `import-c`.
+`equate get` and `decompile` show named constants; `disassemble` keeps the
+instruction's numeric operand representation.
 
 ## Function tags
 

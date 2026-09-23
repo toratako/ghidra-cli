@@ -18,14 +18,13 @@ ghidra-cli bridge stop --project target
 ```
 
 `project delete` stops the bridge before deletion.
-`program list` includes subfolders. Use the project-file `path` from `program list`
-or `program info` to distinguish same-named programs. Displayed program names
+`program list` includes subfolders. The project-file `path` from `program list`
+or `program info` distinguishes same-named programs. Displayed program names
 are saved file names.
 
 ## Project snapshots
 
-Use GAR for a project containing several Programs or project type archives;
-use `program export NAME --export-format gzf` for one Program.
+GAR holds a project, including its Programs and type archives; GZF holds one Program.
 
 ```bash
 ghidra-cli project archive target --output ./target-20260922.gar
@@ -69,8 +68,7 @@ not clear existing instructions; repair wrong decoding with
 
 `--pending` uses Ghidra's live queue, not a saved history of edits. Cancelling
 analysis, closing the program, and restarting the bridge discard queued work.
-After any of those, or after changing analyzer settings, request a range or full
-analysis to revisit the relevant code.
+Range or full analysis can revisit code after queue loss or analyzer setting changes.
 The `analyzed` flag in `program list` records a completed full analysis, not
 whether subsequent edits have been analyzed; range/pending runs do not set it.
 
@@ -88,9 +86,8 @@ ghidra-cli program import ./firmware.bin --project firmware \
 
 `--base-address`, `--block-name`, `--file-offset`, and `--length` imply
 `BinaryLoader`; `--base-address` is not a general ELF/PE rebasing option.
-Raw import does not establish an entry point. Use `listing define-code` and
-`function create` at a known code address; see
-[disassembly and analysis boundaries](low-level.md#disassembly-and-analysis-boundaries).
+Raw import does not establish an entry point; see
+[code definitions and analysis boundaries](low-level.md#code-definitions-and-analysis-boundaries).
 
 ### Correcting import settings
 
@@ -117,7 +114,25 @@ address. Default-space blocks and associated Program addresses move together,
 including MMIO. Overlays and other address spaces stay in place.
 
 Rebase leaves pointer and immediate bytes unchanged and does not run analysis
-or reapply loader relocations. Re-import to reapply relocations.
+or reapply loader relocations. Re-import can reapply relocations.
+
+## Reusing archived types
+
+```bash
+ghidra-cli type archive list sdk.gdt --filter 'category^"/SDK"' --project target
+ghidra-cli type import-gdt sdk.gdt --where 'path="/SDK/Header"' --project target
+ghidra-cli listing define-data 0x404000 --type /SDK/Header --project target
+ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
+```
+
+Selected roots bring their dependencies, even from other categories. Conflicting
+definitions/origins or ABI layout changes reject the entire import. Changing roots
+can still select the conflicting dependency reported in the dependency path.
+Layout conflicts require an archive compatible with the target ABI.
+
+Equivalent local definitions can adopt the archive's identity. Export gives local
+types new archive identities and preserves existing file-archive origins.
+GDT cannot retain field-specific interpretation settings such as endian overrides.
 
 ## Export
 

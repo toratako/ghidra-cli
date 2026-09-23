@@ -1,7 +1,7 @@
 # Batch
 
-See [batch basics](../SKILL.md#basic-batch) for a query example,
-and [save and failure behavior](../SKILL.md#results-edits-and-jobs).
+See [batch basics](../SKILL.md#batch) and
+[save and failure behavior](../SKILL.md#results-edits-and-jobs).
 
 ## Syntax
 
@@ -33,8 +33,7 @@ ghidra-cli batch ./edits.ghidra --on-error stop --project target --program targe
 
 ## Resuming
 
-After a stopped command has rolled back, fix its line in the original file and
-resume from that line without replaying completed edits:
+A batch stopped after a rolled-back command can resume at that command's source line:
 
 ```bash
 ghidra-cli batch ./edits.ghidra --from-line 45 --on-error stop --project target --program target.bin

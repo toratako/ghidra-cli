@@ -12,5 +12,5 @@ Script and expected artifact paths resolve from the CLI working directory.
 without waiving `--expect-rows` minimums.
 
 Stdin source must declare exactly one top-level public class extending
-`GhidraScript`. Keep supporting source files in the file script's parent
-directory, which Ghidra uses as its source bundle.
+`GhidraScript`. Ghidra uses the file script's parent directory as its source bundle,
+including supporting source files there.

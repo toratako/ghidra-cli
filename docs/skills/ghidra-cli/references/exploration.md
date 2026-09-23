@@ -22,41 +22,44 @@ the entry block, not every body range.
 only recovered destinations; an empty result does not rule out an indirect branch.
 
 `--with-addresses` maps displayed operations, not every contributing instruction:
-a condition may identify the branch but omit the compare. Inspect surrounding
-disassembly before choosing a patch location.
-
-```bash
-ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target
-```
-
-`graph cfg` includes unreachable instructions in the function body. Blocks retain
-their native boundaries; `body_intersection` shows which part belongs to the
-function. Calls are separate from successor edges; `boundaries` records unresolved
-transfers and body crossings. Output budgets do not limit native analysis time.
+a condition may identify the branch but omit the compare.
 
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 
+For instruction-level control flow, see [CFGs](low-level.md#control-flow-graphs);
+for absent function definitions, see [missing functions](low-level.md#missing-functions).
+
+## Instructions
+
 ```bash
-ghidra-cli find function-candidates --sort=-call_count,address --limit 20 --project target
-ghidra-cli disassemble 0x401800 --limit 20 --project target
-ghidra-cli xref to 0x401800 --project target
-ghidra-cli function create 0x401800 --project target
+ghidra-cli function disassemble main --limit 0 --format asm --project target
+ghidra-cli disassemble 0x401000 --limit 40 --project target
+ghidra-cli disassemble 0x401000 --end 0x401080 --format asm --project target
+ghidra-cli find instruction "mov" --start 0x401000 --end 0x401080 --project target
 ```
 
-Function candidates require existing instructions outside all function bodies,
-with call evidence and no incoming fallthrough (even from decoded padding).
-Bounds select destinations, not callers; `call_count` counts distinct call sites.
-Undisassembled code and targets reached only by unresolved indirect calls are missed.
+`disassemble` can continue beyond the starting function. `function disassemble`
+restricts results to its body, including disjoint ranges. Both use the shared
+[query controls](#query-controls).
+
+`find instruction PATTERN` matches a literal substring of Ghidra's instruction
+text, case-insensitively unless `--case-sensitive` is given. Either range
+bound can be omitted; a one-sided range stays in the supplied endpoint's address
+space. For resolved call sites, use
+[graph callers](#search-strings-xrefs-and-graphs).
+
+To repair missing or incorrect instructions, see
+[code definitions](low-level.md#code-definitions-and-analysis-boundaries).
 
 ## Search, strings, xrefs, and graphs
 
 Call queries resolve thunks and typed pointers using Ghidra's references;
-unresolved indirect calls may be absent.
+unresolved indirect calls may be absent. To investigate calls through tables,
+see [pointer and virtual-function tables](calls.md#pointer-and-virtual-function-tables).
 `via` is the referenced address before thunk/pointer resolution. `destination`
 is the resolved landing address; `callee_address` is the function entry when
-defined. Use `graph callers ADDRESS` to investigate a destination before
-defining a function there.
+defined. `graph callers ADDRESS` also accepts destinations without function definitions.
 
 ```bash
 ghidra-cli function list --filter "name~crypt" --project target
@@ -68,7 +71,6 @@ ghidra-cli find text "日本" --encoding shift_jis --project target
 ghidra-cli string refs "password" --project target
 ghidra-cli find bytes "48 8b 05" --project target
 ghidra-cli find bytes --regex '\x48\x8b.{4}' --project target
-ghidra-cli find instruction "mov" --start 0x401000 --end 0x401100 --project target
 ghidra-cli find constant 0x9e3779b9 --project target
 ghidra-cli find constant -1 --bits 32 --project target
 ghidra-cli find constant --min 0x20 --max 0x7e --project target
@@ -94,7 +96,7 @@ padding in that definition; it is not a re-encoding of `value`.
 definitions, matching exact encoded bytes including overlapping occurrences.
 Matching is case-sensitive, without normalization or an added NUL terminator.
 Encodings use Java charset names and aliases, such as `shift_jis` or `windows-31j` (CP932).
-Use `utf-16le` or `utf-16be` for UTF-16 without a BOM; Java's `utf-16` encoding
+`utf-16le` and `utf-16be` omit the BOM; Java's `utf-16` encoding
 includes a BOM in the search bytes.
 
 `find bytes --regex PATTERN` searches loaded, initialized memory with Ghidra's
@@ -109,8 +111,7 @@ data and `xref` for address references.
 
 For plain `graph callers/callees`, `--limit N` bounds traversal;
 filter, sort, count, or offset may require a broader traversal.
-For instruction-text matching and disassembly ranges, see
-[low-level analysis](low-level.md#disassembly-and-analysis-boundaries).
+For uses of a recovered type or field, see [type usage searches](types.md#find-uses).
 
 ## Symbols and memory
 
@@ -134,55 +135,22 @@ inside the object, including fields and array elements.
 select a containing component and retain its `parents`; overlapping union
 members remain alternative interpretations. Pointers are not followed.
 
+`memory read` distinguishes encoded pointer targets, normalized code addresses
+(e.g. Thumb), and thunk destinations.
+
 `memory read --source original` reads preserved import bytes before relocations
 or patches, requiring a file mapping for the whole range. It does not reopen
 the executable or decode original bytes as current-memory pointers.
 
 `memory file-mappings --file-offset` can match several placements of the same
-input bytes, including overlays. To select one saved input, pass
-`--source-at` an address mapped from it; `source_at` in the results is a reusable
+input bytes, including overlays. `--source-at` selects the saved input mapped
+at that address; `source_at` in the results is a reusable
 anchor until the layout changes. Filenames alone do not distinguish saved inputs.
 Indirect mappings are excluded and reported in `meta.unsupported_mappings`;
 an empty result proves only the absence of a direct mapping.
 
 For changing RAM/MMIO or overlays, see [memory layout](low-level.md#memory-layout);
 for byte edits, see [patching](low-level.md#patching).
-
-## Pointer and virtual-function tables
-
-```bash
-ghidra-cli memory read 0x405020 --size 64 --project target
-ghidra-cli find address-tables --start 0x405000 --end 0x405fff --min-entries 3 --project target
-ghidra-cli memory read-vtable 0x405020 --entries 8 --abi itanium --project target
-ghidra-cli memory read-vtable 0x140005020 --entries 8 --abi msvc --project target
-ghidra-cli memory read-vtable 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
-```
-
-`memory read-vtable` starts at the address point (slot 0, where the object's vptr
-points), which can differ from the table symbol. `relative32` reads LLVM's layout,
-including its RTTI proxy. Slot count is supplied, not inferred; null and undefined
-targets retain their slots. `complete` concerns slot bytes; `header.complete`
-concerns ABI metadata.
-
-`memory read` distinguishes encoded pointer targets, normalized code addresses
-(e.g. Thumb), and thunk destinations.
-
-`find address-tables` can find callback and dispatch tables. Bounds select starts,
-so tables can extend past `--end`. Native boundary rules can split or miss tables;
-inspect bytes before interpreting one as a VTable. Check scan completion in `.meta`.
-
-For callers through an absolute-pointer table:
-
-```bash
-ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --project target
-ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --within dispatch --project target
-```
-
-In `evidence`, `table_value` traces the selected slot's address,
-`table_type` associates a recovered table type, and `slot_offset` matches only an
-offset. The latter two do not establish the runtime table. Branch merges and
-trace failures appear in `.meta.scan.unresolved`; narrow `--within` to investigate
-failed functions. An incomplete scan or unreadable table cannot rule out callers.
 
 ## Analysis diagnostics
 
@@ -209,7 +177,7 @@ Filters also combine with `AND` (e.g. `size >= 100 AND name ~ 'crypt'`);
 `name ^ 'FUN_'` selects a prefix. For tag filters, see
 [function tags](refinement.md#function-tags).
 
-For address comparisons and `IN`, use hex literals (`address >= 0x401000`)
+Address comparisons and `IN` accept hex literals (`address >= 0x401000`)
 or quoted addresses (`address = 'overlay:0x1000'`). Numeric comparisons use
 flat offsets; quoted equality keeps space names case-sensitive while ignoring
 hex case and zero padding.
