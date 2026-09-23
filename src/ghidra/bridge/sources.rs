@@ -37,6 +37,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/analysis/DecompileWarnings.java"),
     ),
     (
+        "ghidracli/analysis/DecompileScan.java",
+        include_str!("../scripts/ghidracli/analysis/DecompileScan.java"),
+    ),
+    (
         "ghidracli/analysis/FieldUses.java",
         include_str!("../scripts/ghidracli/analysis/FieldUses.java"),
     ),
@@ -75,6 +79,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/analysis/VtableHeaders.java",
         include_str!("../scripts/ghidracli/analysis/VtableHeaders.java"),
+    ),
+    (
+        "ghidracli/analysis/VtableReader.java",
+        include_str!("../scripts/ghidracli/analysis/VtableReader.java"),
     ),
     (
         "ghidracli/function/FunctionBodyCommands.java",
