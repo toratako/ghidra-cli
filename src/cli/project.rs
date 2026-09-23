@@ -80,6 +80,7 @@ pub struct ProgramContextGetArgs {
     /// Processor context register name from program context list
     pub register: String,
     /// Explicit 0x-prefixed address, optionally qualified with its address space
+    #[arg(long)]
     pub start: String,
     /// Inclusive end in the same address space (default: START)
     #[arg(long)]
@@ -93,8 +94,10 @@ pub struct ProgramContextSetArgs {
     /// Processor context register name from program context list
     pub register: String,
     /// Nonnegative decimal or 0x-prefixed integer fitting the register's bit width
+    #[arg(long)]
     pub value: String,
     /// Explicit 0x-prefixed start address
+    #[arg(long)]
     pub start: String,
     /// Inclusive end in the same address space; qualify independently of START
     #[arg(long)]
@@ -108,6 +111,7 @@ pub struct ProgramContextClearArgs {
     /// Processor context register name from program context list
     pub register: String,
     /// Explicit 0x-prefixed start address
+    #[arg(long)]
     pub start: String,
     /// Inclusive end in the same address space; qualify independently of START
     #[arg(long)]

@@ -270,6 +270,88 @@ fn program_context_commands_can_omit_the_target_operand() {
 }
 
 #[test]
+fn processor_context_uses_register_operand_and_named_bounds() {
+    for operation in ["get", "set", "clear"] {
+        let mut argv = vec![
+            "ghidra-cli",
+            "program",
+            "context",
+            operation,
+            "--start",
+            "overlay:0x1000",
+            "TMode",
+            "--program",
+            "target",
+        ];
+        if operation != "get" {
+            argv.extend(["--end", "overlay:0x100f"]);
+        }
+        if operation == "set" {
+            argv.extend(["--value", "0x1"]);
+        }
+        let cli = Cli::try_parse_from(argv).unwrap();
+        assert_eq!(cli.program.as_deref(), Some("target"));
+        let Commands::Program(ProgramCommands::Context(command)) = cli.command else {
+            panic!("expected processor context command");
+        };
+        let (register, start, end) = match command {
+            ProgramContextCommands::Get(args) => (args.register, args.start, args.end),
+            ProgramContextCommands::Set(args) => {
+                assert_eq!(args.value, "0x1");
+                (args.register, args.start, Some(args.end))
+            }
+            ProgramContextCommands::Clear(args) => (args.register, args.start, Some(args.end)),
+            _ => unreachable!(),
+        };
+        assert_eq!(register, "TMode");
+        assert_eq!(start, "overlay:0x1000");
+        assert_eq!(
+            end.as_deref(),
+            if operation == "get" {
+                None
+            } else {
+                Some("overlay:0x100f")
+            }
+        );
+    }
+}
+
+#[test]
+fn processor_context_edits_require_explicit_bounds_and_value() {
+    for operation in ["set", "clear"] {
+        let mut complete = vec![
+            "ghidra-cli",
+            "program",
+            "context",
+            operation,
+            "TMode",
+            "--start",
+            "0x1000",
+            "--end",
+            "0x100f",
+        ];
+        if operation == "set" {
+            complete.extend(["--value", "1"]);
+        }
+        for required in ["--start", "--end", "--value"] {
+            let Some(index) = complete.iter().position(|arg| *arg == required) else {
+                continue;
+            };
+            let mut argv = complete.clone();
+            argv.drain(index..index + 2);
+            let error = Cli::try_parse_from(argv)
+                .err()
+                .expect("context mutations require complete bounds and a value for set");
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument
+            );
+            assert!(error.to_string().contains(required));
+        }
+    }
+}
+
+#[test]
 fn loader_options_preserve_pairs_and_literal_delimiters() {
     let parsed = Cli::try_parse_from([
         "ghidra-cli",

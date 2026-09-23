@@ -14,6 +14,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `set-namespace`, and `set-primary`, and function variable `get`/`set`;
   result queries keep `--filter`/`-f`.
 - Use `xref from TARGET --whole-function` to inspect the containing function.
+- Use named `--start`, `--end`, and `--value` options for processor context
+  operations; `get` defaults its end to the start, while `set` and `clear`
+  require both endpoints.
 - Make program management targets positional; export takes a program name and
   `--export-format`, and rebase takes `--base`. Settings and memory operations
   use named options for values, sizes, permissions, and categories.

@@ -37,7 +37,14 @@ fn context_and_rebase_route_targets_and_arguments_in_standalone_and_batch() {
             true,
         ),
         (
-            vec!["program", "context", "get", "TMode", "overlay:0x1000"],
+            vec![
+                "program",
+                "context",
+                "get",
+                "TMode",
+                "--start",
+                "overlay:0x1000",
+            ],
             "program_context_get",
             json!({"register": "TMode", "start": "overlay:0x1000"}),
             true,
@@ -48,6 +55,7 @@ fn context_and_rebase_route_targets_and_arguments_in_standalone_and_batch() {
                 "context",
                 "get",
                 "TMode",
+                "--start",
                 "overlay:0x1000",
                 "--end",
                 "overlay:0x100f",
@@ -62,7 +70,9 @@ fn context_and_rebase_route_targets_and_arguments_in_standalone_and_batch() {
                 "context",
                 "set",
                 "TMode",
+                "--value",
                 "0x1",
+                "--start",
                 "overlay:0x1000",
                 "--end",
                 "overlay:0x100f",
@@ -77,6 +87,7 @@ fn context_and_rebase_route_targets_and_arguments_in_standalone_and_batch() {
                 "context",
                 "clear",
                 "TMode",
+                "--start",
                 "overlay:0x1000",
                 "--end",
                 "overlay:0x100f",
@@ -165,7 +176,14 @@ fn context_lists_apply_queries_and_keep_range_metadata_in_standalone_and_batch()
         );
         let point = run(
             &bridge,
-            &["program", "context", "get", "TMode", "overlay:0x1000"],
+            &[
+                "program",
+                "context",
+                "get",
+                "TMode",
+                "--start",
+                "overlay:0x1000",
+            ],
             batched,
         );
         assert_eq!(point["data"].as_array().unwrap().len(), 1);
@@ -177,6 +195,7 @@ fn context_lists_apply_queries_and_keep_range_metadata_in_standalone_and_batch()
             "context",
             "get",
             "TMode",
+            "--start",
             "overlay:0x1000",
             "--end",
             "overlay:0x100f",
@@ -225,9 +244,9 @@ fn context_edits_and_rebase_keep_nested_receipts_with_object_projection() {
         for (operation, expected_status) in [("set", "set"), ("clear", "cleared")] {
             let mut args = vec!["program", "context", operation, "TMode"];
             if operation == "set" {
-                args.push("1");
+                args.extend(["--value", "1"]);
             }
-            args.extend(["overlay:0x1000", "--end", "overlay:0x100f"]);
+            args.extend(["--start", "overlay:0x1000", "--end", "overlay:0x100f"]);
             for projected in [false, true] {
                 let mut args = args.clone();
                 if projected {

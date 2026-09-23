@@ -84,7 +84,7 @@ running analysis.
 
 ```bash
 ghidra-cli program context list --project target
-ghidra-cli program context get TMode 0x1000 --end 0x101f --project target
+ghidra-cli program context get TMode --start 0x1000 --end 0x101f --project target
 ```
 
 A context mask identifies known bits; unset bits are unknown, not zero.
@@ -95,7 +95,7 @@ Existing instructions can block context edits; rebuild the affected region:
 
 ```bash
 ghidra-cli listing undefine 0x1000 --end 0x101f --project target
-ghidra-cli program context set TMode 1 0x1000 --end 0x101f --project target
+ghidra-cli program context set TMode --start 0x1000 --end 0x101f --value 1 --project target
 ghidra-cli listing define-code 0x1000 --end 0x101f --project target
 ghidra-cli disassemble 0x1000 --end 0x101f --project target
 ```
