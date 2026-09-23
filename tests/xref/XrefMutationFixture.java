@@ -82,7 +82,12 @@ public class XrefMutationFixture extends GhidraScript {
                     refs.removeAllReferencesFrom(a(site));
                 }
                 p.getListing().createData(a(0x1100), DWordDataType.dataType);
+                p.getListing().createData(a(0x2000), DWordDataType.dataType);
                 p.getSymbolTable().createLabel(a(0x1000), "xref_site", SourceType.USER_DEFINED);
+                p.getSymbolTable().createLabel(a(0x2000), "global_data_label", SourceType.USER_DEFINED);
+                p.getFunctionManager().createFunction("xref_target", a(0x2020),
+                    new AddressSet(a(0x2020), a(0x202f)), SourceType.USER_DEFINED);
+                p.getSymbolTable().createLabel(a(0x2024), "inside_function", SourceType.USER_DEFINED);
                 refs.addMemoryReference(a(0x1010), a(0x2000), RefType.READ, SourceType.ANALYSIS, 0);
                 refs.addMemoryReference(a(0x1010), a(0x2010), RefType.READ, SourceType.USER_DEFINED, 0);
                 refs.addMemoryReference(a(0x1010), a(0x2000), RefType.DATA, SourceType.USER_DEFINED, 1);

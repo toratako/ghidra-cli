@@ -88,6 +88,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   outside the destination category, including their existing uses.
 - Include references into defined strings in `string refs`, with their actual
   destination and byte offset from the string's start.
+- Report only function names in `xref to`'s `to_function`, matching `xref from`.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

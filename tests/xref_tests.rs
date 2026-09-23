@@ -70,24 +70,31 @@ fn assert_directions(client: &BridgeClient, address: &str) {
         let incoming = client
             .xrefs_to(outgoing["to"].as_str().unwrap().to_owned())
             .unwrap();
-        // Incoming queries also display destination labels when no function exists.
-        // The reference identity and metadata must agree in both directions.
         assert!(
-            incoming["xrefs"].as_array().unwrap().iter().any(|row| {
-                [
-                    "from",
-                    "to",
-                    "operand_index",
-                    "ref_type",
-                    "source",
-                    "primary",
-                ]
-                .iter()
-                .all(|field| row[field] == outgoing[field])
-            }),
+            incoming["xrefs"].as_array().unwrap().contains(&outgoing),
             "Outgoing reference missing from incoming query: {outgoing}; {incoming}"
         );
     }
+}
+
+#[test]
+#[serial]
+fn xref_function_fields_distinguish_data_labels_from_containing_functions() {
+    fixture(|client| {
+        create(client, "0x1000", "0x2000", 0, "DATA");
+        create(client, "0x1000", "0x2024", 1, "DATA");
+        let outgoing = from(client, "0x1000");
+        let data = reference(&outgoing, "0x00002000", 0);
+        let function = reference(&outgoing, "0x00002024", 1);
+        assert!(data["to_function"].is_null(), "{data}");
+        assert!(data["from_function"].is_null(), "{data}");
+        assert_eq!(function["to_function"], "xref_target");
+        for (label, row) in [("global_data_label", data), ("inside_function", function)] {
+            let incoming = client.xrefs_to(label.to_owned()).unwrap();
+            assert!(incoming["xrefs"].as_array().unwrap().contains(&row));
+        }
+        assert_directions(client, "0x1000");
+    });
 }
 
 #[test]

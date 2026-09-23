@@ -14,8 +14,6 @@ import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SourceType;
-import ghidra.program.model.symbol.Symbol;
-import ghidra.program.model.symbol.SymbolTable;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -278,7 +276,6 @@ final class XrefCommands {
         JsonArray xrefs = new JsonArray();
         ReferenceManager refMgr = session.program().getReferenceManager();
         FunctionManager fm = session.program().getFunctionManager();
-        SymbolTable st = session.program().getSymbolTable();
         Set<String> seen = new HashSet<>();
 
         for (Address addr : targetAddrs) {
@@ -302,12 +299,7 @@ final class XrefCommands {
                 if (toFunc != null) {
                     xrefData.addProperty("to_function", toFunc.getName());
                 } else {
-                    Symbol toSym = st.getPrimarySymbol(addr);
-                    if (toSym != null) {
-                        xrefData.addProperty("to_function", toSym.getName());
-                    } else {
-                        xrefData.add("to_function", JsonNull.INSTANCE);
-                    }
+                    xrefData.add("to_function", JsonNull.INSTANCE);
                 }
                 xrefs.add(xrefData);
             }
