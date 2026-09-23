@@ -100,7 +100,6 @@ public final class MemoryInfoCommands {
 
         for (MemoryBlock block : memory.getBlocks()) {
             JsonObject blockData = MemoryBlockInfo.describe(block);
-            blockData.add("is_initialized", blockData.remove("initialized"));
             blocks.add(blockData);
         }
 

@@ -88,8 +88,7 @@ pub struct MemoryBlock {
     pub end: String,
     pub size: u64,
     pub permissions: String,
-    #[serde(default)]
-    pub is_initialized: bool,
+    pub initialized: bool,
     #[serde(default)]
     pub is_loaded: bool,
 }
@@ -194,8 +193,7 @@ pub struct StatsResult {
     pub imports: Option<usize>,
     #[serde(default)]
     pub exports: Option<usize>,
-    #[serde(default)]
-    pub memory_blocks: Option<usize>,
+    pub memory_blocks: usize,
 }
 
 // ============================================================================

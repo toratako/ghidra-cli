@@ -247,19 +247,11 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
         for receipt in [&ram, &mmio, &zero, &none] {
             let block = &receipt["after"];
             let mapped = map_block(client, &block["start"]);
-            for field in [
-                "name",
-                "permissions",
-                "address_space",
-                "overlay",
-                "base_space",
-                "type",
-                "volatile",
-            ] {
-                assert_eq!(mapped[field], block[field], "{field}");
-            }
-            assert_eq!(mapped["is_initialized"], block["initialized"]);
-            assert_eq!(mapped["is_loaded"], true);
+            assert_eq!(&mapped, block);
+            let info = client
+                .memory_info(block["start"].as_str().unwrap())
+                .unwrap();
+            assert_eq!(&info["memory"], block);
         }
         // Mapped blocks report initialized=false natively, but still expose the
         // initialized source bytes. Only genuinely unknown storage is unreadable.
@@ -289,7 +281,7 @@ public class CreateBlockReadAliases extends GhidraScript {
         ] {
             let mapped = map_block(client, &json!(start));
             assert_eq!(mapped["type"], kind);
-            assert_eq!(mapped["is_initialized"], false);
+            assert_eq!(mapped["initialized"], false);
             assert_eq!(read(client, start, 8)["hex"], expected);
         }
         let saved = client.memory_map().unwrap();
@@ -395,6 +387,14 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         assert_eq!(extra["after"]["base_space"], "ram");
         assert_eq!(extra["after"]["overlay"], true);
         assert_eq!(extra["after"]["start"], "bank1:0x00004000");
+        let blocks = client.memory_map().unwrap();
+        let block_count = blocks["blocks"].as_array().unwrap().len();
+        // Seed, physical block, initialized overlay, and uninitialized overlay.
+        assert_eq!(block_count, 4);
+        assert_eq!(
+            client.stats().unwrap()["stats"]["memory_blocks"],
+            block_count
+        );
         let changed = cli(
             harness,
             program,

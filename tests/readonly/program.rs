@@ -1,7 +1,7 @@
 use super::{harness, TEST_PROGRAM};
 use crate::common::{
     ghidra,
-    schemas::{MemoryBlock, StringData, Validate},
+    schemas::{MemoryBlock, StatsResult, StringData, Validate},
     test_project, GhidraCommand,
 };
 use serial_test::serial;
@@ -184,6 +184,12 @@ fn test_stats_has_all_fields() {
     let json: serde_json::Value = result.data();
 
     let obj = json["stats"].as_object().expect("stats object");
+    let stats: StatsResult = serde_json::from_value(json["stats"].clone()).unwrap();
+    let blocks = harness.client().unwrap().memory_map().unwrap();
+    assert_eq!(
+        stats.memory_blocks,
+        blocks["blocks"].as_array().unwrap().len()
+    );
 
     // Verify key fields exist
     for key in &["functions", "strings", "symbols"] {

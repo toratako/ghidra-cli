@@ -309,11 +309,11 @@ public final class ProgramCommands {
             }
 
             long memorySize = 0;
-            int sectionCount = 0;
+            int memoryBlockCount = 0;
             for (MemoryBlock block : memory.getBlocks()) {
                 session.monitor().checkCancelled();
                 memorySize += block.getSize();
-                sectionCount++;
+                memoryBlockCount++;
             }
 
             int importCount = 0;
@@ -349,7 +349,7 @@ public final class ProgramCommands {
             stats.addProperty("imports", importCount);
             stats.addProperty("exports", exportCount);
             stats.addProperty("memory_size", memorySize);
-            stats.addProperty("sections", sectionCount);
+            stats.addProperty("memory_blocks", memoryBlockCount);
             stats.addProperty("data_types", dataTypeCount);
             stats.addProperty("instructions", instructionCount);
             stats.addProperty("program_name", session.programName());

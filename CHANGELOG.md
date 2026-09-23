@@ -13,6 +13,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Use `initialized` consistently in memory map, info, and block edit receipts.
+- Rename `program stats`'s `sections` field to `memory_blocks`, counting all
+  Program memory blocks, including overlays and uninitialized blocks.
 - Accept decimal and `0x`-prefixed hexadecimal integer arguments consistently;
   leading zeroes remain decimal, and each argument retains its sign and range
   constraints. Addresses and byte patterns retain their separate syntax.

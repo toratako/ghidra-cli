@@ -345,10 +345,11 @@ nonloaded overlays, such as overlays of `OTHER`, cannot be moved.
 Block edits return `{status, changed, before, after}` with nullable descriptions;
 delete also reports `overlay_removed`. Descriptions include name, bounds, byte
 size, permissions, initialized/loaded flags, address space, overlay/base space,
-native block type, and volatility. Map retains `is_initialized`; info and receipts
-use `initialized`. Mapped blocks cannot be edited, and move/delete cannot affect
-indirect-mapping backing ranges. These are ordinary atomic requests with no
-automatic reanalysis; move/delete use Ghidra's native analysis-update semantics.
+native block type, and volatility. Map, info, and receipts share the same block
+description, including `initialized`. Mapped blocks cannot be edited, and
+move/delete cannot affect indirect-mapping backing ranges. These are ordinary
+atomic requests with no automatic reanalysis; move/delete use Ghidra's native
+analysis-update semantics.
 
 `data_list` takes `limit` and returns `{items, count}` for top-level defined
 data; filtering, sorting and offset remain in Rust. `data_read` takes `target`,
@@ -404,6 +405,10 @@ actual frame owner, including thunk forwarding. Stack variable rows contain
 Xref rows include native `operand_index`,
 `source`, and `primary`; operand `-1` is the mnemonic reference. Incoming
 deduplication includes the operand so distinct references stay selectable.
+
+`stats` returns a `stats` object whose `memory_blocks` counts all Program memory
+blocks, including overlays, mapped blocks, and uninitialized blocks.
+
 `program_info` adds nullable `executable_md5` and `executable_sha256` from
 imported-file metadata, not from current memory bytes.
 Its `language_id` and `compiler_spec_id` are exact import-compatible IDs;

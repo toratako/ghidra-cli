@@ -114,16 +114,15 @@ fn test_snapshot_stats_structure() {
 
     let json: serde_json::Value = result.data();
     insta::assert_json_snapshot!("stats_structure", json, {
-        ".functions" => "[N]",
-        ".instructions" => "[N]",
-        ".strings" => "[N]",
-        ".symbols" => "[N]",
-        ".imports" => "[N]",
-        ".exports" => "[N]",
-        ".memory_blocks" => "[N]",
-        ".memory_size" => "[N]",
-        ".sections" => "[N]",
-        ".data_types" => "[N]",
+        ".stats.functions" => "[N]",
+        ".stats.instructions" => "[N]",
+        ".stats.strings" => "[N]",
+        ".stats.symbols" => "[N]",
+        ".stats.imports" => "[N]",
+        ".stats.exports" => "[N]",
+        ".stats.memory_blocks" => "[N]",
+        ".stats.memory_size" => "[N]",
+        ".stats.data_types" => "[N]",
     });
 }
 
