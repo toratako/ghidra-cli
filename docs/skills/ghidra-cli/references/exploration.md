@@ -21,10 +21,9 @@ the entry block, not every body range.
 `basic_block_count` counts optimized decompiler blocks. Jump tables contain
 only recovered destinations; an empty result does not rule out an indirect branch.
 
-Use `--with-addresses` after reading C to locate instructions for closer inspection.
-The positions are attached to displayed operations, not every instruction behind
-an expression: a condition may identify the branch but omit the preceding compare.
-Inspect the surrounding disassembly before choosing a patch location.
+`--with-addresses` maps displayed operations, not every contributing instruction:
+a condition may identify the branch but omit the compare. Inspect surrounding
+disassembly before choosing a patch location.
 
 ```bash
 ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target
@@ -38,8 +37,6 @@ transfers and body crossings. Output budgets do not limit native analysis time.
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 
-To recover missing function definitions from existing calls:
-
 ```bash
 ghidra-cli find function-candidates --sort=-call_count,address --limit 20 --project target
 ghidra-cli disassemble 0x401800 --limit 20 --project target
@@ -47,11 +44,10 @@ ghidra-cli xref to 0x401800 --project target
 ghidra-cli function create 0x401800 --project target
 ```
 
-`call_count` counts distinct evidenced call sites, not confidence. Bounds select
-destinations; their callers may lie outside the range. Candidates require existing
-instructions outside every function body and exclude incoming fallthrough,
-including decoded padding. An empty result does not rule out missing functions
-in undisassembled bytes or reached only through unresolved indirect calls.
+Function candidates require existing instructions outside all function bodies,
+with call evidence and no incoming fallthrough (even from decoded padding).
+Bounds select destinations, not callers; `call_count` counts distinct call sites.
+Undisassembled code and targets reached only by unresolved indirect calls are missed.
 
 ## Search, strings, xrefs, and graphs
 
@@ -162,39 +158,31 @@ ghidra-cli memory read-vtable 0x140005020 --entries 8 --abi msvc --project targe
 ghidra-cli memory read-vtable 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
 ```
 
-For `memory read-vtable`, supply the address point (slot 0, where an object's vptr
-points), which can differ from a symbol marking the start of the whole table.
-Choose the ABI and encoding from the binary's layout. `relative32` reads LLVM's
-32-bit relative layout, including its RTTI proxy. The requested slot count is
-your scope, not an inferred table length; null and undefined targets keep their
-slot positions. `complete` concerns slot bytes, while `header.complete` concerns
-ABI metadata. A readable table alone does not establish its class or callers.
+`memory read-vtable` starts at the address point (slot 0, where the object's vptr
+points), which can differ from the table symbol. `relative32` reads LLVM's layout,
+including its RTTI proxy. Slot count is supplied, not inferred; null and undefined
+targets retain their slots. `complete` concerns slot bytes; `header.complete`
+concerns ABI metadata.
 
-`memory read` preserves the encoded pointer value and distinguishes its target
-from Ghidra's normalized code address and thunk destinations. Use these when a
-Thumb pointer or adjustment thunk differs from the eventual function entry.
+`memory read` distinguishes encoded pointer targets, normalized code addresses
+(e.g. Thumb), and thunk destinations.
 
-`find address-tables` returns Ghidra's candidates, which can include callback
-and dispatch tables. Its bounds select candidate starts: a detected table can
-extend past `--end`. Native boundary rules can split or miss a table, so inspect
-the bytes before choosing a VTable interpretation. Search context and
-completion are retained in `.meta`; filtering or sorting can require a full scan.
+`find address-tables` can find callback and dispatch tables. Bounds select starts,
+so tables can extend past `--end`. Native boundary rules can split or miss tables;
+inspect bytes before interpreting one as a VTable. Check scan completion in `.meta`.
 
-To investigate an implementation reached through a known absolute-pointer table:
+For callers through an absolute-pointer table:
 
 ```bash
 ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --project target
 ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --within dispatch --project target
 ```
 
-`FUNCTION` is the callee; `--within` restricts the caller bodies searched. Inspect
-each candidate's `evidence`: `table_value` traces the selected slot's address,
+In `evidence`, `table_value` traces the selected slot's address,
 `table_type` associates a recovered table type, and `slot_offset` matches only an
-offset. The latter two do not establish the runtime table; unrelated classes
-often use the same slot. Branch merges and trace failures remain in
-`.meta.scan.unresolved`. Use the call-site address to inspect the caller before
-adding an xref. An incomplete scan or an unreadable table cannot establish that
-callers are absent; narrow `--within` to investigate failed functions.
+offset. The latter two do not establish the runtime table. Branch merges and
+trace failures appear in `.meta.scan.unresolved`; narrow `--within` to investigate
+failed functions. An incomplete scan or unreadable table cannot rule out callers.
 
 ## Analysis diagnostics
 

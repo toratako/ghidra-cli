@@ -52,12 +52,10 @@ ghidra-cli function get 0x401000 --with-signature --project target
 ghidra-cli function clear-thunk 0x401000 --project target
 ```
 
-Set the relationship after identifying the forwarding destination. Editing a
-thunk changes its direct target; other thunks that forward through it also resolve
-through the new destination. This updates Ghidra's analysis model, not the branch
-instruction. Clearing an incorrect relationship exposes the function's own saved
-definition without copying the destination's signature. Inspect the returned
-`after` signature before correcting its types or calling convention.
+`set-thunk` changes the direct target, affecting thunks that forward through it,
+without changing branch bytes. `clear-thunk` exposes the function's own saved
+definition without copying the destination's signature; inspect `after` before
+editing its prototype.
 
 ### One call site's prototype
 
@@ -152,21 +150,15 @@ ghidra-cli type field uses /Recovered/Header --field flags --function parse_pack
 ghidra-cli type field uses /Recovered/Header --field flags --filter 'access=write'
 ```
 
-Type uses follows typedefs, pointers and arrays. The default searches top-level
-data and database signatures; `--kind variable` decompiles functions to find
-parameters and locals, including inferred variables. Use a full type path to
-distinguish same-named types.
+`type uses` follows typedefs, pointers and arrays. It searches top-level data and
+saved signatures by default; `--kind variable` includes inferred decompiler
+parameters and locals.
 
-Field uses distinguishes reads, writes and address-taking from the current
-decompiler evidence. Passing a field's address to a call does not establish what
-the callee does to it. `unknown` retains an identified field use whose access
-cannot be classified. Check `meta.scan` before treating no matches as evidence:
-failed decompilations and unresolved field identities make the search incomplete.
-Even a completed scan depends on the current type recovery. Narrow expensive
-semantic searches with `--function`; type edits can change their results.
-Instruction locations follow High P-code provenance, so optimized expressions
-can point to a consuming instruction. Inspect the function's disassembly when
-the exact machine load or store matters.
+Field uses depend on current decompiler types. Passing a field's address to a call
+does not establish the callee's access; `unknown` means an identified use could
+not be classified. Check `meta.scan` for failed decompilations or unresolved field
+identities; narrow searches with `--function`. High P-code locations can identify
+a consuming instruction; inspect disassembly to locate the exact load or store.
 
 ```bash
 ghidra-cli type get Header --project target
@@ -216,20 +208,14 @@ ghidra-cli listing define-data 0x404000 --type /SDK/Header --project target
 ghidra-cli type export-gdt protocol.gdt --where 'category^"/Protocol"' --project target
 ```
 
-Selection chooses root definitions; referenced types travel with them, including
-dependencies outside the selected category. Use `--all` to select every root.
-Import registers definitions in the Program; apply them where the binary supports
-that interpretation. Archive listing needs a project bridge but no loaded Program.
+Selected roots bring their dependencies, even from other categories. Conflicting
+definitions/origins or ABI layout changes reject the entire import. Inspect the
+dependency path: changing roots can still select the conflicting dependency.
+Layout conflicts require an archive compatible with the target ABI.
 
-Conflicting definitions or origins, and changes to ABI layout, reject the entire
-import. Inspect the reported dependency path before changing the root selection;
-an incompatible dependency can be shared by several roots. Use an archive built
-for the target ABI when layout differs. An equivalent local definition can adopt
-the archive's identity; `associated` reports that change. Export gives local
-definitions new archive identities while preserving existing file-archive origins.
-GDT cannot retain field-specific interpretation settings such as an endian override;
-a settings conflict on export means those definitions need a representation the
-archive can preserve before sharing them.
+Equivalent local definitions can adopt the archive's identity. Export gives local
+types new archive identities and preserves existing file-archive origins.
+GDT cannot retain field-specific interpretation settings such as endian overrides.
 
 ### Trying a separate type definition
 
@@ -264,17 +250,14 @@ Unnamed union members require `--ordinal` from `type get`; deletion renumbers or
 
 ### Growing recovered structures
 
-Inspect Ghidra's layout candidate for a variable before defining its type:
-
 ```bash
 ghidra-cli function var infer-struct dispatch --var manager --with-accesses
 ```
 
-The candidate comes from the selected function. Its size is not the object's
-proven allocation size, and gaps are not recovered fields. Access records are
-the LOAD/STORE evidence retained by Ghidra's helper, not an exhaustive access
-search. If the variable is split into partial HighVariables, inspect
-`pcode function dispatch --high` before choosing a different root.
+The candidate uses only the selected function; its size does not prove allocation
+size, and gaps are not recovered fields. Access records contain Ghidra's retained
+LOAD/STORE evidence, not all accesses. For partial HighVariables, inspect
+`pcode function dispatch --high` before choosing another root.
 
 ```bash
 ghidra-cli type field set Manager --offset 0x1c --name hook --type 'Hook *'

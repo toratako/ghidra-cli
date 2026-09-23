@@ -91,16 +91,14 @@ Do not replay successful edits; see [resuming a stopped batch](references/batch.
 See [batch results](references/batch.md#result-structure) for per-command results
 and error details.
 
-A socket timeout does not cancel the job. For lost responses or timeouts, run
-`recovery.argv` from the error to retrieve that operation with `job result ID`.
-Exit 0 means retrieval succeeded: inspect `response.status` and `response.detail`
-for the original outcome. Exit 75 means it is still pending. Results are temporary
-and disappear on bridge restart; an unavailable result does not prove non-execution.
-One CLI command can send several operations, so check the recovered `command`
-before deciding whether to repeat a batch line. Use `job list` to find jobs and
-`job get ID` to inspect progress or result availability.
+A socket timeout (exit 75) does not cancel the job. For lost responses or timeouts,
+run the error's `recovery.argv` to retrieve the operation with `job result ID`.
+Retrieval exits 75 while pending; exit 0 means retrieval succeeded, so inspect
+`response.status` and `response.detail` for the original outcome.
+Results are temporary and lost on bridge restart; unavailable does not mean
+unexecuted. One CLI command can send several operations: check the recovered
+`command` before retrying a batch line.
 `job cancel` removes queued jobs immediately; running jobs cancel cooperatively.
-A timeout is reported with exit 75, distinct from a command failure.
 
 ## Read details as needed
 

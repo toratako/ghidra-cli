@@ -8,9 +8,8 @@ ghidra-cli script run - --project target < ./scripts/Inspect.java
 ```
 
 Script and expected artifact paths resolve from the CLI working directory.
-Use `--expect PATH` for required nonempty artifacts or `--expect-rows PATH MIN_ROWS`
-for a minimum row count; both can be repeated. `--allow-empty` permits expected
-empty files but does not waive a minimum row count.
+`--expect` requires nonempty artifacts; `--allow-empty` permits empty files
+without waiving `--expect-rows` minimums.
 
 Stdin source must declare exactly one top-level public class extending
 `GhidraScript`. Keep supporting source files in the file script's parent
