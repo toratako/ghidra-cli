@@ -20,10 +20,8 @@ ghidra-cli function get parse_header --with-signature --with-frame --project tar
 ghidra-cli function set-noreturn abort_path --project target
 ```
 
-`function rename` uses `--address` to disambiguate duplicate names.
-
 `function set-return-type` can save inferred parameter locations without fixing
-their types. Use `function set-signature` when the complete prototype is known.
+their types.
 
 `function get --with-signature` reads the Program prototype and ABI storage,
 including hidden arguments and indirect returns; decompiler output can still
@@ -38,9 +36,6 @@ inferring it. Editing an inferred parameter can save the other inferred
 parameters, including their types and storage; inspect
 `function get --with-signature` afterward.
 
-Disambiguate `--var` names with `--filter`; re-read candidates if decompilation
-changes their identity:
-
 ```bash
 ghidra-cli function var set parse_header --var value \
   --filter 'kind=local AND first_use=0x00401234' --name length --project target
@@ -51,9 +46,6 @@ and calling convention.
 
 ### One call site's prototype
 
-Use a call-site override when one indirect or variadic call needs a prototype
-that should not change the callee's declaration or other calls:
-
 ```bash
 ghidra-cli function call-signature get dispatch --at 0x401234 --project target
 ghidra-cli function call-signature set dispatch --at 0x401234 \
@@ -62,12 +54,11 @@ ghidra-cli decompile dispatch --project target
 ghidra-cli function call-signature clear dispatch --at 0x401234 --project target
 ```
 
-The function target is the caller, and `--at` is the call instruction's start.
-The signature's function name does not rename or resolve its destination.
+The target is the caller; the override applies only at `--at`, leaving the
+callee's signature unchanged.
 Omitting `--convention` uses the Program default rather than a callee or
 decompiler guess.
 
-An absent override does not mean the decompiler has no inferred prototype.
 Saved overrides can outlive a patched call or body change; inspect their
 applicability with `get` and use `clear` with the original caller and address.
 
@@ -75,25 +66,17 @@ applicability with `get` and use `clear` with the original caller and address.
 
 `comment list` includes comments on external functions and unmapped addresses.
 
-Use stdin or a file to preserve comment text containing shell metacharacters:
-
 ```bash
 printf '%s' 'possible vtable load; verify callers' | \
   ghidra-cli comment set 0x401000 --stdin --project target
 ghidra-cli comment set 0x401000 --text-file ./note.txt --project target
-```
 
-Use bookmarks for tasks you want to revisit by category, and comments for an
-explanation of the code:
-
-```bash
 ghidra-cli bookmark set 0x401000 'Check the jump table bounds' --category Review
 ghidra-cli bookmark list --filter 'category=Review'
 ghidra-cli bookmark delete 0x401000 --category Review
 ```
 
-Bookmark type and category select one bookmark at an address; deleting a `Note`
-in `Review` leaves analysis-error bookmarks there.
+Bookmark identity is address, type, and category.
 
 ## Symbols
 
@@ -111,13 +94,10 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `symbol get` accepts names or addresses.
 
 Namespace paths start at global scope, such as `app::Widget`. Moving a function
-into a class can change its native `this` parameter/type. A class namespace does
-not describe member layout or inheritance. Deleting a namespace through
-`symbol delete` can also delete its children.
+into a class can change its native `this` parameter/type. Deleting a namespace
+through `symbol delete` can also delete its children.
 
 ## References
-
-Record a recovered table-slot relationship or an indirect-call candidate:
 
 ```bash
 ghidra-cli xref from 0x405020
@@ -128,14 +108,12 @@ ghidra-cli xref delete 0x401234 0x401300 --operand 0
 
 Use the zero-based `operand_index` and `source` from `xref from` to select an
 existing reference. Editing an analysis-created reference requires
-`--source ANALYSIS`; creation never replaces a conflicting reference.
+`--source ANALYSIS`.
 `xref set-primary` chooses the representative destination for one operand,
 including replacing an analysis-created primary. A reference can improve later
 analysis, but does not establish that the decompiler recovered the indirect call.
 
 ## Named constants
-
-Use an Equate when a particular numeric operand has an understood meaning:
 
 ```bash
 ghidra-cli equate create READ_MODE 0x1
@@ -144,10 +122,8 @@ ghidra-cli equate get READ_MODE
 ghidra-cli equate detach 0x401234 READ_MODE --operand 1
 ```
 
-`attach` annotates one matching scalar operand, not every occurrence of the value.
-`detach` preserves the definition and its other uses; `delete` removes the
-definition and all its uses. Existing decompiler-specific references can have
-`operand_selectable: false`; an operand index cannot identify those uses safely.
+`delete` removes the definition and all its uses. Decompiler-specific references
+can have `operand_selectable: false`; an operand index cannot identify those uses safely.
 Inspect named constants with `equate get` and `decompile`; `disassemble` keeps
 the instruction's numeric operand representation.
 
@@ -178,22 +154,17 @@ ghidra-cli type import-c --file recovered_types.h --category /Recovered
 ghidra-cli type import-c --stdin --category /Recovered < recovered_types.h
 ```
 
-`type create struct` accepts a bare name and creates an empty struct; use
-`field set`, `field append`, or `import-c` for its definition.
-
 `type apply --force` clears conflicting code or data units, including instructions,
 before applying the type.
 
-Type expressions accept pointers and fixed-length arrays, such as `byte[16]`,
-`Hook *[8]`, and `byte[2][3]`. Sizes use the selected program's data organization.
-Ambiguous short names fail with full paths in `detail.candidates`. Use `/Recovered/Hook` or
-`/Recovered/Hook *[8]` to select a category explicitly.
+Type expressions accept `byte[16]`, `Hook *[8]`, and `byte[2][3]`;
+sizes follow the program's data organization. Use paths such as
+`/Recovered/Hook *[8]` to disambiguate categories.
 
 Fallback aliases `uintN_t`/`uN` and `intN_t`/`sN` have fixed widths for N = 8, 16,
 32, or 64 bits. Existing types with the requested name take precedence;
 ordinary C spellings such as `unsigned int` use the target ABI.
 
-`type delete` selects a registered program type by name or full path.
 `type rename` cannot rename primitive, array, or pointer types; use
 `type create typedef` for an alias.
 
@@ -207,8 +178,7 @@ ghidra-cli type move /Draft/HeaderV2 /Recovered
 ```
 
 Clone separates only the top-level definition. Referenced types remain shared;
-cloning `Node` to `NodeV2` leaves `next` pointing to `Node *`. Retarget that field
-explicitly when needed.
+cloning `Node` to `NodeV2` leaves `next` pointing to `Node *`.
 
 Resize adjusts the undefined tail of a non-packed structure. It cannot remove
 defined fields, including explicit padding arrays. Size changes propagate to
@@ -227,9 +197,7 @@ ghidra-cli type field set Payload --ordinal 1 --comment 'Used when tag == 2'
 ghidra-cli type field delete Payload --ordinal 0
 ```
 
-Use the zero-based `ordinal` from `type get` to select unnamed union members,
-or `--field NAME` for named members. Deletion renumbers later ordinals.
-Changing the largest member can change the layout of containing types.
+Unnamed union members require `--ordinal` from `type get`; deletion renumbers ordinals.
 
 ### Growing recovered structures
 
@@ -240,14 +208,10 @@ ghidra-cli type field set Manager --field hook --comment ''
 ghidra-cli type field clear Manager --offset 0x1c
 ```
 
-`field set`, `field clear`, and `field delete` select a struct field by its exact
-starting byte offset, `--field NAME`, or the latest `--ordinal` from `type get`.
-In `field set`, omitted attributes keep their current values. At an offset in
-undefined space, supply `--type`.
+Field offsets must be exact starts. In undefined space, `field set` requires `--type`.
 
 Shrinking a field leaves undefined bytes. Growing consumes undefined space or
 extends the structure, but cannot overwrite another defined field.
-For fixed byte spans, use an array type such as `byte[8]`.
 For types that need an explicit length, use `--type string --size 8` with
 `field append` or `field set`.
 
@@ -256,9 +220,9 @@ size and later offsets, though component ordinals can change. `field delete`
 removes ordinary fields' bytes and shifts later fields. Deleting a bitfield in
 a non-packed structure leaves the byte layout unchanged.
 
-`field append` uses the structure's packing and alignment. Packed structures also
-allow name/comment edits, but reject field type changes and clearing defined
-fields. Bit-fields and zero-length fields cannot be edited with offset commands.
+Packed structures allow name/comment edits, but reject field type changes and
+clearing defined fields. Bit-fields and zero-length fields cannot be edited with
+offset commands.
 
 In `type get`, an unnamed field has `name: null`; `display_name` gives its
 generated name, which cannot be used with `--field`.
@@ -275,7 +239,6 @@ ghidra-cli type field clear Flags --field mode
 The placement range is read as a Program-endian integer; bit offset zero is its
 least significant bit. Ghidra normalizes the result to the smallest byte range,
 so the example's field starts at byte 0 on little-endian and byte 3 on big-endian.
-Use the returned component range and `bit_offset` when decoding its value.
 
 Width edits stay within that current minimal range, even if creation specified
 a larger storage size. Select bitfields by real name or a fresh ordinal because
@@ -285,16 +248,16 @@ with `import-c`.
 ## Function tags
 
 ```text
-ghidra-cli tag list                        # All tags (name, comment, use count)
-ghidra-cli tag get <name>                  # Tag details
-ghidra-cli tag create <name> --comment "…" # Create a tag (comment optional)
+ghidra-cli tag list
+ghidra-cli tag get <name>
+ghidra-cli tag create <name> --comment "…"
 ghidra-cli tag attach <func> <tag>...      # Attach existing tags
 ghidra-cli tag detach <func> <tag>...      # Detach tags (--all clears every tag)
-ghidra-cli tag rename <old> <new>          # Rename everywhere it is used
-ghidra-cli tag set-comment <name> "…"      # Set/clear a tag's comment
+ghidra-cli tag rename <old> <new>
+ghidra-cli tag set-comment <name> "…"
 ghidra-cli tag delete <name>               # Delete tag, detaching from all functions
 ghidra-cli function list --tag <name>      # Functions carrying a tag (repeatable = AND)
-ghidra-cli function list --untagged        # Functions with no tags
+ghidra-cli function list --untagged
 ```
 
 Tag names are case-sensitive; `--filter "tags ~ 'crypto'"` matches tag text.

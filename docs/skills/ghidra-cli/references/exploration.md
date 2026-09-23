@@ -13,13 +13,6 @@ ghidra-cli xref to main --project target
 ghidra-cli xref to malloc --project target
 ```
 
-Use `--with-vars` and `--with-params` for decompiler variable and parameter
-metadata; parameters are in declaration order. Ambiguous function names return
-candidates; use an address to select one.
-
-`--format c` prints decompiled code without JSON escaping. Use JSON when you
-need the accompanying variable/parameter metadata.
-
 In `warnings`, `source: c_comment` may include user-written notes;
 `source: decompiler` identifies an API diagnostic. `entry_memory` describes only
 the entry block, not every body range.
@@ -27,18 +20,14 @@ the entry block, not every body range.
 `basic_block_count` counts optimized decompiler blocks. Jump tables contain
 only recovered destinations; an empty result does not rule out an indirect branch.
 
-Use `graph cfg` to choose instruction ranges around a branch or join, including
-unreachable instructions recorded in the function body:
-
 ```bash
 ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target
 ```
 
-CFG blocks retain their native boundaries; `body_intersection` shows which part
-belongs to the function. Inspect `calls` separately from successor `edges`, and
-`boundaries` for unresolved transfers and body crossings. Raise the output budgets
-for an incomplete graph before treating missing edges as absent; these budgets
-do not limit native analysis time.
+`graph cfg` includes unreachable instructions in the function body. Blocks retain
+their native boundaries; `body_intersection` shows which part belongs to the
+function. Calls are separate from successor edges; `boundaries` records unresolved
+transfers and body crossings. Output budgets do not limit native analysis time.
 
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
@@ -46,8 +35,7 @@ Decompilation has no native time limit by default; use
 ## Search, strings, xrefs, and graphs
 
 Call queries resolve thunks and typed pointers using Ghidra's references;
-unresolved indirect calls may be absent. Passing a function pointer as data
-does not make a function a caller.
+unresolved indirect calls may be absent.
 `via` is the referenced address before thunk/pointer resolution. `destination`
 is the resolved landing address; `callee_address` is the function entry when
 defined. Use `graph callers ADDRESS` to investigate a destination before
@@ -68,7 +56,6 @@ ghidra-cli find constant 0x9e3779b9 --project target
 ghidra-cli find constant -1 --bits 32 --project target
 ghidra-cli find constant --min 0x20 --max 0x7e --project target
 ghidra-cli graph callers CreateProcessW --project target
-ghidra-cli xref to malloc --project target
 ghidra-cli xref to 0x401000 --project target
 ghidra-cli xref from main --function --project target
 ghidra-cli graph calls --project target
@@ -80,19 +67,16 @@ ghidra-cli graph callees main --depth 2 --limit 100 --project target
 nodes. Edges from selected nodes can point outside the returned node set.
 
 `find string` and `string refs` use case-insensitive literal substring matching
-on defined string values. An empty result does not establish that the text is
-absent from memory. `find string ""` matches all defined string values.
+on defined string values; use `find text` for undefined strings.
 For `string list` and `find string`, `char_length` counts Unicode code points,
 not UTF-16 code units or displayed grapheme clusters. `byte_length` is the
 Ghidra data definition's occupied byte length, including any terminators or
 padding in that definition; it is not a re-encoding of `value`.
 
 `find text TEXT` searches the program's loaded memory regardless of string
-definitions. It encodes the literal TEXT using `--encoding` (default `utf-8`)
-and matches exact bytes, including overlapping occurrences. Matching is
-case-sensitive, without character normalization or an added NUL terminator;
-matches need not align with string boundaries. Encodings use Java charset names
-and aliases, such as `shift_jis` or `windows-31j` (CP932).
+definitions, matching exact encoded bytes including overlapping occurrences.
+Matching is case-sensitive, without normalization or an added NUL terminator.
+Encodings use Java charset names and aliases, such as `shift_jis` or `windows-31j` (CP932).
 Use `utf-16le` or `utf-16be` for UTF-16 without a BOM; Java's `utf-16` encoding
 includes a BOM in the search bytes.
 
@@ -106,9 +90,8 @@ immediates and displacements. It does not search address operands or data, or
 combine constants built by several instructions. Use `find bytes` for encoded
 data and `xref` for address references.
 
-String names and external/import names resolve directly. For plain
-`graph callers/callees`, `--limit N` bounds traversal; filter, sort, count, or
-offset may require a broader traversal.
+For plain `graph callers/callees`, `--limit N` bounds traversal;
+filter, sort, count, or offset may require a broader traversal.
 For instruction-text matching and disassembly ranges, see
 [low-level analysis](low-level.md#disassembly-and-analysis-boundaries).
 
@@ -128,16 +111,15 @@ ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project ta
 ```
 
 `incoming_reference_count` counts Ghidra's recorded references to any address
-inside the object, including fields and array elements, rather than just its start.
+inside the object, including fields and array elements.
 
 `data read` interprets current memory using its applied type. Interior targets
 select a containing component and retain its `parents`; overlapping union
 members remain alternative interpretations. Pointers are not followed.
 
-Use `memory info` to check file provenance and `memory read --source original`
-to compare current memory with preserved import bytes before relocations or
-patches. This requires a file mapping for the whole range; it does not reopen
-the executable on disk or decode original bytes as current-memory pointers.
+`memory read --source original` reads preserved import bytes before relocations
+or patches, requiring a file mapping for the whole range. It does not reopen
+the executable or decode original bytes as current-memory pointers.
 
 `memory file-mappings --file-offset` can match several placements of the same
 input bytes, including overlays. To select one saved input, pass
@@ -156,13 +138,11 @@ ghidra-cli bookmark list --filter 'type=Error' --project target
 ghidra-cli bookmark get 0x401000 --project target
 ```
 
-Bookmarks help locate analysis problems after `analysis run`.
-
 ## Query controls
 
 Query order is filter, sort, offset/limit, then count or field selection.
-For lists, the result cap defaults to `default_limit` (1000 unless configured), including
-with no query options or only `--fields`. `--limit 0` returns all rows.
+The list cap defaults to `default_limit` (1000 unless configured);
+`--limit 0` returns all rows.
 `--count` ignores the default cap but honors an explicit offset/limit, counting
 the selected page. Small limits may still require scanning or fetching all matches.
 

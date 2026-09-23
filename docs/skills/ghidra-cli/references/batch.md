@@ -1,12 +1,9 @@
 # Batch
 
 See [batch basics](../SKILL.md#basic-batch) for a query example,
-and [save and failure behavior](../SKILL.md#results-edits-and-jobs)
-for persistence and retry decisions.
+and [save and failure behavior](../SKILL.md#results-edits-and-jobs).
 
 ## Syntax
-
-A batch file has one subcommand per line, without `ghidra-cli`. Quote multiword arguments, for example:
 
 ```text
 function set-signature main --signature "int main(int argc, char **argv)"
@@ -23,8 +20,7 @@ Nested batches inherit `--on-error` unless overridden.
 
 ## Dependent edits
 
-Use `--on-error stop` when later edits depend on earlier commands succeeding.
-Example `edits.ghidra`, replacing the address with the target function's address:
+`edits.ghidra`:
 
 ```text
 function rename 0x401000 parse_header
@@ -49,10 +45,8 @@ lines are neither validated nor executed.
 
 ## Target selection and query controls
 
-Per-line `--project`/`--program` override the batch project/current selection;
-omitted targets inherit the batch project/current selection. Program switches
-persist for subsequent lines in that project. Filters, fields, sorting, limits,
-and counts apply within each result; see [query controls](exploration.md#query-controls).
+Per-line `--project`/`--program` override the batch targets. Program switches
+persist for subsequent lines in that project. See [query controls](exploration.md#query-controls).
 
 For import inputs and program export destinations, see
 [artifact paths](programs.md#export).

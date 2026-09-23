@@ -12,10 +12,8 @@ ghidra-cli disassemble 0x401234 --end 0x401280 --limit 20 --project target
 ghidra-cli function create 0x401234 parse_entry --project target
 ```
 
-`disassemble` reads existing instructions from the selected start; `--end`
-sets an inclusive end address. It can continue beyond the starting function.
-Use `function disassemble` to restrict results to the entire function body,
-including disjoint ranges. Both use the shared
+`disassemble` can continue beyond the starting function. `function disassemble`
+restricts results to its body, including disjoint ranges. Both use the shared
 [query controls](exploration.md#query-controls).
 
 `find instruction PATTERN` matches a literal substring of Ghidra's instruction
@@ -24,41 +22,26 @@ bound can be omitted; a one-sided range stays in the supplied endpoint's address
 space. For resolved call sites, use
 [graph callers](exploration.md#search-strings-xrefs-and-graphs).
 
-`--format asm` prints one instruction per line (address, bytes, mnemonic, operands).
-
-Use `listing define-code TARGET` when auto-analysis missed a known code location.
-It creates instruction definitions by following statically known code flow,
-rather than sweeping every byte. `--end END` confines complete instructions and
+`listing define-code` follows statically known code flow rather than sweeping
+every byte. `--end END` confines complete instructions and
 delay-slot groups to the inclusive TARGET:END range; without it, code creation
-has no explicit range bound. Endpoints must share an address space. Existing
-instructions/data are not overwritten; use `listing undefine` to replace
-incorrect definitions.
-The command returns a change receipt; use `disassemble` afterward to read instructions.
-
-If analysis ran through inline data or chose the wrong boundary:
+has no explicit range bound. Existing instructions/data are not overwritten;
+use `listing undefine` to replace incorrect definitions.
 
 ```bash
 ghidra-cli listing undefine 0x401200 --end 0x40121f --project target
 ghidra-cli listing undefine 0x401200 --end 0x40121f --disassemble-at 0x401210 --project target
 ```
 
-Plain `listing undefine START --end END` clears overlapping code units and leaves
-the range undefined. Add `--disassemble-at ADDRESS` to disassemble at a new boundary after
-clearing; this disassembly is not confined to the cleared range. To bound code
-creation, run plain `listing undefine` followed by
-`listing define-code START --end END` instead. These are separate requests:
-a failed `listing define-code` does not undo `listing undefine`.
+`listing undefine --disassemble-at` can disassemble beyond the cleared range.
+To bound decoding, use separate `listing undefine` and `listing define-code --end`
+requests; failure of the latter does not undo the former.
 Both endpoints must be in the same address space. Qualify overlay and segmented
 endpoints independently, e.g. `listing undefine overlay:0x1000 --end overlay:0x1010`
 or `listing undefine ram:0x1234:0x0 --end ram:0x1234:0x8`.
 Word-addressed values may include a byte remainder (`word:0x1000.1`).
 
-For headerless input, first choose the language and load parameters using
-[raw import](programs.md#raw-import).
-
 ## Function bodies
-
-Inspect `body_ranges` with `function get` before replacing the whole body:
 
 ```bash
 ghidra-cli function get parse_header --project target
@@ -66,9 +49,7 @@ ghidra-cli function set-body parse_header \
   --range 0x401000 0x40107f --range 0x402000 0x40201f --project target
 ```
 
-Keep the entry point, include complete instructions, and resolve ownership by
-other functions before extending the body. This changes body membership without
-creating instructions or merging functions.
+`set-body` changes body membership without creating instructions or merging functions.
 
 Shrinking a body can delete its local labels and stack/register references, and
 detach variable references in the removed region. Restoring the old ranges does
@@ -76,8 +57,6 @@ not restore those annotations. For overrides left outside the body, see
 [call-site prototypes](refinement.md#one-call-sites-prototype).
 
 ## Instruction flow
-
-Correct Ghidra's interpretation without changing instruction bytes:
 
 ```bash
 ghidra-cli listing flow get 0x401234 --project target
@@ -96,13 +75,12 @@ continues after the call. To represent a caller returning after that call, use
 `--override call-return` and inspect `decompile`. Use `function set-noreturn`
 when the callee itself never returns.
 
-Flow edits can change reference types. Re-decompile to inspect their effect;
-full analysis remains a separate `analysis run` operation.
+Flow edits change interpretation and reference types without changing bytes or
+running analysis.
 
 ## Processor context
 
-Processor context controls how Ghidra decodes an address range. For example,
-`TMode=1` selects Thumb in an ARM language:
+`TMode=1` selects Thumb in an ARM language.
 
 ```bash
 ghidra-cli program context list --project target
@@ -113,9 +91,7 @@ A context mask identifies known bits; unset bits are unknown, not zero.
 `clear` removes stored values, including those established by decoding or
 analysis; it does not undo the last `set`. Defaults can remain effective afterward.
 
-Context edits do not replace instructions or run analysis. Ghidra can reject a
-context change across existing instructions. To correct a misdecoded region,
-inspect its definitions and explicitly rebuild it:
+Existing instructions can block context edits; rebuild the affected region:
 
 ```bash
 ghidra-cli listing undefine 0x1000 --end 0x101f --project target
@@ -123,10 +99,6 @@ ghidra-cli program context set TMode 1 0x1000 --end 0x101f --project target
 ghidra-cli listing define-code 0x1000 --end 0x101f --project target
 ghidra-cli disassemble 0x1000 --end 0x101f --project target
 ```
-
-To remove stored context, use
-`program context clear TMode 0x1000 --end 0x101f --project target`, then inspect
-the effective value before decoding again.
 
 ## PCode and analyzer control
 
@@ -136,19 +108,16 @@ ghidra-cli pcode function parse_header --project target
 ghidra-cli pcode function parse_header --high --project target
 ```
 
-Raw `pcode at` and `pcode function` omit instruction flow overrides. High PCode
-comes through the decompiler and can therefore differ after a flow edit.
+Raw PCode omits flow overrides; `--high` uses the decompiler.
 
-High PCode value IDs distinguish assignments sharing a register or stack location;
-names and storage alone do not identify a value. IDs belong to one `result_id`,
-including block and symbol IDs. The High CFG reflects decompiler optimization;
+High PCode IDs are scoped to one `result_id`. Value IDs distinguish assignments
+sharing storage. The High CFG reflects decompiler optimization;
 use `graph cfg` for instruction control flow.
 
 For `MULTIEQUAL`, input slots correspond to incoming High CFG edge indices.
 Special inputs such as `INDIRECT`'s operation reference are not ordinary value
-dependencies. Check reference states and collection completeness before treating
-an empty use list as unused. Increase `--max-nodes` or `--max-edges` when output
-is incomplete; operation input slots retain their original positions.
+dependencies. Incomplete output can omit uses; increase `--max-nodes` or
+`--max-edges` to include them. Input slots retain their original positions.
 
 For analyzer settings and full, range, or pending analysis, see
 [import and reanalysis](programs.md#import-and-reanalysis).
@@ -162,10 +131,6 @@ ghidra-cli memory block create .bank1 ram:0x1000 8192 --overlay bank1 --fill 0xf
 ghidra-cli memory block create .bank1_data bank1:0x4000 256 --uninitialized --permissions rw
 ghidra-cli memory block move ram:0x20000000 ram:0x21000000
 ```
-
-Use uninitialized memory for unknown RAM/MMIO values, or `--fill` to allow later
-`memory write` calls. MMIO volatility and permissions guide analysis but do not
-emulate device behavior.
 
 Block edits select the exact start returned by `memory map`. Preserve the address
 space qualifier; block names need not be unique. Renaming an overlay block leaves

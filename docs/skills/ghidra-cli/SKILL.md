@@ -5,8 +5,7 @@ description: Use ghidra-cli for native-binary reverse engineering with Ghidra, i
 
 # Ghidra CLI
 
-The executable is `ghidra-cli`. Use `ghidra-cli <command> --help` for exact
-arguments. Read the references below only when their details are needed.
+Use `ghidra-cli <command> --help` for exact arguments.
 
 Global `--project PROJECT --program PROGRAM` select the target. Each project
 reuses a JVM bridge; program operations are serialized while `bridge status`,
@@ -24,8 +23,6 @@ Ghidra startup, bridge communication, and shutdown.
 If an AI agent sandbox restricts writes on Linux, set `XDG_*` values to absolute, writable workspace paths before
 running the CLI.
 
-For a new executable or library:
-
 ```bash
 ghidra-cli program import ./target.bin --project target --name target.bin
 ghidra-cli program info --project target --program target.bin
@@ -34,11 +31,9 @@ ghidra-cli program info --project target --program target.bin
 Import creates the project and starts its bridge as needed, and runs analysis
 by default. Use `--no-analyze` to defer analysis.
 
-If `main` is absent, use `function list` to choose a name or address.
 Raw/headerless input needs explicit language and load parameters; see
 [raw import](references/programs.md#raw-import).
-On import, `--name NAME` sets the saved project file name; an existing
-explicit name is rejected. Use the returned `program` for later commands.
+Use the imported `program` name returned by the CLI for later commands.
 If an import error reports `detail.import_status: "saved"`, do not re-import:
 the error retains the program, analysis status, and recovery command arguments.
 
@@ -47,17 +42,11 @@ the error retains the program, analysis status, and recovery command arguments.
 Batch files contain one subcommand per line, without `ghidra-cli`.
 
 ```text
-# List candidate functions.
 function list --fields name,address,size --limit 100
-# Find a literal substring in defined strings (case-insensitive).
 find string "password"
-# Read a function; use its address if the name is ambiguous.
 decompile main
-# List outgoing calls from this function.
 graph callees main
-# Find references to a function name or data address.
 xref to 0x404000
-# Read 32 bytes.
 memory read 0x404000 32
 ```
 
@@ -68,8 +57,8 @@ ghidra-cli batch ./queries.ghidra --project target --program target.bin --json
 For text not yet defined as strings, use
 [memory text search](references/exploration.md#search-strings-xrefs-and-graphs).
 
-Quote multiword arguments; shell variables, command substitutions, and wildcards
-are not expanded. See [batch syntax and targeting](references/batch.md) for details.
+Shell variables, command substitutions, and wildcards are not expanded.
+See [batch syntax and targeting](references/batch.md).
 
 ## Results, edits, and jobs
 
@@ -77,9 +66,7 @@ Output defaults to human-readable on a terminal and compact JSON when piped.
 `--json` and `--pretty` explicitly select JSON. Format precedence is `--format`,
 `--pretty`, `--json`, the configured format, then terminal detection.
 Read normal JSON results from `.data`; batch entries use
-`.data.results[].result.data`. Optional `.meta` retains list context and paging;
-`meta.returned` counts returned rows, not all matches. Reaching `meta.limit`
-does not establish whether more results exist.
+`.data.results[].result.data`.
 Use `--format ndjson` for one list element per line without the outer wrapper or
 metadata. Results go to stdout; errors and progress go to stderr. JSON modes
 include structured error detail and suppress progress.
@@ -106,8 +93,7 @@ and error details.
 
 A socket timeout does not cancel the job. Inspect `job list` for active, queued,
 and recent jobs, or `job get ID` for one job, before retrying a mutation.
-`job cancel [ID]` defaults to the active job when the ID is omitted.
-Queued jobs are removed immediately; running jobs cancel cooperatively.
+`job cancel` removes queued jobs immediately; running jobs cancel cooperatively.
 A timeout is reported with exit 75, distinct from a command failure.
 
 ## Read details as needed
