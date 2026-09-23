@@ -116,7 +116,7 @@ fn processor_context_masks_ranges_validation_and_persistence() {
         set(client, "LRset", "1", "0x3002", "0x300b");
         let sibling = get(client, "LRset", "0x3000", Some("0x300f"));
         assert_eq!(
-            set(client, "TMode", "1", "0x3004", "0x3007")["status"],
+            set(client, "TMode", "+0x1", "0x3004", "0x3007")["status"],
             "set"
         );
         set(client, "TMode", "0x0", "0x3008", "0x300b");

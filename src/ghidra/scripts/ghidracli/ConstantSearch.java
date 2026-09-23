@@ -106,15 +106,12 @@ final class ConstantSearch {
         if (!argument.isJsonPrimitive() || !argument.getAsJsonPrimitive().isString()) {
             throw new IllegalArgumentException(key + " must be a decimal or 0x-prefixed integer string");
         }
-        String text = argument.getAsString();
-        if (!text.matches("-?(?:0[xX][0-9a-fA-F]+|[0-9]+)")) {
+        BigInteger value;
+        try {
+            value = IntegerLiteral.parse(argument.getAsString());
+        } catch (NumberFormatException error) {
             throw new IllegalArgumentException(key + " must be a decimal or 0x-prefixed integer string");
         }
-        boolean negative = text.startsWith("-");
-        String magnitude = negative ? text.substring(1) : text;
-        BigInteger value = magnitude.startsWith("0x") || magnitude.startsWith("0X")
-            ? new BigInteger(magnitude.substring(2), 16) : new BigInteger(magnitude, 10);
-        if (negative) value = value.negate();
         if (value.compareTo(SIGNED_MIN) < 0 || value.compareTo(UNSIGNED_MAX) > 0) {
             throw new IllegalArgumentException(key
                 + " must be from -9223372036854775808 to 18446744073709551615");

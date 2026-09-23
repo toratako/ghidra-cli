@@ -18,7 +18,7 @@ fn batch_from_line_skips_prefix_validation_and_keeps_physical_lines() {
         "invalid-prefix\nbatch missing.txt\n# resume here\n\nprogram info\n",
     )
     .unwrap();
-    let report = bridge.run(&["batch", "batch.txt", "--from-line", "3"]);
+    let report = bridge.run(&["batch", "batch.txt", "--from-line", "0x3"]);
     assert_eq!(report["from_line"], 3);
     assert_eq!(report["commands_parsed"], 1);
     assert_eq!(report["commands_executed"], 1);

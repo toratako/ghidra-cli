@@ -15,7 +15,7 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
             json!({"address":"callee", "with_signature":false,"with_frame":false}),
         ),
         (
-            vec!["function", "set-stack-purge", "callee", "--bytes", "-4"],
+            vec!["function", "set-stack-purge", "callee", "--bytes", "-0x4"],
             "function_set_stack_purge",
             json!({"target":"callee", "bytes":-4, "unknown":false}),
         ),
@@ -26,13 +26,13 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
         ),
         (
             vec![
-                "memory", "read", "blob", "--size", "16", "--source", "original",
+                "memory", "read", "blob", "--size", "0x10", "--source", "original",
             ],
             "read_memory",
             json!({"address":"blob", "size":16, "source":"original"}),
         ),
         (
-            vec!["memory", "read", "blob", "--size", "16"],
+            vec!["memory", "read", "blob", "--size", "0016"],
             "read_memory",
             json!({"address":"blob", "size":16, "source":"memory"}),
         ),

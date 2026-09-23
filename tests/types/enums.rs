@@ -1,4 +1,4 @@
-//! Enum deletion selects a name, including aliases that share a value.
+//! Enum values use decimal/hex integers; deletion selects one name among aliases.
 
 use super::{create_type_edit_program, harness, type_command, TEST_PROGRAM};
 use serde_json::Value;
@@ -15,14 +15,45 @@ fn definition(program: &str, name: &str) -> Value {
 fn enum_member_deletion_preserves_same_valued_names_and_saved_metadata() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
-    type_command(
-        &program,
-        &[
-            "create", "enum", "Mode", "--member", "Keep", "1", "--member", "Remove", "1",
-            "--member", "Negative", "-1", "--size", "8",
-        ],
-    )
-    .assert_success();
+    let numeric_members = [
+        ("Decimal", "010", 10_i64),
+        ("Hex", "0x10", 16),
+        ("Positive", "+0X10", 16),
+        ("NegativeHex", "-0x10", -16),
+        ("Minimum", "-0x8000000000000000", i64::MIN),
+        ("Maximum", "9223372036854775807", i64::MAX),
+    ];
+    let mut args = vec![
+        "create", "enum", "Mode", "--member", "Keep", "1", "--member", "Remove", "1", "--member",
+        "Negative", "-1", "--size", "8",
+    ];
+    for (name, input, _) in numeric_members {
+        args.extend(["--member", name, input]);
+    }
+    type_command(&program, &args).assert_success();
+    let created = definition(&program, "Mode");
+    let members = created["members"].as_array().unwrap();
+    for (name, _, expected) in numeric_members {
+        let member = members
+            .iter()
+            .find(|member| member["name"] == name)
+            .unwrap();
+        assert_eq!(member["value"], expected, "{name}");
+    }
+    assert!(members
+        .iter()
+        .any(|member| member["name"] == "Negative" && member["value"] == -1));
+    for value in ["9223372036854775808", "-0x8000000000000001"] {
+        type_command(
+            &program,
+            &[
+                "create", "enum", "Mode", "--member", "Overflow", value, "--size", "8",
+            ],
+        )
+        .assert_failure()
+        .assert_stderr_contains("Failed to create enum");
+        assert_eq!(definition(&program, "Mode"), created);
+    }
     let client = harness().client().unwrap();
     client
         .script_run_source(
@@ -57,7 +88,10 @@ public class SetEnumMetadata extends GhidraScript {
     assert_eq!(deleted["value"], 1);
     let remaining = definition(&program, "Mode");
     assert_eq!(remaining["size"], 8);
-    assert_eq!(remaining["members"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        remaining["members"].as_array().unwrap().len(),
+        2 + numeric_members.len()
+    );
     assert!(remaining["members"]
         .as_array()
         .unwrap()
@@ -97,7 +131,10 @@ public class CheckEnumMetadata extends GhidraScript {
             false,
         )
         .unwrap();
-    for member in ["Keep", "Negative"] {
+    for member in ["Keep", "Negative"]
+        .into_iter()
+        .chain(numeric_members.iter().map(|(name, _, _)| *name))
+    {
         type_command(
             &program,
             &["enum", "member", "delete", "Mode", "--member", member],

@@ -127,7 +127,7 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
             (vec![], 1, "0x0000", json!(1)),
             (vec!["--fields", "address"], 1, "0x0000", json!(1)),
             (vec!["--limit", "0"], 160, "0x0000", Value::Null),
-            (vec!["--limit", "120"], 120, "0x0000", json!(120)),
+            (vec!["--limit", "0x78"], 120, "0x0000", json!(120)),
             (
                 vec!["--filter", "address='0x009f'"],
                 1,
@@ -136,7 +136,7 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
             ),
             (vec!["--sort=-address"], 1, "0x009f", Value::Null),
             (
-                vec!["--skip", "100", "--limit", "2"],
+                vec!["--skip", "0100", "--limit", "0x2"],
                 2,
                 "0x0064",
                 Value::Null,

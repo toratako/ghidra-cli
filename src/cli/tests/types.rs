@@ -138,7 +138,13 @@ fn type_creation_accepts_global_options_at_each_command_level() {
 
 #[test]
 fn type_resize_accepts_decimal_and_hex_sizes_with_zero_and_java_int_boundaries() {
-    for (input, size) in [("0", 0), ("64", 64), ("0x40", 64), ("0X7fffffff", i32::MAX)] {
+    for (input, size) in [
+        ("0", 0),
+        ("64", 64),
+        ("010", 10),
+        ("0x40", 64),
+        ("0X7fffffff", i32::MAX),
+    ] {
         let cli = Cli::try_parse_from([
             "ghidra-cli",
             "type",
@@ -387,4 +393,58 @@ fn import_c_requires_one_explicit_source() {
                 .is_err()
         );
     }
+}
+
+#[test]
+fn field_sizes_and_ordinals_accept_hexadecimal_literals() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "field",
+        "append",
+        "/Header",
+        "--name",
+        "value",
+        "--type",
+        "int",
+        "--size",
+        "0x4",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command,
+        Commands::Type(TypeCommands::Field(TypeFieldCommands::Append(args)))
+            if args.size == Some(4)));
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "field",
+        "set",
+        "/Header",
+        "--ordinal",
+        "0x10",
+        "--type",
+        "int",
+        "--size",
+        "-0x1",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command,
+        Commands::Type(TypeCommands::Field(TypeFieldCommands::Set(args)))
+            if args.selector.ordinal == Some(16) && args.size == Some(-1)));
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "create",
+        "enum",
+        "Mode",
+        "--member",
+        "Read",
+        "1",
+        "--size",
+        "0x4",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command,
+        Commands::Type(TypeCommands::Create(TypeCreateCommands::Enum(args)))
+            if args.size == 4));
 }

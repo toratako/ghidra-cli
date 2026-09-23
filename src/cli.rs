@@ -11,6 +11,7 @@ mod inspection;
 mod listing;
 mod management;
 mod memory;
+pub(crate) mod numeric;
 mod options;
 mod output;
 mod project;

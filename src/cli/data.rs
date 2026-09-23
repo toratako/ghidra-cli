@@ -16,10 +16,10 @@ pub struct DataReadArgs {
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Maximum component nesting depth (0 = the selected object only)
-    #[arg(long, default_value = "2", value_parser = clap::value_parser!(u32).range(0..=64))]
+    #[arg(long, default_value = "2", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 0, 64))]
     pub max_depth: u32,
     /// Maximum total expanded components, excluding the selected object (0 = none)
-    #[arg(long, default_value = "100", value_parser = clap::value_parser!(u32).range(0..=100_000))]
+    #[arg(long, default_value = "100", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 0, 100_000))]
     pub max_elements: u32,
     #[command(flatten)]
     pub options: ObjectOptions,

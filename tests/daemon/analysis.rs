@@ -91,8 +91,8 @@ public class RegisterAnalysisTestOptions extends GhidraScript {
         .into_owned();
     let cases: Vec<(&str, &str, &str, Value)> = vec![
         ("Boolean", "false", "boolean", json!(false)),
-        ("Int", "-42", "int", json!(-42)),
-        ("Long", "9223372036854775807", "long", json!(i64::MAX)),
+        ("Int", "-0x2a", "int", json!(-42)),
+        ("Long", "+0X7fffffffffffffff", "long", json!(i64::MAX)),
         ("Float", "1.25", "float", json!(1.25)),
         ("Double", "1.125", "double", json!(1.125)),
         ("String", "", "string", json!("")),

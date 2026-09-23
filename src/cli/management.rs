@@ -52,6 +52,7 @@ pub enum JobCommands {
     /// Show one job by ID
     Get {
         /// Job ID
+        #[arg(value_parser = super::numeric::parse::<u64>)]
         job_id: u64,
         /// Project path
         #[arg(long)]
@@ -60,6 +61,7 @@ pub enum JobCommands {
     /// Request cooperative cancellation (defaults to the active job)
     Cancel {
         /// Job ID; omit to cancel the currently active job
+        #[arg(value_parser = super::numeric::parse::<u64>)]
         job_id: Option<u64>,
         /// Project path
         #[arg(long)]

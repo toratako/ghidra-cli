@@ -121,10 +121,9 @@ final class ProgramContextCommands {
 
     private static BigInteger requireValue(JsonObject args, Register register) {
         String text = requireString(args, "value");
-        BigInteger value;
-        if (text.matches("0[xX][0-9a-fA-F]+")) value = new BigInteger(text.substring(2), 16);
-        else if (text.matches("[0-9]+")) value = new BigInteger(text, 10);
-        else throw new IllegalArgumentException("value must be a nonnegative decimal or 0x-prefixed integer");
+        BigInteger value = IntegerLiteral.parse(text);
+        if (value.signum() < 0)
+            throw new IllegalArgumentException("value must be a nonnegative decimal or 0x-prefixed integer");
         if (value.bitLength() > register.getBitLength()) {
             throw new IllegalArgumentException("value does not fit processor context register "
                 + register.getName() + " (" + register.getBitLength() + " bits)");

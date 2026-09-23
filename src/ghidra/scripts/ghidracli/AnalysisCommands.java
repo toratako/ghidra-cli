@@ -124,7 +124,7 @@ final class AnalysisCommands {
         Object value;
         try {
             value = parseValue(type, text, enumValues(options, name));
-        } catch (IllegalArgumentException error) {
+        } catch (IllegalArgumentException | ArithmeticException error) {
             throw new IllegalArgumentException("Invalid value for analysis option '" + name
                 + "' (" + typeName(type) + "): " + error.getMessage());
         }
@@ -204,8 +204,8 @@ final class AnalysisCommands {
                 }
                 yield Boolean.valueOf(text);
             }
-            case INT_TYPE -> Integer.valueOf(text);
-            case LONG_TYPE -> Long.valueOf(text);
+            case INT_TYPE -> IntegerLiteral.parse(text).intValueExact();
+            case LONG_TYPE -> IntegerLiteral.parse(text).longValueExact();
             case FLOAT_TYPE -> {
                 float value = Float.parseFloat(text);
                 if (!Float.isFinite(value)) throw new IllegalArgumentException("expected a finite float");

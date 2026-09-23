@@ -67,16 +67,12 @@ pub(super) fn validate_expect_specs(expect_rows: &[String]) -> anyhow::Result<()
 }
 
 fn parse_min_rows(value: &str) -> anyhow::Result<i64> {
-    value
-        .parse::<i64>()
-        .ok()
-        .filter(|n| *n >= 0)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Invalid --expect-rows MIN_ROWS '{value}': must be an integer from 0 to {}",
-                i64::MAX
-            )
-        })
+    crate::cli::numeric::ranged::<i64>(value, 0, i64::MAX as i128).map_err(|_| {
+        anyhow::anyhow!(
+            "Invalid --expect-rows MIN_ROWS '{value}': must be a decimal or 0x integer from 0 to {}",
+            i64::MAX
+        )
+    })
 }
 
 #[cfg(test)]

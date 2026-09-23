@@ -105,6 +105,8 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         // Displacements count, including a second Scalar in a scaled-index operand.
         // ENTER's two equal-valued operands remain two separate occurrences.
         let thirty_two = find(json!({"value":"0x20"}));
+        assert_eq!(find(json!({"value":"+0X20"})), thirty_two);
+        assert_eq!(find(json!({"value":"032"})), thirty_two);
         assert_eq!(
             addresses(&thirty_two),
             ["0x00001090", "0x000010b0", "0x000010e0"]

@@ -46,7 +46,7 @@ pub struct BatchArgs {
     pub script_file: String,
 
     /// Start at this one-based source line, including blank lines and comments in the count
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", value_parser = parse_from_line)]
     pub from_line: Option<std::num::NonZeroUsize>,
 
     /// Action after a runtime command error (default: continue; nested batches inherit).
@@ -60,4 +60,10 @@ pub struct BatchArgs {
 
     #[arg(long)]
     pub program: Option<String>,
+}
+
+fn parse_from_line(value: &str) -> Result<std::num::NonZeroUsize, String> {
+    super::numeric::parse::<usize>(value).and_then(|number| {
+        std::num::NonZeroUsize::new(number).ok_or_else(|| "must be greater than zero".into())
+    })
 }

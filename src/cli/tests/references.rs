@@ -5,6 +5,9 @@ fn equate_values_preserve_all_64_bits_and_reject_truncation() {
     for value in [
         "0",
         "-1",
+        "-0x1",
+        "+0x1",
+        "-0x8000000000000000",
         "+1",
         "-9223372036854775808",
         "9223372036854775807",
@@ -23,7 +26,7 @@ fn equate_values_preserve_all_64_bits_and_reject_truncation() {
         "0x10000000000000000",
         "1.5",
         "0x",
-        "-0x1",
+        "-0x8000000000000001",
     ] {
         assert!(
             Cli::try_parse_from(["ghidra-cli", "equate", "create", "FLAG", value]).is_err(),

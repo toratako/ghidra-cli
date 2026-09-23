@@ -18,22 +18,12 @@ final class FileMappingCommands {
         Long fileOffset = null;
         if (args.has("file_offset")) {
             String text = requireString(args, "file_offset");
-            String digits;
-            int radix;
-            if (text.matches("0[xX][0-9a-fA-F]+")) {
-                digits = text.substring(2);
-                radix = 16;
-            } else if (text.matches("[0-9]+")) {
-                digits = text;
-                radix = 10;
-            } else {
-                throw invalidOffset();
-            }
             try {
-                fileOffset = Long.parseLong(digits, radix);
-            } catch (NumberFormatException error) {
+                fileOffset = IntegerLiteral.parse(text).longValueExact();
+            } catch (NumberFormatException | ArithmeticException error) {
                 throw invalidOffset();
             }
+            if (fileOffset < 0) throw invalidOffset();
         }
         Address sourceAt = null;
         if (args.has("source_at")) {

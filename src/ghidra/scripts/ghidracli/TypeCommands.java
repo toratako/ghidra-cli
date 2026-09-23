@@ -434,7 +434,7 @@ final class TypeCommands {
                 String memberValue = getArgString(member, "value");
                 if (memberName == null || memberName.trim().isEmpty() || memberValue == null)
                     throw new IllegalArgumentException("Each enum member requires a name and value");
-                long value = Long.decode(memberValue.trim());
+                long value = IntegerLiteral.parse(memberValue.trim()).longValueExact();
                 enumDt.add(memberName.trim(), value);
             }
             DataType registered = dtm.addDataType(enumDt, null);

@@ -248,11 +248,15 @@ fn build_oneshot_import_options(
     if let Some(value) = &args.block_name {
         loader_options.push(("blockName".to_string(), value.clone()));
     }
-    if let Some(value) = &args.file_offset {
-        loader_options.push(("fileOffset".to_string(), value.clone()));
-    }
-    if let Some(value) = &args.length {
-        loader_options.push(("length".to_string(), value.clone()));
+    for (flag, name, value) in [
+        ("--file-offset", "fileOffset", &args.file_offset),
+        ("--length", "length", &args.length),
+    ] {
+        if let Some(value) = value {
+            let count = crate::cli::numeric::ranged::<i64>(value, 0, i64::MAX as i128)
+                .map_err(|reason| anyhow::anyhow!("Invalid {flag} '{value}': {reason}"))?;
+            loader_options.push((name.to_string(), count.to_string()));
+        }
     }
 
     anyhow::ensure!(
@@ -311,6 +315,40 @@ fn build_oneshot_import_options(
 mod tests {
     use super::*;
     use crate::ipc::protocol::{BridgeCommandError, BridgeTimeoutError};
+
+    #[test]
+    fn binary_loader_counts_are_normalized_without_reinterpreting_extra_arguments() {
+        use clap::Parser;
+        let cli = crate::cli::Cli::try_parse_from([
+            "ghidra-cli",
+            "program",
+            "import",
+            "sample.bin",
+            "--file-offset",
+            "010",
+            "--length",
+            "0x40",
+            "--loader-option",
+            "blockName",
+            "010",
+        ])
+        .unwrap();
+        let crate::cli::Commands::Program(crate::cli::ProgramCommands::Import(args)) = cli.command
+        else {
+            panic!("expected program import");
+        };
+        let (options, explicit) = build_oneshot_import_options(&args).unwrap();
+        assert!(explicit);
+        assert_eq!(options.loader.as_deref(), Some("BinaryLoader"));
+        assert_eq!(
+            options.loader_options,
+            [
+                ("fileOffset".to_string(), "10".to_string()),
+                ("length".to_string(), "64".to_string()),
+                ("blockName".to_string(), "010".to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn saved_checkpoint_keeps_underlying_path_and_recovery_selection() {

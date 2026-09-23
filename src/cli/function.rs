@@ -188,7 +188,7 @@ pub struct SetStackPurgeArgs {
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Signed stack pointer change in bytes, excluding the normal return-address pop
-    #[arg(long, allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(..=0xffffff))]
+    #[arg(long, allow_hyphen_values = true, value_parser = |value: &str| super::numeric::ranged::<i32>(value, i32::MIN as i128, 0xffffff))]
     pub bytes: Option<i32>,
     /// Clear the explicit stack purge value without changing the calling convention
     #[arg(long)]

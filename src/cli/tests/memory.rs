@@ -61,7 +61,7 @@ fn block_creation_requires_explicit_initialization_and_permissions() {
 
 #[test]
 fn memory_numeric_inputs_reject_lossy_or_ambiguous_values() {
-    for size in ["0", "-1", "0x100", "9223372036854775808", "1.5"] {
+    for size in ["0", "-1", "9223372036854775808", "1.5"] {
         assert!(parse_block_create(&[size, "--uninitialized", "--permissions", "rw"]).is_err());
     }
     for fill in ["256", "0x100", "-1", "1.5"] {
@@ -138,5 +138,58 @@ fn block_attribute_edits_require_unambiguous_replacement_values() {
             panic!("expected set-volatile");
         };
         assert_eq!(args.value, value == "true");
+    }
+}
+
+#[test]
+fn memory_numeric_literals_preserve_sizes_and_fill_values() {
+    for (size, expected) in [("0x100", 256), ("010", 10), ("0X10", 16)] {
+        let cli = parse_block_create(&[size, "--fill", "0Xff", "--permissions", "rw"]).unwrap();
+        let Commands::Memory(MemoryCommands::Block(MemoryBlockCommands::Create(args))) =
+            cli.command
+        else {
+            panic!("expected block creation");
+        };
+        assert_eq!(args.size, expected);
+        assert_eq!(args.fill, Some(255));
+        let cli =
+            Cli::try_parse_from(["ghidra-cli", "memory", "read", "main", "--size", size]).unwrap();
+        let Commands::Memory(MemoryCommands::Read(args)) = cli.command else {
+            panic!("expected memory read");
+        };
+        assert_eq!(args.size, expected as usize);
+    }
+}
+
+#[test]
+fn high_pcode_limits_accept_hex_and_preserve_java_ranges() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "pcode",
+        "function",
+        "main",
+        "--high",
+        "--max-nodes",
+        "0x10",
+        "--max-edges",
+        "010",
+    ])
+    .unwrap();
+    let Commands::Pcode(PcodeCommands::Function(args)) = cli.command else {
+        panic!("expected pcode function");
+    };
+    assert_eq!(args.max_nodes, Some(16));
+    assert_eq!(args.max_edges, Some(10));
+    for invalid in ["0x0", "0x80000000"] {
+        assert!(Cli::try_parse_from([
+            "ghidra-cli",
+            "pcode",
+            "function",
+            "main",
+            "--high",
+            "--max-nodes",
+            invalid,
+        ])
+        .is_err());
     }
 }

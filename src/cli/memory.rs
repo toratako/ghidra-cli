@@ -1,4 +1,4 @@
-use super::{ObjectOptions, QueryOptions};
+use super::{numeric, ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +68,7 @@ pub struct MemoryBlockCreateArgs {
     /// Explicit start address, qualified with the space name for an existing overlay
     #[arg(long)]
     pub start: String,
-    /// Positive size in decimal bytes
+    /// Positive size in bytes, in decimal or 0x hexadecimal
     #[arg(long, value_parser = parse_block_size)]
     pub size: i64,
     /// Create memory without known byte values
@@ -140,42 +140,21 @@ pub struct MemoryBlockDeleteArgs {
     pub options: ObjectOptions,
 }
 
-fn parse_nonnegative_long(value: &str) -> Result<i64, String> {
-    let (digits, radix) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-        .map_or((value, 10), |digits| (digits, 16));
-    if digits.is_empty()
-        || !digits.bytes().all(|c| match radix {
-            16 => c.is_ascii_hexdigit(),
-            _ => c.is_ascii_digit(),
-        })
-    {
-        return Err("use a nonnegative decimal or 0x integer".into());
-    }
-    i64::from_str_radix(digits, radix)
-        .map_err(|_| format!("value must be between 0 and {}", i64::MAX))
-}
-
 fn parse_file_offset(value: &str) -> Result<String, String> {
-    parse_nonnegative_long(value)?;
+    numeric::ranged::<i64>(value, 0, i64::MAX as i128)?;
     Ok(value.to_owned())
 }
 
 fn parse_block_size(value: &str) -> Result<i64, String> {
-    if value.is_empty() || !value.bytes().all(|c| c.is_ascii_digit()) {
-        return Err("use a positive decimal byte count".into());
-    }
-    value
-        .parse::<i64>()
-        .ok()
-        .filter(|size| *size > 0)
-        .ok_or_else(|| format!("size must be between 1 and {} bytes", i64::MAX))
+    numeric::ranged(value, 1, i64::MAX as i128)
 }
 
 fn parse_fill_byte(value: &str) -> Result<u8, String> {
-    u8::try_from(parse_nonnegative_long(value)?)
-        .map_err(|_| "fill byte must be between 0 and 255".into())
+    numeric::parse(value)
+}
+
+fn parse_high_ir_limit(value: &str) -> Result<u32, String> {
+    numeric::ranged(value, 1, i32::MAX as i128)
 }
 
 fn parse_permissions(value: &str) -> Result<String, String> {
@@ -207,8 +186,8 @@ pub struct MemoryInfoArgs {
 pub struct MemReadArgs {
     /// Explicit 0x-prefixed start address or exact symbol name (e.g. main)
     pub address: String,
-    /// Number of bytes to read in decimal (e.g. 64)
-    #[arg(long)]
+    /// Number of bytes to read, in decimal or 0x hexadecimal
+    #[arg(long, value_parser = numeric::parse::<usize>)]
     pub size: usize,
     /// Read current memory or preserved imported bytes; original requires a file mapping for the whole range
     #[arg(long, value_enum, default_value = "memory")]
@@ -263,10 +242,10 @@ pub struct PcodeFunctionArgs {
     #[arg(long)]
     pub high: bool,
     /// Maximum High IR entities: operations, values, blocks, variables, and symbols (default: 1000)
-    #[arg(long, value_name = "N", requires = "high", value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    #[arg(long, value_name = "N", requires = "high", value_parser = parse_high_ir_limit)]
     pub max_nodes: Option<u32>,
     /// Maximum High IR relationships (default: 4000)
-    #[arg(long, value_name = "N", requires = "high", value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    #[arg(long, value_name = "N", requires = "high", value_parser = parse_high_ir_limit)]
     pub max_edges: Option<u32>,
     #[arg(long)]
     pub program: Option<String>,

@@ -3,6 +3,32 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 #[test]
+fn invalid_import_numeric_bounds_fail_before_bridge_changes() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+    for (flag, value) in [
+        ("--file-offset", "0x8000000000000000"),
+        ("--length", "-1"),
+        ("--length", "0x"),
+    ] {
+        let output = bridge
+            .command()
+            .args(["program", "import", "binary", "--no-analyze"])
+            .arg(format!("{flag}={value}"))
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{flag}={value}: {output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["message"].as_str().unwrap().contains(flag), "{error}");
+        assert_eq!(error["detail"]["import_status"], "not_started");
+        assert!(
+            bridge.requests.lock().unwrap().is_empty(),
+            "invalid bounds must not stop the bridge or start an import"
+        );
+    }
+}
+
+#[test]
 fn program_import_keeps_saved_names_and_selection_separate_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();

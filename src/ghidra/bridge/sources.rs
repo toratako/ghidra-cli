@@ -153,6 +153,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/GraphCommands.java"),
     ),
     (
+        "ghidracli/IntegerLiteral.java",
+        include_str!("../scripts/ghidracli/IntegerLiteral.java"),
+    ),
+    (
         "ghidracli/JobScheduler.java",
         include_str!("../scripts/ghidracli/JobScheduler.java"),
     ),

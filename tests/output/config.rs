@@ -1,6 +1,47 @@
 use super::isolated_command;
 
 #[test]
+fn numeric_config_values_persist_as_numbers_and_invalid_updates_preserve_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    std::fs::write(&config_path, "default_program: saved-program\n").unwrap();
+    for (key, input, expected) in [
+        ("default_limit", "0x25", 37),
+        ("launch_timeout_secs", "0240", 240),
+    ] {
+        let output = isolated_command(&temp)
+            .args(["config", "set", key, input])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{key}: {output:?}");
+        let persisted: serde_json::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+        assert_eq!(persisted[key], expected);
+        assert_eq!(persisted["default_program"], "saved-program");
+
+        let output = isolated_command(&temp)
+            .args(["config", "get", key])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{key}: {output:?}");
+        assert_eq!(
+            crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+            expected
+        );
+
+        let original = std::fs::read(&config_path).unwrap();
+        for invalid in ["0x", "18446744073709551616"] {
+            let output = isolated_command(&temp)
+                .args(["config", "set", key, invalid])
+                .output()
+                .unwrap();
+            assert!(!output.status.success(), "{key}={invalid}: {output:?}");
+            assert_eq!(std::fs::read(&config_path).unwrap(), original);
+        }
+    }
+}
+
+#[test]
 fn config_set_preserves_persisted_values_despite_invocation_overrides() {
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");

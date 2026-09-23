@@ -1,3 +1,4 @@
+use super::numeric;
 use super::options::{ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -232,7 +233,7 @@ pub struct CreateEnumArgs {
     #[arg(long, required = true, num_args = 2, value_names = ["NAME", "VALUE"], action = clap::ArgAction::Append, allow_hyphen_values = true)]
     pub member: Vec<String>,
     /// Size in bytes (1, 2, 4, or 8)
-    #[arg(long, default_value = "4")]
+    #[arg(long, default_value = "4", value_parser = numeric::parse::<i32>, allow_hyphen_values = true)]
     pub size: i32,
     #[arg(long)]
     pub program: Option<String>,
@@ -281,7 +282,7 @@ pub struct TypeFieldAppendArgs {
     #[arg(long = "type")]
     pub field_type: String,
     /// Field size override
-    #[arg(long)]
+    #[arg(long, value_parser = numeric::parse::<i32>, allow_hyphen_values = true)]
     pub size: Option<i32>,
     #[arg(long)]
     pub program: Option<String>,
@@ -344,27 +345,11 @@ pub struct TypeEnumMemberDeleteArgs {
 }
 
 fn parse_type_integer(value: &str) -> Result<i32, String> {
-    let (digits, radix) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-        .map(|digits| (digits, 16))
-        .unwrap_or((value, 10));
-    if digits.is_empty()
-        || !digits
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() && c.is_digit(radix))
-    {
-        return Err("must be a nonnegative decimal or 0x hexadecimal integer".into());
-    }
-    i32::from_str_radix(digits, radix).map_err(|_| "must not exceed 2147483647".into())
+    numeric::ranged(value, 0, i32::MAX as i128)
 }
 
 fn parse_positive_type_integer(value: &str) -> Result<i32, String> {
-    let value = parse_type_integer(value)?;
-    if value == 0 {
-        return Err("must be greater than zero".into());
-    }
-    Ok(value)
+    numeric::ranged(value, 1, i32::MAX as i128)
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -381,7 +366,7 @@ pub struct TypeFieldSetArgs {
     #[arg(long = "type", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub field_type: Option<String>,
     /// Ordinary field byte size override; requires --type
-    #[arg(long, requires = "field_type", conflicts_with = "bit_size")]
+    #[arg(long, requires = "field_type", conflicts_with = "bit_size", value_parser = numeric::parse::<i32>, allow_hyphen_values = true)]
     pub size: Option<i32>,
     /// New width of an existing nonpacked struct bitfield within its current storage
     #[arg(long, value_parser = parse_positive_type_integer, conflicts_with = "offset")]
@@ -414,7 +399,7 @@ pub struct TypeFieldSelector {
     #[arg(long, value_parser = parse_type_integer)]
     pub offset: Option<i32>,
     /// Struct or union component's zero-based ordinal from the latest `type get`
-    #[arg(long, value_parser = clap::value_parser!(i32).range(0..))]
+    #[arg(long, value_parser = parse_type_integer)]
     pub ordinal: Option<i32>,
     /// Exact existing field name (not its generated display name)
     #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]

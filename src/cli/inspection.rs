@@ -47,7 +47,7 @@ pub struct XRefCreateMemoryArgs {
     /// Explicit destination address; unmapped memory is allowed
     pub to: String,
     /// Zero-based operand index; -1 selects the whole instruction or data unit
-    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
+    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = |value: &str| super::numeric::ranged::<i32>(value, -1, i32::MAX as i128))]
     pub operand_index: i32,
     /// Meaning of the reference
     #[arg(long = "type", ignore_case = true, value_parser = ["DATA", "READ", "WRITE", "READ_WRITE", "INDIRECTION", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL", "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP"])]
@@ -63,7 +63,7 @@ pub struct XRefEditArgs {
     /// Explicit destination address
     pub to: String,
     /// Zero-based operand index; -1 selects the whole instruction or data unit
-    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
+    #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = |value: &str| super::numeric::ranged::<i32>(value, -1, i32::MAX as i128))]
     pub operand_index: i32,
     /// Required source of the existing reference
     #[arg(long, default_value = "USER_DEFINED", ignore_case = true, value_parser = ["USER_DEFINED", "ANALYSIS", "IMPORTED", "DEFAULT"])]
@@ -169,7 +169,7 @@ pub struct FindConstantArgs {
     #[arg(long, value_name = "MAX", allow_hyphen_values = true, requires = "min", value_parser = parse_constant_value)]
     pub max: Option<String>,
     /// Match only operand scalars with this bit width (default: any width)
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=64))]
+    #[arg(long, value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, 64))]
     pub bits: Option<u32>,
     /// Inclusive start bound: explicit 0x-prefixed address or exact symbol name
     #[arg(long)]
@@ -214,38 +214,7 @@ fn parse_constant_value(value: &str) -> Result<String, String> {
 }
 
 fn constant_number(value: &str) -> Result<i128, String> {
-    let invalid = || {
-        "Expected a decimal or 0x-prefixed integer from -9223372036854775808 to 18446744073709551615"
-            .to_owned()
-    };
-    let (negative, magnitude) = match value.strip_prefix('-') {
-        Some(magnitude) => (true, magnitude),
-        None => (false, value),
-    };
-    let (digits, radix) = match magnitude
-        .strip_prefix("0x")
-        .or_else(|| magnitude.strip_prefix("0X"))
-    {
-        Some(digits) => (digits, 16),
-        None => (magnitude, 10),
-    };
-    if digits.is_empty()
-        || !digits.bytes().all(|digit| match radix {
-            16 => digit.is_ascii_hexdigit(),
-            _ => digit.is_ascii_digit(),
-        })
-    {
-        return Err(invalid());
-    }
-    let magnitude = u64::from_str_radix(digits, radix).map_err(|_| invalid())?;
-    if negative {
-        if magnitude > 1u64 << 63 {
-            return Err(invalid());
-        }
-        Ok(-(magnitude as i128))
-    } else {
-        Ok(magnitude as i128)
-    }
+    super::numeric::ranged::<i128>(value, i64::MIN as i128, u64::MAX as i128)
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -265,10 +234,10 @@ pub struct GraphCfgArgs {
     /// Exact function name or explicit 0x-prefixed address
     pub function: String,
     /// Maximum returned blocks
-    #[arg(long, value_name = "N", default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    #[arg(long, value_name = "N", default_value_t = 1000, value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, i32::MAX as i128))]
     pub max_nodes: u32,
     /// Maximum returned flow records, including calls and boundaries
-    #[arg(long, value_name = "N", default_value_t = 4000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    #[arg(long, value_name = "N", default_value_t = 4000, value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, i32::MAX as i128))]
     pub max_edges: u32,
     #[arg(long)]
     pub program: Option<String>,
@@ -282,7 +251,7 @@ pub struct GraphFunctionArgs {
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Number of call levels to traverse (default: 1; 0: unlimited)
-    #[arg(long)]
+    #[arg(long, value_parser = super::numeric::parse::<usize>)]
     pub depth: Option<usize>,
     #[command(flatten)]
     pub options: QueryOptions,

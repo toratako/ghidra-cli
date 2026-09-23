@@ -50,7 +50,7 @@ pub struct AnalysisOptionGetArgs {
 pub struct AnalysisOptionSetArgs {
     /// Exact option name from analysis option list (including any dotted path)
     pub name: String,
-    /// Value in the option's type: decimal integers, true/false, enum names from choices,
+    /// Value in the option's type: decimal or 0x integers, true/false, enum names from choices,
     /// or literal text. File options require an absolute path.
     #[arg(allow_hyphen_values = true)]
     pub value: String,

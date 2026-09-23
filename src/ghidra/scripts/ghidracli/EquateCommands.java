@@ -204,17 +204,20 @@ final class EquateCommands {
 
     private static long value(JsonObject args) {
         JsonElement raw = args == null ? null : args.get("value");
-        String error = "value must be a signed 64-bit decimal or unsigned 64-bit 0x-prefixed integer string";
+        String error = "value must be a signed 64-bit decimal/hex integer or an unsigned 64-bit 0x-prefixed bit pattern";
         if (raw == null || !raw.isJsonPrimitive() || !raw.getAsJsonPrimitive().isString()) {
             throw new IllegalArgumentException(error);
         }
         String text = raw.getAsString();
-        if (text.matches("0[xX][0-9a-fA-F]+")) {
-            BigInteger number = new BigInteger(text.substring(2), 16);
-            if (number.bitLength() <= 64) return number.longValue();
-        } else if (text.matches("[+-]?[0-9]+")) {
-            try { return new BigInteger(text).longValueExact(); }
-            catch (ArithmeticException ignored) { /* Report the shared precise numeric contract. */ }
+        try {
+            BigInteger number = IntegerLiteral.parse(text);
+            if (text.startsWith("0x") || text.startsWith("0X")) {
+                if (number.bitLength() <= 64) return number.longValue();
+            } else {
+                return number.longValueExact();
+            }
+        } catch (NumberFormatException | ArithmeticException ignored) {
+            // Report the operand's range together with its accepted spelling.
         }
         throw new IllegalArgumentException(error);
     }

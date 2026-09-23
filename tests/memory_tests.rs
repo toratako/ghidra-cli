@@ -526,7 +526,7 @@ fn check_file_mappings(client: &BridgeClient) {
         .into_iter()
         .collect()
     );
-    for offset in ["517", "0X205"] {
+    for offset in ["517", "0517", "0X205", "+0x205"] {
         assert_eq!(
             matches,
             file_mappings(client, json!({"file_offset": offset}))

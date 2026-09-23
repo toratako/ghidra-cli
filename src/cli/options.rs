@@ -78,11 +78,11 @@ pub struct QueryOptions {
     pub format: Option<OutputFormat>,
 
     /// Maximum number of results (0 = unlimited; default 1000)
-    #[arg(long)]
+    #[arg(long, value_parser = super::numeric::parse::<usize>)]
     pub limit: Option<usize>,
 
     /// Skip first N results
-    #[arg(long)]
+    #[arg(long, value_parser = super::numeric::parse::<usize>)]
     pub skip: Option<usize>,
 
     /// Sort by field(s) (comma-separated, prefix with - for descending)

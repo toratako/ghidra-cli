@@ -138,7 +138,6 @@ fn field_edits_reject_invalid_offsets_and_incomplete_edits_before_loading_config
     for offset in [
         "",
         "-1",
-        "+1",
         "1.5",
         "0x",
         "ff",

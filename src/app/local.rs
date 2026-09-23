@@ -45,14 +45,16 @@ pub(super) fn handle_config_command(
                     "default_program" => config.default_program = Some(value),
                     "default_project" => config.default_project = Some(value),
                     "launch_timeout_secs" => {
-                        let timeout: u64 = value.parse().map_err(|_| {
-                            GhidraError::ConfigError("Invalid launch timeout value".to_string())
+                        let timeout = cli::numeric::parse::<u64>(&value).map_err(|reason| {
+                            GhidraError::ConfigError(format!(
+                                "Invalid launch timeout value: {reason}"
+                            ))
                         })?;
                         config.launch_timeout_secs = Some(timeout);
                     }
                     "default_limit" => {
-                        let limit: usize = value.parse().map_err(|_| {
-                            GhidraError::ConfigError("Invalid limit value".to_string())
+                        let limit = cli::numeric::parse::<usize>(&value).map_err(|reason| {
+                            GhidraError::ConfigError(format!("Invalid limit value: {reason}"))
                         })?;
                         config.default_limit = Some(limit);
                     }

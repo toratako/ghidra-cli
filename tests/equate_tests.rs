@@ -80,12 +80,13 @@ fn definitions_preserve_integer_precision_and_reject_conflicting_or_overflowing_
             ("MINUS_ONE", "-1", "0xffffffffffffffff", "-1"),
             (
                 "MINIMUM",
-                "-9223372036854775808",
+                "-0x8000000000000000",
                 "0x8000000000000000",
                 "-9223372036854775808",
             ),
             ("BYTE", "0xff", "0xff", "255"),
-            ("POSITIVE", "+1", "0x1", "1"),
+            ("POSITIVE", "+0X1", "0x1", "1"),
+            ("DECIMAL", "010", "0xa", "10"),
         ] {
             let receipt = create(client, name, value);
             assert_eq!(receipt["created"], true);
@@ -109,6 +110,8 @@ fn definitions_preserve_integer_precision_and_reject_conflicting_or_overflowing_
             json!("9223372036854775808"),
             json!("-9223372036854775809"),
             json!("0x10000000000000000"),
+            json!("+0x8000000000000000"),
+            json!("-0x8000000000000001"),
             json!(9007199254740993u64),
             json!("1.5"),
         ] {

@@ -10,13 +10,13 @@ fn management_commands_preserve_control_requests_and_json_output() {
             (vec!["bridge", "ping"], "ping", Value::Null),
             (vec!["job", "list"], "status", Value::Null),
             (
-                vec!["job", "get", "42"],
+                vec!["job", "get", "0x2a"],
                 "job_status",
                 json!({"job_id": 42}),
             ),
             (vec!["job", "cancel"], "job_cancel", json!({"job_id": null})),
             (
-                vec!["job", "cancel", "42"],
+                vec!["job", "cancel", "0042"],
                 "job_cancel",
                 json!({"job_id": 42}),
             ),
@@ -92,9 +92,9 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
         vec!["bridge", "status"],
         vec!["bridge", "ping"],
         vec!["job", "list"],
-        vec!["job", "get", "42"],
+        vec!["job", "get", "0x2a"],
         vec!["job", "cancel"],
-        vec!["job", "cancel", "42"],
+        vec!["job", "cancel", "0042"],
     ] {
         for position in [None, Some(0), Some(1), Some(args.len())] {
             configured.requests.lock().unwrap().clear();
