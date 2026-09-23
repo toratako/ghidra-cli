@@ -297,17 +297,17 @@ fn standalone_targets_use_config_or_explicit_flags() {
         };
         assert!(unused.requests.lock().unwrap().is_empty());
         let requests = selected.requests.lock().unwrap();
-        assert!(requests.iter().any(|r| r["command"] == "symbol_externals"));
-        let opened: Vec<_> = requests
+        let operations: Vec<_> = requests
             .iter()
-            .filter(|r| r["command"] == "open_program")
+            .filter(|r| r["command"] != "bridge_info")
             .collect();
+        assert_eq!(operations.len(), 1);
+        assert_eq!(operations[0]["command"], "symbol_externals");
         if with_flags {
-            assert_eq!(opened.len(), 1);
-            assert_eq!(opened[0]["args"]["program"], "explicit-program");
+            assert_eq!(operations[0]["program"], "explicit-program");
         } else {
             // A running bridge keeps its current selection, even with a configured default.
-            assert!(opened.is_empty(), "{opened:?}");
+            assert!(operations[0].get("program").is_none());
         }
     }
 }

@@ -225,8 +225,60 @@ fn project_directory_overrides_are_local_to_each_batch_line() {
 }
 
 #[test]
+fn batch_project_path_aliases_share_program_selection() {
+    let bridge = RecordedBridge::new();
+    let old_port_file = super::bridge::port_file_path(&bridge.project).unwrap();
+    let old_pid_file = super::bridge::pid_file_path(&bridge.project).unwrap();
+    std::fs::create_dir_all(bridge.project.with_added_extension("rep")).unwrap();
+    std::fs::rename(
+        old_port_file,
+        super::bridge::port_file_path(&bridge.project).unwrap(),
+    )
+    .unwrap();
+    std::fs::rename(
+        old_pid_file,
+        super::bridge::pid_file_path(&bridge.project).unwrap(),
+    )
+    .unwrap();
+    let alias_directory = bridge.project.parent().unwrap().join("alias");
+    std::fs::create_dir(&alias_directory).unwrap();
+    let alias = alias_directory.join("..").join("project");
+    assert_eq!(
+        super::bridge::port_file_path(&alias).unwrap(),
+        super::bridge::port_file_path(&bridge.project).unwrap()
+    );
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        format!(
+            "program info --program A\nprogram info --project {} --program B\ncomment set 0x1000 --text inherited\n",
+            batch_path_argument(&alias),
+        ),
+    )
+    .unwrap();
+    let report = bridge.run(&["batch", "batch.txt"]);
+    let observed: Vec<_> = report["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["result"]["data"]["observed_program"].as_str().unwrap())
+        .collect();
+    assert_eq!(observed, ["A", "B", "B"]);
+    let requests = bridge.requests.lock().unwrap();
+    let targets: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] != "bridge_info")
+        .map(|r| r["program"].as_str().unwrap())
+        .collect();
+    assert_eq!(targets, ["A", "B", "B"]);
+}
+
+#[test]
 fn batch_queries_inherit_targets_and_keep_program_selection() {
-    let first = RecordedBridge::new();
+    let first = RecordedBridge::with_info(serde_json::json!({
+        "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+        "named_import": true, "explicit_addresses": true,
+        "test_interleave_program": "another-client-program",
+    }));
     let second = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
         "memory map\ncomment set 0x1000 --text marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
@@ -244,15 +296,78 @@ fn batch_queries_inherit_targets_and_keep_program_selection() {
         let observed = if index == 1 { data } else { &data[0] };
         assert_eq!(observed["observed_program"], program);
     }
-    for (bridge, expected) in [(&first, vec!["A", "B", "C"]), (&second, vec!["D"])] {
+    for (bridge, targets) in [
+        (&first, vec!["A", "B", "B", "C", "C"]),
+        (&second, vec!["D"]),
+    ] {
         let requests = bridge.requests.lock().unwrap();
-        let opened: Vec<_> = requests
+        let selections: Vec<_> = requests
             .iter()
             .filter(|r| r["command"] == "open_program")
             .map(|r| r["args"]["program"].as_str().unwrap())
             .collect();
-        assert_eq!(opened, expected);
+        assert!(selections.is_empty(), "{selections:?}");
+        let actual: Vec<_> = requests
+            .iter()
+            .filter(|r| matches!(r["command"].as_str(), Some("memory_map" | "comment_set")))
+            .map(|r| r["program"].as_str().unwrap())
+            .collect();
+        assert_eq!(actual, targets);
     }
+}
+
+#[test]
+fn batch_updates_target_from_failed_requests_and_clears_it_after_close() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        concat!(
+            "comment set 0x1000 --text first\n",
+            "comment set 0x1001 --text missing --program missing-program\n",
+            "comment set 0x1002 --text after-missing\n",
+            "comment set 0x1003 --text test-rollback --program B\n",
+            "comment set 0x1004 --text after-rollback\n",
+            "program close\n",
+            "program list\n",
+        ),
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt", "--program", "A"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 7);
+    assert_eq!(report["failed"], 2);
+    assert_eq!(
+        report["results"][2]["result"]["data"]["observed_program"],
+        "A"
+    );
+    assert_eq!(
+        report["results"][4]["result"]["data"]["observed_program"],
+        "B"
+    );
+    let requests = bridge.requests.lock().unwrap();
+    let operations: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] != "bridge_info")
+        .collect();
+    assert_eq!(operations.len(), 7);
+    let targets: Vec<_> = operations.iter().map(|r| r["program"].as_str()).collect();
+    assert_eq!(
+        targets,
+        [
+            Some("A"),
+            Some("missing-program"),
+            Some("A"),
+            Some("B"),
+            Some("B"),
+            Some("B"),
+            None
+        ]
+    );
 }
 
 #[test]

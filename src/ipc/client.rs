@@ -3,6 +3,7 @@
 //! Connects directly to the Java GhidraCliBridge via TCP.
 //! No intermediate daemon process is needed.
 
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -18,15 +19,51 @@ mod transport;
 
 pub use memory::MemoryBlockCreateRequest;
 
+/// Selection observed in an executed program response, including a closed program.
+#[derive(Clone, Default)]
+pub(crate) struct ProgramSelection(Arc<Mutex<Option<Option<String>>>>);
+
+impl ProgramSelection {
+    #[allow(dead_code)] // The CLI consumes observations; the library only produces them.
+    pub(crate) fn observed(&self) -> Option<Option<String>> {
+        self.0
+            .lock()
+            .expect("program selection lock poisoned")
+            .clone()
+    }
+
+    fn record(&self, program: Option<String>) {
+        *self.0.lock().expect("program selection lock poisoned") = Some(program);
+    }
+}
+
 /// Client for communicating with the Ghidra Java bridge.
 pub struct BridgeClient {
     port: u16,
+    program: Option<String>,
+    selection: ProgramSelection,
 }
 
 impl BridgeClient {
     /// Create a client for a known port.
     pub fn new(port: u16) -> Self {
-        Self { port }
+        Self {
+            port,
+            program: None,
+            selection: ProgramSelection::default(),
+        }
+    }
+
+    /// Select this program within every program request, before its operation runs.
+    pub fn with_program(mut self, program: impl Into<String>) -> Self {
+        self.program = Some(program.into());
+        self
+    }
+
+    #[allow(dead_code)] // Shared by the binary's import/save/batch workflows.
+    pub(crate) fn with_selection(mut self, selection: ProgramSelection) -> Self {
+        self.selection = selection;
+        self
     }
 
     /// Get the port this client connects to.

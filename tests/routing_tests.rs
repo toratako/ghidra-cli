@@ -159,7 +159,7 @@ struct RecordedBridge {
 impl RecordedBridge {
     fn new() -> Self {
         Self::with_info(
-            json!({"auto_save": true, "atomic_edits": true, "named_import": true, "explicit_addresses": true}),
+            json!({"protocol_version": 4, "auto_save": true, "atomic_edits": true, "named_import": true, "explicit_addresses": true}),
         )
     }
 
@@ -186,6 +186,7 @@ impl RecordedBridge {
         let captured = requests.clone();
         let worker = std::thread::spawn(move || {
             let mut program = String::from("A");
+            let mut has_current_program = true;
             for connection in listener.incoming() {
                 let mut connection = connection.unwrap();
                 connection
@@ -202,11 +203,19 @@ impl RecordedBridge {
                 }
                 captured.lock().unwrap().push(request.clone());
                 let args = &request["args"];
+                if let Some(target) = request["program"].as_str() {
+                    if target == "missing-program" {
+                        writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "selected_program": has_current_program.then_some(&program), "message": "Program not found: missing-program"})).unwrap();
+                        continue;
+                    }
+                    program = target.to_owned();
+                    has_current_program = true;
+                }
                 if args["text"] == "test-save-failure"
                     || (request["command"] == "program_save"
                         && bridge_info["test_save_failure"] == true)
                 {
-                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
+                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "selected_program": has_current_program.then_some(&program), "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
                     continue;
                 }
                 if args["text"] == "test-timeout" {
@@ -216,13 +225,8 @@ impl RecordedBridge {
                 if args["text"] == "test-lost-response" {
                     continue;
                 }
-                if request["command"] == "open_program" && args["program"] == "test-lost-selection"
-                {
-                    program = "test-lost-selection".to_owned();
-                    continue;
-                }
                 if args["text"] == "test-rollback" {
-                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "message": "Edit rejected", "detail": {"rolled_back": true, "program": program}})).unwrap();
+                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "selected_program": has_current_program.then_some(&program), "message": "Edit rejected", "detail": {"rolled_back": true, "program": program}})).unwrap();
                     continue;
                 }
                 let data = match request["command"].as_str().unwrap() {
@@ -245,12 +249,23 @@ impl RecordedBridge {
                     }),
                     "open_program" => {
                         program = args["program"].as_str().unwrap().to_owned();
+                        has_current_program = true;
                         json!({"program": program})
+                    }
+                    "program_close" => {
+                        has_current_program = false;
+                        json!({"closed": true})
+                    }
+                    "program_delete" => {
+                        if args["program"] == program {
+                            has_current_program = false;
+                        }
+                        json!({"deleted": true})
                     }
                     "list_programs" => json!({
                         "programs": [{"name": "A"}, {"name": "B"}],
-                        "has_current_program": true,
-                        "current_program_name": program,
+                        "has_current_program": has_current_program,
+                        "current_program_name": has_current_program.then_some(&program),
                     }),
                     "import" => json!({"program": "imported"}),
                     "analysis_run" => {
@@ -659,12 +674,18 @@ impl RecordedBridge {
                     }
                     _ => json!({"observed_program": program}),
                 };
-                writeln!(
-                    connection,
-                    "{}",
-                    json!({"status": "success", "job_id": request["job_id"], "data": data})
-                )
-                .unwrap();
+                let mut response =
+                    json!({"status": "success", "job_id": request["job_id"], "data": data});
+                if request.get("job_id").is_some() {
+                    response["selected_program"] = json!(has_current_program.then_some(&program));
+                }
+                writeln!(connection, "{response}").unwrap();
+                if request.get("job_id").is_some() {
+                    if let Some(interleaved) = bridge_info["test_interleave_program"].as_str() {
+                        program = interleaved.to_owned();
+                        has_current_program = true;
+                    }
+                }
             }
         });
         Self {

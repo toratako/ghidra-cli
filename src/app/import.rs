@@ -3,7 +3,7 @@
 use super::project::project_has_program_data;
 use crate::cli::{Cli, ImportArgs};
 use crate::ghidra::bridge::{self, BridgeStartMode};
-use crate::ipc::client::BridgeClient;
+use crate::ipc::client::ProgramSelection;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,7 @@ pub(super) fn run_import(
     args: &ImportArgs,
     project_path: &Path,
     ghidra_install_dir: &Path,
+    selection: &ProgramSelection,
 ) -> anyhow::Result<serde_json::Value> {
     let mut progress = ImportProgress {
         stage: "import.validate",
@@ -30,8 +31,15 @@ pub(super) fn run_import(
         },
         program: None,
     };
-    run_import_steps(cli, args, project_path, ghidra_install_dir, &mut progress)
-        .map_err(|error| import_failure(error, project_path, &progress))
+    run_import_steps(
+        cli,
+        args,
+        project_path,
+        ghidra_install_dir,
+        &mut progress,
+        selection,
+    )
+    .map_err(|error| import_failure(error, project_path, &progress))
 }
 
 fn import_failure(
@@ -51,7 +59,9 @@ fn import_failure(
         .or_insert(json!(progress.analysis));
     fields.insert("project".into(), json!(project));
     if let Some(program) = &progress.program {
-        fields.insert("program".into(), json!(program));
+        // Selecting the imported program can fail while saving the previous
+        // selection. Recovery must retain that actual save target.
+        fields.entry("program").or_insert(json!(program));
     }
     let mut message = format!(
         "{} failed: {error:#}. Import: {}; analysis: {}",
@@ -115,6 +125,7 @@ fn run_import_steps(
     project_path: &Path,
     ghidra_install_dir: &Path,
     progress: &mut ImportProgress,
+    selection: &ProgramSelection,
 ) -> anyhow::Result<serde_json::Value> {
     let output = crate::app::Output::new(cli);
     let binary_path = PathBuf::from(&args.binary);
@@ -158,18 +169,22 @@ fn run_import_steps(
                 program_name: name.clone(),
             },
         )?;
-        (BridgeClient::new(port), name)
+        (
+            super::connect_program_bridge(port)?.with_selection(selection.clone()),
+            name,
+        )
     } else {
         progress.stage = "bridge.start";
         let client = if let Some(port) = running {
             super::connect_program_bridge(port)?
         } else {
-            BridgeClient::new(bridge::ensure_bridge_running(
+            super::connect_program_bridge(bridge::ensure_bridge_running(
                 project_path,
                 ghidra_install_dir,
                 BridgeStartMode::Project,
-            )?)
-        };
+            )?)?
+        }
+        .with_selection(selection.clone());
         progress.stage = "import.load";
         progress.imported = "unknown";
         let result =
@@ -182,20 +197,20 @@ fn run_import_steps(
         progress.program = Some(name.clone());
         (client, name)
     };
-    progress.stage = "program.open";
-    client.open_program(&name)?;
     let analyze = if args.no_analyze {
+        progress.stage = "program.open";
+        client.open_program(&name)?;
         progress.analysis = "skipped";
         json!(null)
     } else if !one_shot {
         progress.stage = "import.analysis";
         progress.analysis = "unknown";
-        let result = client.analysis_run(None, None, false)?;
+        let result = client.with_program(&name).analysis_run(None, None, false)?;
         progress.analysis = "completed";
         result
     } else {
         progress.stage = "program.info";
-        let info = client.program_info()?;
+        let info = client.with_program(&name).program_info()?;
         json!({"status": "success", "program": name, "function_count": info.get("function_count"), "durable": true})
     };
     Ok(
@@ -428,6 +443,39 @@ mod tests {
         assert_eq!(
             crate::error::diagnostic_detail(&save)["recovery"][2],
             "save"
+        );
+    }
+
+    #[test]
+    fn import_selection_save_failure_recovers_the_previous_program() {
+        let progress = ImportProgress {
+            stage: "import.analysis",
+            imported: "saved",
+            analysis: "unknown",
+            program: Some("new-import".into()),
+        };
+        let error = import_failure(
+            crate::ipc::protocol::BridgeCommandError {
+                message: "Save failed while switching programs".into(),
+                detail: json!({"save_failed": true, "saved": false, "program": "/previous"}),
+            }
+            .into(),
+            Path::new("project"),
+            &progress,
+        );
+        let detail = crate::error::diagnostic_detail(&error);
+        assert_eq!(detail["program"], "/previous");
+        assert_eq!(
+            detail["recovery"],
+            json!([
+                "ghidra-cli",
+                "program",
+                "save",
+                "--project",
+                "project",
+                "--program",
+                "/previous"
+            ])
         );
     }
 }

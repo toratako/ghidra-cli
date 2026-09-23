@@ -379,14 +379,13 @@ fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
                     .iter()
                     .filter(|r| r["command"] != "bridge_info")
                     .collect();
-                assert_eq!(domain.len(), 2, "{domain:?}");
-                assert_eq!(domain[0]["command"], "open_program");
-                assert_eq!(domain[0]["args"], json!({"program": "B"}));
-                assert_eq!(domain[1]["command"], wire);
+                assert_eq!(domain.len(), 1, "{domain:?}");
+                assert_eq!(domain[0]["program"], "B");
+                assert_eq!(domain[0]["command"], wire);
                 if wire == "bookmark_get" {
-                    assert_eq!(domain[1]["args"], json!({"address": "overlay:0x1000"}));
+                    assert_eq!(domain[0]["args"], json!({"address": "overlay:0x1000"}));
                 } else {
-                    assert!(domain[1].get("args").is_none());
+                    assert!(domain[0].get("args").is_none());
                 }
             }
         }

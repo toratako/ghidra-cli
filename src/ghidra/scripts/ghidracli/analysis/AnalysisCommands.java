@@ -51,11 +51,6 @@ public final class AnalysisCommands {
                 || !AddressCodec.isValidSyntax(endText))) {
             throw new IllegalArgumentException("start and end must be explicit addresses");
         }
-        if (args != null && args.has("program")) {
-            String name = requireString(args, "program");
-            if (name.isEmpty()) throw new IllegalArgumentException("Program name required");
-            session.open(session.findProgram(name));
-        }
         if (session.program() == null) return errorResult("No program loaded");
 
         AddressSet range = null;

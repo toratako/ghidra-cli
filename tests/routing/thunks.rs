@@ -99,11 +99,10 @@ fn thunk_edits_preserve_targets_and_receipts_in_standalone_and_batch() {
                     .iter()
                     .filter(|r| r["command"] != "bridge_info")
                     .collect();
-                assert_eq!(operations.len(), 2, "{requests:?}");
-                assert_eq!(operations[0]["command"], "open_program");
-                assert_eq!(operations[0]["args"], json!({"program": "B"}));
-                assert_eq!(operations[1]["command"], wire);
-                assert_eq!(operations[1]["args"], expected_args);
+                assert_eq!(operations.len(), 1, "{requests:?}");
+                assert_eq!(operations[0]["program"], "B");
+                assert_eq!(operations[0]["command"], wire);
+                assert_eq!(operations[0]["args"], expected_args);
             }
         }
     }

@@ -73,8 +73,7 @@ fn new_inspection_and_abi_commands_keep_targets_and_wire_values_in_batches() {
             let last = domain.last().unwrap();
             assert_eq!(last["command"], command);
             assert_eq!(last["args"], expected);
-            assert_eq!(domain[domain.len() - 2]["command"], "open_program");
-            assert_eq!(domain[domain.len() - 2]["args"]["program"], "B");
+            assert_eq!(last["program"], "B");
         }
     }
 }

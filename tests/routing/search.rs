@@ -69,7 +69,8 @@ fn constant_queries_preserve_values_and_apply_selection_in_standalone_and_batch(
                 assert_eq!(request["args"]["limit"], fetch_limit);
                 assert!(requests
                     .iter()
-                    .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+                    .filter(|r| r["command"] != "bridge_info")
+                    .all(|r| r["program"] == "B"));
             }
         }
     }
@@ -330,7 +331,8 @@ fn byte_regex_preserves_pattern_and_program_in_standalone_and_batch() {
         assert_eq!(search["args"], json!({"pattern": pattern, "limit": 2}));
         assert!(requests
             .iter()
-            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            .filter(|r| r["command"] != "bridge_info")
+            .all(|r| r["program"] == "B"));
         assert!(!requests.iter().any(|r| r["command"] == "find_bytes"));
     }
 }
@@ -363,7 +365,8 @@ fn text_search_routes_encoding_text_and_program_in_standalone_and_batch() {
             let requests = bridge.requests.lock().unwrap();
             assert!(requests
                 .iter()
-                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+                .filter(|r| r["command"] != "bridge_info")
+                .all(|r| r["program"] == "B"));
             let sent: Vec<_> = requests
                 .iter()
                 .filter(|r| r["command"] == "find_text")

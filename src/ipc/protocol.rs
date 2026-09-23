@@ -5,12 +5,16 @@
 
 use serde::{Deserialize, Serialize};
 
+pub const PROTOCOL_VERSION: u64 = 4;
+
 /// Request to the Java bridge.
 #[derive(Debug, Serialize)]
 pub struct BridgeRequest {
     pub command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
 }
@@ -21,6 +25,9 @@ pub struct BridgeResponse<T = serde_json::Value> {
     pub status: String,
     #[serde(default)]
     pub job_id: Option<String>,
+    /// Missing on controls/admission failures; explicit null means no program selected.
+    #[serde(default, deserialize_with = "deserialize_selected_program")]
+    pub selected_program: Option<Option<String>>,
     pub data: Option<T>,
     #[serde(default)]
     pub message: Option<String>,
@@ -30,6 +37,13 @@ pub struct BridgeResponse<T = serde_json::Value> {
     /// on success responses and on errors that carry only a message.
     #[serde(default)]
     pub detail: Option<serde_json::Value>,
+}
+
+fn deserialize_selected_program<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
 }
 
 /// An error surfaced by the bridge that carries structured detail alongside its
@@ -120,6 +134,7 @@ mod tests {
         let request = BridgeRequest {
             command: "ping".to_string(),
             job_id: None,
+            program: None,
             args: None,
         };
         let json = serde_json::to_string(&request).unwrap();
@@ -132,11 +147,16 @@ mod tests {
         let request = BridgeRequest {
             command: "list_functions".to_string(),
             job_id: Some(uuid::Uuid::new_v4().to_string()),
+            program: Some("/old/app".to_owned()),
             args: Some(serde_json::json!({"limit": 100})),
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("list_functions"));
         assert!(json.contains("100"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&json).unwrap()["program"],
+            "/old/app"
+        );
     }
 
     #[test]
@@ -145,6 +165,24 @@ mod tests {
         let response: BridgeResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.status, "success");
         assert!(response.data.is_some());
+    }
+
+    #[test]
+    fn response_selection_distinguishes_unobserved_closed_and_selected() {
+        for (wire, expected) in [
+            (r#"{"status":"error"}"#, None),
+            (
+                r#"{"status":"success","selected_program":null}"#,
+                Some(None),
+            ),
+            (
+                r#"{"status":"error","selected_program":"/old/app"}"#,
+                Some(Some("/old/app".to_owned())),
+            ),
+        ] {
+            let response: BridgeResponse = serde_json::from_str(wire).unwrap();
+            assert_eq!(response.selected_program, expected);
+        }
     }
 
     #[test]

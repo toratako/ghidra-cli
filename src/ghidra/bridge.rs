@@ -60,8 +60,8 @@ pub fn data_dir_path() -> Result<PathBuf> {
         .join("ghidra-cli"))
 }
 
-/// Use the same project identity for discovery and startup locking.
-fn project_hash(project_path: &Path) -> Result<String> {
+/// Use the same project identity for discovery, startup locking and batch selection.
+pub(crate) fn project_hash(project_path: &Path) -> Result<String> {
     let absolute = std::path::absolute(project_path)?;
     // The bare project path usually does not exist: Ghidra stores its database
     // in the sibling .rep directory. Identify that directory without folding

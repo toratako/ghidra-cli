@@ -69,8 +69,7 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
             }
             let requests = bridge.requests.lock().unwrap();
             assert_eq!(requests.last().unwrap()["command"], wire);
-            assert_eq!(requests[requests.len() - 2]["command"], "open_program");
-            assert_eq!(requests[requests.len() - 2]["args"]["program"], "B");
+            assert_eq!(requests.last().unwrap()["program"], "B");
             if wire == "analysis_option_set" {
                 assert_eq!(
                     requests.last().unwrap()["args"],
@@ -133,11 +132,7 @@ fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch()
                 expected
             );
             let requests = bridge.requests.lock().unwrap().clone();
-            assert_eq!(requests[requests.len() - 2]["command"], "open_program");
-            assert_eq!(
-                requests[requests.len() - 2]["args"],
-                json!({"program": "B"})
-            );
+            assert_eq!(requests.last().unwrap()["program"], "B");
             assert_eq!(requests.last().unwrap()["command"], "analysis_run");
             assert_eq!(requests.last().unwrap()["args"], expected_args);
 
@@ -163,6 +158,8 @@ fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch()
                 .filter(|r| r["command"] == "analysis_run")
                 .collect();
             assert_eq!(runs.len(), 2);
+            assert_eq!(runs[0]["program"], "B");
+            assert_eq!(runs[1]["program"], "B");
             for run in runs {
                 assert_eq!(run["args"], expected_args);
             }
@@ -171,7 +168,7 @@ fn analysis_run_preserves_target_selection_and_results_in_standalone_and_batch()
                 .filter(|r| r["command"] == "open_program")
                 .map(|r| r["args"]["program"].as_str().unwrap())
                 .collect();
-            assert_eq!(selections, ["A", "B"]);
+            assert!(selections.is_empty(), "{selections:?}");
         }
     }
 }
@@ -209,11 +206,10 @@ fn analysis_run_honors_project_overrides_in_standalone_and_batch() {
             .iter()
             .filter(|r| r["command"] != "bridge_info")
             .collect();
-        assert_eq!(domain.len(), 2, "{domain:?}");
-        assert_eq!(domain[0]["command"], "open_program");
-        assert_eq!(domain[0]["args"], json!({"program": "B"}));
-        assert_eq!(domain[1]["command"], "analysis_run");
-        assert_eq!(domain[1]["args"], json!({"pending": true}));
+        assert_eq!(domain.len(), 1, "{domain:?}");
+        assert_eq!(domain[0]["program"], "B");
+        assert_eq!(domain[0]["command"], "analysis_run");
+        assert_eq!(domain[0]["args"], json!({"pending": true}));
     }
 }
 

@@ -127,6 +127,15 @@ public final class ProgramSession {
         return objectClass != null && Program.class.isAssignableFrom(objectClass);
     }
 
+    /** Resolve a job's target before opening its request transaction. */
+    public void beginRequest(String command, String requestedProgram) throws Exception {
+        if (requestActive) throw transactionFailure("A program request is already active");
+        monitor().checkCancelled();
+        if (requestedProgram != null) open(findProgram(requestedProgram));
+        monitor().checkCancelled();
+        beginRequest(command);
+    }
+
     public void beginRequest(String command) {
         if (requestActive) throw transactionFailure("A program request is already active");
         // Atomic by default, including future ordinary commands. These explicit
@@ -286,17 +295,21 @@ public final class ProgramSession {
         // different project files (for example after copying a program).
         if (isCurrent(domainFile)) return;
         TaskMonitor mon = monitor();
+        mon.checkCancelled();
         save();
+        mon.checkCancelled();
         DomainObject domObj = domainFile.getDomainObject(consumer, true, false, mon);
         if (!(domObj instanceof Program)) {
             domObj.release(consumer);
             throw new IllegalArgumentException("Project file is not a program: " + domainFile.getPathname());
         }
         try {
+            mon.checkCancelled();
             // HeadlessAnalyzer normally initializes these before its preScript.
             // Script-only startup must register analyzer options on every open.
             ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager((Program) domObj)
                 .initializeOptions();
+            mon.checkCancelled();
         } catch (Exception failure) {
             domObj.release(consumer);
             throw failure;

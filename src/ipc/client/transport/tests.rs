@@ -5,6 +5,58 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 #[test]
+fn targeted_requests_track_executed_selection_but_controls_do_not_change_it() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let selection = crate::ipc::client::ProgramSelection::default();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port())
+        .with_program("/requested")
+        .with_selection(selection.clone());
+    let server = std::thread::spawn(move || {
+        for (command, status, selected) in [
+            ("program_info", "success", serde_json::json!("/requested")),
+            ("comment_set", "error", serde_json::json!("/requested")),
+            ("program_close", "success", serde_json::Value::Null),
+            ("bridge_info", "success", serde_json::json!("/another")),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(request["command"], command);
+            if command == "bridge_info" {
+                assert!(request.get("program").is_none());
+                assert!(request.get("job_id").is_none());
+            } else {
+                assert_eq!(request["program"], "/requested");
+                assert!(request["job_id"].is_string());
+            }
+            writeln!(
+                stream,
+                "{}",
+                serde_json::json!({
+                    "status": status, "job_id": request["job_id"],
+                    "selected_program": selected, "message": "operation failed", "data": {}
+                })
+            )
+            .unwrap();
+        }
+    });
+    assert_eq!(selection.observed(), None);
+    client.program_info().unwrap();
+    assert_eq!(selection.observed(), Some(Some("/requested".to_owned())));
+    assert!(client.send_command("comment_set", None).is_err());
+    assert_eq!(selection.observed(), Some(Some("/requested".to_owned())));
+    client.program_close().unwrap();
+    assert_eq!(selection.observed(), Some(None));
+    client.bridge_info().unwrap();
+    assert_eq!(selection.observed(), Some(None));
+    server.join().unwrap();
+}
+
+#[test]
 fn response_status_controls_success_and_failure() {
     for (status, data, expected) in [
         (

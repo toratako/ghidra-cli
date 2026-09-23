@@ -18,6 +18,7 @@ fn listing_programs_does_not_select_a_context_program() {
         let requests = bridge.requests.lock().unwrap();
         assert!(requests.iter().any(|r| r["command"] == "list_programs"));
         assert!(requests.iter().all(|r| r["command"] != "open_program"));
+        assert!(requests.iter().all(|r| r.get("program").is_none()));
     }
 }
 
@@ -84,11 +85,10 @@ fn tag_get_preserves_details_and_projection_in_standalone_and_batch() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{domain:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], "tag_get");
-            assert_eq!(domain[1]["args"], json!({"name": "review"}));
+            assert_eq!(domain.len(), 1, "{domain:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "tag_get");
+            assert_eq!(domain[0]["args"], json!({"name": "review"}));
         }
     }
 }
@@ -129,12 +129,11 @@ fn memory_read_preserves_bytes_and_pointers_with_output_options() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{domain:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], "read_memory");
+            assert_eq!(domain.len(), 1, "{domain:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "read_memory");
             assert_eq!(
-                domain[1]["args"],
+                domain[0]["args"],
                 json!({"address": "0x1000", "size": 8, "source": "memory"})
             );
         }
@@ -171,11 +170,10 @@ fn memory_info_preserves_nested_details_and_projection_in_standalone_and_batch()
                     .iter()
                     .filter(|r| r["command"] != "bridge_info")
                     .collect();
-                assert_eq!(domain.len(), 2, "{domain:?}");
-                assert_eq!(domain[0]["command"], "open_program");
-                assert_eq!(domain[0]["args"], json!({"program": "B"}));
-                assert_eq!(domain[1]["command"], "memory_info");
-                assert_eq!(domain[1]["args"], json!({"address": target}));
+                assert_eq!(domain.len(), 1, "{domain:?}");
+                assert_eq!(domain[0]["program"], "B");
+                assert_eq!(domain[0]["command"], "memory_info");
+                assert_eq!(domain[0]["args"], json!({"address": target}));
             }
         }
     }
@@ -226,6 +224,14 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
             .find(|r| r["command"] == "memory_write")
             .unwrap();
         assert_eq!(write["args"], json!({"address": "main", "hex": "90 c3"}));
+        assert_eq!(write["program"], "B");
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .count(),
+            1
+        );
     }
 }
 
@@ -276,13 +282,14 @@ fn api_reads_honor_project_overrides_in_standalone_and_batch() {
             assert_eq!(requests.iter().filter(|r| r["command"] == wire).count(), 1);
             assert!(requests
                 .iter()
-                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+                .filter(|r| r["command"] != "bridge_info")
+                .all(|r| r["program"] == "B"));
         }
     }
 }
 
 #[test]
-fn program_operands_select_the_target_before_optional_program_operations() {
+fn program_operands_bind_the_target_to_optional_program_operations() {
     let bridge = RecordedBridge::new();
     for (args, wire) in [
         (vec!["program", "close", "B"], "program_close"),
@@ -315,10 +322,36 @@ fn program_operands_select_the_target_before_optional_program_operations() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{args:?}: {domain:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program": "B"}));
-            assert_eq!(domain[1]["command"], wire);
+            assert_eq!(domain.len(), 1, "{args:?}: {domain:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], wire);
+        }
+    }
+}
+
+#[test]
+fn open_and_delete_use_the_operand_without_a_context_selector() {
+    let bridge = RecordedBridge::new();
+    for (operation, wire) in [("open", "open_program"), ("delete", "program_delete")] {
+        for batched in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let args = ["program", operation, "B", "--program", "ignored"];
+            if batched {
+                std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "batch.txt"]);
+            } else {
+                bridge.run(&args);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(operations.len(), 1);
+            assert_eq!(operations[0]["command"], wire);
+            assert_eq!(operations[0]["args"]["program"], "B");
+            assert!(operations[0].get("program").is_none());
         }
     }
 }

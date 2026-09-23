@@ -118,6 +118,15 @@ fresh `JobTaskMonitor` per request and restores the script monitor in `finally`.
 Controls read snapshots/job records instead of the session. Switching resolves
 the project file before checking whether it is open: different files can have
 Programs with the same internal name.
+Each queued job retains its optional request-level program selector. The session
+resolves and selects it on the original script thread before beginning the request
+transaction, so no other client can switch programs between selection and dispatch.
+If selection fails, `CommandDispatcher` runs neither the handler nor
+`finishRequest`; a failed save of the previous program is not retried implicitly.
+After execution, `JobScheduler` attaches the final selected DomainFile path or
+explicit null as `selected_program` before retaining or delivering the response.
+Admission failures and queued cancellations have no selection receipt; controls
+never accept selectors or read the live session for one.
 
 CLI program names and paths come from `ProgramSession.programName()` and
 `programPath()`, which read the selected DomainFile. Use these for responses,

@@ -39,6 +39,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
         ),
     ] {
         bridge.requests.lock().unwrap().clear();
+        let args: Vec<_> = args.into_iter().chain(["--program", "B"]).collect();
         bridge.run(&args);
         let requests = bridge.requests.lock().unwrap();
         let domain: Vec<_> = requests
@@ -46,6 +47,7 @@ fn symbol_mutations_resolve_targets_before_sending_the_edit() {
             .filter(|r| r["command"] != "bridge_info")
             .collect();
         assert_eq!(domain.len(), 2, "{domain:?}");
+        assert!(domain.iter().all(|r| r["program"] == "B"));
         assert_eq!(domain[0]["command"], "symbol_get_by_name");
         assert_eq!(domain[0]["args"], json!({"name": "shared"}));
         assert_eq!(domain[1]["command"], command);

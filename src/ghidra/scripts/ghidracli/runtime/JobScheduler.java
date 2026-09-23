@@ -77,12 +77,14 @@ final class JobScheduler {
     private static class ProgramJob {
         final JobRecord record;
         final JsonObject args;
+        final String program;
         // History owns only the bounded encoded snapshot, never this future or request.
         final CompletableFuture<JsonObject> completion = new CompletableFuture<>();
 
-        ProgramJob(JobRecord record, JsonObject args) {
+        ProgramJob(JobRecord record, JsonObject args, String program) {
             this.record = record;
             this.args = args;
+            this.program = program;
         }
     }
 
@@ -127,7 +129,7 @@ final class JobScheduler {
         String responseStatus;
         String failure = null;
         try {
-            result = commands.execute(record.command, job.args);
+            result = commands.execute(record.command, job.args, job.program);
             result.addProperty("job_id", record.id);
             responseStatus = result.has("status") ? result.get("status").getAsString() : "error";
             if ("error".equals(responseStatus) && result.has("message")) {
@@ -143,6 +145,9 @@ final class JobScheduler {
             refreshBridgeSnapshot();
         }
 
+        // Bind batch continuation to this job's final selection, before any
+        // later job can change it. Controls and unexecuted jobs have no receipt.
+        result.addProperty("selected_program", session.programPath());
         byte[] snapshot = results.snapshot(result);
         synchronized (lifecycleLock) {
             boolean failed = "error".equals(responseStatus);
@@ -211,6 +216,11 @@ final class JobScheduler {
             if (command == null || command.isEmpty()) {
                 return BridgeReply.immediate(errorResponse("Command required"));
             }
+            String program = requestedProgram(req);
+            if (program != null && (isControlCommand(command)
+                    || "shutdown_wait".equals(command) || "job_result".equals(command))) {
+                return BridgeReply.immediate(errorResponse("Control requests cannot select a program"));
+            }
 
             // Wait outside the bounded program queue, without occupying a
             // connection thread. Controls remain available throughout draining.
@@ -235,7 +245,7 @@ final class JobScheduler {
             }
 
             JobRecord record = new JobRecord(jobId(req), command);
-            ProgramJob job = new ProgramJob(record, args.deepCopy());
+            ProgramJob job = new ProgramJob(record, args.deepCopy(), program);
 
             synchronized (lifecycleLock) {
                 if (!acceptingJobs) {
@@ -256,6 +266,16 @@ final class JobScheduler {
             return BridgeReply.immediate(
                 errorResponse(e.getMessage()));
         }
+    }
+
+    private static String requestedProgram(JsonObject request) {
+        if (!request.has("program")) return null;
+        var value = request.get("program");
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()
+                || value.getAsString().isEmpty()) {
+            throw new IllegalArgumentException("program must be a nonempty string");
+        }
+        return value.getAsString();
     }
 
     private static String jobId(JsonObject object) {
@@ -352,7 +372,7 @@ final class JobScheduler {
     private JsonObject handleBridgeInfo() {
         JsonObject result = new JsonObject();
         String programName = currentProgramNameSnapshot;
-        result.addProperty("protocol_version", 3);
+        result.addProperty("protocol_version", 4);
         result.addProperty("current_program_path", currentProgramPathSnapshot);
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
@@ -374,7 +394,7 @@ final class JobScheduler {
 
     private JsonObject handleStatus() {
         JsonObject result = new JsonObject();
-        result.addProperty("protocol_version", 3);
+        result.addProperty("protocol_version", 4);
         result.addProperty("uptime_ms", System.currentTimeMillis() - startTime);
         addQueueSummary(result, true);
         return result;

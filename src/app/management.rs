@@ -2,7 +2,7 @@ use super::output::Output;
 use super::project::{load_config, resolve_project_path};
 use crate::cli::{self, BridgeCommands, Cli, Commands, JobCommands};
 use crate::ghidra::bridge::{self, BridgeStartMode, BridgeStatus};
-use crate::ipc::client::BridgeClient;
+use crate::ipc::client::{BridgeClient, ProgramSelection};
 use crate::terminal::write_stdout;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -119,11 +119,14 @@ fn handle_bridge_stop(
 /// Flush pending changes in place; a stopped bridge has nothing pending.
 pub(super) fn handle_program_save(cli: Cli) -> anyhow::Result<()> {
     let output = Output::new(&cli);
-    let (result, message) = program_save_result(&cli)?;
+    let (result, message) = program_save_result(&cli, &ProgramSelection::default())?;
     output.result(&result, &message)
 }
 
-pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> {
+pub(super) fn program_save_result(
+    cli: &Cli,
+    selection: &ProgramSelection,
+) -> anyhow::Result<(Value, String)> {
     let Commands::Program(cli::ProgramCommands::Save(args)) = &cli.command else {
         unreachable!("handle_program_save dispatched for a non-Save Program command");
     };
@@ -146,11 +149,10 @@ pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> 
     };
     // Recovery must remain available before upgrading a bridge's capabilities.
     // Never restart or replay an edit merely to retry a pending save.
-    let client = BridgeClient::new(port);
+    let mut client = BridgeClient::new(port).with_selection(selection.clone());
     if let Some(program) = program {
-        client.open_program(&program).map_err(|error| {
-            super::recovery::job_result(error, &project_path, cli.projects_dir.as_deref())
-        })?;
+        super::require_program_protocol(&client.bridge_info()?)?;
+        client = client.with_program(program);
     }
     let mut result = client.program_save().map_err(|error| {
         super::recovery::job_result(error, &project_path, cli.projects_dir.as_deref())

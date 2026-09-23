@@ -29,21 +29,27 @@ and target checks in `src/cli/tests.rs`.
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
 Command-level project/program options override global options and configured
-defaults. `project info` follows the same rule, with its positional name first.
+defaults; positional program operands take precedence over program options.
+`project info` follows the same rule, with its positional name first.
 `--projects-dir` overrides the environment through a nonserialized Config field,
 so per-line batch overrides do not leak into later commands or saved settings.
 Validate filters before bridge work. Single-object commands use `ObjectOptions`,
 converted to projection-only `QueryOptions` for shared output; nested memory
 bytes and pointers are not result rows. Function/comment deletion and
 `listing define-code` return receipts without row-query options.
-`connect_program_bridge(port)` requires `bridge_info.explicit_addresses: true`,
-`auto_save: true`, and `atomic_edits: true` before program dispatch.
+`connect_program_bridge(port)` requires protocol version 4,
+`bridge_info.explicit_addresses: true`, `auto_save: true`, and `atomic_edits: true`
+before program dispatch.
 Missing support fails with explicit restart guidance;
 never downgrade address/transaction semantics or automatically upgrade for missing
-capabilities. `program save` uses the direct management path without this gate,
-preserving in-place recovery of pending edits before an explicit restart.
+capabilities. `program save` uses the direct management path; a targeted save
+requires protocol version 4, while an unscoped save bypasses these checks for
+in-place recovery of pending edits.
 Dispatch each command once and propagate its result or error. Do not restart
 the bridge or replay a command after a response failure.
+Bind an explicit program to the `BridgeClient` so every operation carries it in
+the request envelope, including both reads and edits in guarded helpers. Selection
+and execution share one queued job; do not send a preparatory `open_program`.
 Symbol deletion validates its `--where` predicate before bridge work and consumes it
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
@@ -57,9 +63,10 @@ output retains the generated C and sends API diagnostics absent from its warning
 comments to stderr; field projection and quiet mode still apply.
 `program import` owns its startup and selection workflow; `--name` is the saved
 file name, independent of global `--program` and configured target defaults.
-Import retains stop/start/open/analyze order. `program save` saves in place and
-does nothing for a stopped bridge; deletion treats `--program` as a file target
-without opening it as a selection/startup program.
+Import binds follow-up analysis or information requests to the imported program.
+`program save` saves in place and does nothing for a stopped bridge.
+`program list/delete` ignore a direct `--program`; deletion uses its positional
+file operand. In a batch they still carry the inherited selection context.
 
 `src/address.rs` validates explicit address syntax for client-side selectors,
 import base addresses, and `listing undefine START --end END`; Ghidra validates
@@ -92,9 +99,17 @@ sequentially, with one transaction boundary per bridge request; a batch is never
 atomic. Earlier completed commands remain saved. Ordinary errors follow `--on-error continue|stop` (default: continue); nested batches
 inherit the policy unless overridden. Transaction/save failures and unknown outcomes
 always stop them, including failures at the end of nested batches.
-Preserve the timeout type for exit 75. Each line uses normal target resolution:
-omitted project inherits the batch project, omitted program keeps that project's
-selection, and query modifiers apply within each result.
+Preserve the timeout type for exit 75. Omitted project inherits the batch project,
+and query modifiers apply within each result.
+One invocation shares a project-to-program selection map across nested batches.
+Outer and nested `--program` values set selection intent; each line's explicit
+target overrides the inherited target. The actual selection reported by each
+executed response updates that project's context on success or error; an explicit
+null clears it so later lines use ordinary implicit selection. Bind the inherited
+target to every request for that line, rather than relying on the bridge's shared
+current program. Batch setup neither opens a program nor starts a bridge: an empty
+batch has no selection effect, and the first line's explicit target can supersede
+the outer target before any program opens.
 Target defaults come from config; CLI target selection does not read environment
 variables. Config `default_program` applies at bridge startup, while a running
 bridge retains its selected program unless explicitly overridden.

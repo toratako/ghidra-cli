@@ -167,12 +167,11 @@ fn type_uses_queries_preserve_scope_completion_and_standalone_batch_results() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2);
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program":"B"}));
-            assert_eq!(domain[1]["command"], "type_uses");
+            assert_eq!(domain.len(), 1);
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "type_uses");
             assert_eq!(
-                domain[1]["args"],
+                domain[0]["args"],
                 json!({"type_name":"/Widget", "kind":kind, "limit":fetch_limit})
             );
         }
@@ -307,10 +306,9 @@ fn semantic_type_queries_preserve_scope_pagination_and_batch_results() {
                     .iter()
                     .filter(|r| r["command"] != "bridge_info")
                     .collect();
-                assert_eq!(requests.len(), 2);
-                assert_eq!(requests[0]["command"], "open_program");
-                assert_eq!(requests[0]["args"], json!({"program":"B"}));
-                assert_eq!(requests[1]["command"], wire);
+                assert_eq!(requests.len(), 1);
+                assert_eq!(requests[0]["program"], "B");
+                assert_eq!(requests[0]["command"], wire);
                 let mut expected_args = json!({"type_name":"/Widget", "function":"process", "limit":fetch_limit, "timeout_secs":0});
                 if wire == "type_uses" {
                     expected_args["kind"] = json!("variable");
@@ -319,7 +317,7 @@ fn semantic_type_queries_preserve_scope_pagination_and_batch_results() {
                     expected_args["offset"] = Value::Null;
                     expected_args["ordinal"] = Value::Null;
                 }
-                assert_eq!(requests[1]["args"], expected_args);
+                assert_eq!(requests[0]["args"], expected_args);
             }
         }
     }
@@ -751,11 +749,10 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
                 .iter()
                 .filter(|request| request["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{args:?}: {domain:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], wire);
-            assert_eq!(domain[1]["args"], expected, "{args:?}");
+            assert_eq!(domain.len(), 1, "{args:?}: {domain:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], wire);
+            assert_eq!(domain[0]["args"], expected, "{args:?}");
             assert!(outer
                 .requests
                 .lock()
@@ -824,11 +821,10 @@ fn category_queries_keep_path_context_and_apply_query_options_in_the_client() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2);
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program": "B"}));
-            assert_eq!(domain[1]["command"], "type_category_list");
-            assert_eq!(domain[1]["args"], json!({"path": path}));
+            assert_eq!(domain.len(), 1);
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "type_category_list");
+            assert_eq!(domain[0]["args"], json!({"path": path}));
         }
     }
     for (path, expected_rows) in [("/", 3), ("/Empty", 0)] {
@@ -1107,7 +1103,8 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         );
         assert!(requests
             .iter()
-            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            .filter(|r| r["command"] != "bridge_info")
+            .all(|r| r["program"] == "B"));
         requests.clear();
     }
     bridge.run(&[
@@ -1133,7 +1130,8 @@ fn field_edits_route_offsets_and_preserve_omitted_attributes() {
         );
         assert!(requests
             .iter()
-            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            .filter(|r| r["command"] != "bridge_info")
+            .all(|r| r["program"] == "B"));
         requests.clear();
     }
     bridge.run(&[
@@ -1191,7 +1189,8 @@ fn variable_edits_send_one_request_with_only_requested_attributes() {
         );
         assert!(requests
             .iter()
-            .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+            .filter(|r| r["command"] != "bridge_info")
+            .all(|r| r["program"] == "B"));
         requests.clear();
     }
 }

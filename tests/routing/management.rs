@@ -64,7 +64,7 @@ fn only_unknown_outcomes_show_job_identity_and_targeted_recovery() {
 }
 
 #[test]
-fn recovery_identifies_a_lost_preparatory_request_without_claiming_the_edit_ran() {
+fn scoped_mutation_recovers_the_edit_job_after_a_lost_response() {
     let bridge = RecordedBridge::new();
     let output = bridge
         .command()
@@ -74,25 +74,26 @@ fn recovery_identifies_a_lost_preparatory_request_without_claiming_the_edit_ran(
             "set",
             "0x1000",
             "--text",
-            "must-not-run",
+            "test-lost-response",
             "--program",
-            "test-lost-selection",
+            "B",
         ])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     let requests = bridge.requests.lock().unwrap();
-    assert!(!requests
+    let operations: Vec<_> = requests
         .iter()
-        .any(|request| request["command"] == "comment_set"));
-    let selection = requests
-        .iter()
-        .find(|request| request["command"] == "open_program")
-        .unwrap();
-    assert_eq!(error["detail"]["job_id"], selection["job_id"]);
-    assert_eq!(error["detail"]["command"], "open_program");
-    assert_eq!(error["detail"]["recovery"]["argv"][3], selection["job_id"]);
+        .filter(|request| request["command"] != "bridge_info")
+        .collect();
+    assert_eq!(operations.len(), 1, "{operations:?}");
+    let edit = operations[0];
+    assert_eq!(edit["command"], "comment_set");
+    assert_eq!(edit["program"], "B");
+    assert_eq!(error["detail"]["job_id"], edit["job_id"]);
+    assert_eq!(error["detail"]["command"], "comment_set");
+    assert_eq!(error["detail"]["recovery"]["argv"][3], edit["job_id"]);
 }
 
 #[test]
@@ -157,6 +158,7 @@ fn management_commands_preserve_control_requests_and_json_output() {
             let request = requests.last().unwrap();
             assert_eq!(request["command"], expected_request, "{requests:?}");
             assert_eq!(request["args"], expected_args, "{request}");
+            assert!(requests.iter().all(|r| r.get("program").is_none()));
             let expected_commands = if args == ["bridge", "status"] {
                 vec!["ping", "bridge_info"]
             } else {
@@ -227,13 +229,14 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
             let requests = selected.requests.lock().unwrap();
             assert!(!requests.is_empty(), "{args:?} {position:?}");
             assert!(!requests.iter().any(|r| r["command"] == "open_program"));
+            assert!(requests.iter().all(|r| r.get("program").is_none()));
         }
     }
 }
 
 #[test]
 fn editing_capabilities_are_required_before_program_selection_or_edits() {
-    for info in [
+    for mut info in [
         json!({"auto_save": true, "named_import": true}),
         json!({"auto_save": false, "named_import": true}),
         json!({"auto_save": true, "named_import": true, "explicit_addresses": false}),
@@ -241,6 +244,7 @@ fn editing_capabilities_are_required_before_program_selection_or_edits() {
         json!({"auto_save": true, "named_import": true, "explicit_addresses": true, "atomic_edits": false}),
         json!({"auto_save": false, "named_import": true, "explicit_addresses": true, "atomic_edits": true}),
     ] {
+        info["protocol_version"] = json!(4);
         let bridge = RecordedBridge::with_info(info);
         std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
         for args in [
@@ -278,7 +282,11 @@ fn editing_capabilities_are_required_before_program_selection_or_edits() {
 #[test]
 fn pending_save_recovery_preserves_selection_and_bypasses_edit_capabilities() {
     for program in [None, Some("B")] {
-        let bridge = RecordedBridge::with_info(json!({"auto_save": true}));
+        let bridge = RecordedBridge::with_info(if program.is_some() {
+            json!({"protocol_version": 4})
+        } else {
+            json!({})
+        });
         std::fs::write(
             bridge.root.path().join("config.yaml"),
             "default_program: configured-startup-program\n",
@@ -296,19 +304,101 @@ fn pending_save_recovery_preserves_selection_and_bypasses_edit_capabilities() {
         assert_eq!(result["project"], json!(bridge.project));
         assert_eq!(result["observed_program"], program.unwrap_or("A"));
         let mut expected = Vec::new();
-        if let Some(program) = program {
-            expected.push(json!({"command": "open_program", "args": {"program": program}}));
+        if program.is_some() {
+            expected.push(json!({"command": "bridge_info"}));
         }
-        expected.push(json!({"command": "program_save"}));
+        let mut save = json!({"command": "program_save"});
+        if let Some(program) = program {
+            save["program"] = json!(program);
+        }
+        expected.push(save);
         let requests = bridge.requests.lock().unwrap();
         for (expected, actual) in expected.iter_mut().zip(requests.iter()) {
-            expected["job_id"] = actual["job_id"].clone();
+            if let Some(id) = actual.get("job_id") {
+                expected["job_id"] = id.clone();
+            }
         }
         assert_eq!(
             *requests, expected,
-            "Recovery must save the selected program without capability checks, restart, or replay"
+            "Recovery must bypass editing capabilities; only a targeted save checks the protocol"
         );
     }
+}
+
+#[test]
+fn unsupported_request_protocol_prevents_program_operations_and_scoped_saves() {
+    for version in [None, Some(3), Some(5)] {
+        let mut info = json!({"auto_save": true, "atomic_edits": true, "named_import": true, "explicit_addresses": true});
+        if let Some(version) = version {
+            info["protocol_version"] = json!(version);
+        }
+        let bridge = RecordedBridge::with_info(info);
+        for args in [
+            vec!["program", "info"],
+            vec![
+                "comment",
+                "set",
+                "0x1000",
+                "--text",
+                "marker",
+                "--program",
+                "B",
+            ],
+            vec!["program", "save", "B"],
+        ] {
+            bridge.requests.lock().unwrap().clear();
+            let output = bridge.command().args(&args).output().unwrap();
+            assert!(
+                !output.status.success(),
+                "{version:?}: {args:?}: {output:?}"
+            );
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("ghidra-cli bridge restart"),
+                "{error}"
+            );
+            assert_eq!(
+                *bridge.requests.lock().unwrap(),
+                [json!({"command": "bridge_info"})]
+            );
+        }
+    }
+}
+
+#[test]
+fn missing_scoped_target_leaves_the_selected_program_unchanged() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args([
+            "comment",
+            "set",
+            "0x1000",
+            "--text",
+            "marker",
+            "--program",
+            "missing-program",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["message"], "Program not found: missing-program");
+    assert!(error
+        .get("detail")
+        .is_none_or(|detail| detail.get("outcome_unknown").is_none()));
+    assert_eq!(bridge.run(&["program", "info"])["observed_program"], "A");
+    let requests = bridge.requests.lock().unwrap();
+    let edits: Vec<_> = requests
+        .iter()
+        .filter(|r| r["command"] == "comment_set")
+        .collect();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0]["program"], "missing-program");
+    assert!(requests.iter().all(|r| r["command"] != "open_program"));
 }
 
 #[test]
@@ -399,12 +489,11 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{domain:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], wire);
+            assert_eq!(domain.len(), 1, "{domain:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], wire);
             assert_eq!(
-                domain[1]["args"],
+                domain[0]["args"],
                 if wire == "comment_delete" {
                     json!({"address": "0x1000", "comment_type": if command.contains(&"--all") { None } else { Some("pre") }, "all": command.contains(&"--all")})
                 } else {

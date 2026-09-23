@@ -70,6 +70,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Use `--skip` for query pagination, `--format` for response format, and `-o`
   only for output destinations.
 
+### Fixed
+
+- Bind program selection to each queued operation so concurrent clients cannot
+  redirect commands issued with `--program`, including guarded edits and import
+  follow-up requests. Batches retain each project's selection across nested rows
+  using the actual operation responses.
+
 ## [0.8.0] - 2026-09-23
 
 ### Added

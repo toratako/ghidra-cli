@@ -44,12 +44,11 @@ fn listing_undefine_preserves_targets_and_atomic_redisassembly_in_standalone_and
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{requests:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"]["program"], "B");
-            assert_eq!(domain[1]["command"], "clear_range");
+            assert_eq!(domain.len(), 1, "{requests:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "clear_range");
             assert_eq!(
-                domain[1]["args"],
+                domain[0]["args"],
                 json!({"start": "0x1000", "end": "0x1010", "disasm_at": disasm_at})
             );
         }
@@ -319,7 +318,8 @@ fn define_code_forwards_bounds_and_preserves_receipts_without_query_defaults() {
                 assert_eq!(edits[0]["args"], json!({"target": "0x1000", "end": end}));
                 assert!(requests
                     .iter()
-                    .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+                    .filter(|r| r["command"] != "bridge_info")
+                    .all(|r| r["program"] == "B"));
             }
         }
     }

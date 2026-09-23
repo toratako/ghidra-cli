@@ -228,8 +228,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
 }
 
 /// Extract the --program argument from a command's args, if present.
-/// Enables program switching before query execution when the requested
-/// program differs from the bridge's current program.
+/// Binds the requested program to each bridge operation for this command.
 pub(super) fn extract_program_from_command(command: &Commands) -> Option<String> {
     match command {
         Commands::Decompile(args) => args.options.program.clone(),

@@ -90,7 +90,8 @@ fn flow_commands_preserve_complete_objects_and_limits_in_standalone_and_batch() 
                 assert_eq!(operations[0]["args"], expected, "{args:?}, batch={batch}");
                 assert!(requests
                     .iter()
-                    .any(|r| { r["command"] == "open_program" && r["args"]["program"] == "B" }));
+                    .filter(|r| r["command"] != "bridge_info")
+                    .all(|r| r["program"] == "B"));
             }
         }
     }
@@ -542,7 +543,8 @@ fn function_body_and_call_signature_preserve_scope_and_options_in_batches() {
             assert_eq!(operations[0]["args"], expected, "{args:?}");
             assert!(requests
                 .iter()
-                .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+                .filter(|r| r["command"] != "bridge_info")
+                .all(|r| r["program"] == "B"));
         }
     }
 }
@@ -652,6 +654,7 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
                 .filter(|r| r["command"].as_str().unwrap().starts_with("function_var_"))
                 .collect();
             assert_eq!(operations.len(), 2);
+            assert!(operations.iter().all(|r| r["program"] == "B"));
             assert_eq!(operations[0]["command"], "function_var_list");
             assert_eq!(
                 operations[1]["command"],

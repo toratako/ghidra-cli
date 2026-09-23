@@ -1,6 +1,9 @@
 use super::{start_daemon, TEST_PROGRAM};
 use crate::common::{self, ensure_test_project, test_project};
+use ghidra_cli::ipc::{client::BridgeClient, protocol::BridgeCommandError};
+use serde_json::json;
 use serial_test::serial;
+use std::time::{Duration, Instant};
 
 /// Read a separate database object from the saved file while the bridge stays
 /// running. A normal comment_get would only prove the in-memory edit exists.
@@ -148,6 +151,173 @@ fn test_failed_mutation_preserves_prior_edits_after_restart() {
 
 #[test]
 #[serial]
+fn test_queued_requests_keep_their_program_target() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let address = function.address;
+    let folder = format!("request-targets-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CopyRequestTargetPrograms extends GhidraScript {
+    public void run() throws Exception {
+        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
+        for (String child : new String[] { "first", "second" }) {
+            currentProgram.getDomainFile().copyTo(folder.createFolder(child), monitor).setName("same-name");
+        }
+    }
+}
+"#,
+            std::slice::from_ref(&folder),
+            &[],
+            false,
+        )
+        .unwrap();
+    let first = format!("/{folder}/first/same-name");
+    let second = format!("/{folder}/second/same-name");
+    client.open_program(&second).unwrap();
+
+    // Hold the script lane until all requests have been accepted. Every queued
+    // request must retain its own target despite sharing one current Program.
+    let release_directory = tempfile::tempdir().unwrap();
+    let release = release_directory.path().join("release");
+    let script_release = release.to_str().unwrap().to_owned();
+    let worker = harness.client().unwrap();
+    let blocker = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class HoldProgramTargetQueue extends GhidraScript {
+    public void run() throws Exception {
+        var release = new java.io.File(getScriptArgs()[0]);
+        monitor.setMessage("holding-program-target-queue");
+        long deadline = System.currentTimeMillis() + 30000;
+        while (!release.exists()) {
+            monitor.checkCancelled();
+            if (System.currentTimeMillis() > deadline) {
+                throw new IllegalStateException("Program target queue was not released");
+            }
+            Thread.sleep(10);
+        }
+    }
+}
+"#,
+            &[script_release],
+            &[],
+            false,
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        let status = client.status().unwrap();
+        if status["active_job"]["progress_message"] == "holding-program-target-queue" {
+            break;
+        }
+        assert!(!blocker.is_finished(), "queue blocker exited: {status}");
+        assert!(
+            Instant::now() < deadline,
+            "queue blocker did not start: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    let mut queued = Vec::new();
+    for (program, command, args, field, expected) in [
+        (
+            &first,
+            "rename_function",
+            json!({"old_name": address, "new_name": "targeted_first"}),
+            "old_name",
+            function.name.as_str(),
+        ),
+        (
+            &second,
+            "rename_function",
+            json!({"old_name": address, "new_name": "targeted_second"}),
+            "old_name",
+            function.name.as_str(),
+        ),
+        (
+            &first,
+            "get_function",
+            json!({"address": address}),
+            "name",
+            "targeted_first",
+        ),
+        (
+            &second,
+            "get_function",
+            json!({"address": address}),
+            "name",
+            "targeted_second",
+        ),
+    ] {
+        let worker = BridgeClient::new(harness.port()).with_program(program.clone());
+        let request = std::thread::spawn(move || worker.send_command(command, Some(args)));
+        queued.push((request, field, expected));
+        loop {
+            let status = client.status().unwrap();
+            if status["queue_depth"].as_u64() == Some(queued.len() as u64) {
+                break;
+            }
+            assert!(!blocker.is_finished(), "queue blocker exited: {status}");
+            assert!(
+                Instant::now() < deadline,
+                "request was not queued: {status}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    std::fs::write(&release, b"release").unwrap();
+    blocker.join().unwrap().unwrap();
+    for (request, field, expected) in queued {
+        let response = request.join().unwrap().unwrap();
+        assert_eq!(response[field], expected, "{response}");
+    }
+
+    // Closing and selecting each copy again proves that the edits were saved
+    // to separate databases, including when their file/internal names match.
+    client.program_close().unwrap();
+    for (program, expected) in [(&first, "targeted_first"), (&second, "targeted_second")] {
+        let selected = BridgeClient::new(harness.port()).with_program(program.clone());
+        let info = selected.program_info().unwrap();
+        assert_eq!(info["path"], *program);
+        let function = selected
+            .send_command("get_function", Some(json!({"address": address})))
+            .unwrap();
+        assert_eq!(function["name"], expected, "{function}");
+    }
+
+    // An invalid target must fail before the mutation, without falling back to
+    // the successfully selected second copy.
+    for target in ["".to_owned(), format!("/{folder}/missing")] {
+        let invalid = BridgeClient::new(harness.port()).with_program(target);
+        invalid
+            .send_command(
+                "rename_function",
+                Some(json!({"old_name": address, "new_name": "wrong_target"})),
+            )
+            .unwrap_err();
+        assert_eq!(
+            client.bridge_info().unwrap()["current_program_path"],
+            second
+        );
+        let function = client
+            .send_command("get_function", Some(json!({"address": address})))
+            .unwrap();
+        assert_eq!(function["name"], "targeted_second");
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&first).unwrap();
+    client.program_delete(&second).unwrap();
+}
+
+#[test]
+#[serial]
 fn test_handlers_follow_program_switch_and_close() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
@@ -241,11 +411,9 @@ public class CopyBridgeProgram extends GhidraScript {
         .assert_success()
         .assert_stdout_not_contains(&marker);
     client.open_program(&alternate).unwrap();
-    client
-        .send_command(
-            "analysis_run",
-            Some(serde_json::json!({"program": TEST_PROGRAM})),
-        )
+    BridgeClient::new(harness.port())
+        .with_program(TEST_PROGRAM)
+        .send_command("analysis_run", None)
         .unwrap();
     assert!(!client.comment_get(address).unwrap()["comments"]
         .as_array()
@@ -394,6 +562,30 @@ fn test_save_failure_preserves_program_and_does_not_replay_edit() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
+    let original_path = client.program_info().unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let function = crate::common::helpers::get_fixture_function(&client, "add_numbers");
+    let folder = format!("failed-target-switch-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CopyFailedSwitchTarget extends GhidraScript {
+    public void run() throws Exception {
+        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
+        currentProgram.getDomainFile().copyTo(folder, monitor);
+    }
+}
+"#,
+            std::slice::from_ref(&folder),
+            &[],
+            false,
+        )
+        .unwrap();
+    let target_path = format!("/{folder}/{TEST_PROGRAM}");
+    let targeted = BridgeClient::new(harness.port()).with_program(&target_path);
     let key = uuid::Uuid::new_v4().to_string();
     // Deliberately leave a script-owned transaction open: the edit completes,
     // but a durable save cannot acquire the program lock.
@@ -432,6 +624,23 @@ public class PreventAutoSave extends GhidraScript {
         .unwrap()
         .trim()
         .to_owned();
+    let failed_switch = targeted
+        .send_command(
+            "rename_function",
+            Some(json!({"old_name": function.address, "new_name": "must_not_run_after_failed_switch"})),
+        )
+        .unwrap_err();
+    let switch_detail = &failed_switch
+        .downcast_ref::<BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert_eq!(switch_detail["save_failed"], true, "{switch_detail}");
+    assert_eq!(switch_detail["saved"], false);
+    assert_eq!(switch_detail["program"], original_path);
+    assert_eq!(
+        client.bridge_info().unwrap()["current_program_path"],
+        original_path
+    );
     let project_path = std::path::Path::new(test_project());
     let pid = ghidra_cli::ghidra::bridge::read_pid_file(project_path).unwrap();
     for args in [
@@ -513,6 +722,14 @@ public class AllowAutoSave extends GhidraScript {
         .contains("edit-count:1"));
     assert_eq!(client.program_save().unwrap()["saved"], true);
     assert!(client.ping().unwrap());
+    for reader in [&client, &targeted] {
+        let unchanged = reader
+            .send_command("get_function", Some(json!({"address": function.address})))
+            .unwrap();
+        assert_eq!(unchanged["name"], function.name, "{unchanged}");
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&target_path).unwrap();
     drop(harness);
     let restarted = start_daemon();
     let saved = restarted.client().unwrap().script_run_source(r#"

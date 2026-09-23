@@ -89,20 +89,28 @@ fn program_import_keeps_saved_names_and_selection_separate_in_standalone_and_bat
                     .unwrap();
                 let import = &requests[import_index];
                 assert_eq!(import["args"]["program"], json!(name));
+                assert!(import.get("program").is_none());
                 let selected: Vec<_> = requests
                     .iter()
                     .filter(|r| r["command"] == "open_program")
                     .map(|r| r["args"]["program"].as_str().unwrap())
                     .collect();
-                assert_eq!(
-                    selected,
-                    if batched {
-                        vec!["existing-target", "imported"]
-                    } else {
-                        vec!["imported"]
-                    }
-                );
-                assert_eq!(requests[import_index + 1]["command"], "open_program");
+                let mut expected_selected = Vec::new();
+                if no_analyze {
+                    expected_selected.push("imported");
+                }
+                assert_eq!(selected, expected_selected);
+                if no_analyze {
+                    assert_eq!(requests[import_index + 1]["command"], "open_program");
+                } else {
+                    assert_eq!(requests[import_index + 1]["command"], "analysis_run");
+                    assert_eq!(requests[import_index + 1]["program"], "imported");
+                }
+                if batched {
+                    let info = requests.last().unwrap();
+                    assert_eq!(info["command"], "program_info");
+                    assert_eq!(info["program"], "imported");
+                }
                 assert_eq!(
                     requests
                         .iter()

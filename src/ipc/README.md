@@ -54,19 +54,33 @@ reopens the queue for recovery.
 
 ## Wire format
 
-`bridge_info` and `status` advertise protocol version 3.
+`bridge_info` and `status` advertise protocol version 4.
 
 ```json
-{"command":"list_functions","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","args":{"limit":100}}
-{"status":"success","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","data":{"functions":[]},"message":null}
+{"command":"list_functions","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","program":"/sample","args":{"limit":100}}
+{"status":"success","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","selected_program":"/sample","data":{"functions":[]},"message":null}
 ```
 
 Request `command` is required; optional `args` is omitted when `None`.
 Program requests require `job_id` as a canonical hyphenated UUID (case-insensitive).
-The client creates a new UUID per bridge operation, including preparatory program
-selection. Controls omit it. Accepted jobs echo it on terminal responses; admission
+The client creates a new UUID per bridge operation. Controls omit it.
+Accepted jobs echo it on terminal responses; admission
 errors may omit it. The client rejects mismatched IDs and program success without
 an ID as unknown outcomes. Ordinary CLI output unwraps the response without the ID.
+Optional top-level `program` is a nonempty string selecting a project Program
+within that queued job, before its request transaction and handler. Selection
+failure skips the handler and request completion; it must not save the previous
+program again. Controls cannot carry a selector. `BridgeClient::with_program`
+binds this field to every program request, including multi-request CLI helpers.
+
+Executed jobs return top-level `selected_program` with the final DomainFile path
+or explicit null when no program remains selected. Capture it on the program lane
+after request completion, including errors, before another job can switch programs.
+Admission failures, queued cancellations, and controls omit it. Rust retains the
+distinction between absent and null to update batch selection from the actual
+response, without a later control snapshot. The field is internal routing metadata
+and is omitted from ordinary CLI output.
+
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON. `success`
 unwraps to `data` or `{}`; `error` retains message and structured detail;
@@ -569,11 +583,13 @@ the outstanding transaction through its owning script; recovery scripts remain
 available. Never replay the edit or save while rollback is pending.
 
 `bridge_info.atomic_edits: true` advertises this request rollback contract. The CLI
-requires it alongside `auto_save` and `explicit_addresses` before program dispatch;
+requires it alongside protocol version 4, `auto_save`, and `explicit_addresses`
+before program dispatch;
 a missing capability fails with explicit bridge-restart guidance, without sending
-the program command or automatically upgrading the bridge. Explicit `program_save`
-uses the direct recovery path and remains available before restarting an older
-bridge with pending edits.
+the program command or automatically upgrading the bridge. Targeted `program_save`
+requires protocol version 4 so its selector cannot be ignored, but bypasses the
+other capability checks. Unscoped `program_save` bypasses all these checks for
+in-place recovery of pending edits.
 
 ## Other command distinctions
 

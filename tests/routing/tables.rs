@@ -149,11 +149,10 @@ fn vtable_reads_preserve_targets_and_nested_slots_in_standalone_and_batch() {
                     .iter()
                     .filter(|request| request["command"] != "bridge_info")
                     .collect();
-                assert_eq!(domain.len(), 2, "{requests:?}");
-                assert_eq!(domain[0]["command"], "open_program");
-                assert_eq!(domain[0]["args"], json!({"program": "B"}));
-                assert_eq!(domain[1]["command"], "vtable_read");
-                assert_eq!(domain[1]["args"], expected_args);
+                assert_eq!(domain.len(), 1, "{requests:?}");
+                assert_eq!(domain[0]["program"], "B");
+                assert_eq!(domain[0]["command"], "vtable_read");
+                assert_eq!(domain[0]["args"], expected_args);
             }
         }
     }
@@ -260,12 +259,11 @@ fn address_table_queries_keep_detector_context_and_fetch_before_selection() {
                 .iter()
                 .filter(|request| request["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{requests:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program": "B"}));
-            assert_eq!(domain[1]["command"], "find_address_tables");
+            assert_eq!(domain.len(), 1, "{requests:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], "find_address_tables");
             assert_eq!(
-                domain[1]["args"],
+                domain[0]["args"],
                 json!({
                     "start": "bank1:0x1000", "end": "upper_bound", "min_entries": 4,
                     "alignment": 8, "limit": fetch_limit,

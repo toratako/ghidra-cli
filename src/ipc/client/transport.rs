@@ -232,6 +232,11 @@ impl BridgeClient {
         let request = BridgeRequest {
             command: command.to_string(),
             job_id: job_id.clone(),
+            program: if job_id.is_some() {
+                self.program.clone()
+            } else {
+                None
+            },
             args,
         };
 
@@ -334,14 +339,20 @@ impl BridgeClient {
                     command: command.to_owned(),
                 })
             };
-            match job_id {
+            match &job_id {
                 Some(id) => error.context(BridgeJob {
-                    id,
+                    id: id.clone(),
                     command: command.to_owned(),
                 }),
                 None => error,
             }
         })?;
+
+        if job_id.is_some() && response.job_id == job_id {
+            if let Some(program) = response.selected_program {
+                self.selection.record(program);
+            }
+        }
 
         match response.status.as_str() {
             "success" => Ok(response.data.unwrap_or(json!({}))),

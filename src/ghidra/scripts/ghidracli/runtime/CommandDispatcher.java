@@ -1,6 +1,7 @@
 package ghidracli.runtime;
 
 import com.google.gson.JsonObject;
+import ghidra.util.exception.CancelledException;
 import ghidracli.analysis.AnalysisCommands;
 import ghidracli.analysis.DecompileCommands;
 import ghidracli.analysis.GraphCommands;
@@ -318,10 +319,24 @@ final class CommandDispatcher {
         }
     }
     JsonObject execute(String command, JsonObject args) {
+        return execute(command, args, null);
+    }
+
+    JsonObject execute(String command, JsonObject args, String program) {
         try {
-            session.beginRequest(command);
+            session.beginRequest(command, program);
+        } catch (ProgramSession.SaveFailure e) {
+            // Selection failed before this request began. Never finish or retry
+            // the save of the previous program as though the handler had run.
+            return saveFailure(command, null, e);
         } catch (Exception e) {
-            return errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
+            JsonObject detail = JsonProtocol.errorDetail(e);
+            if (e instanceof CancelledException || session.monitor().isCancelled()) {
+                if (detail == null) detail = new JsonObject();
+                detail.addProperty("cancelled", true);
+                detail.addProperty("program", session.programPath());
+            }
+            return errorResponse(e.getMessage(), detail);
         }
         JsonObject response = executeCommand(command, args);
         try {
@@ -349,17 +364,7 @@ final class CommandDispatcher {
             }
             return response;
         } catch (ProgramSession.SaveFailure e) {
-            JsonObject detail = new JsonObject();
-            detail.addProperty("saved", false);
-            detail.addProperty("save_failed", true);
-            detail.addProperty("command", command);
-            if (session.program() != null) {
-                detail.addProperty("program", session.program().getDomainFile().getPathname());
-            }
-            detail.add("command_response", response);
-            return errorResponse("Auto-save failed: " + e.getMessage()
-                + ". Changes may remain in memory. Retry `ghidra-cli program save` for this project/program; "
-                + "do not repeat the editing command or stop the bridge before saving.", detail);
+            return saveFailure(command, response, e);
         } catch (Exception e) {
             JsonObject detail = JsonProtocol.errorDetail(e);
             if (detail == null) detail = new JsonObject();
@@ -369,8 +374,21 @@ final class CommandDispatcher {
         }
     }
 
+    private JsonObject saveFailure(String command, JsonObject response, ProgramSession.SaveFailure failure) {
+        JsonObject detail = new JsonObject();
+        detail.addProperty("saved", false);
+        detail.addProperty("save_failed", true);
+        detail.addProperty("command", command);
+        if (session.program() != null) detail.addProperty("program", session.programPath());
+        if (response != null) detail.add("command_response", response);
+        return errorResponse("Auto-save failed: " + failure.getMessage()
+            + ". Changes may remain in memory. Retry `ghidra-cli program save` for this project/program; "
+            + "do not repeat the editing command or stop the bridge before saving.", detail);
+    }
+
     private JsonObject executeCommand(String command, JsonObject args) {
         try {
+            session.monitor().checkCancelled();
             JsonObject result = dispatchCommand(command, args);
             if (result == null) {
                 return errorResponse("Unknown command: " + command);

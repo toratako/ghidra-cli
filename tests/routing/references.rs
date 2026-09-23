@@ -238,16 +238,15 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program":"B"}));
+            assert!(domain.iter().all(|r| r["program"] == "B"));
             let edits: Vec<_> = domain.iter().filter(|r| r["command"] == wire).collect();
             assert_eq!(edits.len(), 1, "{args:?}: {domain:?}");
             assert_eq!(edits[0]["args"], expected, "{args:?}");
             if wire.starts_with("symbol_") {
-                assert_eq!(domain.len(), 3);
-                assert_eq!(domain[1]["command"], "symbol_get_by_name");
-            } else {
                 assert_eq!(domain.len(), 2);
+                assert_eq!(domain[0]["command"], "symbol_get_by_name");
+            } else {
+                assert_eq!(domain.len(), 1);
             }
         }
     }

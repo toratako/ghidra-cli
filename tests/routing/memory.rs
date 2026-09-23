@@ -233,11 +233,10 @@ fn memory_commands_route_exact_targets_and_receipts_in_standalone_and_batch() {
                 .iter()
                 .filter(|r| r["command"] != "bridge_info")
                 .collect();
-            assert_eq!(domain.len(), 2, "{requests:?}");
-            assert_eq!(domain[0]["command"], "open_program");
-            assert_eq!(domain[0]["args"], json!({"program": "B"}));
-            assert_eq!(domain[1]["command"], wire);
-            assert_eq!(domain[1]["args"], expected_args);
+            assert_eq!(domain.len(), 1, "{requests:?}");
+            assert_eq!(domain[0]["program"], "B");
+            assert_eq!(domain[0]["command"], wire);
+            assert_eq!(domain[0]["args"], expected_args);
         }
     }
 }
