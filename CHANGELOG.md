@@ -53,6 +53,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Flatten `xref create memory` to `xref create`, retaining ordinary-memory
+  reference validation and explicit operand/type selection.
+
 - Consolidate memory block attribute edits into `memory block set BLOCK_START`
   with `--name`, `--permissions`, and `--volatile true|false`. Multiple attributes
   change atomically; omitted attributes are preserved. Block creation also takes

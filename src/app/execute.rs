@@ -92,7 +92,7 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
             }
             addresses
         }
-        Commands::XRef(cli::XRefCommands::Create(cli::XRefCreateCommands::Memory(args))) => {
+        Commands::XRef(cli::XRefCommands::Create(args)) => {
             vec![&args.from, &args.to]
         }
         Commands::XRef(cli::XRefCommands::Delete(args) | cli::XRefCommands::SetPrimary(args)) => {
@@ -209,7 +209,7 @@ pub(super) fn execute_via_bridge(
             match cmd {
                 XRefCommands::To(args) => client.xrefs_to(args.target.clone()),
                 XRefCommands::From(args) => client.xrefs_from(args.target.clone(), args.whole_function),
-                XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => client.send_command(
+                XRefCommands::Create(args) => client.send_command(
                     "xref_create_memory",
                     Some(json!({"from": args.from, "to": args.to, "operand_index": args.operand_index,
                         "ref_type": args.ref_type.to_ascii_uppercase()})),

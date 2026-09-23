@@ -81,8 +81,8 @@ through `symbol delete` can also delete its children.
 
 ```bash
 ghidra-cli xref from 0x405020
-ghidra-cli xref create memory 0x405020 0x401300 --operand 0 --type DATA
-ghidra-cli xref create memory 0x401234 0x401300 --operand 0 --type COMPUTED_CALL
+ghidra-cli xref create 0x405020 0x401300 --operand 0 --type DATA
+ghidra-cli xref create 0x401234 0x401300 --operand 0 --type COMPUTED_CALL
 ghidra-cli xref delete 0x401234 0x401300 --operand 0
 ```
 

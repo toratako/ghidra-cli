@@ -118,7 +118,6 @@ ghidra-cli
 │   ├── to
 │   ├── from
 │   ├── create
-│   │   └── memory
 │   ├── delete
 │   └── set-primary
 ├── type
@@ -212,4 +211,4 @@ ghidra-cli
     └── cancel
 ```
 
-200 command nodes (excluding the root), 0 aliases.
+199 command nodes (excluding the root), 0 aliases.

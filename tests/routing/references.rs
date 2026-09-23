@@ -34,7 +34,6 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
             vec![
                 "xref",
                 "create",
-                "memory",
                 "0x1000",
                 "overlay:0x2000",
                 "--operand=-1",
@@ -351,7 +350,6 @@ fn invalid_annotation_edits_fail_during_preflight_before_program_selection() {
         vec![
             "xref",
             "create",
-            "memory",
             "entry",
             "0x2000",
             "--operand",

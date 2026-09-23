@@ -25,23 +25,16 @@ pub enum XRefCommands {
     To(XRefArgs),
     /// Get cross-references from one address, or an entire function with --whole-function
     From(XRefFromArgs),
-    /// Create a reference of an explicit kind
-    #[command(subcommand)]
-    Create(XRefCreateCommands),
+    /// Create an ordinary memory reference with USER_DEFINED source
+    Create(XRefCreateArgs),
     /// Delete the exact reference only if its source matches
     Delete(XRefEditArgs),
     /// Select the primary reference for one source operand
     SetPrimary(XRefEditArgs),
 }
 
-#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
-pub enum XRefCreateCommands {
-    /// Create an ordinary memory reference with USER_DEFINED source
-    Memory(XRefCreateMemoryArgs),
-}
-
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct XRefCreateMemoryArgs {
+pub struct XRefCreateArgs {
     /// Explicit address of the instruction or data start
     pub from: String,
     /// Explicit destination address; unmapped memory is allowed
