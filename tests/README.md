@@ -8,6 +8,7 @@ cargo test -p xtask
 cargo xtask gen-tree --check
 cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
+python -m unittest discover -s .github/actions/install-ghidra -v
 ```
 
 Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
@@ -55,6 +56,15 @@ These fail until reviewed snapshots are added; normal schema tests need no
 snapshots. CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
 tests, and the generated command tree check on Linux, Windows, and macOS 26 ARM64.
 See [the test workflow](../.github/workflows/test.yml) for suite groupings.
+
+CI installs a pinned official distribution through the shared
+[install action](../.github/actions/install-ghidra/action.yml), selects it with
+`GHIDRA_INSTALL_DIR`, and caches only that installation (including macOS native
+tools). Update its [release manifest](../.github/actions/install-ghidra/release.json)
+with the version, asset filename, and official SHA-256 together. Cache keys include
+the release, runner OS/architecture, and installer/native-build sources.
+Archive extraction tests run on all three native platforms to verify timestamps,
+Unix executable permissions, and checksum failure before extraction.
 
 Markdown-only changes skip Ghidra setup and integration jobs; unit/CLI tests,
 the command tree check, and lint still run. Other changes run every suite on

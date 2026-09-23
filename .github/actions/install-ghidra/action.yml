@@ -1,0 +1,46 @@
+name: Install Ghidra for CI
+description: Cache a pinned official Ghidra release and its native tools
+runs:
+  using: composite
+  steps:
+    - name: Select Ghidra release
+      id: release
+      shell: python
+      run: |
+        import json
+        import os
+        from pathlib import Path
+
+        release = json.loads((Path(os.environ["GITHUB_ACTION_PATH"]) / "release.json").read_text())
+        version = release["version"]
+        install = Path(os.environ["RUNNER_TEMP"]) / f"ghidra_{version}_PUBLIC"
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            print(f"version={version}", file=output)
+            print(f"path={install}", file=output)
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+            print(f"GHIDRA_INSTALL_DIR={install}", file=output)
+
+    - name: Cache Ghidra installation
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.release.outputs.path }}
+        key: ghidra-${{ runner.os }}-${{ runner.arch }}-${{ steps.release.outputs.version }}-${{ hashFiles('.github/actions/install-ghidra/action.yml', '.github/actions/install-ghidra/release.json', '.github/actions/install-ghidra/install.py', '.github/scripts/build-ghidra-natives.py') }}
+
+    - name: Download and extract Ghidra
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: python
+      run: |
+        import os
+        from pathlib import Path
+        import runpy
+
+        runpy.run_path(str(Path(os.environ["GITHUB_ACTION_PATH"]) / "install.py"), run_name="__main__")
+
+    - name: Build macOS native Ghidra tools
+      if: runner.os == 'macOS'
+      shell: python
+      run: |
+        import runpy
+
+        runpy.run_path(".github/scripts/build-ghidra-natives.py", run_name="__main__")

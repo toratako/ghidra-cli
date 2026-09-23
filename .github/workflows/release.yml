@@ -33,19 +33,6 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Cache Ghidra installation and config
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.local/share/ghidra-cli
-            ~/.config/ghidra-cli
-            ~/Library/Application Support/ghidra-cli
-            ~/Library/Preferences/ghidra-cli
-            ~/AppData/Local/ghidra-cli
-            ~/AppData/Roaming/ghidra-cli
-          # v6 preserves archive times; macOS v7 also caches built native tools.
-          key: ghidra-${{ matrix.os }}-${{ runner.os == 'macOS' && 'v7-native' || 'v6' }}
-
       - name: Build
         run: cargo build --verbose
 
@@ -55,24 +42,12 @@ jobs:
       - name: Check generated command tree
         run: cargo xtask gen-tree --check
 
-      - name: Setup Ghidra
-        run: |
-          DOCTOR_OUTPUT=$(cargo run -- doctor 2>&1 || true)
-          echo "$DOCTOR_OUTPUT"
-          if echo "$DOCTOR_OUTPUT" | grep -q "analyzeHeadless: OK"; then
-            echo "Ghidra already installed (cache hit), skipping setup"
-          else
-            echo "Ghidra not found, running setup..."
-            cargo run -- setup
-          fi
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test CI archive extraction
+        run: python -m unittest discover -s .github/actions/install-ghidra -v
 
-      - name: Build macOS native Ghidra tools
-        if: runner.os == 'macOS'
-        run: python3 .github/scripts/build-ghidra-natives.py
-        timeout-minutes: 15
+      - name: Install Ghidra
+        uses: ./.github/actions/install-ghidra
+        timeout-minutes: 20
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime

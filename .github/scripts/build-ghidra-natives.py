@@ -1,6 +1,5 @@
 """Build the native Ghidra tools missing from the macOS release archive."""
 
-import json
 import os
 from pathlib import Path
 import platform
@@ -8,10 +7,7 @@ import subprocess
 
 
 def main():
-    install = Path(json.loads(subprocess.check_output(
-        ["cargo", "run", "--quiet", "--", "config", "get", "ghidra_install_dir", "--json"],
-        text=True,
-    ))["data"])
+    install = Path(os.environ["GHIDRA_INSTALL_DIR"])
     native_platform = {"arm64": "mac_arm_64", "x86_64": "mac_x86_64"}[platform.machine()]
     required = [
         ("Ghidra/Features/Decompiler", "decompile"),
