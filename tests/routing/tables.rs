@@ -276,6 +276,48 @@ fn address_table_queries_keep_detector_context_and_fetch_before_selection() {
 }
 
 #[test]
+fn address_table_human_output_preserves_scope_and_scan_completion() {
+    let bridge = RecordedBridge::new();
+    for format in ["compact", "full"] {
+        for (flags, complete, empty) in [
+            (vec!["--quiet", "--fields", "address"], false, false),
+            (vec!["--limit", "0"], true, false),
+            (vec!["--sort=-address", "--limit", "1"], true, false),
+            (vec!["--filter", "entry_count>8"], true, true),
+        ] {
+            let output = bridge
+                .command()
+                .args(["find", "address-tables", "--format", format])
+                .args(&flags)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let text = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                text.contains("Candidate start ranges: bank1:0x1000 .. bank1:0x7000"),
+                "{text}"
+            );
+            assert_eq!(text.contains("Scan complete"), complete, "{text}");
+            assert_eq!(
+                text.contains("Scan stopped at the result limit"),
+                !complete,
+                "{text}"
+            );
+            assert_eq!(text.contains("--limit 0"), !complete, "{text}");
+            assert_eq!(text.contains("No results"), empty, "{text}");
+        }
+        let output = bridge
+            .command()
+            .args(["find", "address-tables", "--count", "--format", format])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "3\n");
+    }
+}
+
+#[test]
 fn incompatible_vtable_layout_fails_before_program_selection_and_batch_execution() {
     let bridge = RecordedBridge::new();
     let args = [

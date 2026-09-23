@@ -185,6 +185,45 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
         _ if result.is_count => Ok(serde_json::to_string(&result.data)?),
         OutputFormat::Compact | OutputFormat::Full => {
             let mut text = DefaultFormatter.format(result.rows(), format)?;
+            if result
+                .meta
+                .get("detector")
+                .and_then(serde_json::Value::as_str)
+                == Some("ghidra-address-table")
+            {
+                if let Some(ranges) = result
+                    .meta
+                    .get("ranges")
+                    .and_then(serde_json::Value::as_array)
+                {
+                    let ranges = ranges
+                        .iter()
+                        .filter_map(|range| {
+                            Some(format!(
+                                "{} .. {}",
+                                range["start"].as_str()?,
+                                range["end"].as_str()?
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let ranges = if ranges.is_empty() { "none" } else { &ranges };
+                    text = format!("Candidate start ranges: {ranges}\n{text}");
+                }
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                match result
+                    .meta
+                    .get("scan")
+                    .and_then(|scan| scan.get("complete"))
+                    .and_then(serde_json::Value::as_bool)
+                {
+                    Some(true) => text.push_str("Scan complete for these candidate start ranges.\n"),
+                    Some(false) => text.push_str("Scan stopped at the result limit; use --limit 0 to scan all candidate starts in these ranges.\n"),
+                    None => {}
+                }
+            }
             if let Some(path) = result
                 .meta
                 .get("target_type_path")
