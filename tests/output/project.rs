@@ -1,6 +1,45 @@
 use super::{installation_fixture, isolated_command};
 
 #[test]
+fn project_reads_work_without_ghidra_and_do_not_create_the_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let projects = temp.path().join("projects");
+    let command = || {
+        let mut command = isolated_command(&temp);
+        command.env(
+            "GHIDRA_INSTALL_DIR",
+            temp.path().join("missing-installation"),
+        );
+        command
+    };
+    for exists in [false, true] {
+        if exists {
+            std::fs::create_dir_all(projects.join("sample.rep")).unwrap();
+            std::fs::write(projects.join("sample.gpr"), "descriptor").unwrap();
+        }
+        let listed = command().args(["project", "list"]).output().unwrap();
+        assert!(listed.status.success(), "{listed:?}");
+        assert_eq!(
+            crate::json_output::from_slice::<serde_json::Value>(&listed.stdout).unwrap(),
+            if exists {
+                serde_json::json!(["sample"])
+            } else {
+                serde_json::json!([])
+            }
+        );
+        let info = command()
+            .args(["project", "info", "sample"])
+            .output()
+            .unwrap();
+        assert!(info.status.success(), "{info:?}");
+        let info: serde_json::Value = crate::json_output::from_slice(&info.stdout).unwrap();
+        assert_eq!(info["exists"], exists);
+        assert_eq!(info["path"], serde_json::json!(projects.join("sample")));
+        assert_eq!(projects.exists(), exists);
+    }
+}
+
+#[test]
 fn project_lists_share_json_metadata_and_ndjson_row_semantics() {
     let temp = tempfile::tempdir().unwrap();
     let install = temp.path().join("installation");

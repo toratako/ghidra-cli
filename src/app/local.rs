@@ -94,11 +94,10 @@ pub(super) fn handle_project_command(
     use cli::ProjectCommands;
 
     let config = super::project::load_config(projects_dir)?;
-    let client = GhidraClient::new(config.clone())?;
 
     match cmd {
         ProjectCommands::List => {
-            let projects = crate::ghidra::project::list_projects(client.get_project_dir())?;
+            let projects = crate::ghidra::project::list_projects(&config.get_project_dir()?)?;
             let human = if projects.is_empty() {
                 "No projects found".to_string()
             } else {
@@ -108,6 +107,7 @@ pub(super) fn handle_project_command(
         }
 
         ProjectCommands::Delete { name } => {
+            let client = GhidraClient::new(config.clone())?;
             let deleted = client.delete_project(&name)?;
             output.result(
                 &json!({"project": name, "deleted": deleted}),
@@ -119,6 +119,7 @@ pub(super) fn handle_project_command(
             )?;
         }
         ProjectCommands::Archive { name, output: path } => {
+            let client = GhidraClient::new(config.clone())?;
             let result = client.archive_project(&name, &path)?;
             output.result(
                 &result,
@@ -131,6 +132,7 @@ pub(super) fn handle_project_command(
             )?;
         }
         ProjectCommands::Restore { archive, name } => {
+            let client = GhidraClient::new(config.clone())?;
             let result = client.restore_project(&archive, &name)?;
             output.result(
                 &result,
@@ -144,7 +146,8 @@ pub(super) fn handle_project_command(
         }
         ProjectCommands::Info { name } => {
             let project_name = resolve_project_name(&name.or_else(|| project.clone()), &config)?;
-            let project_path = client.get_project_path(&project_name);
+            let project_path =
+                super::project::resolve_project_path(&Some(project_name.clone()), &config)?;
             let exists = crate::ghidra::project::ProjectPaths::new(&project_path)
                 .is_some_and(|paths| paths.exists());
             output.result(

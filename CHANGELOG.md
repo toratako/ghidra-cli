@@ -106,6 +106,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Include namespaces, classes, and variable symbols in symbol listings.
 - Exclude equates and union-field annotations from decompiled local variables.
 - Sort boolean fields and preserve integer precision when sorting numeric fields.
+- Allow local project listing and information queries without a working Ghidra
+  installation or creating the project directory.
 - Bind program selection to each queued operation so concurrent clients cannot
   redirect commands issued with `--program`, including guarded edits and import
   follow-up requests. Batches retain each project's selection across nested rows

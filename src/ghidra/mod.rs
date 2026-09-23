@@ -39,10 +39,6 @@ impl GhidraClient {
         self.project_dir.join(project_name)
     }
 
-    pub fn get_project_dir(&self) -> &Path {
-        &self.project_dir
-    }
-
     pub fn delete_project(&self, name: &str) -> anyhow::Result<bool> {
         bridge::delete_project(&self.get_project_path(name), &self.install_dir)
     }
