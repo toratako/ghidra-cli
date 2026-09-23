@@ -168,9 +168,9 @@ final class CommandDispatcher {
             case "program_context_clear": return programContextCommands.handleClear(args);
             case "program_rebase": return programRebaseCommands.handleRebase(args);
             case "program_list_relocations": return programCommands.handleListRelocations();
+            case "program_list_calling_conventions": return programCommands.handleListCallingConventions();
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);
-            case "function_list_calling_conventions": return functionCommands.handleListCallingConventions();
             case "function_disasm": return functionCommands.handleFunctionDisasm(args);
             case "rename_function": return functionCommands.handleRenameFunction(args);
             case "create_function": return functionCommands.handleCreateFunction(args);

@@ -96,11 +96,6 @@ impl BridgeClient {
         self.send_command_with_timeout(command, Some(args), long_op_timeout())
     }
 
-    /// List the current compiler specification's calling conventions.
-    pub fn function_list_calling_conventions(&self) -> Result<serde_json::Value> {
-        self.send_command("function_list_calling_conventions", None)
-    }
-
     pub fn pcode_at(&self, address: &str) -> Result<serde_json::Value> {
         self.send_command("pcode_at", Some(json!({"address": address})))
     }

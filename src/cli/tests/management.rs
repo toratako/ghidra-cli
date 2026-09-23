@@ -219,6 +219,7 @@ fn program_target_operands_are_separate_from_global_context() {
         "info",
         "stats",
         "list-relocations",
+        "list-calling-conventions",
         "rebase",
         "export",
     ] {
@@ -248,7 +249,10 @@ fn program_target_operands_are_separate_from_global_context() {
             Commands::Program(ProgramCommands::Info(args) | ProgramCommands::Stats(args)) => {
                 args.name
             }
-            Commands::Program(ProgramCommands::ListRelocations(args)) => args.name,
+            Commands::Program(
+                ProgramCommands::ListRelocations(args)
+                | ProgramCommands::ListCallingConventions(args),
+            ) => args.name,
             Commands::Program(ProgramCommands::Rebase(args)) => args.name,
             Commands::Program(ProgramCommands::Export(args)) => Some(args.name),
             _ => unreachable!(),
@@ -265,6 +269,7 @@ fn program_context_commands_can_omit_the_target_operand() {
         "info",
         "stats",
         "list-relocations",
+        "list-calling-conventions",
         "rebase",
     ] {
         let mut argv = vec!["ghidra-cli", "program", action];

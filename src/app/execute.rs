@@ -249,6 +249,7 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::Rebase(args) => client.program_rebase(&args.base),
                 ProgramCommands::Stats(_) => client.stats(),
                 ProgramCommands::ListRelocations(_) => client.program_list_relocations(),
+                ProgramCommands::ListCallingConventions(_) => client.program_list_calling_conventions(),
                 ProgramCommands::Export(args) => {
                     let output = std::path::absolute(&args.output)?;
                     client.program_export(&args.format, Some(&output.to_string_lossy()))

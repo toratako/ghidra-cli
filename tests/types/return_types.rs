@@ -108,7 +108,7 @@ fn inferred_parameters_survive_return_edits_and_reopen_with_types_still_inferred
             assert_eq!(params[0], before["signature_details"]["params"][0]);
         }
         let conventions = client
-            .send_command("function_list_calling_conventions", None)
+            .send_command("program_list_calling_conventions", None)
             .unwrap();
         assert!(
             conventions["calling_conventions"]

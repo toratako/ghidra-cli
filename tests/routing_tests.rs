@@ -137,7 +137,7 @@ fn api_list_fixture(command: &str) -> (&'static str, Vec<Value>) {
                 .map(|(i, symbol_name)| json!({"address": format!("0x{:x}", 0x1000 + i), "symbol_name": symbol_name, "status": "APPLIED"}))
                 .collect(),
         ),
-        "function_list_calling_conventions" => (
+        "program_list_calling_conventions" => (
             "calling_conventions",
             ["zeta", "alpha", "beta"]
                 .into_iter()
@@ -344,7 +344,7 @@ impl RecordedBridge {
                     "bookmark_list"
                     | "bookmark_get"
                     | "program_list_relocations"
-                    | "function_list_calling_conventions" => {
+                    | "program_list_calling_conventions" => {
                         let (key, rows) = api_list_fixture(request["command"].as_str().unwrap());
                         json!({key: rows, "count": rows.len()})
                     }

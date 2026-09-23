@@ -8,8 +8,6 @@ pub enum FunctionCommands {
     List(FunctionListArgs),
     /// Get function details
     Get(FunctionGetArgs),
-    /// List calling conventions supported by the program's compiler specification
-    ListCallingConventions(QueryOptions),
     /// List existing instructions in the function body, including disjoint ranges.
     /// An address inside a function selects its whole body; --limit 0 returns all instructions.
     #[command(name = "disassemble")]
@@ -176,7 +174,7 @@ pub struct SetCallingConventionArgs {
     /// Exact function name or explicit 0x-prefixed address
     #[arg(value_name = "TARGET")]
     pub target: String,
-    /// Supported name from `function list-calling-conventions`
+    /// Supported name from `program list-calling-conventions`
     #[arg(long)]
     pub convention: String,
     #[arg(long)]

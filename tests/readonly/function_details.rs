@@ -103,7 +103,7 @@ fn calling_convention_discovery_follows_selected_compiler_and_accepts_listed_nam
         ] {
             client.open_program(program).unwrap();
             let native = client
-                .send_command("function_list_calling_conventions", None)
+                .send_command("program_list_calling_conventions", None)
                 .unwrap();
             let rows = native["calling_conventions"].as_array().unwrap();
             assert_eq!(native["count"], rows.len());
@@ -115,7 +115,7 @@ fn calling_convention_discovery_follows_selected_compiler_and_accepts_listed_nam
                 .collect();
             assert_eq!(defaults, [default]);
             assert_eq!(
-                command(program, &["function", "list-calling-conventions"]),
+                command(program, &["program", "list-calling-conventions"]),
                 json!(rows)
             );
             for row in rows {

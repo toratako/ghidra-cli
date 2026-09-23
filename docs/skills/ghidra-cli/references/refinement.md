@@ -13,7 +13,7 @@ ghidra-cli function var get parse_header --var local_10 --project target
 ghidra-cli function var set parse_header --var local_10 \
   --name header --type "Header *" --project target
 ghidra-cli function set-return-type abort_path --type void --project target
-ghidra-cli function list-calling-conventions --project target
+ghidra-cli program list-calling-conventions --project target
 ghidra-cli function set-calling-convention parse_header --convention __cdecl --project target
 ghidra-cli function set-stack-purge parse_header --bytes 4 --project target
 ghidra-cli function get parse_header --with-signature --with-frame --project target

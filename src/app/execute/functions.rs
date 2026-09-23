@@ -27,7 +27,6 @@ pub(super) fn execute(
                 "with_frame": args.with_frame,
             })),
         ),
-        FunctionCommands::ListCallingConventions(_) => client.function_list_calling_conventions(),
         FunctionCommands::Disasm(args) => client.function_disasm(&args.target, list_limit),
         FunctionCommands::Rename(args) => client.send_command(
             "rename_function",

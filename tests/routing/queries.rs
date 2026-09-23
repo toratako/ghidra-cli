@@ -333,8 +333,8 @@ fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
             "symbol_name",
         ),
         (
-            vec!["function", "list-calling-conventions"],
-            "function_list_calling_conventions",
+            vec!["program", "list-calling-conventions"],
+            "program_list_calling_conventions",
             "name",
         ),
     ] {

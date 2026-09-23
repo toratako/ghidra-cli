@@ -72,6 +72,27 @@ public final class ProgramCommands {
         return hash == null || hash.isEmpty() || "unknown".equals(hash) ? null : hash;
     }
 
+    public JsonObject handleListCallingConventions() throws CancelledException {
+        if (session.program() == null) return errorResult("No program loaded");
+
+        var compilerSpec = session.program().getCompilerSpec();
+        var defaultConvention = compilerSpec.getDefaultCallingConvention();
+        JsonArray conventions = new JsonArray();
+        for (var convention : compilerSpec.getCallingConventions()) {
+            session.monitor().checkCancelled();
+            JsonObject row = new JsonObject();
+            row.addProperty("name", convention.getName());
+            row.addProperty("is_default", defaultConvention != null
+                && convention.getName().equals(defaultConvention.getName()));
+            conventions.add(row);
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("calling_conventions", conventions);
+        result.addProperty("count", conventions.size());
+        return result;
+    }
+
     public JsonObject handleListRelocations() throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 

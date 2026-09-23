@@ -53,6 +53,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Move calling-convention discovery to `program list-calling-conventions [NAME]`,
+  matching its compiler-specification scope and supporting explicit program operands.
 - Move `type apply` to `listing define-data`, preserving its arguments, data
   definition behavior, and result fields.
 

@@ -24,6 +24,7 @@ ghidra-cli
 │   ├── info
 │   ├── stats
 │   ├── list-relocations
+│   ├── list-calling-conventions
 │   ├── context
 │   │   ├── list
 │   │   ├── get
@@ -36,7 +37,6 @@ ghidra-cli
 ├── function
 │   ├── list
 │   ├── get
-│   ├── list-calling-conventions
 │   ├── disassemble
 │   ├── rename
 │   ├── create

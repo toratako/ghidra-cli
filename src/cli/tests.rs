@@ -148,7 +148,7 @@ fn canonical_commands_parse() {
         vec!["function", "get", "main"],
         vec!["function", "set-thunk", "wrapper", "--target", "main"],
         vec!["function", "clear-thunk", "wrapper"],
-        vec!["function", "list-calling-conventions"],
+        vec!["program", "list-calling-conventions"],
         vec!["program", "list-relocations"],
         vec!["bookmark", "list"],
         vec!["bookmark", "get", "overlay:0x1000"],

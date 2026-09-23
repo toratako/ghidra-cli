@@ -191,7 +191,7 @@ final class FunctionReturnType {
         }
         throw new IllegalArgumentException("Unsupported calling convention: " + name
             + ". Supported calling conventions: " + String.join(", ", supported)
-            + ". Use `function list-calling-conventions` to inspect this program's conventions.");
+            + ". Use `program list-calling-conventions` to inspect this program's conventions.");
     }
 
     private static IllegalStateException cannotPreserve(String reason) {

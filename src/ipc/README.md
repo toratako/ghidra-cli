@@ -269,7 +269,7 @@ all types/categories there, including external and unmapped addresses.
 `program_list_relocations` returns `{relocations, count}`; rows retain native
 `address`, numeric `type`, `status`, nullable `symbol_name`/`values`, and nullable
 hex `original_bytes`. Multiple relocations at one address remain separate.
-`function_list_calling_conventions` returns `{calling_conventions, count}` with
+`program_list_calling_conventions` returns `{calling_conventions, count}` with
 `name` and `is_default` from the selected Program's compiler specification.
 These lists fetch complete inputs for the common Rust query pipeline.
 `function_set_calling_convention` accepts only names in that selected compiler

@@ -248,8 +248,8 @@ fn api_reads_honor_project_overrides_in_standalone_and_batch() {
             "program_list_relocations",
         ),
         (
-            vec!["function", "list-calling-conventions"],
-            "function_list_calling_conventions",
+            vec!["program", "list-calling-conventions"],
+            "program_list_calling_conventions",
         ),
     ] {
         for batch in [false, true] {
@@ -297,6 +297,10 @@ fn program_operands_bind_the_target_to_optional_program_operations() {
         (
             vec!["program", "list-relocations", "B"],
             "program_list_relocations",
+        ),
+        (
+            vec!["program", "list-calling-conventions", "B"],
+            "program_list_calling_conventions",
         ),
         (
             vec!["program", "rebase", "B", "--base", "0x80000000"],

@@ -28,7 +28,7 @@ impl ResultShape {
                     &["function", "address", "program", "modification"],
                 )
             }
-            Commands::Function(FunctionCommands::ListCallingConventions(_)) => {
+            Commands::Program(ProgramCommands::ListCallingConventions(_)) => {
                 Self::rows("calling_conventions")
             }
             Commands::Function(FunctionCommands::Disasm(_)) | Commands::Disasm(_) => {

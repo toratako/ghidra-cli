@@ -36,7 +36,7 @@ fn convention_validation_uses_selected_spec_and_preserves_rejected_edits_after_r
     let x64 = return_types::create_fixture();
     client.open_program(&x64).unwrap();
     let conventions = client
-        .send_command("function_list_calling_conventions", None)
+        .send_command("program_list_calling_conventions", None)
         .unwrap();
     let models = conventions["calling_conventions"].as_array().unwrap();
     assert!(

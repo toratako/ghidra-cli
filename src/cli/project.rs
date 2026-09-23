@@ -48,6 +48,8 @@ pub enum ProgramCommands {
     Stats(ProgramObjectArgs),
     /// List program relocations
     ListRelocations(ProgramQueryArgs),
+    /// List calling conventions supported by the program's compiler specification
+    ListCallingConventions(ProgramQueryArgs),
     /// Inspect and edit processor decoding context without redefining instructions
     #[command(subcommand)]
     Context(ProgramContextCommands),

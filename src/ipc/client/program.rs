@@ -4,6 +4,11 @@ use anyhow::Result;
 use serde_json::json;
 
 impl BridgeClient {
+    /// List the current compiler specification's calling conventions.
+    pub fn program_list_calling_conventions(&self) -> Result<serde_json::Value> {
+        self.send_command("program_list_calling_conventions", None)
+    }
+
     /// Get program info.
     pub fn program_info(&self) -> Result<serde_json::Value> {
         self.send_command("program_info", None)
