@@ -34,6 +34,8 @@ mod listing;
 mod management;
 #[path = "routing/memory.rs"]
 mod memory;
+#[path = "routing/namespaces.rs"]
+mod namespaces;
 #[path = "routing/output.rs"]
 mod output;
 #[path = "routing/program.rs"]
@@ -561,6 +563,12 @@ impl RecordedBridge {
                         json!({"results": rows, "count": rows.len(), "pattern": args["pattern"]})
                     }
                     "xrefs_to" | "xrefs_from" => json!({"xrefs": [], "count": 0}),
+                    "namespace_list" if bridge_info.get("namespace_rows").is_some() => {
+                        json!({"namespaces": bridge_info["namespace_rows"]})
+                    }
+                    "namespace_rename" | "namespace_move" | "namespace_delete" => {
+                        namespaces::receipt_fixture(request["command"].as_str().unwrap(), args)
+                    }
                     "equate_list" | "namespace_list" => {
                         let key = if request["command"] == "equate_list" {
                             "equates"

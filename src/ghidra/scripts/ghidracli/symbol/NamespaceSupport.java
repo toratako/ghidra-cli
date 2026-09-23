@@ -1,6 +1,7 @@
 package ghidracli.symbol;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.symbol.Namespace;
@@ -15,6 +16,8 @@ import ghidracli.session.ProgramSession;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Exact, global-rooted paths for the local namespace/class hierarchy. */
 final class NamespaceSupport {
@@ -76,6 +79,75 @@ final class NamespaceSupport {
         return matches.get(0);
     }
 
+    Namespace resolveSnapshot(JsonObject args, String key) throws CancelledException {
+        JsonElement value = args.get(key);
+        if (value == null || !value.isJsonObject()) {
+            throw new IllegalArgumentException(key + " must be a namespace snapshot");
+        }
+        JsonObject expected = value.getAsJsonObject();
+        if (!expected.has("id")) throw new IllegalArgumentException("Namespace target ID required");
+        long id = Long.parseLong(expected.get("id").getAsString());
+        Symbol symbol = session.program().getSymbolTable().getSymbol(id);
+        Namespace namespace = symbol != null && symbol.getObject() instanceof Namespace
+            ? (Namespace) symbol.getObject() : null;
+        if (!isSupported(namespace) || !toJson(namespace).equals(expected)) {
+            throw new IllegalArgumentException("Stale or invalid namespace target: " + id);
+        }
+        // The namespace commands own the local hierarchy rooted at Global, not
+        // function-local or external namespace trees omitted by namespace list.
+        for (Namespace parent = namespace.getParentNamespace(); !parent.isGlobal();
+                parent = parent.getParentNamespace()) {
+            if (!isSupported(parent)) {
+                throw new IllegalArgumentException("Unsupported namespace hierarchy: " + id);
+            }
+        }
+        session.monitor().checkCancelled();
+        return namespace;
+    }
+
+    /** Check actual component ancestry; displayed names may themselves contain ::. */
+    static boolean within(Namespace namespace, Namespace root) {
+        for (Namespace current = namespace; current != null && !current.isGlobal();
+                current = current.getParentNamespace()) {
+            if (current.getID() == root.getID()) return true;
+        }
+        return false;
+    }
+
+    void checkRelocation(Namespace target, Namespace parent, String name)
+            throws CancelledException {
+        if (within(parent, target)) {
+            throw new IllegalArgumentException("Cannot move a namespace into itself or a descendant");
+        }
+        SymbolIterator siblings = session.program().getSymbolTable().getSymbols(parent);
+        while (siblings.hasNext()) {
+            session.monitor().checkCancelled();
+            Symbol sibling = siblings.next();
+            if (sibling.getID() != target.getID() && sibling.getName().equals(name)) {
+                throw new IllegalArgumentException("Destination already contains a symbol named " + name);
+            }
+        }
+        String rootPath = parent.isGlobal() ? name : parent.getName(true) + "::" + name;
+        Map<String, Namespace> paths = new HashMap<>();
+        for (Namespace namespace : all()) {
+            session.monitor().checkCancelled();
+            boolean affected = within(namespace, target);
+            String path = affected ? relocatedPath(namespace, target, rootPath) : namespace.getName(true);
+            Namespace previous = paths.putIfAbsent(path, namespace);
+            if (previous != null && (affected || within(previous, target))
+                    && !previous.getName(true).equals(namespace.getName(true))) {
+                throw ambiguousPath(path, List.of(previous, namespace));
+            }
+        }
+    }
+
+    private static String relocatedPath(Namespace namespace, Namespace target, String rootPath) {
+        ArrayDeque<String> suffix = new ArrayDeque<>();
+        for (Namespace current = namespace; current.getID() != target.getID();
+                current = current.getParentNamespace()) suffix.addFirst(current.getName());
+        return suffix.isEmpty() ? rootPath : rootPath + "::" + String.join("::", suffix);
+    }
+
     void checkCreationPath(Namespace parent, String name, Namespace existing)
             throws CancelledException {
         String path = parent.isGlobal() ? name : parent.getName(true) + "::" + name;
@@ -94,7 +166,7 @@ final class NamespaceSupport {
         detail.addProperty("path", path);
         detail.add("candidates", candidates);
         return new JsonProtocol.CommandException("Ambiguous namespace path: " + path
-            + "; rename a namespace with symbol rename and an ID filter to disambiguate", detail);
+            + "; use namespace rename PATH NEW_NAME --where \"id='ID'\" to disambiguate", detail);
     }
 
     static JsonObject toJson(Namespace namespace) {

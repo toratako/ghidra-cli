@@ -221,6 +221,9 @@ final class CommandDispatcher {
             case "namespace_list": return namespaceCommands.handleList(args);
             case "namespace_get": return namespaceCommands.handleGet(args);
             case "namespace_create": return namespaceCommands.handleCreate(args);
+            case "namespace_rename": return namespaceCommands.handleRename(args);
+            case "namespace_move": return namespaceCommands.handleMove(args);
+            case "namespace_delete": return namespaceCommands.handleDelete(args);
             // Equate definitions and operand associations
             case "equate_list": return equateCommands.handleList(args);
             case "equate_get": return equateCommands.handleGet(args);

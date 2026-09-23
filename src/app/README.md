@@ -17,6 +17,7 @@ and target checks in `src/cli/tests.rs`.
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/functions.rs` | Function dispatch and guarded selection of one decompiler variable |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
+| `execute/namespaces.rs` | Resolve exact namespace paths and guard mutation targets and destination parents |
 | `execute/type_archives.rs` | Resolve GDT paths and select roots with guarded source snapshots |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
@@ -55,6 +56,12 @@ Symbol deletion validates its `--where` predicate before bridge work and consume
 only for target selection; output processing must retain the deletion receipt.
 Multi-symbol deletion is one atomic bridge request. Preserve structured failure
 detail through error reporting; see the [wire contract](../ipc/README.md).
+Namespace mutations select one exact full path from uncapped namespace rows,
+then apply `--where` to disambiguate it. They send the complete target snapshot;
+movement also guards the selected parent, with explicit null for Global.
+Selection predicates are validated during standalone and batch preflight and
+never filter mutation receipts. Display limits and field projection do not
+select mutation targets.
 `function var list` applies ordinary list queries to decompiler rows. Get/set/infer-struct
 use `--where` only to narrow the exact `--var` name to one candidate, then send
 its program/function/modification/row guard for bridge revalidation. Their

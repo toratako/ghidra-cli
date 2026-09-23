@@ -90,7 +90,10 @@ ghidra-cli
 ├── namespace
 │   ├── list
 │   ├── get
-│   └── create
+│   ├── create
+│   ├── rename
+│   ├── move
+│   └── delete
 ├── memory
 │   ├── file-mappings
 │   ├── block
@@ -211,4 +214,4 @@ ghidra-cli
     └── cancel
 ```
 
-199 command nodes (excluding the root), 0 aliases.
+202 command nodes (excluding the root), 0 aliases.

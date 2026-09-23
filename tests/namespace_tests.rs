@@ -12,6 +12,9 @@ use std::sync::OnceLock;
 
 static HARNESS: OnceLock<DaemonTestHarness> = OnceLock::new();
 
+#[path = "namespaces/edits.rs"]
+mod edits;
+
 fn harness() -> &'static DaemonTestHarness {
     HARNESS.get_or_init(|| {
         ensure_test_project(test_project(), FIXTURE_PROGRAM);

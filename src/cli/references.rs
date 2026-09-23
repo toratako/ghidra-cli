@@ -75,6 +75,57 @@ pub enum NamespaceCommands {
     Get(NamespaceGetArgs),
     /// Create a namespace or class under an existing parent
     Create(NamespaceCreateArgs),
+    /// Rename a namespace or class, preserving its parent
+    Rename(NamespaceRenameArgs),
+    /// Move a namespace or class, preserving its name and descendants
+    Move(NamespaceMoveArgs),
+    /// Delete an empty namespace or class, or explicitly delete its descendants
+    Delete(NamespaceDeleteArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct NamespaceSelection {
+    /// Exact full path from global scope
+    pub path: String,
+    /// Narrow matching paths to one namespace or class, e.g. "id='123'"
+    #[arg(long = "where", value_name = "EXPR")]
+    pub where_expr: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct NamespaceRenameArgs {
+    #[command(flatten)]
+    pub selection: NamespaceSelection,
+    /// New name within the same parent
+    pub new_name: String,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+#[command(group(clap::ArgGroup::new("destination").required(true).args(["parent", "global"])))]
+pub struct NamespaceMoveArgs {
+    #[command(flatten)]
+    pub selection: NamespaceSelection,
+    /// Exact full path of the existing destination parent
+    #[arg(long)]
+    pub parent: Option<String>,
+    /// Move directly into global scope
+    #[arg(long)]
+    pub global: bool,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct NamespaceDeleteArgs {
+    #[command(flatten)]
+    pub selection: NamespaceSelection,
+    /// Also delete all descendants, including functions and their variables
+    #[arg(long)]
+    pub recursive: bool,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

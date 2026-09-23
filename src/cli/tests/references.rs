@@ -83,3 +83,40 @@ fn bookmark_identity_and_namespace_destination_are_required() {
         assert!(Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args)).is_err());
     }
 }
+
+#[test]
+fn namespace_moves_require_one_explicit_destination() {
+    for destination in [vec![], vec!["--parent", "app", "--global"]] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "namespace", "move", "app::Widget"]
+                .into_iter()
+                .chain(destination)
+        )
+        .is_err());
+    }
+    for destination in [vec!["--parent", "app"], vec!["--global"]] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "namespace", "move", "app::Widget"]
+                .into_iter()
+                .chain(destination)
+        )
+        .is_ok());
+    }
+}
+
+#[test]
+fn namespace_delete_defaults_to_empty_only() {
+    for (options, recursive) in [(vec![], false), (vec!["--recursive"], true)] {
+        let cli = Cli::try_parse_from(
+            ["ghidra-cli", "namespace", "delete", "app"]
+                .into_iter()
+                .chain(options),
+        )
+        .unwrap();
+        let Commands::Namespace(NamespaceCommands::Delete(args)) = cli.command else {
+            panic!("expected namespace delete");
+        };
+        assert_eq!(args.selection.path, "app");
+        assert_eq!(args.recursive, recursive);
+    }
+}

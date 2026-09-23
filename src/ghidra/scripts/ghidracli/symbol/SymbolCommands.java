@@ -349,6 +349,7 @@ public final class SymbolCommands {
         try {
             SymbolTable symbolTable = session.program().getSymbolTable();
             List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, args);
+            rejectNamespaceEdits(toDelete);
             List<JsonObject> selected = new ArrayList<>();
             JsonArray deleted = new JsonArray();
             JsonArray failed = new JsonArray();
@@ -422,6 +423,7 @@ public final class SymbolCommands {
         try {
             SymbolTable symbolTable = session.program().getSymbolTable();
             List<Symbol> toRename = resolveScopedSymbols(symbolTable, oldName, args);
+            rejectNamespaceEdits(toRename);
 
             JsonArray renamed = new JsonArray();
             for (Symbol s : toRename) {
@@ -440,6 +442,14 @@ public final class SymbolCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to rename symbol: " + e.getMessage());
+        }
+    }
+
+    private void rejectNamespaceEdits(List<Symbol> symbols) {
+        for (Symbol symbol : symbols) {
+            if (symbol.getSymbolType() == SymbolType.NAMESPACE || symbol.getSymbolType() == SymbolType.CLASS) {
+                throw new IllegalArgumentException("Use namespace rename/delete to edit a namespace or class");
+            }
         }
     }
 

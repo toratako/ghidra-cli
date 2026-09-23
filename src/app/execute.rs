@@ -1,5 +1,6 @@
 mod functions;
 mod memory;
+mod namespaces;
 mod scripts;
 mod symbols;
 mod type_archives;
@@ -122,6 +123,15 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
         );
     }
     let selector = match command {
+        Commands::Namespace(cli::NamespaceCommands::Rename(args)) => {
+            Some((None, args.selection.where_expr.as_deref()))
+        }
+        Commands::Namespace(cli::NamespaceCommands::Move(args)) => {
+            Some((None, args.selection.where_expr.as_deref()))
+        }
+        Commands::Namespace(cli::NamespaceCommands::Delete(args)) => {
+            Some((None, args.selection.where_expr.as_deref()))
+        }
         Commands::Function(cli::FunctionCommands::Var(cli::FunctionVarCommands::Get(args))) => {
             Some((None, args.selection.where_expr.as_deref()))
         }
@@ -283,13 +293,7 @@ pub(super) fn execute_via_bridge(
             ),
             cli::EquateCommands::Delete(args) => client.send_command("equate_delete", Some(json!({"name": args.name}))),
         },
-        Commands::Namespace(cmd) => match cmd {
-            cli::NamespaceCommands::List(_) => client.send_command("namespace_list", None),
-            cli::NamespaceCommands::Get(args) => client.send_command("namespace_get", Some(json!({"path": args.path}))),
-            cli::NamespaceCommands::Create(args) => client.send_command(
-                "namespace_create", Some(json!({"name": args.name, "parent": args.parent, "kind": args.kind})),
-            ),
-        },
+        Commands::Namespace(cmd) => namespaces::execute(client, cmd),
         Commands::Type(cmd) => {
             use cli::{TypeCommands, TypeCreateCommands};
             match cmd {

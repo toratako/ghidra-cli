@@ -215,9 +215,29 @@ definition and every association, including dynamic uses.
 `namespace_create` takes a component `name`, optional full `parent` path, and
 `kind` (`namespace` by default, or `class`). Rows use string `id`, `name`, `path`,
 nullable parent path, and `kind`. Paths are rooted at global scope without a
-global-prefix component. `symbol_set_namespace` and `symbol_set_primary` take
-`name` plus a single stable symbol snapshot in `targets`, using the same
-revalidation as rename/delete. Namespace movement adds either `namespace`
+global-prefix component.
+
+`namespace_rename`, `namespace_move`, and `namespace_delete` require a complete
+namespace row in `target`, revalidated by ID and snapshot before mutation.
+Rename adds `new_name`; move requires `parent`, either another guarded namespace
+row or explicit null for Global. Rename/move return `status`, `before`, and
+`after`, plus `function_changes` entries with function ID, address, and
+before/after signature snapshots when native ABI/type details change. This
+includes incoming thunks whose derived signatures change. Existing registered
+class structures are not renamed or moved. Namespace identity is preserved;
+cycles, destination collisions, and new ambiguous displayed namespace paths
+(including descendants) are rejected.
+Delete accepts `recursive` (default false); without it any child symbol prevents
+deletion. Its receipt contains `target`, `recursive`, `count`, `counts` keyed by
+native symbol type, and `deleted` rows with string `id`, `name`, `path`, nullable
+`parent`, `type`, and `address`. Counts include the selected root and all actually
+removed descendant symbols, including functions, parameters, and local variables.
+Outside thunks targeting a descendant function prevent deletion because native
+function deletion could otherwise remove those thunks too.
+
+`symbol_set_namespace` and `symbol_set_primary` take `name` plus a single stable
+symbol snapshot in `targets`, using the same revalidation as rename/delete.
+Individual label/function movement adds either `namespace`
 or `global: true`; native function/type effects remain in the receipt.
 
 `bookmark_set` takes `address`, `text`, `type` (default `Note`), and required
@@ -696,6 +716,8 @@ endpoints must belong to the same space and form an ascending inclusive range.
 Symbol mutations require a non-empty `targets` array of snapshots resolved
 through `symbol_get_by_name`. Each snapshot includes a stable symbol ID and
 is revalidated before any mutation; stale or duplicate selections fail.
+Symbol rename/delete reject namespace and class targets across the entire
+selection before editing; their mutations belong to the namespace operations.
 `symbol_get` accepts exact names or explicit addresses.
 Failed multi-symbol deletion reports `attempted_deleted`, `failed`, and
 `not_attempted` in detail. These are attempted-work diagnostics; `deleted` and

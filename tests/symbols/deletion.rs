@@ -201,7 +201,103 @@ public class CreateDynamicSymbol extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_symbol_delete_rolls_back_cascading_deletions_and_rejects_foreign_transactions() {
+fn test_symbol_mutations_reject_namespace_owners_before_mutating_any_member() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for kind in ["namespace", "class"] {
+        let program = create_symbol_fixture_program();
+        let name = "owned_target";
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.*;
+public class CreateNamespaceOwnerFixture extends GhidraScript {
+    public void run() throws Exception {
+        var table = currentProgram.getSymbolTable();
+        var global = currentProgram.getGlobalNamespace();
+        var owner = getScriptArgs()[0].equals("class")
+            ? table.createClass(global, getScriptArgs()[1], SourceType.USER_DEFINED)
+            : table.createNameSpace(global, getScriptArgs()[1], SourceType.USER_DEFINED);
+        table.createLabel(toAddr("1010"), getScriptArgs()[1], owner, SourceType.USER_DEFINED);
+        table.createLabel(toAddr("1020"), getScriptArgs()[1], global, SourceType.USER_DEFINED);
+        currentProgram.getFunctionManager().createFunction("owned_function", owner,
+            toAddr("1030"), new AddressSet(toAddr("1030"), toAddr("103f")),
+            SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[kind.to_owned(), name.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = client.symbol_get_by_name(name).unwrap();
+        let symbols = before["symbols"].as_array().unwrap();
+        let owner = symbols
+            .iter()
+            .find(|symbol| matches!(symbol["type"].as_str(), Some("Namespace" | "Class")))
+            .unwrap();
+        let ordinary = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
+        let function_before = client
+            .send_command(
+                "get_function",
+                Some(serde_json::json!({"address": "0x1030"})),
+            )
+            .unwrap();
+        for targets in [vec![owner.clone()], vec![ordinary.clone(), owner.clone()]] {
+            for command in ["symbol_delete", "symbol_rename"] {
+                // The ordinary symbol comes first: validation must inspect every
+                // selected member before a rename or deletion is attempted.
+                let error = client
+                    .send_command(
+                        command,
+                        Some(serde_json::json!({
+                            "name": name,
+                            "old_name": name,
+                            "new_name": "must_not_rename",
+                            "targets": targets,
+                        })),
+                    )
+                    .unwrap_err();
+                assert!(
+                    error.to_string().contains("namespace"),
+                    "{kind} {command}: {error:#}"
+                );
+                assert_eq!(client.symbol_get_by_name(name).unwrap(), before);
+                assert!(client.symbol_get_by_name("must_not_rename").is_err());
+                assert_eq!(
+                    client
+                        .send_command(
+                            "get_function",
+                            Some(serde_json::json!({"address": "0x1030"}))
+                        )
+                        .unwrap(),
+                    function_before
+                );
+            }
+        }
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(client.symbol_get_by_name(name).unwrap(), before);
+        assert_eq!(
+            client
+                .send_command(
+                    "get_function",
+                    Some(serde_json::json!({"address": "0x1030"}))
+                )
+                .unwrap(),
+            function_before
+        );
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&program).unwrap();
+    }
+}
+
+#[test]
+#[serial]
+fn test_symbol_delete_rolls_back_function_child_deletion_and_rejects_foreign_transactions() {
     require_ghidra!();
     let client = harness().client().unwrap();
     for prevent_save in [false, true] {
@@ -211,12 +307,14 @@ fn test_symbol_delete_rolls_back_cascading_deletions_and_rejects_foreign_transac
             .script_run_source(
                 r#"
 import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.symbol.*;
 public class CreateCascadingSymbolDeletion extends GhidraScript {
     public void run() throws Exception {
         var table = currentProgram.getSymbolTable();
-        var parent = table.createNameSpace(currentProgram.getGlobalNamespace(),
-            getScriptArgs()[0], SourceType.USER_DEFINED);
+        var parent = currentProgram.getFunctionManager().createFunction(getScriptArgs()[0],
+            toAddr("1000"), new AddressSet(toAddr("1000"), toAddr("101f")),
+            SourceType.USER_DEFINED);
         table.createLabel(toAddr("1010"), getScriptArgs()[0], parent, SourceType.USER_DEFINED);
         var other = table.createNameSpace(currentProgram.getGlobalNamespace(),
             "unaffected", SourceType.USER_DEFINED);
@@ -233,7 +331,7 @@ public class CreateCascadingSymbolDeletion extends GhidraScript {
             .as_array()
             .unwrap()
             .clone();
-        let parent = selected.iter().find(|s| s["type"] == "Namespace").unwrap();
+        let parent = selected.iter().find(|s| s["type"] == "Function").unwrap();
         let child = selected.iter().find(|s| s["namespace"] == name).unwrap();
         let unaffected = selected
             .iter()
@@ -264,7 +362,7 @@ public class PreventSymbolDeletionSave extends GhidraScript {
                 .trim()
                 .to_owned()
         });
-        // Deleting the namespace also removes its child. Deleting that selected
+        // Deleting a function also removes its local label. Deleting that selected
         // child next returns false; the unrelated final target must not run.
         let error = client
             .symbol_delete_targets(name, &[parent.clone(), child.clone(), unaffected.clone()])

@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `namespace rename`, `namespace move`, and `namespace delete` for local
+  namespaces and classes. Deletion requires an empty namespace unless
+  `--recursive` is explicit, and reports every removed symbol, including
+  descendant functions and variables. Namespace mutations accept `--where`
+  to disambiguate exact paths by ID.
 - Add repeated `--bind-type NAME PATH` to `function set-signature` and
   `function call-signature set` to select exact data types for names in a
   declaration without registering alias types.
@@ -60,6 +65,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Reserve namespace/class rename and deletion for `namespace` commands;
+  `symbol rename` and `symbol delete` reject these targets before editing any
+  selected symbol. Individual label/function moves remain `symbol set-namespace`.
 - Flatten `xref create memory` to `xref create`, retaining ordinary-memory
   reference validation and explicit operand/type selection.
 

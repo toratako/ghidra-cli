@@ -75,15 +75,22 @@ ghidra-cli namespace create app
 ghidra-cli namespace create Widget --parent app --kind class
 ghidra-cli symbol set-namespace dispatch --namespace app::Widget --address 0x401300
 ghidra-cli symbol set-primary message_header --address 0x404000
+ghidra-cli namespace rename app::Widget Controller
+ghidra-cli namespace move app::Controller --global
 ```
 
 Ambiguous symbol rename/delete requires `--address` or `--where`, or explicit
 `--all` to affect every match. Rename/delete take exact names (even `0x...`);
 `symbol get` accepts names or addresses.
 
-Namespace paths start at global scope, such as `app::Widget`. Moving a function
-into a class can change its native `this` parameter/type. Deleting a namespace
-through `symbol delete` can also delete its children.
+Namespace paths start at global scope. Native names containing `::` can make paths
+ambiguous; use `--where "id='123'"` on namespace edits to select one candidate.
+
+Class membership and namespace edits can change automatic `this` types;
+registered structure types keep their names and locations.
+
+`namespace delete` requires an empty namespace; `--recursive` also removes
+descendant functions and variables.
 
 ## References
 
