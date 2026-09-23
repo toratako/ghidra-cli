@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum StringsCommands {
-    /// List all strings
+    /// List defined strings
     List(QueryOptions),
     /// Find defined strings containing PATTERN (case-insensitive) and list their references
     Refs(StringRefsArgs),

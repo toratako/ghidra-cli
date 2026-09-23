@@ -97,6 +97,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   types, calling convention, variadic state, and no-return state.
 - Stop program statistics scans cooperatively when their job is cancelled.
 - Select program exporters independently of the JVM locale for uppercase formats.
+- Describe defined strings and supported comment types accurately in list help.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

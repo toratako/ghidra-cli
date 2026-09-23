@@ -306,7 +306,7 @@ pub struct BookmarkGetArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum CommentCommands {
-    /// List all comments
+    /// List EOL, PRE, POST, and PLATE comments
     List(QueryOptions),
     /// Get comment at address
     Get(CommentGetArgs),
