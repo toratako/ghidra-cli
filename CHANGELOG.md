@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-23
+
 ### Added
 
 - Add `graph cfg FUNCTION` for instruction blocks, control-flow edges, call
@@ -62,6 +64,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Render instruction CFG and High P-code results as dedicated human-readable
+  sections, including block/operation identities, relationships, and output
+  completeness in compact and full output.
 - Report logical size zero for empty structs in `type get` and `type list`.
 - Replace `function edit-var` with `function var list/get/set`. Variable reads
   expose decompiler candidates and saved definitions separately; exact-name
@@ -82,6 +87,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Require acknowledgement of the bridge's final save before completing shutdown;
+  a process exit without confirmation now reports failure and preserves project
+  state instead of allowing an archive to proceed with an uncertain save.
+- Fix `doctor` bridge compilation on Windows when compiler arguments exceed the
+  command-line limit or temporary-directory paths contain Unicode characters.
 - Resolve GAR source and destination paths consistently across preflight,
   bridge shutdown, and Ghidra locking when directory symlinks precede `..`.
 - Keep `type import-c --category` from replacing or moving same-named types
@@ -1111,7 +1121,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...v0.7.0
 [0.7.0-rc.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/toratako/ghidra-cli/compare/v0.6.0...v0.6.1
