@@ -60,6 +60,76 @@ fn batch_selected_suffix_is_validated_before_any_bridge_work() {
 }
 
 #[test]
+fn batch_required_program_targets_are_validated_before_any_bridge_work() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "comment set 0x1000 before\nprogram open\nbatch nested.txt\n",
+    )
+    .unwrap();
+    std::fs::write(
+        bridge.root.path().join("nested.txt"),
+        "program delete\nprogram open --program ''\n",
+    )
+    .unwrap();
+    // The outer selection does not supply a missing open/delete operand.
+    for args in [
+        vec!["batch", "batch.txt"],
+        vec!["--program", "A", "batch", "batch.txt", "--on-error", "stop"],
+    ] {
+        let (report, _) = failed_report(&bridge, &args);
+        assert_eq!(report["validation_failed"], true);
+        assert_eq!(report["commands_executed"], 0);
+        let errors = report["validation_errors"].as_array().unwrap();
+        assert_eq!(errors.len(), 3);
+        assert_eq!(errors[0]["file"], "batch.txt");
+        assert_eq!(errors[0]["line"], 2);
+        assert_eq!(errors[1]["file"], "nested.txt");
+        assert_eq!(errors[1]["line"], 1);
+        assert_eq!(errors[2]["file"], "nested.txt");
+        assert_eq!(errors[2]["line"], 2);
+        for error in errors {
+            assert!(error["error"]
+                .as_str()
+                .unwrap()
+                .contains("Program name required"));
+        }
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn batch_program_targets_accept_global_and_command_options() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "--program A program open\nprogram info\nbatch nested.txt\n",
+    )
+    .unwrap();
+    std::fs::write(
+        bridge.root.path().join("nested.txt"),
+        "program delete --program B\n",
+    )
+    .unwrap();
+    let report = bridge.run(&["batch", "batch.txt"]);
+    assert_eq!(report["commands_executed"], 3);
+    assert_eq!(
+        report["results"][1]["result"]["data"]["observed_program"],
+        "A"
+    );
+    let requests = bridge.requests.lock().unwrap();
+    assert!(requests
+        .iter()
+        .any(|request| request["command"] == "open_program" && request["args"]["program"] == "A"));
+    assert!(
+        requests
+            .iter()
+            .any(|request| request["command"] == "program_delete"
+                && request["args"]["program"] == "B")
+    );
+}
+
+#[test]
 fn nested_batch_from_line_is_local_to_each_file() {
     let bridge = RecordedBridge::new();
     std::fs::write(

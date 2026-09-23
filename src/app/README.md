@@ -73,11 +73,11 @@ symbol `--address` requires that name for segmented targets because the client
 cannot distinguish an unnamed segment from a numeric-looking registered space.
 
 Batch preflight parses every selected line and nested batch before configuration/project
-resolution or bridge startup. It validates locally parsed query options and
-ranges, aggregates file/line diagnostics, and retains the parsed command tree
-for execution. Nested paths remain relative to the invocation's working
-directory; canonical paths detect include cycles. All included batch files must
-exist before execution. Program-dependent validation remains execution-time.
+resolution or bridge startup. It validates locally parsed query options, ranges,
+and required `program open/delete` targets, aggregates file/line diagnostics, and
+retains the parsed command tree for execution. Nested paths remain relative to the
+invocation's working directory; canonical paths detect include cycles. All included
+batch files must exist before execution. Program-dependent validation remains execution-time.
 Preflight failure reports `validation_failed`, `validation_errors`, and zero
 `commands_executed`, regardless of `--on-error`.
 `--from-line` selects an inclusive one-based physical source line before parsing;

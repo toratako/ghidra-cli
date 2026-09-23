@@ -2,7 +2,7 @@ mod recovery;
 
 pub(super) use recovery::{add_recovery, in_project};
 
-use crate::cli::{BatchErrorPolicy, Cli, Commands};
+use crate::cli::{BatchErrorPolicy, Cli, Commands, ProgramCommands};
 use crate::ipc::protocol::{BridgeCommandError, BridgeOutcomeUnknownError, BridgeTimeoutError};
 use clap::Parser;
 use serde_json::json;
@@ -36,6 +36,19 @@ pub(super) fn prepare(
     validate: impl Fn(&Cli) -> anyhow::Result<()>,
 ) -> anyhow::Result<PreparedBatch> {
     let mut errors = Vec::new();
+    let validate = |cli: &Cli| {
+        if let Commands::Program(ProgramCommands::Open(args) | ProgramCommands::Delete(args)) =
+            &cli.command
+        {
+            // A batch's current selection is not an open/delete operand. Clap
+            // propagates a global --program on this line into these arguments.
+            anyhow::ensure!(
+                args.program.as_deref().is_some_and(|name| !name.is_empty()),
+                "Program name required. Use --program <name>"
+            );
+        }
+        validate(cli)
+    };
     let batch = read_batch(
         file,
         from_line,
