@@ -28,6 +28,21 @@ or recovery steps; document length is not a target.
 See [CLI routing](src/app/README.md) and [wire protocol](src/ipc/README.md) for
 dispatch/output constraints.
 
+## CLI grammar
+
+- Use positional operands for the operation's primary subjects, such as
+  functions, addresses, types, files, and search patterns.
+- Use named options for changed attributes, scope, selection, execution,
+  and output. Requiredness does not determine positional vs. option.
+- Allow multiple operands when their roles and order are clear
+  (e.g. `rename OLD NEW` or references from `FROM` to `TO`).
+- Keep option names and value arity consistent across commands.
+  Use `--where` for target selection, `--filter` for result filtering,
+  and explicit scope names such as `--whole-function`.
+- Express independent values as separate arguments, not packed custom syntax.
+- Share integer parsing: decimal or `0x` hexadecimal, with leading zeroes
+  remaining decimal. Enforce each argument's signedness and range.
+
 ## Cross-platform paths
 
 Path and lifecycle changes must follow the shared
