@@ -127,3 +127,53 @@ fn native_blocks_and_opt_in_jump_tables_preserve_recovered_case_mappings() {
         std::panic::resume_unwind(error);
     }
 }
+
+#[test]
+#[serial]
+fn decompile_variables_exclude_named_constants_and_match_variable_discovery() {
+    require_ghidra!();
+    let checked = std::panic::catch_unwind(|| {
+        for name in ["straight", "branching"] {
+            let output = command(&["decompile", name, "--with-vars", "--with-params"]);
+            output.assert_success();
+            let decompiled = output.data::<Value>();
+            if name == "straight" {
+                assert!(
+                    decompiled["code"]
+                        .as_str()
+                        .unwrap()
+                        .contains("CONTROL_FLOW_INCREMENT"),
+                    "Fixture must retain its equate in decompiled code: {decompiled}"
+                );
+                assert_eq!(decompiled["variables"], json!([]), "{decompiled}");
+                assert_eq!(decompiled["params"][0]["name"], "value", "{decompiled}");
+            }
+            let discovered = command(&["function", "var", "list", name]);
+            discovered.assert_success();
+            let discovered = discovered.data::<Value>();
+            for (field, kind) in [("variables", "local"), ("params", "parameter")] {
+                let expected: Vec<_> = discovered
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|row| row["kind"] == kind)
+                    .map(|row| {
+                        json!({
+                            "name": row["name"], "type": row["type"],
+                            "size": row["size"], "storage": row["storage"]
+                        })
+                    })
+                    .collect();
+                assert_eq!(decompiled[field], json!(expected), "{decompiled}");
+            }
+        }
+    });
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+    if let Err(error) = checked {
+        std::panic::resume_unwind(error);
+    }
+}

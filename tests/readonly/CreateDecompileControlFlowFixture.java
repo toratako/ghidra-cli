@@ -69,6 +69,8 @@ public class CreateDecompileControlFlowFixture extends GhidraScript {
                 // The listing has two blocks, but the returned HighFunction has one.
                 code(program, 0x1020, 0xc3);
                 var straight = function(program, "straight", 0x1000, 0x1020, IntegerDataType.dataType);
+                program.getEquateTable().createEquate("CONTROL_FLOW_INCREMENT", 5)
+                    .addReference(address(program, 0x1004), 1);
                 var blocks = new BasicBlockModel(program).getCodeBlocksContaining(straight.getBody(), monitor);
                 int count = 0;
                 while (blocks.hasNext()) { blocks.next(); count++; }

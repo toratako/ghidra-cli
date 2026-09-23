@@ -60,13 +60,17 @@ public final class FunctionVariables {
         while (iterator.hasNext()) {
             session.monitor().checkCancelled();
             HighSymbol symbol = iterator.next();
-            // Constants and union-field annotations share the local symbol map
-            // but do not represent editable local/parameter variables.
-            if (!symbol.isGlobal() && !(symbol instanceof EquateSymbol)
-                    && !(symbol instanceof UnionFacetSymbol)) symbols.add(symbol);
+            if (isVariable(symbol)) symbols.add(symbol);
         }
         session.monitor().checkCancelled();
         return new Decompilation(results, high, symbols);
+    }
+
+    public static boolean isVariable(HighSymbol symbol) {
+        // Constants and union-field annotations share the local symbol map
+        // but do not represent local/parameter variables.
+        return !symbol.isGlobal() && !(symbol instanceof EquateSymbol)
+            && !(symbol instanceof UnionFacetSymbol);
     }
 
     public Selection select(Function function, List<HighSymbol> symbols, String name, JsonObject args) {

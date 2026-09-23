@@ -104,6 +104,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reference queries, and continue exact byte/text searches across address-space
   boundaries after matching the final address.
 - Include namespaces, classes, and variable symbols in symbol listings.
+- Exclude equates and union-field annotations from decompiled local variables.
 - Bind program selection to each queued operation so concurrent clients cannot
   redirect commands issued with `--program`, including guarded edits and import
   follow-up requests. Batches retain each project's selection across nested rows

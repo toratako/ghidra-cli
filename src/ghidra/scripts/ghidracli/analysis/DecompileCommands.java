@@ -10,6 +10,7 @@ import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.JumpTable;
 import ghidra.util.exception.CancelledException;
 import ghidracli.function.FunctionQueries;
+import ghidracli.function.FunctionVariables;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import java.util.Iterator;
@@ -101,8 +102,9 @@ public final class DecompileCommands {
                         JsonArray vars = new JsonArray();
                         Iterator<ghidra.program.model.pcode.HighSymbol> symIter2 = lsm.getSymbols();
                         while (symIter2.hasNext()) {
+                            session.monitor().checkCancelled();
                             ghidra.program.model.pcode.HighSymbol sym = symIter2.next();
-                            if (!sym.isParameter()) {
+                            if (FunctionVariables.isVariable(sym) && !sym.isParameter()) {
                                 JsonObject varObj = new JsonObject();
                                 varObj.addProperty("name", sym.getName());
                                 varObj.addProperty("type", sym.getDataType().getName());
