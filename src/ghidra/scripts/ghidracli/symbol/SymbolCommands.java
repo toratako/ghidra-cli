@@ -45,25 +45,33 @@ public final class SymbolCommands {
         SymbolTable symbolTable = session.program().getSymbolTable();
         JsonArray symbols = new JsonArray();
 
-        SymbolIterator symIter = symbolTable.getAllSymbols(true);
-        while (symIter.hasNext()) {
-            if (query.isFull()) break;
-
-            Symbol symbol = symIter.next();
-            String name = symbol.getName();
-
-            if (!query.include(name)) {
-                continue;
-            }
-
-            symbols.add(symbolToJson(symbol));
-            query.record();
+        collectSymbols(symbolTable.getAllSymbols(true), query, symbols, false);
+        if (!query.isFull()) {
+            // The address iterator covers memory/external symbols (including dynamic
+            // labels), but omits namespaces, classes, parameters and local variables.
+            // Append those without collecting every symbol ID or changing address order.
+            collectSymbols(symbolTable.getDefinedSymbols(), query, symbols, true);
         }
 
         JsonObject result = new JsonObject();
         result.add("symbols", symbols);
         result.addProperty("count", symbols.size());
         return result;
+    }
+
+    private void collectSymbols(SymbolIterator iterator, ListQuery query, JsonArray symbols,
+            boolean outsideAddressIterator) throws CancelledException {
+        while (!query.isFull() && iterator.hasNext()) {
+            Symbol symbol = iterator.next();
+            Address address = symbol.getAddress();
+            if (outsideAddressIterator && (address.isMemoryAddress() || address.isExternalAddress())) {
+                continue;
+            }
+            if (query.include(symbol.getName())) {
+                symbols.add(symbolToJson(symbol));
+                query.record();
+            }
+        }
     }
 
     public JsonObject handleSymbolGet(JsonObject args) throws CancelledException {

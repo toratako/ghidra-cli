@@ -19,6 +19,8 @@ const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
 
 #[path = "symbols/deletion.rs"]
 mod deletion;
+#[path = "symbols/list.rs"]
+mod list;
 #[path = "symbols/targets.rs"]
 mod targets;
 

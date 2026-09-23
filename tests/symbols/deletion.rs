@@ -1,7 +1,7 @@
 use super::{ghidra, harness, test_project, TEST_PROGRAM};
 use serial_test::serial;
 
-fn create_symbol_fixture_program() -> String {
+pub(super) fn create_symbol_fixture_program() -> String {
     let program = format!("symbol-deletion-{}", uuid::Uuid::new_v4());
     let client = harness().client().unwrap();
     client
