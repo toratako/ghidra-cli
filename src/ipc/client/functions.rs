@@ -85,7 +85,7 @@ impl BridgeClient {
         )
     }
 
-    fn send_decompile_command(
+    pub(crate) fn send_decompile_command(
         &self,
         command: &str,
         mut args: serde_json::Value,

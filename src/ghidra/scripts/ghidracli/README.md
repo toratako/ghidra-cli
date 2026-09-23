@@ -212,7 +212,8 @@ another consumer or terminate its checkout.
 | [`DataCommands`](listing/DataCommands.java) | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
 | [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | [`TypeDefinitionCommands`](types/TypeDefinitionCommands.java), [`TypeResizeCommands`](types/TypeResizeCommands.java), [`BitFieldCommands`](types/BitFieldCommands.java), [`BitFields`](types/BitFields.java) | Definition identity/settings, category operations, guarded size propagation, and shared explicit bitfield layouts |
-| [`TypeUsesCommands`](types/TypeUsesCommands.java) | Registered type identity, declaration wrapper paths, and applied-data/function-signature uses |
+| [`TypeUsesCommands`](types/TypeUsesCommands.java), [`TypeUseMatcher`](types/TypeUseMatcher.java) | Registered type identity, declaration wrapper paths, and applied-data/function-signature uses |
+| [`SemanticTypeUsesCommands`](analysis/SemanticTypeUsesCommands.java), [`FieldUses`](analysis/FieldUses.java), [`TypeFieldTarget`](types/TypeFieldTarget.java) | Decompiler variable searches, native field access evidence, and unambiguous read-only component selection |
 | [`TagCommands`](function/TagCommands.java), [`TagSupport`](function/TagSupport.java), [`SymbolCommands`](symbol/SymbolCommands.java), [`CommentCommands`](symbol/CommentCommands.java), [`BookmarkCommands`](symbol/BookmarkCommands.java) | Program annotations and symbols |
 | [`NamespaceCommands`](symbol/NamespaceCommands.java), [`NamespaceSupport`](symbol/NamespaceSupport.java) | Root-relative namespace lookup, creation, and shared identity serialization |
 | [`EquateCommands`](symbol/EquateCommands.java) | Exact named constants, operand associations, and native dynamic-reference preservation |
@@ -270,6 +271,23 @@ their native metadata. This request does not decompile or register types.
 `scan.complete` describes exhaustion of the selected declaration iterators,
 independently of subsequent Rust filtering and pagination. Cancellation fails the
 request instead of returning a successful partial scan.
+
+`SemanticTypeUsesCommands` uses the same matcher for fresh decompiler symbols.
+Temporary pointer/array wrappers are compared down to registered leaf identity;
+same-name or layout-equivalent composites never substitute for that identity.
+The handler resolves function scope before scanning and uses the existing
+session decompiler sequentially. It counts unmapped internal function bodies as
+attempted work; external functions have no body to inspect. The `analysis`
+package owns this orchestration so `types` does not depend on `function`.
+
+`FieldUses` examines native C markup and the complete High P-code model, never
+the capped serialized output. Field tokens supply their registered containing
+type and native component identity; direct partial HighSymbols supply storage
+offsets. Pointer def/use establishes memory reads and writes; address-taking
+does not imply a callee's effects. Union and bitfield storage overlap alone
+cannot establish a component identity. Newer native bitfield tokens are accessed
+reflectively to keep older supported Ghidra installations loadable.
+See [query execution](../../../query/README.md) for search completeness and limits.
 
 `FunctionReturnType` decompiles internal `DEFAULT` signatures before a return edit
 can lock an empty or partial input declaration. Rebuilding retains existing

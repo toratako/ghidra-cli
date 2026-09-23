@@ -60,7 +60,7 @@ public final class TypeResolver {
         return m;
     }
 
-    DataType resolveRegisteredDataType(String name) {
+    public DataType resolveRegisteredDataType(String name) {
         if (name == null || name.trim().isEmpty()) return null;
         String trimmed = name.trim();
         DataTypeManager dtm = session.program().getDataTypeManager();

@@ -2,11 +2,7 @@ package ghidracli.types;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import ghidra.program.model.data.Array;
 import ghidra.program.model.data.DataType;
-import ghidra.program.model.data.DataTypeManager;
-import ghidra.program.model.data.Pointer;
-import ghidra.program.model.data.TypeDef;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.symbol.SymbolType;
@@ -14,9 +10,6 @@ import ghidra.util.exception.CancelledException;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Set;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -38,6 +31,9 @@ public final class TypeUsesCommands {
         String kind = getArgString(args, "kind");
         if (kind != null && !kind.equals("data") && !kind.equals("signature")) {
             throw new IllegalArgumentException("kind must be data or signature");
+        }
+        if (getArgString(args, "function") != null) {
+            throw new IllegalArgumentException("function scope requires kind variable");
         }
         long limit = ListQuery.pageArgument(args, "limit");
         session.monitor().checkCancelled();
@@ -136,13 +132,11 @@ public final class TypeUsesCommands {
     /** Request-local state; no Program or datatype survives the request. */
     private final class Scan {
         final JsonArray rows = new JsonArray();
-        final DataTypeManager manager;
-        final long targetId;
+        final TypeUseMatcher matcher;
         final long limit;
 
         Scan(DataType target, long limit) {
-            manager = session.program().getDataTypeManager();
-            targetId = manager.getID(target);
+            matcher = new TypeUseMatcher(session, target);
             this.limit = limit;
         }
 
@@ -151,40 +145,7 @@ public final class TypeUsesCommands {
         }
 
         JsonObject match(DataType declared) throws CancelledException {
-            JsonArray wrappers = new JsonArray();
-            Set<DataType> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-            DataType current = declared;
-            while (current != null && visited.add(current)) {
-                session.monitor().checkCancelled();
-                // getID alone does not check the owning manager. Pointer/array
-                // types have no universal ID; structural equivalence merges distinct types.
-                if (current.getDataTypeManager() == manager && manager.contains(current)
-                        && manager.getID(current) == targetId) {
-                    JsonObject row = new JsonObject();
-                    row.addProperty("type", declared.getDisplayName());
-                    row.addProperty("type_path", declared.getPathName());
-                    row.add("wrappers", wrappers);
-                    return row;
-                }
-                JsonObject wrapper = new JsonObject();
-                wrapper.addProperty("type_path", current.getPathName());
-                if (current instanceof TypeDef alias) {
-                    wrapper.addProperty("kind", "typedef");
-                    current = alias.getDataType();
-                } else if (current instanceof Pointer pointer) {
-                    wrapper.addProperty("kind", "pointer");
-                    wrapper.addProperty("size", pointer.getLength());
-                    current = pointer.getDataType();
-                } else if (current instanceof Array array) {
-                    wrapper.addProperty("kind", "array");
-                    wrapper.addProperty("count", array.getNumElements());
-                    current = array.getDataType();
-                } else {
-                    break;
-                }
-                wrappers.add(wrapper);
-            }
-            return null;
+            return matcher.match(declared);
         }
     }
 }

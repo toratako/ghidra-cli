@@ -148,6 +148,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
                 | cli::TypeCategoryCommands::Delete(args) => args.options.project.clone(),
             },
             cli::TypeCommands::Field(cmd) => match cmd {
+                cli::TypeFieldCommands::Uses(args) => args.options.project.clone(),
                 cli::TypeFieldCommands::Append(args) => args.project.clone(),
                 cli::TypeFieldCommands::CreateBitfield(args) => args.options.project.clone(),
                 cli::TypeFieldCommands::Set(args) => args.project.clone(),
@@ -345,6 +346,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 | cli::TypeCategoryCommands::Delete(args) => args.options.program.clone(),
             },
             cli::TypeCommands::Field(cmd) => match cmd {
+                cli::TypeFieldCommands::Uses(args) => args.options.program.clone(),
                 cli::TypeFieldCommands::Append(args) => args.program.clone(),
                 cli::TypeFieldCommands::CreateBitfield(args) => args.options.program.clone(),
                 cli::TypeFieldCommands::Set(args) => args.program.clone(),
@@ -545,6 +547,9 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::TypeCommands::Field(cli::TypeFieldCommands::CreateBitfield(args)) => {
                 Some((&args.options).into())
             }
+            cli::TypeCommands::Field(cli::TypeFieldCommands::Uses(args)) => {
+                Some(args.options.clone())
+            }
             _ => None,
         },
         Commands::Tag(cmd) => match cmd {
@@ -623,7 +628,9 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         ) => Limit,
         Commands::Disasm(_) => Limit,
         Commands::Data(cli::DataCommands::List(_)) => Limit,
-        Commands::Type(cli::TypeCommands::Uses(_)) => Limit,
+        Commands::Type(
+            cli::TypeCommands::Uses(_) | cli::TypeCommands::Field(cli::TypeFieldCommands::Uses(_)),
+        ) => Limit,
         _ => Client,
     }
 }

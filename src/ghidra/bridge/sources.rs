@@ -37,6 +37,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/analysis/DecompileWarnings.java"),
     ),
     (
+        "ghidracli/analysis/FieldUses.java",
+        include_str!("../scripts/ghidracli/analysis/FieldUses.java"),
+    ),
+    (
         "ghidracli/analysis/GraphCommands.java",
         include_str!("../scripts/ghidracli/analysis/GraphCommands.java"),
     ),
@@ -55,6 +59,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/analysis/PcodeCommands.java",
         include_str!("../scripts/ghidracli/analysis/PcodeCommands.java"),
+    ),
+    (
+        "ghidracli/analysis/SemanticTypeUsesCommands.java",
+        include_str!("../scripts/ghidracli/analysis/SemanticTypeUsesCommands.java"),
     ),
     (
         "ghidracli/analysis/StructureInferenceCommands.java",
@@ -341,6 +349,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/types/TypeFields.java"),
     ),
     (
+        "ghidracli/types/TypeFieldTarget.java",
+        include_str!("../scripts/ghidracli/types/TypeFieldTarget.java"),
+    ),
+    (
         "ghidracli/types/TypeImportCommands.java",
         include_str!("../scripts/ghidracli/types/TypeImportCommands.java"),
     ),
@@ -351,6 +363,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/types/TypeResolver.java",
         include_str!("../scripts/ghidracli/types/TypeResolver.java"),
+    ),
+    (
+        "ghidracli/types/TypeUseMatcher.java",
+        include_str!("../scripts/ghidracli/types/TypeUseMatcher.java"),
     ),
     (
         "ghidracli/types/TypeUsesCommands.java",

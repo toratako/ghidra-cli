@@ -20,6 +20,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add `type uses TYPE` to find registered types in applied data and database
   function signatures, following typedefs, pointers, and arrays. Results retain
   declaration paths, ABI and thunk provenance, and scan completion.
+- Add `type uses TYPE --kind variable` for decompiler parameters and locals,
+  and `type field uses TYPE` for semantic field accesses. Both support function
+  scope and report incomplete scans; field results distinguish read, write,
+  address-taking and unclassified uses with instruction evidence.
 
 ### Removed
 

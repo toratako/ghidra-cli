@@ -132,6 +132,7 @@ ghidra-cli
 │   │   ├── create
 │   │   └── delete
 │   ├── field
+│   │   ├── uses
 │   │   ├── append
 │   │   ├── create-bitfield
 │   │   ├── set
@@ -205,4 +206,4 @@ ghidra-cli
     └── cancel
 ```
 
-193 command nodes (excluding the root), 0 aliases.
+194 command nodes (excluding the root), 0 aliases.

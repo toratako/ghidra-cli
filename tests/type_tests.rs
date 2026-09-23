@@ -36,6 +36,8 @@ mod resize;
 mod resolution;
 #[path = "types/return_types.rs"]
 mod return_types;
+#[path = "types/semantic_uses.rs"]
+mod semantic_uses;
 #[path = "types/signatures.rs"]
 mod signatures;
 #[path = "types/unions.rs"]

@@ -132,10 +132,26 @@ the instruction's numeric operand representation.
 ```bash
 ghidra-cli type uses /Recovered/Header --kind signature --filter 'role=parameter'
 ghidra-cli type uses /Recovered/Header --kind data
+ghidra-cli type uses /Recovered/Header --kind variable --filter 'role=local'
+ghidra-cli type field uses /Recovered/Header --field flags --function parse_packet
+ghidra-cli type field uses /Recovered/Header --field flags --filter 'access=write'
 ```
 
-The search follows typedefs, pointers and arrays in top-level data and database
-signatures.
+Type uses follows typedefs, pointers and arrays. The default searches top-level
+data and database signatures; `--kind variable` decompiles functions to find
+parameters and locals, including inferred variables. Use a full type path to
+distinguish same-named types.
+
+Field uses distinguishes reads, writes and address-taking from the current
+decompiler evidence. Passing a field's address to a call does not establish what
+the callee does to it. `unknown` retains an identified field use whose access
+cannot be classified. Check `meta.scan` before treating no matches as evidence:
+failed decompilations and unresolved field identities make the search incomplete.
+Even a completed scan depends on the current type recovery. Narrow expensive
+semantic searches with `--function`; type edits can change their results.
+Instruction locations follow High P-code provenance, so optimized expressions
+can point to a consuming instruction. Inspect the function's disassembly when
+the exact machine load or store matters.
 
 ```bash
 ghidra-cli type get Header --project target

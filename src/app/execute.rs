@@ -41,6 +41,12 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Type(cli::TypeCommands::Uses(args)) = command {
+        anyhow::ensure!(
+            args.function.is_none() || args.kind == Some(cli::TypeUseKind::Variable),
+            "--function requires --kind variable"
+        );
+    }
     if let Commands::Function(cli::FunctionCommands::SetBody(args)) = command {
         anyhow::ensure!(
             !args.ranges.is_empty() && args.ranges.len().is_multiple_of(2),
@@ -269,6 +275,13 @@ pub(super) fn execute_via_bridge(
                     client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset)
                 }
                 TypeCommands::Get(args) => client.type_get(&args.name),
+                TypeCommands::Uses(args) if args.kind == Some(cli::TypeUseKind::Variable) => {
+                    client.send_decompile_command(
+                        "type_uses",
+                        json!({"type_name": args.type_name, "kind": args.kind,
+                            "function": args.function, "limit": list_limit}),
+                    )
+                }
                 TypeCommands::Uses(args) => client.send_command(
                     "type_uses",
                     Some(json!({"type_name": args.type_name, "kind": args.kind, "limit": list_limit})),
@@ -332,6 +345,12 @@ pub(super) fn execute_via_bridge(
                     ),
                 },
                 TypeCommands::Field(cmd) => match cmd {
+                    cli::TypeFieldCommands::Uses(args) => client.send_decompile_command(
+                        "type_field_uses",
+                        json!({"type_name": args.type_name, "field": args.selector.field,
+                            "offset": args.selector.offset, "ordinal": args.selector.ordinal,
+                            "function": args.function, "limit": list_limit}),
+                    ),
                     cli::TypeFieldCommands::Append(args) => client.send_command(
                         "type_field_append",
                         Some(json!({

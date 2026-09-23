@@ -9,7 +9,7 @@ pub enum TypeCommands {
     List(QueryOptions),
     /// Get type definition
     Get(TypeGetArgs),
-    /// Find a registered type in applied data and database function signatures
+    /// Find a registered type in applied data, signatures, or decompiler variables
     Uses(TypeUsesArgs),
     /// Create a struct, union, enum, or typedef
     #[command(subcommand)]
@@ -31,7 +31,7 @@ pub enum TypeCommands {
     /// Organize data type categories
     #[command(subcommand)]
     Category(TypeCategoryCommands),
-    /// Edit struct and union fields
+    /// Inspect uses and edit struct and union fields
     #[command(subcommand)]
     Field(TypeFieldCommands),
     /// Edit enum definitions
@@ -41,6 +41,8 @@ pub enum TypeCommands {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum TypeFieldCommands {
+    /// Find typed field reads, writes, and address uses in decompiled functions
+    Uses(TypeFieldUsesArgs),
     /// Append a field using the type's packing and alignment
     Append(TypeFieldAppendArgs),
     /// Place a bitfield in a nonpacked struct without shifting other fields
@@ -116,6 +118,7 @@ pub struct TypeGetArgs {
 pub enum TypeUseKind {
     Data,
     Signature,
+    Variable,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
@@ -123,9 +126,26 @@ pub struct TypeUsesArgs {
     /// Registered type name or full type path; ambiguous names require a path
     #[arg(value_name = "TYPE", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub type_name: String,
-    /// Scan only applied data or function signatures (default: both)
+    /// Scan applied data, database signatures, or decompiler variables (default: data and signature)
     #[arg(long, value_enum)]
     pub kind: Option<TypeUseKind>,
+    /// Restrict decompiler variable search to one function; requires --kind variable
+    #[arg(long, requires = "kind", value_name = "NAME_OR_ADDRESS", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub function: Option<String>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeFieldUsesArgs {
+    /// Registered struct or union name or full type path
+    #[arg(value_name = "TYPE", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub type_name: String,
+    #[command(flatten)]
+    pub selector: TypeFieldSelector,
+    /// Restrict search to one function; omit to scan all internal function bodies
+    #[arg(long, value_name = "NAME_OR_ADDRESS", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub function: Option<String>,
     #[command(flatten)]
     pub options: QueryOptions,
 }

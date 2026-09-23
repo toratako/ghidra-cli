@@ -135,6 +135,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 | [types/variables.rs](types/variables.rs) | Fresh decompiler candidates versus saved definitions, exact/guarded selection, name-only type preservation and automatic-parameter rejection |
 | [readonly/structure_inference.rs](readonly/structure_inference.rs) | Native structure candidates and access budgets, integer/partial roots, preservation of types/signatures/classes, and cancellation recovery |
 | [types/uses.rs](types/uses.rs) | Registered type identity and wrapper paths; unmapped/external signatures, ABI and thunk provenance, read-only scans and cancellation recovery |
+| [types/semantic_uses.rs](types/semantic_uses.rs) | Fresh decompiler variable identity and field access evidence; function scope, native scan failures, limits and query composition |
 | [readonly/calls.rs](readonly/calls.rs), [readonly/relationships.rs](readonly/relationships.rs) | Call resolution through thunks/pointers, undefined endpoints and reference evidence; real graph nodes/edges |
 | [readonly/query.rs](readonly/query.rs) | Server pages versus full rows, Unicode/Turkish locale, tags/comments, bounds beyond Java `int` |
 | [readonly/strings.rs](readonly/strings.rs), [readonly/search.rs](readonly/search.rs) | Code-point versus occupied-byte lengths, defined strings versus encoded text, overlaps and encoding errors |

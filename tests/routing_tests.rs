@@ -552,6 +552,7 @@ impl RecordedBridge {
                     }
                     "type_category_list" => types::category_list_fixture(args),
                     "type_uses" => types::uses_fixture(args),
+                    "type_field_uses" => types::field_uses_fixture(args),
                     "type_clone"
                     | "type_resize"
                     | "type_move"

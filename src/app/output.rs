@@ -229,30 +229,7 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
                 .get("target_type_path")
                 .and_then(serde_json::Value::as_str)
             {
-                let kinds = result
-                    .meta
-                    .get("kinds")
-                    .and_then(serde_json::Value::as_array)
-                    .map(|values| {
-                        values
-                            .iter()
-                            .filter_map(serde_json::Value::as_str)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    })
-                    .unwrap_or_default();
-                text = format!("Type uses: {path} ({kinds})\n{text}");
-                if result
-                    .meta
-                    .get("scan")
-                    .and_then(|scan| scan.get("complete"))
-                    == Some(&serde_json::Value::Bool(false))
-                {
-                    if !text.ends_with('\n') {
-                        text.push('\n');
-                    }
-                    text.push_str("Scan stopped at the result limit; use --limit 0 to scan all declarations.\n");
-                }
+                text = render_type_uses(result, path, text, format)?;
             }
             if let Some(excluded) = result
                 .meta
@@ -274,6 +251,76 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
     }
 }
 
+fn render_type_uses(
+    result: &CommandOutput,
+    path: &str,
+    rows: String,
+    format: OutputFormat,
+) -> anyhow::Result<String> {
+    let mut text = if let Some(field) = result.meta.get("target_field") {
+        if let Some(name) = field.get("name").and_then(serde_json::Value::as_str) {
+            format!("Field uses: {path}.{name}\n")
+        } else {
+            format!("Field uses: {path} (ordinal {})\n", field["ordinal"])
+        }
+    } else {
+        let kinds = result
+            .meta
+            .get("kinds")
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+        format!("Type uses: {path} ({kinds})\n")
+    };
+    if let Some(scope) = result.meta.get("scope").filter(|scope| scope.is_object()) {
+        if let (Some(function), Some(address)) =
+            (scope["function"].as_str(), scope["address"].as_str())
+        {
+            text.push_str(&format!("Function: {function} ({address})\n"));
+        }
+    }
+    text.push_str(&rows);
+    let Some(scan) = result.meta.get("scan") else {
+        return Ok(text);
+    };
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    if scan["stop_reason"].as_str() == Some("limit") {
+        let scope = if scan.get("total_functions").is_some() {
+            "selected functions"
+        } else {
+            "declarations"
+        };
+        text.push_str(&format!(
+            "Scan stopped at the result limit; use --limit 0 to scan all {scope}.\n"
+        ));
+    }
+    for (key, heading) in [
+        ("failed_functions", "Functions that could not be decompiled"),
+        ("unresolved", "Unresolved field evidence"),
+        ("warnings", "Decompiler warnings"),
+    ] {
+        if let Some(details) = scan[key].as_array().filter(|rows| !rows.is_empty()) {
+            text.push_str(&format!("\n{heading}:\n"));
+            text.push_str(&DefaultFormatter.format(details, format)?);
+            if !text.ends_with('\n') {
+                text.push('\n');
+            }
+        }
+    }
+    if scan["complete"].as_bool() == Some(false) && scan["stop_reason"].as_str() != Some("limit") {
+        text.push_str("Search incomplete; an empty result does not establish absence of uses.\n");
+    }
+    Ok(text)
+}
+
 pub(super) fn print_result(cli: &Cli, result: CommandResult) -> anyhow::Result<()> {
     let format = output_format(cli);
     if !cli.quiet && format == OutputFormat::C && matches!(cli.command, Commands::Decompile(_)) {
@@ -292,6 +339,45 @@ mod tests {
     use super::*;
     use crate::filter;
     use clap::Parser;
+
+    #[test]
+    fn semantic_search_reports_failed_and_unresolved_empty_results_in_human_output() {
+        let result = CommandOutput::prepare(
+            serde_json::json!({
+                "target_type_path": "/Recovered/Foo",
+                "target_field": {"name": "flags", "ordinal": 1},
+                "scope": {"function": "parse_packet", "address": "0x1000"},
+                "uses": [],
+                "scan": {
+                    "complete": false,
+                    "stop_reason": "decompile_failed",
+                    "failed_functions": [{
+                        "function": "parse_packet", "address": "0x1000",
+                        "reason": "timeout", "message": "Native timeout"
+                    }],
+                    "unresolved": [{"reason": "ambiguous field", "instruction_address": "0x1004"}],
+                    "warnings": [{"function": "parse_packet", "warnings": ["Unresolved control flow"]}]
+                }
+            }),
+            ResultShape::Rows {
+                key: Some("uses"),
+                context: &["target_type_path", "target_field", "scope", "scan"],
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        for format in [OutputFormat::Compact, OutputFormat::Full] {
+            let text = render(&result, format).unwrap();
+            assert!(text.contains("Field uses: /Recovered/Foo.flags"), "{text}");
+            assert!(text.contains("parse_packet (0x1000)"), "{text}");
+            assert!(text.contains("Native timeout"), "{text}");
+            assert!(text.contains("ambiguous field"), "{text}");
+            assert!(text.contains("Unresolved control flow"), "{text}");
+            assert!(text.contains("Search incomplete"), "{text}");
+            assert!(!text.contains("result limit"), "{text}");
+        }
+    }
 
     #[test]
     fn output_format_preserves_explicit_flag_precedence() {

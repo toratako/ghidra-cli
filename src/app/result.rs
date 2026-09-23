@@ -52,8 +52,12 @@ impl ResultShape {
             Commands::Namespace(NamespaceCommands::List(_)) => Self::rows("namespaces"),
             Commands::Type(TypeCommands::List(_)) => Self::rows("types"),
             Commands::Type(TypeCommands::Uses(_)) => {
-                Self::context("uses", &["target_type_path", "kinds", "scan"])
+                Self::context("uses", &["target_type_path", "kinds", "scan", "scope"])
             }
+            Commands::Type(TypeCommands::Field(TypeFieldCommands::Uses(_))) => Self::context(
+                "uses",
+                &["target_type_path", "target_field", "scan", "scope"],
+            ),
             Commands::Type(TypeCommands::Category(TypeCategoryCommands::List(_))) => {
                 Self::context("categories", &["path"])
             }

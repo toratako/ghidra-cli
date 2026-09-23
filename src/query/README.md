@@ -78,11 +78,26 @@ matches for residual selection in Rust.
 `find bytes --regex` applies its native Ghidra regex before the fetch cap;
 residual selection still requests all matches.
 
-`type uses` also uses limit-only fetching. Its `--kind` selects the declaration
-iterators before matching, while row filters, sorting, offsets and counts require
-an uncapped fetch. Results keep `target_type_path`, `kinds` and `scan` as context;
-`scan.complete` concerns the database scan, not completeness of the displayed page.
-There is no total count of unvisited declarations when the scan stops at its limit.
+`type uses` and `type field uses` also use limit-only fetching. The former's
+`--kind` selects database declarations or decompiler variables before matching;
+field uses resolves one component before scanning. Row filters, sorting, offsets
+and counts require an uncapped fetch. Results keep their target, scope and `scan`
+as context independently of the displayed page. There is no total count of
+unvisited declarations when a database scan stops at its limit.
+
+Semantic searches inspect each selected internal function on the program lane,
+without a database-reference prefilter. A pushed limit finishes inspection of
+the current function, retains at most the requested rows, and stops before the
+next function. `omitted_uses` counts known rows withheld from inspected functions,
+not matches in unvisited functions. Failed native decompilations are retained in
+`failed_functions`; unexpected exceptions and cancellation fail the request.
+Field identity/access uncertainty remains in `unresolved`. `scan.complete` is
+false for any of these gaps, even when the function iterator was exhausted;
+`stop_reason` is null when uncertainty alone made the search incomplete.
+Native warnings remain associated with their functions in `scan.warnings`;
+successful decompilation does not prove that the recovered types or control flow
+are exhaustive. An entry with no listing instruction is a failed inspection,
+even if Ghidra could synthesize a bad-instruction HighFunction there.
 
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before

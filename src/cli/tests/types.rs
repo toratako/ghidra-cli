@@ -1,6 +1,88 @@
 use super::*;
 
 #[test]
+fn semantic_type_uses_accept_explicit_variable_mode_and_function_scope() {
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "uses",
+        "/Recovered/Foo",
+        "--kind",
+        "variable",
+        "--function",
+        "parse_packet",
+        "--filter",
+        "role=local",
+        "--limit",
+        "12",
+    ])
+    .unwrap();
+    let Commands::Type(TypeCommands::Uses(args)) = cli.command else {
+        panic!("expected type uses");
+    };
+    assert_eq!(args.type_name, "/Recovered/Foo");
+    assert_eq!(args.kind, Some(TypeUseKind::Variable));
+    assert_eq!(args.function.as_deref(), Some("parse_packet"));
+    assert_eq!(args.options.filter.as_deref(), Some("role=local"));
+    assert_eq!(args.options.limit, Some(12));
+    assert!(Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "uses",
+        "/Recovered/Foo",
+        "--function",
+        "parse_packet",
+    ])
+    .is_err());
+}
+
+#[test]
+fn field_uses_requires_one_existing_field_selector_and_accepts_query_options() {
+    for (selector, value) in [
+        ("--field", "flags"),
+        ("--offset", "0x10"),
+        ("--ordinal", "02"),
+    ] {
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "type",
+            "field",
+            "uses",
+            "/Recovered/Foo",
+            selector,
+            value,
+            "--function",
+            "ram:0x1000",
+            "--filter",
+            "access=write",
+            "--sort",
+            "instruction_address",
+        ])
+        .unwrap();
+        let Commands::Type(TypeCommands::Field(TypeFieldCommands::Uses(args))) = cli.command else {
+            panic!("expected type field uses");
+        };
+        assert_eq!(args.type_name, "/Recovered/Foo");
+        assert_eq!(args.function.as_deref(), Some("ram:0x1000"));
+        assert_eq!(args.options.filter.as_deref(), Some("access=write"));
+        assert_eq!(args.options.sort.as_deref(), Some("instruction_address"));
+        match selector {
+            "--field" => assert_eq!(args.selector.field.as_deref(), Some("flags")),
+            "--offset" => assert_eq!(args.selector.offset, Some(16)),
+            _ => assert_eq!(args.selector.ordinal, Some(2)),
+        }
+    }
+    for selectors in [vec![], vec!["--field", "flags", "--ordinal", "1"]] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "type", "field", "uses", "/Recovered/Foo"]
+                .into_iter()
+                .chain(selectors),
+        )
+        .is_err());
+    }
+}
+
+#[test]
 fn structure_inference_uses_variable_selection_and_explicit_evidence_limits() {
     let args = [
         "ghidra-cli",

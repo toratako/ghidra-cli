@@ -6,6 +6,7 @@ import ghidracli.analysis.DecompileCommands;
 import ghidracli.analysis.GraphCommands;
 import ghidracli.analysis.InstructionCfg;
 import ghidracli.analysis.PcodeCommands;
+import ghidracli.analysis.SemanticTypeUsesCommands;
 import ghidracli.analysis.StructureInferenceCommands;
 import ghidracli.analysis.VtableCommands;
 import ghidracli.function.FunctionBodyCommands;
@@ -69,6 +70,7 @@ final class CommandDispatcher {
     private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
     private final TypeUsesCommands typeUsesCommands;
+    private final SemanticTypeUsesCommands semanticTypeUsesCommands;
     private final TypeDefinitionCommands typeDefinitionCommands;
     private final TypeResizeCommands typeResizeCommands;
     private final BitFieldCommands bitFieldCommands;
@@ -124,6 +126,7 @@ final class CommandDispatcher {
         equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
         typeUsesCommands = new TypeUsesCommands(session, typeResolver);
+        semanticTypeUsesCommands = new SemanticTypeUsesCommands(session, typeResolver, functionQueries);
         typeDefinitionCommands = new TypeDefinitionCommands(session, typeResolver);
         typeResizeCommands = new TypeResizeCommands(session, typeResolver);
         bitFieldCommands = new BitFieldCommands(session, typeResolver);
@@ -217,7 +220,10 @@ final class CommandDispatcher {
             // Type commands
             case "type_list":       return typeCommands.handleTypeList(args);
             case "type_get":        return typeCommands.handleTypeGet(args);
-            case "type_uses":       return typeUsesCommands.handleUses(args);
+            case "type_uses":
+                return "variable".equals(JsonProtocol.getArgString(args, "kind"))
+                    ? semanticTypeUsesCommands.handleVariables(args) : typeUsesCommands.handleUses(args);
+            case "type_field_uses": return semanticTypeUsesCommands.handleFields(args);
             case "type_clone":      return typeDefinitionCommands.handleClone(args);
             case "type_move":       return typeDefinitionCommands.handleMove(args);
             case "type_resize":     return typeResizeCommands.handleResize(args);
