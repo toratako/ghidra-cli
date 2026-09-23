@@ -131,6 +131,10 @@ an empty result proves only the absence of a direct mapping.
 For changing RAM/MMIO or overlays, see [memory layout](low-level.md#memory-layout);
 for byte edits, see [patching](low-level.md#patching).
 
+`memory read` preserves the encoded pointer value and distinguishes its target
+from Ghidra's normalized code address and thunk destinations. Use these when a
+Thumb pointer or adjustment thunk differs from the eventual function entry.
+
 ## Analysis diagnostics
 
 ```bash

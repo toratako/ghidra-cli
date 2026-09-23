@@ -2,11 +2,7 @@ package ghidracli.memory;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import ghidra.app.util.PseudoDisassembler;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.data.PointerDataType;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.mem.ByteMemBufferImpl;
 import ghidracli.protocol.JsonProtocol;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
@@ -104,33 +100,16 @@ public final class MemoryCommands {
             }
 
             int pointerSize = session.program().getDefaultPointerSize();
-            boolean bigEndian = mem.isBigEndian();
+            result.addProperty("pointer_size", pointerSize);
+            result.addProperty("endian", mem.isBigEndian() ? "big" : "little");
+            PointerValues pointerValues = new PointerValues(session);
             JsonArray pointers = new JsonArray();
             for (int i = 0; i <= bytesRead - pointerSize; i += pointerSize) {
-                Address pointerAddr = baseAddr.add(i);
-                ByteMemBufferImpl buffer = new ByteMemBufferImpl(mem, pointerAddr,
-                    Arrays.copyOfRange(bytes, i, i + pointerSize), bigEndian);
-                JsonObject ptrObj = new JsonObject();
+                session.monitor().checkCancelled();
+                Address pointerAddr = baseAddr.addNoWrap(i);
+                JsonObject ptrObj = pointerValues.read(pointerAddr,
+                    Arrays.copyOfRange(bytes, i, i + pointerSize));
                 ptrObj.addProperty("offset", i);
-                ptrObj.addProperty("address", AddressCodec.format(pointerAddr));
-                ptrObj.addProperty("value", String.format("0x%0" + (pointerSize * 2) + "x",
-                    buffer.getBigInteger(0, pointerSize, false)));
-
-                // Ghidra handles unsigned offsets and the source address space's
-                // overlay, segmented, and addressable-word pointer semantics.
-                Address funcAddr = PointerDataType.getAddressValue(buffer, pointerSize,
-                    pointerAddr.getAddressSpace());
-                if (funcAddr != null) {
-                    Address entry = PseudoDisassembler.getNormalizedDisassemblyAddress(session.program(), funcAddr);
-                    // Removing a code-mode bit must not escape an overlay into its physical space.
-                    if (entry.getAddressSpace().equals(funcAddr.getAddressSpace()) && mem.contains(entry)) {
-                        Function func = session.program().getFunctionManager().getFunctionAt(entry);
-                        if (func != null) {
-                            ptrObj.addProperty("function", func.getName());
-                        }
-                    }
-                }
-
                 pointers.add(ptrObj);
             }
 

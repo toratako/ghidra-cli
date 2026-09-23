@@ -317,6 +317,15 @@ for the complete requested range and return source `mappings` instead of pointer
 candidates. Each mapping includes its address/end/size and file provenance.
 Indirect bit/byte mappings are explicitly unsupported; host files are not read.
 
+Current-memory pointer candidates include `pointer_size` and `endian` at the
+root. Rows retain `address`, byte `offset`, and raw hexadecimal `value`, plus
+`target_address`, `mapped`, `code_address`, `symbol`, `function`,
+`function_address`, `thunk_target`, and `thunk_final_target`. `mapped` and the
+exact symbol describe the raw target; function metadata describes the exact
+normalized code entry, never a containing function. Normalization cannot escape
+an overlay. Unavailable metadata is null; thunk identities contain `address`
+and qualified `name`. Original-source reads do not decode pointer candidates.
+
 `memory_file_mappings` accepts optional `file_offset` (a nonnegative decimal or
 `0x` integer string) and `source_at` (an explicit address with a direct FileBytes
 mapping). It returns `{mappings, count, unsupported_mappings}`. Each row has

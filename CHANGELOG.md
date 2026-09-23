@@ -22,6 +22,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Extend current-memory pointer output with decoded targets, normalized code
+  entries, qualified symbols/functions, and direct/final thunk destinations.
 - Use `initialized` consistently in memory map, info, and block edit receipts.
 - Rename `program stats`'s `sections` field to `memory_blocks`, counting all
   Program memory blocks, including overlays and uninitialized blocks.

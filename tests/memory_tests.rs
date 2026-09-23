@@ -58,6 +58,9 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
         } else {
             u64::MAX
         },
+        0x5000, // A two-hop thunk must retain its own entry and both destinations.
+        0x5010,
+        0x6000, // Mapped, uninitialized data is still a valid address interpretation.
     ];
     let mut bytes = Vec::new();
     for value in values {
@@ -109,6 +112,8 @@ public class CreatePointerTargets extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
         String[] names = {"outside_range_target", "high_address_target", "odd_address_target"};
+        var namespace = currentProgram.getSymbolTable().createNameSpace(null,
+            "pointer_fixture", SourceType.USER_DEFINED);
         for (int i = 0; i < args.length; i++) {
             var address = currentProgram.getAddressFactory().getDefaultAddressSpace()
                 .getAddress(Long.parseUnsignedLong(args[i], 16));
@@ -120,9 +125,30 @@ public class CreatePointerTargets extends GhidraScript {
                 currentProgram.getProgramContext().setValue(thumbMode, address,
                     address.add(3), java.math.BigInteger.ONE);
             }
-            currentProgram.getFunctionManager().createFunction(names[i], address,
+            var function = currentProgram.getFunctionManager().createFunction(names[i], address,
                 new AddressSet(address, address.add(3)), SourceType.USER_DEFINED);
+            if (i == 1) function.setParentNamespace(namespace);
         }
+        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
+        var functions = currentProgram.getFunctionManager();
+        var target = functions.getFunctionAt(space.getAddress(Long.parseUnsignedLong(args[1], 16)));
+        for (int i = 1; i >= 0; i--) {
+            var address = space.getAddress(0x5000 + i * 0x10);
+            var name = i == 0 ? "first_thunk" : "second_thunk";
+            var block = currentProgram.getMemory().createInitializedBlock(name,
+                address, 4, (byte) 0, monitor, false);
+            block.setExecute(true);
+            var thunk = functions.createFunction(name, namespace, address,
+                new AddressSet(address, address.add(3)), SourceType.USER_DEFINED);
+            thunk.setThunkedFunction(target);
+            target = thunk;
+        }
+        currentProgram.getSymbolTable().createLabel(space.getAddress(0x1000),
+            "table_data", namespace, SourceType.USER_DEFINED);
+        currentProgram.getMemory().createUninitializedBlock("uninitialized_data",
+            space.getAddress(0x6000), 4, false);
+        currentProgram.getSymbolTable().createLabel(space.getAddress(0x6000),
+            "uninitialized_data", namespace, SourceType.USER_DEFINED);
     }
 }
 "#,
@@ -131,6 +157,7 @@ public class CreatePointerTargets extends GhidraScript {
             false,
         )
         .expect("create pointer targets");
+    let before = pointer_program_state(&client);
 
     let output = common::ghidra(&harness)
         .args(["memory", "read", "0x1000", "--size"])
@@ -140,8 +167,9 @@ public class CreatePointerTargets extends GhidraScript {
     output.assert_success();
     let output: Value = output.data();
     let result = &output;
-    assert_eq!(result.as_object().expect("memory result").len(), 5);
     assert_eq!(result["source"], "memory");
+    assert_eq!(result["pointer_size"], pointer_size);
+    assert_eq!(result["endian"], if big_endian { "big" } else { "little" });
     assert_eq!(parse_address(&result["address"]), 0x1000);
     assert_eq!(result["size"], bytes.len());
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -156,21 +184,63 @@ public class CreatePointerTargets extends GhidraScript {
             pointer["value"],
             format!("0x{value:0width$x}", width = pointer_size * 2)
         );
+        assert_eq!(parse_address(&pointer["target_address"]), value);
+        assert_eq!(
+            parse_address(&pointer["code_address"]),
+            if thumb { value & !1 } else { value }
+        );
+        assert_eq!(
+            pointer["mapped"],
+            matches!(i, 0 | 1 | 4..=6 | 9..=11) || (i == 7 && odd_function_entry)
+        );
         let expected_function = match i {
             0 => Some("outside_range_target"),
-            1 => Some("high_address_target"),
+            1 => Some("pointer_fixture::high_address_target"),
             5 if thumb => Some("outside_range_target"),
             7 if odd_function_entry => Some("odd_address_target"),
+            9 => Some("pointer_fixture::first_thunk"),
+            10 => Some("pointer_fixture::second_thunk"),
             _ => None,
         };
         if let Some(name) = expected_function {
-            assert_eq!(pointer.as_object().unwrap().len(), 4);
             assert_eq!(pointer["function"], name);
+            assert_eq!(pointer["function_address"], pointer["code_address"]);
         } else {
-            assert_eq!(pointer.as_object().unwrap().len(), 3);
-            assert!(pointer.get("function").is_none(), "{pointer}");
+            assert_eq!(pointer.get("function"), Some(&Value::Null), "{pointer}");
+            assert_eq!(pointer.get("function_address"), Some(&Value::Null));
+        }
+        if matches!(i, 9 | 10) {
+            let direct = &pointer["thunk_target"];
+            let effective = &pointer["thunk_final_target"];
+            assert_eq!(
+                parse_address(&direct["address"]),
+                if i == 9 { 0x5010 } else { high }
+            );
+            assert_eq!(
+                direct["name"],
+                if i == 9 {
+                    "pointer_fixture::second_thunk"
+                } else {
+                    "pointer_fixture::high_address_target"
+                }
+            );
+            assert_eq!(parse_address(&effective["address"]), high);
+            assert_eq!(effective["name"], "pointer_fixture::high_address_target");
+        } else {
+            assert_eq!(pointer.get("thunk_target"), Some(&Value::Null));
+            assert_eq!(pointer.get("thunk_final_target"), Some(&Value::Null));
         }
     }
+    assert_eq!(
+        pointers[1]["symbol"],
+        "pointer_fixture::high_address_target"
+    );
+    assert_eq!(pointers[4]["symbol"], "pointer_fixture::table_data");
+    assert_eq!(
+        pointers[11]["symbol"],
+        "pointer_fixture::uninitialized_data"
+    );
+    assert_eq!(pointers[3].get("symbol"), Some(&Value::Null));
 
     // Reading past the initialized block must use bytes actually read, including
     // the raw trailing bytes, without manufacturing another pointer entry.
@@ -200,6 +270,7 @@ public class CreatePointerTargets extends GhidraScript {
             .expect("roundtrip high function address"),
         target
     );
+    assert_eq!(pointer_program_state(&client), before);
 
     if pointer_size == 4 {
         check_overlay_pointers(&client, thumb);
@@ -261,6 +332,19 @@ public class CreateOverlayPointerTargets extends GhidraScript {
     }
     assert_eq!(result["pointers"][0]["function"], "overlay_target");
     assert_eq!(result["pointers"][1]["function"], "outside_range_target");
+    assert!(result["pointers"][0]["target_address"]
+        .as_str()
+        .unwrap()
+        .starts_with("overlay:0x"));
+    assert!(result["pointers"][0]["code_address"]
+        .as_str()
+        .unwrap()
+        .starts_with("overlay:0x"));
+    assert_eq!(result["pointers"][0]["mapped"], true);
+    assert_eq!(
+        parse_address(&result["pointers"][1]["target_address"]),
+        OUTSIDE_OLD_RANGE + u64::from(thumb)
+    );
     assert_eq!(
         result["pointers"][0]["value"],
         if thumb { "0x00002001" } else { "0x00002000" }
@@ -268,11 +352,42 @@ public class CreateOverlayPointerTargets extends GhidraScript {
     if thumb {
         let boundary = read_memory(client, "odd_overlay:0x2001", 4);
         assert_eq!(boundary["pointers"][0]["value"], "0x00002001");
-        assert!(
-            boundary["pointers"][0].get("function").is_none(),
+        assert_eq!(boundary["pointers"][0]["mapped"], true);
+        assert_eq!(
+            boundary["pointers"][0].get("code_address"),
+            Some(&Value::Null)
+        );
+        assert_eq!(
+            boundary["pointers"][0].get("function"),
+            Some(&Value::Null),
             "normalization must not substitute the physical-space base_target: {boundary}"
         );
     }
+}
+
+fn pointer_program_state(client: &BridgeClient) -> String {
+    let result = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class ReadPointerProgramState extends GhidraScript {
+    public void run() {
+        println("program-state=" + currentProgram.getModificationNumber() + ":" + currentProgram.isChanged());
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .expect("read pointer fixture state");
+    result["stdout"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("program-state="))
+        .unwrap()
+        .to_owned()
 }
 
 fn read_memory(client: &BridgeClient, address: &str, size: usize) -> Value {

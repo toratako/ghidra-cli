@@ -589,6 +589,12 @@ image-base movement has no task monitor; cancellation checks before and after it
 allow the ordinary request boundary to roll back a cancelled edit. The handler
 does not rewrite bytes, reapply relocations, run analysis, or own transactions.
 
+`PointerValues` owns native pointer decoding and exact target metadata for
+memory reads. Preserve the encoded value, decoded address, normalized
+code entry, and direct/final thunk identities separately. Use Ghidra's pointer
+and code-mode APIs, retaining overlays; do not resolve a containing function as
+the pointer's target. Reads do not define instructions or data.
+
 `CallReferences` owns call validation and thunk/typed-pointer resolution for
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows
 reverse references to function bodies (including interior destinations), thunks,

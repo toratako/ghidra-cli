@@ -165,6 +165,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/memory/MemorySources.java"),
     ),
     (
+        "ghidracli/memory/PointerValues.java",
+        include_str!("../scripts/ghidracli/memory/PointerValues.java"),
+    ),
+    (
         "ghidracli/program/ProgramCommands.java",
         include_str!("../scripts/ghidracli/program/ProgramCommands.java"),
     ),
