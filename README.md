@@ -10,6 +10,8 @@ bridge per project keeps analysis state in Ghidra's JVM between commands.
 
 See [ghidra-cli command tree](docs/tree.md)!
 
+---
+
 ## Install
 
 Install [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) and a compatible full JDK (JDK 21 for Ghidra 12.x) separately.  
@@ -43,13 +45,36 @@ This skill is thin and does not include RE workflow, just usage and examples of 
 Install [ghidra-cli skill](docs/skills/ghidra-cli/) (If you download from [releases](https://github.com/toratako/ghidra-cli/releases), use `ghidra-cli-<version>-skill.zip`) to your agents:  
 [Claude Code](https://code.claude.com/docs/en/skills#where-skills-live), [Codex](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills), [Cursor](https://prod.cursor.com/docs/skills#skill-directories), [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/using-agent-skills.md#discovery-tiers), [OpenCode](https://opencode.ai/docs/skills#place-files)
 
-## Usage
+### Web
 
-- [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
-- [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
+Tested with ChatGPT Web Chat on September 24, 2026.
 
-Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),
-[documentation map](docs/README.md), and [release history](CHANGELOG.md).
+ChatGPT Web Chat provides a Linux sandbox with OpenJDK 21.0.11 preinstalled.  
+Since ChatGPT supports file uploads of up to 512 MB per file ([source](https://help.openai.com/en/articles/8555545-file-uploads-faq#what-are-the-file-upload-size-restrictions)), the approximately 229 MiB `ghidra.jar` from Ghidra 12.1.4 can be uploaded directly.
+
+Upload the zipped skills, the `ghidra-cli` executable, and `ghidra.jar` to the web chat.
+
+To build `ghidra.jar`, download the [official Ghidra release](https://github.com/NationalSecurityAgency/ghidra/releases/) and run `./support/buildGhidraJar` from the Ghidra directory.
+
+Prompt:
+
+<details>
+<summary>Click to expand</summary>
+<pre>
+
+Use the uploaded `ghidra-cli` executable and the uploaded `ghidra.jar` to verify that ghidra-cli works in this Linux sandbox.
+
+Also inspect the uploaded skills ZIP and follow its relevant instructions where applicable.
+
+Set `GHIDRA_JAR` to the absolute path of the copied standalone `ghidra.jar`.
+Then run: `ghidra-cli doctor --runtime`
+
+At the end, report the full `ghidra-cli doctor --runtime` output.
+
+</pre>
+</details>
+
+---
 
 ## Uninstall
 
@@ -58,6 +83,18 @@ cargo uninstall ghidra-cli
 rm -rf ~/.config/ghidra-cli/
 rm -rf ~/.local/share/ghidra-cli/
 ```
+
+---
+
+## Documentation
+
+- [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
+- [Configuration and recovery](docs/runtime.md): JDK selection, environment variables, and troubleshooting.
+
+Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),
+[documentation map](docs/README.md), and [release history](CHANGELOG.md).
+
+---
 
 ## License
 
