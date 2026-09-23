@@ -19,16 +19,23 @@ pub(super) fn handle_doctor(
 
     // Check Ghidra installation
     write!(report, "Checking Ghidra installation... ")?;
-    let (installation, install_dir) = match ghidra::installation::resolve(&config) {
+    let (installation, selected) = match ghidra::installation::resolve(&config) {
         Ok(installation) => {
             writeln!(report, "OK")?;
             writeln!(report, "  Location: {}", installation.path.display())?;
             writeln!(report, "  Source: {}", installation.source)?;
             writeln!(report, "  Version: {}", installation.version)?;
-            writeln!(report, "  analyzeHeadless: OK")?;
+            let (kind, launcher) = match installation.kind {
+                ghidra::installation::InstallationKind::Directory => {
+                    ("directory", "analyzeHeadless")
+                }
+                ghidra::installation::InstallationKind::Jar => ("jar", "java -jar"),
+            };
+            writeln!(report, "  Format: {kind}")?;
+            writeln!(report, "  Headless launcher: OK ({launcher})")?;
             let mut detail = serde_json::to_value(&installation)?;
             detail["ok"] = json!(true);
-            (detail, Some(installation.path))
+            (detail, Some(installation))
         }
         Err(e) => {
             failures.push(e.to_string());
@@ -42,12 +49,11 @@ pub(super) fn handle_doctor(
         }
     };
 
-    // Check Java
     // Check Java — must be a full JDK (Ghidra compiles scripts at runtime).
     use ghidra::java::JavaStatus;
-    let min = install_dir
-        .as_deref()
-        .map(ghidra::java::ghidra_min_java)
+    let min = selected
+        .as_ref()
+        .map(|installation| installation.min_java)
         .unwrap_or(ghidra::java::DEFAULT_MIN_JAVA);
     let explicit = config.get_java_home();
 
@@ -65,7 +71,7 @@ pub(super) fn handle_doctor(
 
             // Real health check: compile the embedded bridge script against the
             // installed Ghidra. Catches API incompatibilities and JRE issues.
-            if let Some(install) = &install_dir {
+            if let Some(install) = &selected {
                 write!(report, "\nChecking bridge script compiles... ")?;
                 match ghidra::bridge::compile_check(install, &info.home) {
                     Ok(()) => writeln!(report, "OK")?,
@@ -162,7 +168,7 @@ pub(super) fn handle_doctor(
     } else {
         match ghidra::bridge::diagnostics::runtime_check(
             &config,
-            install_dir.as_deref().expect("validated installation"),
+            selected.as_ref().expect("validated installation"),
         ) {
             Ok(paths) => {
                 writeln!(report, "\nGhidra runtime: OK (start, ping, shutdown)")?;

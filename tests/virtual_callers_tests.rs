@@ -19,7 +19,7 @@ fn harness() -> &'static common::DaemonTestHarness {
         std::fs::write(&binary, [0xc3u8]).unwrap();
         let installation = ghidra_cli::config::Config::load()
             .unwrap()
-            .get_ghidra_install_dir()
+            .get_ghidra_installation()
             .unwrap();
         let program = import_oneshot(
             project,

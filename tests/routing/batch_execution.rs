@@ -147,6 +147,7 @@ fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .current_dir(bridge.root.path())
         .env("GHIDRA_CLI_CONFIG", bridge.root.path().join("config.yaml"))
+        .env_remove("GHIDRA_JAR")
         .env(
             "GHIDRA_INSTALL_DIR",
             bridge.root.path().join("unused-install"),
@@ -199,6 +200,7 @@ fn project_directory_overrides_are_local_to_each_batch_line() {
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .current_dir(first.root.path())
         .env("GHIDRA_CLI_CONFIG", first.root.path().join("config.yaml"))
+        .env_remove("GHIDRA_JAR")
         .env(
             "GHIDRA_INSTALL_DIR",
             first.root.path().join("unused-install"),

@@ -717,6 +717,7 @@ impl RecordedBridge {
         cmd.current_dir(self.root.path())
             .env("GHIDRA_CLI_CONFIG", self.root.path().join("config.yaml"))
             .env_remove("GHIDRA_CLI_DECOMPILE_TIMEOUT")
+            .env_remove("GHIDRA_JAR")
             .env(
                 "GHIDRA_INSTALL_DIR",
                 self.root.path().join("unused-install"),

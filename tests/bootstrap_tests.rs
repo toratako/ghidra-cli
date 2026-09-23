@@ -104,7 +104,17 @@ fn configured_startup_targets_apply_to_all_entry_points() {
     let mut test_config = ghidra_cli::config::Config::load().unwrap();
     // Preserve runtime settings and exercise config-only installation lookup,
     // even when the test runner selects Ghidra through the environment.
-    test_config.ghidra_install_dir = Some(test_config.get_ghidra_install_dir().unwrap());
+    let installation = test_config.get_ghidra_installation().unwrap();
+    test_config.ghidra_install_dir = None;
+    test_config.ghidra_jar = None;
+    match installation.kind {
+        ghidra_cli::ghidra::installation::InstallationKind::Directory => {
+            test_config.ghidra_install_dir = Some(installation.path);
+        }
+        ghidra_cli::ghidra::installation::InstallationKind::Jar => {
+            test_config.ghidra_jar = Some(installation.path);
+        }
+    }
     test_config.default_project = Some(project.path.to_str().unwrap().to_owned());
     test_config.default_program = Some("configured-program".to_owned());
     std::fs::write(&config, serde_yaml::to_string(&test_config).unwrap()).unwrap();
@@ -121,7 +131,8 @@ fn configured_startup_targets_apply_to_all_entry_points() {
             .args(&args)
             .arg("--json")
             .env("GHIDRA_CLI_CONFIG", &config)
-            .env_remove("GHIDRA_INSTALL_DIR");
+            .env_remove("GHIDRA_INSTALL_DIR")
+            .env_remove("GHIDRA_JAR");
         let output =
             common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
         assert!(
@@ -134,7 +145,7 @@ fn configured_startup_targets_apply_to_all_entry_points() {
 }
 
 #[test]
-fn doctor_runtime_discovers_path_installation_and_removes_disposable_project() {
+fn doctor_runtime_resolves_installation_and_removes_disposable_project() {
     require_ghidra!();
     let root = tempfile::Builder::new()
         .prefix("doctor tests ")
@@ -142,22 +153,33 @@ fn doctor_runtime_discovers_path_installation_and_removes_disposable_project() {
         .unwrap();
     let settings = tempfile::tempdir().unwrap();
     let mut config = ghidra_cli::config::Config::load().unwrap();
-    let install = config.get_ghidra_install_dir().unwrap();
+    let install = config.get_ghidra_installation().unwrap();
     config.ghidra_install_dir = None;
+    config.ghidra_jar = None;
     let config_path = settings.path().join("config.yaml");
     let saved = serde_yaml::to_string(&config).unwrap();
     std::fs::write(&config_path, &saved).unwrap();
-    let mut path = vec![install.join("support")];
-    path.extend(std::env::split_paths(
-        &std::env::var_os("PATH").unwrap_or_default(),
-    ));
     let mut command = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
     command
         .args(["doctor", "--runtime", "--json"])
         .env_remove("GHIDRA_INSTALL_DIR")
+        .env_remove("GHIDRA_JAR")
         .env("GHIDRA_CLI_CONFIG", &config_path)
-        .env("PATH", std::env::join_paths(path).unwrap())
         .env("GHIDRA_PROJECT_DIR", root.path());
+    let expected_source = match install.kind {
+        ghidra_cli::ghidra::installation::InstallationKind::Directory => {
+            let mut path = vec![install.path.join("support")];
+            path.extend(std::env::split_paths(
+                &std::env::var_os("PATH").unwrap_or_default(),
+            ));
+            command.env("PATH", std::env::join_paths(path).unwrap());
+            "PATH "
+        }
+        ghidra_cli::ghidra::installation::InstallationKind::Jar => {
+            command.env("GHIDRA_JAR", &install.path);
+            "GHIDRA_JAR"
+        }
+    };
     let output = common::run_command_with_output(&mut command, Duration::from_secs(240)).unwrap();
     assert!(
         output.status.success(),
@@ -165,11 +187,14 @@ fn doctor_runtime_discovers_path_installation_and_removes_disposable_project() {
         String::from_utf8_lossy(&output.stderr)
     );
     let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["installation"]["path"], serde_json::json!(install));
+    assert_eq!(
+        result["installation"]["path"],
+        serde_json::json!(install.path)
+    );
     assert!(result["installation"]["source"]
         .as_str()
         .unwrap()
-        .starts_with("PATH "));
+        .starts_with(expected_source));
     assert_eq!(std::fs::read_to_string(config_path).unwrap(), saved);
     assert_eq!(result["runtime"]["status"], "success", "{result}");
     assert_eq!(result["loopback"]["ok"], true);

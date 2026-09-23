@@ -4,6 +4,7 @@
 //! starts a TCP socket server. The CLI connects directly to this server
 //! to execute commands. No intermediate daemon process is needed.
 
+use crate::ghidra::installation::Installation;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -333,16 +334,16 @@ pub fn is_bridge_running(project_path: &Path) -> Option<u16> {
 /// bridge that the winner started.
 pub fn ensure_bridge_running(
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     mode: BridgeStartMode,
 ) -> Result<u16> {
-    start_bridge(project_path, ghidra_install_dir, mode)
+    start_bridge(project_path, installation, mode)
 }
 
 /// Explicit startup shares the same lifecycle lock and recovery checks.
 pub fn start_bridge(
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     mode: BridgeStartMode,
 ) -> Result<u16> {
     let _lock = acquire_startup_lock(project_path)?;
@@ -359,7 +360,7 @@ pub fn start_bridge(
 
     // Clean up stale discovery files before starting fresh.
     cleanup_stale_files_locked(project_path)?;
-    startup::start_bridge(project_path, ghidra_install_dir, mode)
+    startup::start_bridge(project_path, installation, mode)
 }
 
 /// Stop the bridge for a project.
@@ -388,7 +389,7 @@ fn stop_bridge_then<T>(
 }
 
 /// Stop and delete under the CLI lifecycle lock and Ghidra's own project lock.
-pub fn delete_project(project_path: &Path, ghidra_install_dir: &Path) -> Result<bool> {
+pub fn delete_project(project_path: &Path, installation: &Installation) -> Result<bool> {
     stop_bridge_then(project_path, shutdown_timeout(), || {
         let Some(paths) = super::project::ProjectPaths::new(project_path) else {
             return Ok(false);
@@ -403,7 +404,7 @@ pub fn delete_project(project_path: &Path, ghidra_install_dir: &Path) -> Result<
             .tempdir()?;
         let result = import::run_bootstrap(
             &work.path().join("deletion"),
-            ghidra_install_dir,
+            installation,
             &serde_json::json!({"delete_project": std::path::absolute(project_path)?}),
             None,
         )?;

@@ -1,22 +1,20 @@
-//! Headless launcher discovery, Java environment selection, and compile diagnostics.
+//! Headless command construction, Java selection, and compile diagnostics.
 
 use super::sources;
+use crate::ghidra::installation::{Installation, InstallationKind};
+use crate::ghidra::java::{self, JdkInfo};
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::ffi::OsString;
+use std::path::Path;
 use std::process::Command;
 use tracing::{info, warn};
 
-/// Select a full JDK for Ghidra and set `JAVA_HOME` on the command. Ghidra
-/// compiles the bridge script at runtime via OSGi and needs javac/jdk.compiler,
-/// which a JRE lacks. Setting `JAVA_HOME` on the child overrides Ghidra's
-/// PATH-based auto-pick (honored by Ghidra's LaunchSupport on all platforms).
-/// If we can't find a JDK, proceed and let Ghidra try — the readiness failure
-/// path surfaces an actionable hint.
-pub(super) fn apply_java_home(cmd: &mut Command, ghidra_install_dir: &Path) {
-    let explicit_java = crate::config::Config::load()
-        .ok()
-        .and_then(|c| c.get_java_home());
-    match crate::ghidra::java::resolve_for_ghidra(ghidra_install_dir, explicit_java) {
+/// Both persistent and one-shot workflows use the selected installation.
+/// Directory launches retain Ghidra's own Java discovery as a last resort;
+/// a standalone JAR has no LaunchSupport wrapper and needs a resolved full JDK.
+pub(super) fn headless_command(installation: &Installation) -> Result<Command> {
+    let explicit_java = crate::config::Config::load()?.get_java_home();
+    let jdk = match java::resolve_for_ghidra(installation, explicit_java) {
         Ok(jdk) => {
             info!(
                 "Using JDK {} at {} ({})",
@@ -24,34 +22,89 @@ pub(super) fn apply_java_home(cmd: &mut Command, ghidra_install_dir: &Path) {
                 jdk.home.display(),
                 jdk.source
             );
-            cmd.env("JAVA_HOME", &jdk.home);
+            Some(jdk)
         }
-        Err(e) => {
+        Err(e) if installation.kind == InstallationKind::Directory => {
             warn!(
                 "No suitable JDK auto-selected; letting Ghidra choose. {}",
                 e
             );
+            None
         }
+        Err(e) => anyhow::bail!(e),
+    };
+    command_with_jdk(
+        installation,
+        jdk.as_ref(),
+        std::env::var_os("GHIDRA_HEADLESS_MAXMEM"),
+        std::env::var_os("GHIDRA_MAXMEM"),
+    )
+}
+
+fn command_with_jdk(
+    installation: &Installation,
+    jdk: Option<&JdkInfo>,
+    headless_maxmem: Option<OsString>,
+    maxmem: Option<OsString>,
+) -> Result<Command> {
+    let mut cmd = match installation.kind {
+        InstallationKind::Directory => {
+            Command::new(installation.launcher().expect("directory launcher"))
+        }
+        InstallationKind::Jar => {
+            let jdk = jdk
+                .ok_or_else(|| anyhow::anyhow!("A full JDK is required to launch a Ghidra JAR"))?;
+            let java = jdk
+                .home
+                .join("bin")
+                .join(if cfg!(windows) { "java.exe" } else { "java" });
+            let heap = headless_maxmem
+                .filter(|value| !value.is_empty())
+                .or_else(|| maxmem.filter(|value| !value.is_empty()))
+                .unwrap_or_else(|| "2G".into());
+            let mut max_heap = OsString::from("-Xmx");
+            max_heap.push(heap);
+            let mut command = Command::new(java);
+            // Headless defaults from the official analyzeHeadless and
+            // launch.properties. JarRun supplies its own application layout;
+            // it does not need Ghidra's distribution class loader.
+            command.arg(max_heap).args([
+                "-XX:ParallelGCThreads=2",
+                "-XX:CICompilerCount=2",
+                "-Djava.awt.headless=true",
+                "-Dfile.encoding=UTF8",
+                "-Duser.country=US",
+                "-Duser.language=en",
+                "-Duser.variant=",
+                "-Djavax.xml.accessExternalDTD=",
+                "-Djavax.xml.accessExternalSchema=",
+                "-Djavax.xml.accessExternalStylesheet=",
+                "--enable-native-access=ALL-UNNAMED",
+            ]);
+            #[cfg(windows)]
+            command.arg("-Dlog4j.skipJansi=true");
+            command.arg("-jar").arg(&installation.path);
+            command
+        }
+    };
+    if let Some(jdk) = jdk {
+        cmd.env("JAVA_HOME", &jdk.home);
     }
+    Ok(cmd)
 }
 
 /// Compile the embedded bridge script with the given JDK against the Ghidra
 /// install's jars, to verify it actually compiles (catches JRE-vs-JDK problems
 /// and Ghidra API incompatibilities). Returns the javac error lines on failure.
 pub fn compile_check(
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     jdk_home: &Path,
 ) -> std::result::Result<(), String> {
-    #[cfg(windows)]
-    let (javac_name, cp_sep) = ("javac.exe", ';');
-    #[cfg(not(windows))]
-    let (javac_name, cp_sep) = ("javac", ':');
+    let javac_name = if cfg!(windows) { "javac.exe" } else { "javac" };
 
     // Resolve caller-relative paths before changing the compiler's directory.
     let javac = std::path::absolute(jdk_home.join("bin").join(javac_name))
         .map_err(|e| format!("Failed to resolve javac path: {e}"))?;
-    let ghidra_install_dir = std::path::absolute(ghidra_install_dir)
-        .map_err(|e| format!("Failed to resolve Ghidra path: {e}"))?;
     if !javac.exists() {
         return Err(format!("javac not found at {}", javac.display()));
     }
@@ -60,19 +113,7 @@ pub fn compile_check(
     let source_dir = tmp.path().join("sources");
     let sources = sources::write_to(&source_dir).map_err(|e| e.to_string())?;
 
-    let mut classpath = String::new();
-    for entry in walkdir::WalkDir::new(ghidra_install_dir)
-        .into_iter()
-        .flatten()
-    {
-        if entry.path().extension().and_then(|e| e.to_str()) == Some("jar") {
-            classpath.push_str(&entry.path().to_string_lossy());
-            classpath.push(cp_sep);
-        }
-    }
-    if classpath.is_empty() {
-        return Err("No Ghidra jars found to compile against".to_string());
-    }
+    let classpath = compile_classpath(installation)?;
 
     // The classpath and source paths together can exceed Windows' command-line
     // limit. Keep them in a javac argument file on every platform.
@@ -80,7 +121,7 @@ pub fn compile_check(
     for argument in [
         "-proc:none",
         "-cp",
-        &classpath,
+        &classpath.to_string_lossy(),
         "-d",
         &tmp.path().join("out").to_string_lossy(),
         "-sourcepath",
@@ -122,6 +163,30 @@ pub fn compile_check(
     }
 }
 
+fn compile_classpath(installation: &Installation) -> std::result::Result<OsString, String> {
+    let path = std::path::absolute(&installation.path)
+        .map_err(|e| format!("Failed to resolve Ghidra path: {e}"))?;
+    let jars = match installation.kind {
+        InstallationKind::Jar => vec![path],
+        InstallationKind::Directory => {
+            let mut jars = Vec::new();
+            for entry in walkdir::WalkDir::new(path) {
+                let entry = entry.map_err(|e| format!("Failed to find Ghidra libraries: {e}"))?;
+                if entry.path().is_file()
+                    && entry.path().extension().is_some_and(|ext| ext == "jar")
+                {
+                    jars.push(entry.into_path());
+                }
+            }
+            jars
+        }
+    };
+    if jars.is_empty() {
+        return Err("No Ghidra jars found to compile against".to_string());
+    }
+    std::env::join_paths(jars).map_err(|e| format!("Invalid Ghidra classpath: {e}"))
+}
+
 fn append_javac_argument(arguments: &mut String, value: &str) {
     // javac's argument-file parser interprets backslash escapes inside quotes.
     arguments.push('"');
@@ -154,7 +219,5 @@ pub(super) fn bridge_failure_hint(output: &str) -> String {
     }
 }
 
-/// Find the analyzeHeadless script.
-pub fn find_headless_script(ghidra_install_dir: &Path) -> Result<PathBuf> {
-    Ok(crate::ghidra::installation::inspect(ghidra_install_dir)?.launcher())
-}
+#[cfg(test)]
+mod tests;

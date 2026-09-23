@@ -1,6 +1,7 @@
 //! Filesystem and transport prerequisites, plus an opt-in real Ghidra lifecycle check.
 use super::{import, sources, BridgeStartMode};
 use crate::config::Config;
+use crate::ghidra::installation::Installation;
 use crate::ipc::client::BridgeClient;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -121,7 +122,7 @@ pub fn loopback_check() -> Result<()> {
     Ok(())
 }
 
-pub fn runtime_check(config: &Config, install: &Path) -> Result<Value> {
+pub fn runtime_check(config: &Config, install: &Installation) -> Result<Value> {
     let directory = config.get_project_dir()?;
     let work = tempfile::Builder::new()
         .prefix("ghidra-cli-doctor-")

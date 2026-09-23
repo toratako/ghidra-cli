@@ -44,7 +44,7 @@ fn fixture(
     std::fs::write(&binary, bytes).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,

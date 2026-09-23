@@ -3,25 +3,42 @@
 
 use crate::config::Config;
 use crate::error::{path_io, GhidraError, Result};
+use crate::ghidra::java::DEFAULT_MIN_JAVA;
 use serde::Serialize;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod jar;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallationKind {
+    Directory,
+    Jar,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Installation {
     #[serde(serialize_with = "serialize_path")]
     pub path: PathBuf,
+    pub kind: InstallationKind,
+    pub min_java: u32,
     pub version: String,
     pub source: String,
 }
 
 impl Installation {
-    pub fn launcher(&self) -> PathBuf {
-        self.path
-            .join("support")
-            .join(Platform::native().launcher())
+    pub fn launcher(&self) -> Option<PathBuf> {
+        match self.kind {
+            InstallationKind::Directory => Some(
+                self.path
+                    .join("support")
+                    .join(Platform::native().launcher()),
+            ),
+            InstallationKind::Jar => None,
+        }
     }
 }
 
@@ -76,7 +93,7 @@ impl fmt::Display for DetectionError {
                 check.message
             )?;
         }
-        f.write_str("\nSet GHIDRA_INSTALL_DIR or use 'ghidra-cli config set ghidra_install_dir PATH' to select an existing Ghidra installation.")
+        f.write_str("\nSet GHIDRA_INSTALL_DIR or GHIDRA_JAR, or use 'ghidra-cli config set ghidra_install_dir PATH' / 'ghidra-cli config set ghidra_jar PATH' to select Ghidra.")
     }
 }
 
@@ -240,7 +257,9 @@ fn package_roots(
 struct Inputs {
     platform: Platform,
     environment: Option<OsString>,
+    environment_jar: Option<OsString>,
     configured: Option<PathBuf>,
+    configured_jar: Option<PathBuf>,
     path: OsString,
     roots: Vec<SearchRoot>,
 }
@@ -250,7 +269,9 @@ pub fn resolve(config: &Config) -> Result<Installation> {
     resolve_inputs(Inputs {
         platform,
         environment: std::env::var_os("GHIDRA_INSTALL_DIR"),
+        environment_jar: std::env::var_os("GHIDRA_JAR"),
         configured: config.ghidra_install_dir.clone(),
+        configured_jar: config.ghidra_jar.clone(),
         path: std::env::var_os("PATH").unwrap_or_default(),
         roots: package_roots(
             platform,
@@ -262,12 +283,42 @@ pub fn resolve(config: &Config) -> Result<Installation> {
 
 fn resolve_inputs(inputs: Inputs) -> Result<Installation> {
     let mut search = Search::default();
-    let explicit = inputs
-        .environment
-        .map(|p| (PathBuf::from(p), "GHIDRA_INSTALL_DIR"))
-        .or_else(|| inputs.configured.map(|p| (p, "config ghidra_install_dir")));
-    if let Some((path, source)) = explicit {
-        return inspect_for(&path, source, inputs.platform).map_err(|cause| {
+    // An environment selection replaces the entire configured selection layer.
+    let selections = if inputs.environment.is_some() || inputs.environment_jar.is_some() {
+        [
+            inputs.environment.map(|p| {
+                (
+                    PathBuf::from(p),
+                    InstallationKind::Directory,
+                    "GHIDRA_INSTALL_DIR",
+                )
+            }),
+            inputs
+                .environment_jar
+                .map(|p| (PathBuf::from(p), InstallationKind::Jar, "GHIDRA_JAR")),
+        ]
+    } else {
+        [
+            inputs
+                .configured
+                .map(|p| (p, InstallationKind::Directory, "config ghidra_install_dir")),
+            inputs
+                .configured_jar
+                .map(|p| (p, InstallationKind::Jar, "config ghidra_jar")),
+        ]
+    };
+    if let [Some(directory), Some(jar)] = &selections {
+        let cause = GhidraError::ConfigError(format!(
+            "{} and {} both select Ghidra; set only one in this selection layer",
+            directory.2, jar.2,
+        ));
+        for (path, _, source) in selections.iter().flatten() {
+            search.reject(path, source, &cause);
+        }
+        return Err(search.error("invalid", Some(cause)));
+    }
+    if let Some((path, kind, source)) = selections.into_iter().flatten().next() {
+        return inspect_for(&path, kind, source, inputs.platform).map_err(|cause| {
             search.reject(&path, source, &cause);
             search.error("invalid", Some(cause))
         });
@@ -372,7 +423,7 @@ impl Search {
     }
 
     fn probe(&mut self, path: &Path, source: &str, platform: Platform) {
-        match inspect_for(path, source, platform) {
+        match inspect_for(path, InstallationKind::Directory, source, platform) {
             Ok(installation) => {
                 if !self.candidates.iter().any(|i| i.path == installation.path) {
                     self.candidates.push(installation);
@@ -410,43 +461,65 @@ impl Search {
     }
 }
 
-pub(crate) fn inspect(path: &Path) -> Result<Installation> {
-    inspect_for(path, "installation path", Platform::native())
+#[cfg(test)]
+fn inspect(path: &Path, kind: InstallationKind) -> Result<Installation> {
+    inspect_for(path, kind, "installation path", Platform::native())
 }
 
-fn inspect_for(path: &Path, source: &str, platform: Platform) -> Result<Installation> {
+fn inspect_for(
+    path: &Path,
+    kind: InstallationKind,
+    source: &str,
+    platform: Platform,
+) -> Result<Installation> {
     if path.as_os_str().is_empty() {
         return Err(GhidraError::ConfigError(
             "Ghidra installation path is empty".into(),
         ));
     }
-    // Check the launcher first so an incomplete tree identifies the missing
-    // platform entry point. Never accept directories in place of these files.
-    require_file(&path.join("support").join(platform.launcher()))?;
-    let properties = path.join("Ghidra/application.properties");
-    require_file(&properties)?;
-    let text = fs::read_to_string(&properties)
-        .map_err(|e| path_io("installation.read", &properties, e))?;
-    let version = text
-        .lines()
-        .filter_map(|l| l.trim().split_once('='))
-        .find(|(key, _)| key.trim() == "application.version")
-        .map(|(_, value)| value.trim())
-        .filter(|v| !v.is_empty())
+    let (text, properties) = match kind {
+        InstallationKind::Directory => {
+            // Reject incomplete trees and source checkouts at the shared boundary.
+            require_file(&path.join("support").join(platform.launcher()))?;
+            let properties = path.join("Ghidra/application.properties");
+            require_file(&properties)?;
+            let text = fs::read_to_string(&properties)
+                .map_err(|e| path_io("installation.read", &properties, e))?;
+            // Release/build output, including DEV/NIX distro builds, must have
+            // the bootstrap runtime; source checkouts are not installations.
+            // https://github.com/NationalSecurityAgency/ghidra/blob/Ghidra_12.1.3_build/Ghidra/RuntimeScripts/Linux/support/launch.sh
+            require_file(&path.join("Ghidra/Framework/Utility/lib/Utility.jar"))?;
+            require_file(&path.join("support/LaunchSupport.jar"))?;
+            (text, properties.display().to_string())
+        }
+        InstallationKind::Jar => (
+            jar::properties(path)?,
+            format!("{}!/_Root/Ghidra/application.properties", path.display()),
+        ),
+    };
+    let property = |key: &str| {
+        text.lines()
+            .filter_map(|line| line.trim().split_once('='))
+            .find(|(name, _)| name.trim() == key)
+            .map(|(_, value)| value.trim())
+    };
+    let version = property("application.version")
+        .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            GhidraError::ConfigError(format!(
-                "Missing application.version in {}",
-                properties.display()
-            ))
+            GhidraError::ConfigError(format!("Missing application.version in {properties}"))
         })?;
-    // Release/build output, including DEV/NIX distro builds, must have the
-    // bootstrap runtime. A source checkout is not an installed distribution.
-    // https://github.com/NationalSecurityAgency/ghidra/blob/Ghidra_12.1.3_build/Ghidra/RuntimeScripts/Linux/support/launch.sh
-    require_file(&path.join("Ghidra/Framework/Utility/lib/Utility.jar"))?;
-    require_file(&path.join("support/LaunchSupport.jar"))?;
+    let min_java = property("application.java.min")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MIN_JAVA);
+    let path = dunce::canonicalize(path).map_err(|e| path_io("installation.resolve", path, e))?;
+    if kind == InstallationKind::Jar {
+        jar::validate_path(&path)?;
+    }
     Ok(Installation {
-        path: dunce::canonicalize(path).map_err(|e| path_io("installation.resolve", path, e))?,
+        path,
+        kind,
         version: version.into(),
+        min_java,
         source: source.into(),
     })
 }

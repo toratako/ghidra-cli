@@ -119,7 +119,7 @@ pub fn copy_analyzed_project(destination: &Path) -> Result<()> {
         let program = import_oneshot(
             &dir.join(PROJECT_NAME),
             &binary,
-            &config.get_ghidra_install_dir()?,
+            &config.get_ghidra_installation()?,
             &OneShotImportOptions {
                 analyze: true,
                 ..Default::default()

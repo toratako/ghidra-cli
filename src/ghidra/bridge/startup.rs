@@ -1,15 +1,16 @@
 //! Persistent bridge launch: child process, output readers, readiness, and failure cleanup.
 
-use super::headless::{apply_java_home, bridge_failure_hint, find_headless_script};
+use super::headless::{bridge_failure_hint, headless_command};
 #[cfg(unix)]
 use super::is_pid_alive;
 use super::{cleanup_stale_files_locked, pid_file_path, port_file_path, read_port_file};
 use super::{sources, BridgeStartMode};
+use crate::ghidra::installation::Installation;
 use crate::ipc::client::BridgeClient;
 use anyhow::Result;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::Duration;
 use tracing::{debug, info};
 
@@ -17,21 +18,19 @@ use tracing::{debug, info};
 /// Returns the port number once the bridge is ready.
 pub fn start_bridge(
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     mode: BridgeStartMode,
 ) -> Result<u16> {
     info!("Starting Ghidra bridge...");
 
     let scripts_dir = sources::install()?;
 
-    // Find analyzeHeadless
-    let headless_script = find_headless_script(ghidra_install_dir)?;
-
     // Compute port file path
     let port_file = port_file_path(project_path)?;
 
     // Build command
-    let mut cmd = Command::new(&headless_script);
+    let mut cmd = headless_command(installation)?;
+    let executable = std::path::PathBuf::from(cmd.get_program());
 
     // analyzeHeadless expects: <parent_directory> <project_name>
     let ghidra_project_dir = project_path.parent().unwrap_or(project_path);
@@ -68,8 +67,6 @@ pub fn start_bridge(
         cmd.arg(program_name);
     }
 
-    apply_java_home(&mut cmd, ghidra_install_dir);
-
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -96,7 +93,7 @@ pub fn start_bridge(
     // Spawn the process
     let mut child = cmd
         .spawn()
-        .map_err(|e| crate::error::path_io("bridge.launch", &headless_script, e))?;
+        .map_err(|e| crate::error::path_io("bridge.launch", &executable, e))?;
     info!("Ghidra process started with PID: {:?}", child.id());
 
     // Write PID file immediately so orphan cleanup is possible if Java crashes
@@ -202,6 +199,14 @@ pub fn start_bridge(
             // block forever. They terminate on their own when the bridge exits.
             drop(stdout_handle);
             drop(stderr_handle);
+            // A directly launched JVM is our child. Reap it after shutdown so
+            // PID-based liveness checks cannot mistake a zombie for a running
+            // bridge while this CLI process remains alive (doctor --runtime).
+            std::thread::spawn(move || {
+                if let Err(error) = child.wait() {
+                    tracing::warn!("Failed to reap Ghidra process: {error}");
+                }
+            });
             info!("Ghidra bridge started on port {}", port);
             Ok(port)
         }

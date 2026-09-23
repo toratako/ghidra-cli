@@ -49,6 +49,7 @@ fn test_pretty_flag() {
 fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
     let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     command
+        .env_remove("GHIDRA_JAR")
         .env("GHIDRA_CLI_CONFIG", temp.path().join("config.yaml"))
         .env("XDG_DATA_HOME", temp.path().join("data"))
         .env("GHIDRA_PROJECT_DIR", temp.path().join("projects"));

@@ -256,10 +256,10 @@ fn execute_bridge_command(
             return management::program_save_result(&save_cli, &selection).map(|(value, _)| value);
         }
 
-        let ghidra_install_dir = config.get_ghidra_install_dir()?;
+        let installation = config.get_ghidra_installation()?;
         // Import owns its workflow and selects only the actual imported program.
         if let Commands::Program(cli::ProgramCommands::Import(args)) = &cli.command {
-            return import::run_import(cli, args, &project_path, &ghidra_install_dir, &selection);
+            return import::run_import(cli, args, &project_path, &installation, &selection);
         }
 
         let startup_program = if project_operation || archive_inspection {
@@ -282,7 +282,7 @@ fn execute_bridge_command(
             };
 
             output.progress("Starting Ghidra bridge...");
-            let port = bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
+            let port = bridge::ensure_bridge_running(&project_path, &installation, mode)?;
             output.progress("Bridge ready.");
             connect_program_bridge(port)?
         };

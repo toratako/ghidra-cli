@@ -18,7 +18,7 @@ fn fixture(language: &str, check: impl FnOnce(&common::DaemonTestHarness, &str))
     std::fs::write(&binary, [0xcc_u8; 4]).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,

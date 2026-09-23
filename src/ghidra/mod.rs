@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct GhidraClient {
-    install_dir: PathBuf,
+    installation: installation::Installation,
     project_dir: PathBuf,
 }
 
 impl GhidraClient {
     pub fn new(config: Config) -> Result<Self> {
-        let install_dir = config.get_ghidra_install_dir()?;
+        let installation = config.get_ghidra_installation()?;
         let project_dir = std::path::absolute(config.get_project_dir()?)?;
 
         // Create project directory if it doesn't exist
@@ -24,15 +24,9 @@ impl GhidraClient {
         }
 
         Ok(Self {
-            install_dir,
+            installation,
             project_dir,
         })
-    }
-
-    #[allow(dead_code)] // Doctor resolves the launcher without creating project directories.
-    pub fn verify_installation(&self) -> Result<()> {
-        installation::inspect(&self.install_dir)?;
-        Ok(())
     }
 
     pub fn get_project_path(&self, project_name: &str) -> PathBuf {
@@ -40,14 +34,14 @@ impl GhidraClient {
     }
 
     pub fn delete_project(&self, name: &str) -> anyhow::Result<bool> {
-        bridge::delete_project(&self.get_project_path(name), &self.install_dir)
+        bridge::delete_project(&self.get_project_path(name), &self.installation)
     }
 
     pub fn archive_project(&self, name: &str, output: &Path) -> anyhow::Result<serde_json::Value> {
-        bridge::archive::archive_project(&self.get_project_path(name), output, &self.install_dir)
+        bridge::archive::archive_project(&self.get_project_path(name), output, &self.installation)
     }
 
     pub fn restore_project(&self, archive: &Path, name: &str) -> anyhow::Result<serde_json::Value> {
-        bridge::archive::restore_project(archive, &self.get_project_path(name), &self.install_dir)
+        bridge::archive::restore_project(archive, &self.get_project_path(name), &self.installation)
     }
 }

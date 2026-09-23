@@ -80,7 +80,7 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
 
     let installation = ghidra_cli::config::Config::load()
         .expect("load configuration")
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .expect("Ghidra installation");
     let program = import_oneshot(
         &project,
@@ -418,7 +418,7 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     std::fs::write(&binary, [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,

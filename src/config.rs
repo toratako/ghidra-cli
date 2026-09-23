@@ -7,6 +7,8 @@ use std::path::{Component, Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub ghidra_install_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub ghidra_jar: Option<PathBuf>,
     pub ghidra_project_dir: Option<PathBuf>,
     /// Per-invocation project directory override; never read from or written to YAML.
     #[serde(skip)]
@@ -31,6 +33,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             ghidra_install_dir: None,
+            ghidra_jar: None,
             ghidra_project_dir: None,
             projects_dir_override: None,
             java_home: None,
@@ -178,8 +181,8 @@ impl Config {
         Ok(config_dir.join("ghidra-cli").join("config.yaml"))
     }
 
-    pub fn get_ghidra_install_dir(&self) -> Result<PathBuf> {
-        crate::ghidra::installation::resolve(self).map(|installation| installation.path)
+    pub fn get_ghidra_installation(&self) -> Result<crate::ghidra::installation::Installation> {
+        crate::ghidra::installation::resolve(self)
     }
 
     pub fn get_project_dir(&self) -> Result<PathBuf> {

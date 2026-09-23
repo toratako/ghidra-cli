@@ -212,3 +212,35 @@ fn config_io_failure_retains_operation_path_and_os_cause() {
     assert!(error["detail"]["io_kind"].is_string());
     assert!(error["detail"]["os_error"].is_number());
 }
+
+#[test]
+fn selecting_an_installation_format_clears_the_other_saved_selection() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.yaml");
+    std::fs::write(&path, "default_program: retained-program\n").unwrap();
+    for (selected, cleared, value) in [
+        ("ghidra_install_dir", "ghidra_jar", "official installation"),
+        ("ghidra_jar", "ghidra_install_dir", "standalone ghidra.jar"),
+        ("ghidra_install_dir", "ghidra_jar", "another installation"),
+    ] {
+        let output = isolated_command(&temp)
+            .args(["config", "set", selected, value])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let saved: serde_json::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved[selected], value);
+        assert!(saved[cleared].is_null(), "{saved}");
+        assert_eq!(saved["default_program"], "retained-program");
+        let output = isolated_command(&temp)
+            .args(["config", "get", selected])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            crate::json_output::from_slice::<String>(&output.stdout).unwrap(),
+            value
+        );
+    }
+}

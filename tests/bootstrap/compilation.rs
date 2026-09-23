@@ -25,7 +25,7 @@ fn doctor_compiles_from_quoted_temporary_directory() {
 fn bridge_compiles_with_long_relative_classpath_and_quoted_paths() {
     require_ghidra!();
     let config = ghidra_cli::config::Config::load().unwrap();
-    let install = config.get_ghidra_install_dir().unwrap();
+    let install = config.get_ghidra_installation().unwrap();
     let jdk = java::resolve_for_ghidra(&install, config.get_java_home()).unwrap();
     let working_dir = std::env::current_dir().unwrap();
     let root = tempfile::Builder::new()
@@ -42,7 +42,7 @@ fn bridge_compiles_with_long_relative_classpath_and_quoted_paths() {
 
     let mut classpath_length = 0;
     let mut count = 0;
-    for entry in walkdir::WalkDir::new(&install) {
+    for entry in walkdir::WalkDir::new(&install.path) {
         let entry = entry.unwrap();
         if entry.path().extension().is_some_and(|ext| ext == "jar") {
             let path = jars.join(format!("dependency-{count}.jar"));
@@ -69,5 +69,9 @@ fn bridge_compiles_with_long_relative_classpath_and_quoted_paths() {
     // The compiler runs in its own temporary directory. Relative inputs must
     // still resolve against the caller's directory.
     let relative_jars = jars.strip_prefix(&working_dir).unwrap();
-    bridge::compile_check(relative_jars, &jdk.home).unwrap_or_else(|error| panic!("{error}"));
+    let mut classpath_installation = install;
+    classpath_installation.path = relative_jars.to_path_buf();
+    classpath_installation.kind = ghidra_cli::ghidra::installation::InstallationKind::Directory;
+    bridge::compile_check(&classpath_installation, &jdk.home)
+        .unwrap_or_else(|error| panic!("{error}"));
 }

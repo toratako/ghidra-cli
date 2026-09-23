@@ -15,7 +15,8 @@ or recovery steps; document length is not a target.
 - Preserve output defaults: human-readable on TTY, `JsonCompact` on non-TTY;
   `--json` and `--pretty` explicitly select JSON.
 - The persistent server is a Java bridge inside Ghidra, one per project; no Rust
-  daemon. Launch uses `analyzeHeadless -preScript -noanalysis`.
+  daemon. Launch uses `analyzeHeadless` or the official standalone JAR headless
+  entry point, with `-preScript -noanalysis`.
 - Register new Java sources in `src/ghidra/bridge/sources.rs` for both startup and
   doctor. See [bridge lifecycle and paths](src/ghidra/README.md).
 - Program operations run on the original GhidraScript thread. Handlers retain

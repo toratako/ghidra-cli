@@ -19,7 +19,7 @@ fn explicit_addresses_and_exact_names_preserve_targets() {
     std::fs::write(&binary, vec![0xc3; 0x700]).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,

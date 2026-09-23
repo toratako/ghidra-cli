@@ -102,7 +102,7 @@ fn applied_data_values_and_bounded_traversal() {
     std::fs::write(&binary, vec![0u8; 8192]).expect("write data fixture");
     let installation = ghidra_cli::config::Config::load()
         .expect("load configuration")
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .expect("Ghidra installation");
     let program = import_oneshot(
         &project,

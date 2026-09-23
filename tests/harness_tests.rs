@@ -203,11 +203,15 @@ fn doctor_output(success: bool, stdout: &str, stderr: &str) -> std::process::Out
     output
 }
 
-const HEALTHY: &str = "analyzeHeadless: OK\nChecking bridge script compiles... OK\n";
+const HEALTHY: &str =
+    "Headless launcher: OK (analyzeHeadless)\nChecking bridge script compiles... OK\n";
 
 #[test]
 fn doctor_accepts_successful_headless_and_compile_checks() {
-    common::assert_doctor_ready(&doctor_output(true, HEALTHY, ""));
+    for launcher in ["analyzeHeadless", "java -jar"] {
+        let healthy = HEALTHY.replace("analyzeHeadless", launcher);
+        common::assert_doctor_ready(&doctor_output(true, &healthy, ""));
+    }
 }
 
 #[test]
@@ -221,9 +225,9 @@ fn doctor_rejects_missing_or_failed_checks() {
     for stdout in [
         "",
         "Checking project directory... OK",
-        "analyzeHeadless: OK",
-        "analyzeHeadless: NOT FOUND\nChecking bridge script compiles... OK",
-        "analyzeHeadless: OK\nChecking bridge script compiles... FAILED",
+        "Headless launcher: OK (analyzeHeadless)",
+        "Headless launcher: NOT FOUND\nChecking bridge script compiles... OK",
+        "Headless launcher: OK (analyzeHeadless)\nChecking bridge script compiles... FAILED",
     ] {
         let output = doctor_output(true, stdout, "");
         assert!(

@@ -25,7 +25,7 @@ fn export_reports_artifacts_and_format_limits() {
     std::fs::write(&binary, &bytes).expect("write raw export fixture");
     let installation = ghidra_cli::config::Config::load()
         .expect("load configuration")
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .expect("Ghidra installation");
     let program = import_oneshot(
         &project,

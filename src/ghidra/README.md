@@ -7,7 +7,7 @@
 | `bridge/import.rs` | Private one-shot import lifecycle, loader manifest, and completion receipt |
 | `bridge/archive.rs` | GAR preflight, stopped-project lifecycle locking, bootstrap dispatch, and failure state |
 | `bridge/diagnostics.rs` | Storage/loopback probes and disposable-project runtime check |
-| `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
+| `bridge/headless.rs` | Shared directory/JAR launch construction, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
 | `installation.rs` | Installation resolution, shared file validation, diagnostics, and cited package layouts |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
@@ -20,13 +20,20 @@ their process and stream lifetimes separately.
 
 ## Installation selection
 
-`installation::resolve` selects a validated installation with its canonical path,
-version, and source. Config lookup delegates to it; doctor resolves once and uses
-that same installation for compilation and its runtime probe. Launcher lookup
-also uses `installation::inspect` to reject incomplete trees.
-Validation checks the platform launcher, `Ghidra/application.properties`,
-`Utility.jar`, and `LaunchSupport.jar`; it accepts distro release names such as
-`DEV` and `NIX`. JVM/native compatibility remains doctor's responsibility.
+`installation::resolve` selects a validated runtime descriptor with its format,
+canonical path, version, minimum Java version, and source. Config lookup
+delegates to it; startup and doctor reuse the resolved descriptor for launch
+construction, compilation, and runtime probes without rediscovering or
+revalidating an installation from its path.
+
+Directory validation checks the platform launcher,
+`Ghidra/application.properties`, `Utility.jar`, and `LaunchSupport.jar`; it accepts
+distro release names such as `DEV` and `NIX`. Explicit standalone JAR selection
+checks the archive's official entry point and embedded
+`_Root/Ghidra/application.properties` without starting Java. Compilation uses the
+distribution libraries or the selected standalone JAR as appropriate.
+JVM/native compatibility remains doctor's responsibility; successful archive
+inspection or `javac` alone does not establish runtime compatibility.
 
 `package_roots` and `Platform::commands` cite the upstream package definitions
 and prefix documentation beside their paths. Windows entries cite the previous
@@ -38,20 +45,29 @@ Tests in `installation/tests.rs` inject environment values, PATH, and search
 roots, using temporary distributions instead of host installations. CLI tests
 cover diagnostics and overrides; `bootstrap_tests` validates real PATH discovery,
 JVM startup, and disposable-project cleanup on the native CI platforms.
+`standalone_jar_tests` builds the official default JAR, relocates it outside the
+distribution, and exercises the same runtime through `GHIDRA_JAR`.
 
 ## Startup and import
 
 `ensure_bridge_running()` holds the startup lock across liveness recheck,
 stale-file cleanup, and `startup::start_bridge()`. Startup owns the child and
-output readers until readiness or completed failure cleanup; stopping a running
-bridge waits for the discovery PID to exit without force-killing it. `BridgeStartMode::Process { program_name }` opens
+output readers until readiness or completed failure cleanup. After readiness, a
+detached waiter reaps the child when it exits; stopping a running bridge waits for
+the discovery PID to exit without force-killing it. `BridgeStartMode::Process { program_name }` opens
 an existing program through `ProgramSession`; `Project` leaves it unselected.
-Both launch with:
+Both use the same headless arguments:
 
 ```text
-analyzeHeadless <project_dir> <project_name> -noanalysis
+<headless-entry-point> <project_dir> <project_name> -noanalysis
   -scriptPath <bundle-dir> -preScript GhidraCliBridge.java <port_file_path> [<program>]
 ```
+
+The directory entry point is `support/analyzeHeadless` (`.bat` on Windows).
+The standalone entry point is the selected JDK's `java -jar <ghidra.jar>` with
+headless JVM settings. Persistent startup, import, project bootstraps, and doctor
+share this construction; only the runtime format determines the entry point.
+Running bridges keep their original JVM until stopped or restarted.
 
 Omit `-process`: it leaves a headless-owned reference to the initial program that
 prevents deletion until shutdown. The bridge opens the requested program before
@@ -59,7 +75,7 @@ publishing readiness, owns its release, and also supports empty existing project
 Missing projects are rejected before launching.
 
 Launch readiness is bounded and excludes analysis. Fresh imports use a separate
-short-lived `analyzeHeadless -noanalysis -preScript GhidraCliBootstrap.java` run.
+short-lived headless run with `-noanalysis -preScript GhidraCliBootstrap.java`.
 The script reads a private JSON manifest and uses `ImportSupport` to load with the
 requested saved name, optionally analyze in an owned transaction, save, and release
 before exiting. Rust requires both successful exit and a structured completion

@@ -69,7 +69,7 @@ fn handle_bridge_start(
     let config = load_config(projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
 
-    let ghidra_install_dir = config.get_ghidra_install_dir()?;
+    let installation = config.get_ghidra_installation()?;
 
     // Check if bridge is already running
     if let Some(port) = bridge::is_bridge_running(&project_path) {
@@ -93,7 +93,7 @@ fn handle_bridge_start(
         project_path.display()
     ));
 
-    let port = bridge::ensure_bridge_running(&project_path, &ghidra_install_dir, mode)?;
+    let port = bridge::ensure_bridge_running(&project_path, &installation, mode)?;
 
     Ok(
         json!({"state": "running", "project": project_path, "port": port,

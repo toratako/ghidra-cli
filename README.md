@@ -25,6 +25,9 @@ ghidra-cli doctor
 Ghidra is detected from PATH and known installation locations. If it is not
 found, set `GHIDRA_INSTALL_DIR` or run
 `ghidra-cli config set ghidra_install_dir /path/to/ghidra`, then rerun `doctor`.
+To use a standalone `ghidra.jar` built by Ghidra's official `buildGhidraJar`, set
+`GHIDRA_JAR` or run `ghidra-cli config set ghidra_jar /path/to/ghidra.jar`.
+See [standalone JAR setup](docs/runtime.md#standalone-ghidra-jar) for build requirements.
 Use `ghidra-cli doctor --runtime` to also verify bridge startup.
 
 ## Usage

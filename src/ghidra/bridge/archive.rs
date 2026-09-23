@@ -1,11 +1,16 @@
 //! Closed-project GAR workflows. The bootstrap owns Ghidra's lock through publication.
 
 use super::{acquire_lifecycle_lock, import, shutdown_timeout, stop_bridge_then};
+use crate::ghidra::installation::Installation;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-pub fn archive_project(project: &Path, output: &Path, installation: &Path) -> Result<Value> {
+pub fn archive_project(
+    project: &Path,
+    output: &Path,
+    installation: &Installation,
+) -> Result<Value> {
     let mut project = std::path::absolute(project)?;
     let mut output = std::path::absolute(output)?;
     let result = (|| {
@@ -35,7 +40,11 @@ pub fn archive_project(project: &Path, output: &Path, installation: &Path) -> Re
     annotate(result, &project, &output, "archive")
 }
 
-pub fn restore_project(archive: &Path, project: &Path, installation: &Path) -> Result<Value> {
+pub fn restore_project(
+    archive: &Path,
+    project: &Path,
+    installation: &Installation,
+) -> Result<Value> {
     let mut project = std::path::absolute(project)?;
     let mut archive = std::path::absolute(archive)?;
     let result = (|| {
@@ -79,7 +88,12 @@ fn require_absent(path: &Path) -> Result<()> {
     }
 }
 
-fn bootstrap(project: &Path, file: &Path, operation: &str, installation: &Path) -> Result<Value> {
+fn bootstrap(
+    project: &Path,
+    file: &Path,
+    operation: &str,
+    installation: &Installation,
+) -> Result<Value> {
     let work = tempfile::Builder::new()
         .prefix("ghidra-cli-archive-")
         .tempdir()?;

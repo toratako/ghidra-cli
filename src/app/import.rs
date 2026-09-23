@@ -3,6 +3,7 @@
 use super::project::project_has_program_data;
 use crate::cli::{Cli, ImportArgs};
 use crate::ghidra::bridge::{self, BridgeStartMode};
+use crate::ghidra::installation::Installation;
 use crate::ipc::client::ProgramSelection;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ pub(super) fn run_import(
     cli: &Cli,
     args: &ImportArgs,
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     selection: &ProgramSelection,
 ) -> anyhow::Result<serde_json::Value> {
     let mut progress = ImportProgress {
@@ -35,7 +36,7 @@ pub(super) fn run_import(
         cli,
         args,
         project_path,
-        ghidra_install_dir,
+        installation,
         &mut progress,
         selection,
     )
@@ -123,7 +124,7 @@ fn run_import_steps(
     cli: &Cli,
     args: &ImportArgs,
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     progress: &mut ImportProgress,
     selection: &ProgramSelection,
 ) -> anyhow::Result<serde_json::Value> {
@@ -151,8 +152,7 @@ fn run_import_steps(
         } else {
             "unknown"
         };
-        let name =
-            bridge::import_oneshot(project_path, &binary_path, ghidra_install_dir, &options)?;
+        let name = bridge::import_oneshot(project_path, &binary_path, installation, &options)?;
         progress.imported = "saved";
         progress.analysis = if args.no_analyze {
             "skipped"
@@ -164,7 +164,7 @@ fn run_import_steps(
         output.progress("Import saved. Starting Ghidra bridge...");
         let port = bridge::ensure_bridge_running(
             project_path,
-            ghidra_install_dir,
+            installation,
             BridgeStartMode::Process {
                 program_name: name.clone(),
             },
@@ -180,7 +180,7 @@ fn run_import_steps(
         } else {
             super::connect_program_bridge(bridge::ensure_bridge_running(
                 project_path,
-                ghidra_install_dir,
+                installation,
                 BridgeStartMode::Project,
             )?)?
         }

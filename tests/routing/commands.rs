@@ -277,6 +277,7 @@ fn standalone_targets_use_config_or_explicit_flags() {
         let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
         command
             .env("GHIDRA_CLI_CONFIG", &config)
+            .env_remove("GHIDRA_JAR")
             .env(
                 "GHIDRA_INSTALL_DIR",
                 configured.root.path().join("unused-install"),

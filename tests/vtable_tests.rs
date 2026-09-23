@@ -43,7 +43,7 @@ fn check_raw_layout(language: &str, pointer_size: usize, big_endian: bool) {
     std::fs::write(&binary, vec![0u8; 0x300]).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,
@@ -352,7 +352,7 @@ fn with_compiled_layout(
     std::fs::write(&binary, bytes).unwrap();
     let installation = ghidra_cli::config::Config::load()
         .unwrap()
-        .get_ghidra_install_dir()
+        .get_ghidra_installation()
         .unwrap();
     let program = import_oneshot(
         &project,

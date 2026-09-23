@@ -1,5 +1,255 @@
 use super::*;
 
+fn standalone_jar(path: &Path, manifest: &str, properties: &str, omit: Option<&str>) -> PathBuf {
+    use std::io::Write;
+    let file = fs::File::create(path).unwrap();
+    let mut archive = zip::ZipWriter::new(file);
+    for (name, text) in [
+        ("META-INF/MANIFEST.MF", manifest),
+        ("_Root/Ghidra/application.properties", properties),
+        ("ghidra/JarRun.class", "class"),
+        ("ghidra/GhidraJarApplicationLayout.class", "class"),
+        ("ghidra/app/util/headless/AnalyzeHeadless.class", "class"),
+        ("_Root/Ghidra/MODULE_LIST", "Ghidra/Features/Base\n"),
+    ] {
+        if omit == Some(name) {
+            continue;
+        }
+        archive
+            .start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(text.as_bytes()).unwrap();
+    }
+    archive.finish().unwrap();
+    dunce::canonicalize(path).unwrap()
+}
+
+fn jar(path: &Path) -> PathBuf {
+    standalone_jar(
+        path,
+        "Manifest-Version: 1.0\r\nMain-Class: ghidra.JarRun\r\n\r\n",
+        "application.version=12.1.4\napplication.java.min=21\n",
+        None,
+    )
+}
+
+#[test]
+fn jar_metadata_uses_official_layout_and_manifest_continuations() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = standalone_jar(
+        &temp.path().join("ghidra space's.jar"),
+        "Manifest-Version: 1.0\r\nmain-class: ghidra.\r\n JarRun\r\n\r\nName: ignored\r\nMain-Class: unrelated\r\n",
+        "application.version = 12.1.4\napplication.java.min = 25\n",
+        None,
+    );
+    let selected = inspect(&path, InstallationKind::Jar).unwrap();
+    assert_eq!(selected.path, path);
+    assert_eq!(selected.kind, InstallationKind::Jar);
+    assert_eq!(selected.version, "12.1.4");
+    assert_eq!(selected.min_java, 25);
+    assert_eq!(selected.launcher(), None);
+    assert_eq!(serde_json::to_value(selected).unwrap()["kind"], "jar");
+}
+
+#[test]
+fn jar_selection_rejects_plus_in_canonical_path_only() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = distribution(&temp.path().join("jar+path"), Platform::native(), "12.1");
+    let archive = jar(&directory.join("ghidra.jar"));
+    let alias = temp.path().join("alias.jar");
+    link_file(&archive, &alias);
+    for path in [&archive, &alias] {
+        let error = resolve_inputs(Inputs {
+            configured_jar: Some(path.clone()),
+            ..inputs()
+        })
+        .unwrap_err();
+        assert_eq!(status(&error), "invalid");
+        assert!(error
+            .to_string()
+            .contains("move the JAR to a path without '+'"));
+    }
+    // Directory distributions do not use Ghidra's JAR URL decoding.
+    assert!(inspect(&directory, InstallationKind::Directory).is_ok());
+    let safe_archive = jar(&temp.path().join("safe.jar"));
+    let plus_alias = temp.path().join("safe+alias.jar");
+    link_file(&safe_archive, &plus_alias);
+    assert_eq!(
+        inspect(&plus_alias, InstallationKind::Jar).unwrap().path,
+        safe_archive
+    );
+}
+
+#[test]
+fn metadata_requires_version_and_preserves_java_requirement_fallback() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = distribution(&temp.path().join("directory"), Platform::native(), "12.1");
+    for properties in [
+        "application.version=12.1.4\n",
+        "application.version=12.1.4\napplication.java.min=invalid\n",
+        "application.java.min=21\n",
+    ] {
+        fs::write(directory.join("Ghidra/application.properties"), properties).unwrap();
+        let archive = standalone_jar(
+            &temp.path().join("ghidra.jar"),
+            "Main-Class: ghidra.JarRun\n\n",
+            properties,
+            None,
+        );
+        for (path, kind) in [
+            (&directory, InstallationKind::Directory),
+            (&archive, InstallationKind::Jar),
+        ] {
+            let selected = inspect(path, kind);
+            if properties.starts_with("application.version=") {
+                assert_eq!(selected.unwrap().min_java, DEFAULT_MIN_JAVA);
+            } else {
+                assert!(selected
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Missing application.version"));
+            }
+        }
+    }
+}
+
+#[test]
+fn jar_selection_replaces_the_entire_lower_priority_layer() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = distribution(
+        &temp.path().join("distribution"),
+        Platform::native(),
+        "12.1",
+    );
+    let archive = jar(&temp.path().join("ghidra.jar"));
+    let selected = resolve_inputs(Inputs {
+        environment_jar: Some(archive.clone().into_os_string()),
+        configured: Some(directory.clone()),
+        configured_jar: Some(temp.path().join("missing.jar")),
+        ..inputs()
+    })
+    .unwrap();
+    assert_eq!(selected.path, archive);
+    assert_eq!(selected.source, "GHIDRA_JAR");
+    let selected = resolve_inputs(Inputs {
+        environment: Some(directory.clone().into_os_string()),
+        configured_jar: Some(archive.clone()),
+        ..inputs()
+    })
+    .unwrap();
+    assert_eq!(selected.path, directory);
+    let selected = resolve_inputs(Inputs {
+        configured_jar: Some(archive.clone()),
+        path: directory.join("support").into_os_string(),
+        ..inputs()
+    })
+    .unwrap();
+    assert_eq!(selected.path, archive);
+    assert_eq!(selected.source, "config ghidra_jar");
+}
+
+#[test]
+fn conflicting_effective_selections_fail_before_path_validation() {
+    for environment in [true, false] {
+        let mut options = inputs();
+        if environment {
+            options.environment = Some("missing-directory".into());
+            options.environment_jar = Some("missing.jar".into());
+        } else {
+            options.configured = Some("missing-directory".into());
+            options.configured_jar = Some("missing.jar".into());
+        }
+        let error = resolve_inputs(options).unwrap_err();
+        assert_eq!(status(&error), "invalid");
+        assert!(error.to_string().contains("both select Ghidra"));
+    }
+}
+
+#[test]
+fn invalid_jar_selection_never_falls_back() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = distribution(
+        &temp.path().join("distribution"),
+        Platform::native(),
+        "12.1",
+    );
+    let invalid = temp.path().join("invalid.jar");
+    fs::write(&invalid, "not a jar").unwrap();
+    for environment in [true, false] {
+        for path in [
+            PathBuf::new(),
+            temp.path().join("missing.jar"),
+            invalid.clone(),
+            directory.clone(),
+        ] {
+            let mut options = inputs();
+            options.path = directory.join("support").into_os_string();
+            if environment {
+                options.environment_jar = Some(path.into_os_string());
+                options.configured = Some(directory.clone());
+            } else {
+                options.configured_jar = Some(path);
+            }
+            assert_eq!(status(&resolve_inputs(options).unwrap_err()), "invalid");
+        }
+    }
+}
+
+#[test]
+fn jar_validation_rejects_missing_entrypoints_and_inapplicable_manifests() {
+    let temp = tempfile::tempdir().unwrap();
+    for (manifest, omit, expected) in [
+        ("Main-Class: unrelated\n\n", None, "Main-Class"),
+        (
+            "Manifest-Version: 1.0\n\nName: section\nMain-Class: ghidra.JarRun\n",
+            None,
+            "Main-Class",
+        ),
+        (
+            "Main-Class: ghidra.JarRun\n\n",
+            Some("ghidra/app/util/headless/AnalyzeHeadless.class"),
+            "AnalyzeHeadless.class",
+        ),
+        (
+            "Main-Class: ghidra.JarRun\n\n",
+            Some("_Root/Ghidra/application.properties"),
+            "application.properties",
+        ),
+    ] {
+        let path = standalone_jar(
+            &temp.path().join("ghidra.jar"),
+            manifest,
+            "application.version=12.1.4\n",
+            omit,
+        );
+        assert!(inspect(&path, InstallationKind::Jar)
+            .unwrap_err()
+            .to_string()
+            .contains(expected));
+    }
+}
+
+#[test]
+fn jars_are_not_automatically_discovered() {
+    let temp = tempfile::tempdir().unwrap();
+    jar(&temp.path().join("ghidra.jar"));
+    let options = Inputs {
+        path: temp.path().as_os_str().to_owned(),
+        ..inputs()
+    };
+    assert_eq!(status(&resolve_inputs(options).unwrap_err()), "not_found");
+    let directory = distribution(temp.path(), Platform::native(), "12.1");
+    let selected = resolve_inputs(Inputs {
+        roots: vec![SearchRoot::exact(directory.clone(), "package")],
+        ..inputs()
+    })
+    .unwrap();
+    assert_eq!(selected.kind, InstallationKind::Directory);
+    assert_eq!(selected.path, directory);
+    assert_eq!(selected.min_java, DEFAULT_MIN_JAVA);
+    assert!(selected.launcher().unwrap().is_file());
+}
+
 fn distribution(path: &Path, platform: Platform, version: &str) -> PathBuf {
     for (name, content) in [
         (
@@ -30,7 +280,9 @@ fn inputs() -> Inputs {
     Inputs {
         platform: Platform::native(),
         environment: None,
+        environment_jar: None,
         configured: None,
+        configured_jar: None,
         path: OsString::new(),
         roots: Vec::new(),
     }
@@ -60,7 +312,9 @@ fn explicit_selection_precedes_path_and_packages() {
     let package = distribution(&temp.path().join("package"), platform, "13.0");
     let options = || Inputs {
         environment: None,
+        environment_jar: None,
         configured: Some(config.clone()),
+        configured_jar: None,
         path: path.join("support").into_os_string(),
         roots: vec![SearchRoot::exact(&package, "package")],
         platform,
@@ -316,7 +570,7 @@ fn incomplete_distributions_and_non_files_fail_shared_validation() {
     ] {
         let path = distribution(&temp.path().join("root"), platform, "12.1");
         fs::remove_file(path.join(missing)).unwrap();
-        assert!(inspect(&path)
+        assert!(inspect(&path, InstallationKind::Directory)
             .unwrap_err()
             .to_string()
             .contains(missing.rsplit('/').next().unwrap()));
@@ -325,7 +579,7 @@ fn incomplete_distributions_and_non_files_fail_shared_validation() {
     let launcher = path.join("support").join(platform.launcher());
     fs::remove_file(&launcher).unwrap();
     fs::create_dir(&launcher).unwrap();
-    assert!(inspect(&path)
+    assert!(inspect(&path, InstallationKind::Directory)
         .unwrap_err()
         .to_string()
         .contains("Expected an installation file"));
@@ -402,6 +656,8 @@ fn non_utf8_paths_serialize_without_filesystem_access() {
     use std::os::unix::ffi::OsStringExt;
     let installation = Installation {
         path: OsString::from_vec(b"Ghidra \xff".to_vec()).into(),
+        kind: InstallationKind::Directory,
+        min_java: DEFAULT_MIN_JAVA,
         version: "12.1".into(),
         source: "GHIDRA_INSTALL_DIR".into(),
     };

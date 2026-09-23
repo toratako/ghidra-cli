@@ -11,14 +11,13 @@
 //!   2. the `jdk.compiler` module present (`java --list-modules`),
 //!   3. major version >= Ghidra's required minimum (read from the install).
 //!
-//! We resolve the Java that *we* will hand to Ghidra (via `JAVA_HOME` on the
-//! `analyzeHeadless` child process) rather than relying on Ghidra's own
-//! PATH-based auto-pick, which lands on whatever `java` is first on PATH.
+//! The selected JDK supplies `JAVA_HOME` for the `analyzeHeadless` wrapper or
+//! the Java executable used to launch a standalone Ghidra JAR directly.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The default Java floor if we cannot read it from the Ghidra install.
+/// The default Java floor when installation metadata omits a minimum.
 /// Ghidra 12.x sets `application.java.min=21`.
 pub const DEFAULT_MIN_JAVA: u32 = 21;
 
@@ -219,23 +218,6 @@ fn scan_install_roots() -> Vec<(PathBuf, String)> {
         .collect()
 }
 
-/// Read Ghidra's required minimum Java major version from the install
-/// (`<install>/Ghidra/application.properties`, `application.java.min`).
-/// Falls back to [`DEFAULT_MIN_JAVA`].
-pub fn ghidra_min_java(install_dir: &Path) -> u32 {
-    let props = install_dir.join("Ghidra").join("application.properties");
-    if let Ok(text) = std::fs::read_to_string(&props) {
-        for line in text.lines() {
-            if let Some(val) = line.trim().strip_prefix("application.java.min=") {
-                if let Ok(v) = val.trim().parse::<u32>() {
-                    return v;
-                }
-            }
-        }
-    }
-    DEFAULT_MIN_JAVA
-}
-
 /// Resolve the best JDK to use, given an optional explicit home and a minimum
 /// major version. Returns the first usable JDK, or the most informative failure.
 pub fn resolve_jdk(explicit: Option<&Path>, min: u32) -> JavaStatus {
@@ -274,10 +256,10 @@ fn pick_better_failure(a: JavaStatus, b: JavaStatus) -> JavaStatus {
 /// explicit override from env/config. Returns `Ok(JdkInfo)` or a human-readable
 /// error describing exactly what's wrong and how to fix it.
 pub fn resolve_for_ghidra(
-    install_dir: &Path,
+    installation: &super::installation::Installation,
     explicit: Option<PathBuf>,
 ) -> std::result::Result<JdkInfo, String> {
-    let min = ghidra_min_java(install_dir);
+    let min = installation.min_java;
     match resolve_jdk(explicit.as_deref(), min) {
         JavaStatus::Ok(info) => Ok(info),
         JavaStatus::JreNoCompiler { home, major } => Err(format!(
@@ -303,12 +285,6 @@ pub fn resolve_for_ghidra(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ghidra_min_java_defaults_without_installation_properties() {
-        let root = tempfile::tempdir().unwrap();
-        assert_eq!(ghidra_min_java(root.path()), DEFAULT_MIN_JAVA);
-    }
 
     #[test]
     fn java_home_uses_a_launcher_compatible_path() {

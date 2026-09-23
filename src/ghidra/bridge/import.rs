@@ -1,13 +1,14 @@
 //! Short-lived headless workflows, completed before the persistent bridge opens a project.
 
-use super::headless::{apply_java_home, find_headless_script};
+use super::headless::headless_command;
 use super::{sources, startup};
+use crate::ghidra::installation::Installation;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tracing::info;
 
@@ -27,12 +28,12 @@ pub struct OneShotImportOptions {
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     options: &OneShotImportOptions,
 ) -> Result<String> {
     let mut args = serde_json::to_value(options)?;
     args["binary_path"] = json!(binary_path);
-    let result = run_bootstrap(project_path, ghidra_install_dir, &args, None)?;
+    let result = run_bootstrap(project_path, installation, &args, None)?;
     result["program"]
         .as_str()
         .map(str::to_owned)
@@ -41,12 +42,13 @@ pub fn import_oneshot(
 
 pub(super) fn run_bootstrap(
     project_path: &Path,
-    ghidra_install_dir: &Path,
+    installation: &Installation,
     args: &Value,
     timeout: Option<Duration>,
 ) -> Result<Value> {
     let project_path = std::path::absolute(project_path)?;
-    let headless = find_headless_script(ghidra_install_dir)?;
+    let mut cmd = headless_command(installation)?;
+    let executable = std::path::PathBuf::from(cmd.get_program());
     let scripts = sources::install()?;
     let work = tempfile::tempdir().map_err(|e| {
         crate::error::path_io("import.temporary_directory", &std::env::temp_dir(), e)
@@ -60,7 +62,6 @@ pub(super) fn run_bootstrap(
         .context("Project has no parent directory")?;
     std::fs::create_dir_all(directory)
         .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
-    let mut cmd = Command::new(&headless);
     cmd.arg(directory)
         .arg(project_path.file_name().context("Project has no name")?)
         .arg("-noanalysis")
@@ -70,7 +71,6 @@ pub(super) fn run_bootstrap(
         .arg("GhidraCliBootstrap.java")
         .arg(&request)
         .arg(&receipt);
-    apply_java_home(&mut cmd, ghidra_install_dir);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -87,7 +87,7 @@ pub(super) fn run_bootstrap(
     info!("Ghidra bootstrap command: {:?}", cmd);
     let mut child = cmd
         .spawn()
-        .map_err(|e| crate::error::path_io("import.launch", &headless, e))?;
+        .map_err(|e| crate::error::path_io("import.launch", &executable, e))?;
     fn drain(stream: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
         std::thread::spawn(move || {
             let mut tail = std::collections::VecDeque::new();

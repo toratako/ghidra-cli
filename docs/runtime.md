@@ -32,15 +32,53 @@ trigger unnecessary recompilation on import. To repair an affected installation,
 stop its bridges, extract a fresh copy into a new directory, and select that path
 with `GHIDRA_INSTALL_DIR` or `config set ghidra_install_dir PATH`.
 
+### Standalone Ghidra JAR
+
+The CLI also supports the default output of Ghidra's official
+`support/buildGhidraJar` (`buildGhidraJar.bat` on Windows). Build it from a complete
+distribution; the generated `ghidra.jar` appears in the current directory:
+
+```bash
+/path/to/ghidra/support/buildGhidraJar
+ghidra-cli config set ghidra_jar "$PWD/ghidra.jar"
+ghidra-cli doctor --runtime
+```
+
+Alternatively, set `GHIDRA_JAR` to the JAR's path. The JAR can be moved away from
+the distribution used to build it. Place it in a path without `+`, including any
+resolved symlink target: Ghidra 12.1.4's JAR loader interprets `+` as a space. If the CLI
+rejects such a path, move the JAR and update the selection.
+Keep a compatible full JDK installed: the bridge and user Java scripts still
+need the Java compiler. Custom module
+selections made through `BuildGhidraJarScript` are outside the supported default
+configuration. Non-Java script runtimes are not included in the standalone format.
+
+Native components must be present when building the JAR. On macOS, complete the
+native build described above first. Ghidra extracts bundled native resources at
+runtime, so its settings/cache locations must be writable even when the JAR is
+read-only. Use `doctor --runtime` to check the selected JAR in its actual runtime
+environment.
+
+The CLI launches the JAR directly with the selected JDK. Its heap limit uses
+`GHIDRA_HEADLESS_MAXMEM`, then `GHIDRA_MAXMEM`, then 2 GiB. Standard JVM
+`JAVA_TOOL_OPTIONS` can supply additional JVM settings.
+
 ## Project configuration
 
 Project directory precedence is `--projects-dir DIR`, `GHIDRA_PROJECT_DIR`, config
 `ghidra_project_dir`, then the default, for project management, doctor, and bridge
 commands. The flag does not change the environment or saved configuration.
-Ghidra selection is `GHIDRA_INSTALL_DIR`, config `ghidra_install_dir`, then
-automatic detection. Explicit paths are validated; an empty or invalid override
-fails instead of selecting another installation. Doctor reports the effective
-path, source, and version. `config get/list` shows saved settings only.
+Ghidra selection uses environment overrides (`GHIDRA_INSTALL_DIR` or
+`GHIDRA_JAR`), then saved configuration (`ghidra_install_dir` or `ghidra_jar`),
+then automatic directory detection. Specifying both forms in the effective
+layer is an error; an environment override takes precedence over saved settings.
+`config set ghidra_jar PATH` clears saved `ghidra_install_dir`, and setting
+`ghidra_install_dir` clears saved `ghidra_jar`. Explicit paths are validated; an
+empty or invalid override fails instead of selecting another installation.
+Doctor reports the effective format, path, source, and version.
+`config get/list` shows saved settings only. A running bridge keeps its selected
+Ghidra runtime until stopped; use `bridge restart --project P` after changing the
+selection to apply it to that project.
 
 Detection checks absolute PATH entries in order, resolving Ghidra launcher
 symlinks and Homebrew's package layout without executing wrappers. If PATH does
@@ -51,7 +89,8 @@ through their PATH symlinks. Multiple distinct installations at the same priorit
 are an error: select one with `config set ghidra_install_dir PATH` (or fix an
 existing environment override). Detection does not choose the newest version or
 save its result. Arbitrary ZIP extraction locations require PATH or an explicit
-setting; arbitrary filesystem locations are not searched.
+setting; arbitrary filesystem locations are not searched. Standalone JARs require
+an explicit setting and do not affect directory detection.
 See the [installation implementation and layout sources](../src/ghidra/README.md#installation-selection).
 
 Set a persistent JDK with `ghidra-cli config set java_home /opt/jdk-21`.
@@ -90,6 +129,7 @@ program if no explicit program was given.
 | Variable | Purpose |
 |---|---|
 | `GHIDRA_INSTALL_DIR` | Ghidra installation; also `config set ghidra_install_dir PATH` |
+| `GHIDRA_JAR` | Official standalone Ghidra JAR; also `config set ghidra_jar PATH` |
 | `GHIDRA_PROJECT_DIR` | Base project directory |
 | `GHIDRA_CLI_JAVA_HOME` | Full JDK override; also `--java-home` or `config set java_home PATH` |
 | `GHIDRA_CLI_CONFIG` | Config file path override |

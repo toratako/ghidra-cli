@@ -134,16 +134,16 @@ impl DaemonTestHarness {
 
         // Load config to find Ghidra installation
         let config = ghidra_cli::config::Config::load().context("Failed to load config")?;
-        let ghidra_install_dir = config
-            .get_ghidra_install_dir()
-            .context("Ghidra installation directory not configured")?;
+        let installation = config
+            .get_ghidra_installation()
+            .context("Ghidra installation not configured")?;
 
         // Start the bridge directly via bridge API (not CLI subprocess).
         // This gives us detailed error messages from Ghidra in the Err value.
         let started = std::time::Instant::now();
         let port = ghidra_cli::ghidra::bridge::ensure_bridge_running(
             &project_path,
-            &ghidra_install_dir,
+            &installation,
             ghidra_cli::ghidra::bridge::BridgeStartMode::Process {
                 program_name: program.to_string(),
             },
@@ -371,7 +371,8 @@ pub fn assert_doctor_ready(doctor: &std::process::Output) {
     let stderr = String::from_utf8_lossy(&doctor.stderr);
     assert!(
         doctor.status.success()
-            && stdout.contains("analyzeHeadless: OK")
+            && (stdout.contains("Headless launcher: OK (analyzeHeadless)")
+                || stdout.contains("Headless launcher: OK (java -jar)"))
             && stdout.contains("Checking bridge script compiles... OK")
             && !stdout.contains("NOT FOUND")
             && !stdout.contains("FAILED"),
