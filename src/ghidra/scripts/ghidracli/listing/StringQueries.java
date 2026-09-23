@@ -2,8 +2,11 @@ package ghidracli.listing;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
+import ghidra.program.util.DefinedDataIterator;
 import ghidra.util.exception.CancelledException;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
@@ -18,14 +21,38 @@ public final class StringQueries {
         this.session = session;
     }
 
+    DefinedStrings definedStrings() {
+        return new DefinedStrings();
+    }
+
+    final class DefinedStrings {
+        private final DataIterator roots = session.program().getListing().getDefinedData(true);
+        private DataIterator children;
+
+        Data next() throws CancelledException {
+            while (true) {
+                session.monitor().checkCancelled();
+                if (children != null && children.hasNext()) {
+                    return children.next();
+                }
+                if (!roots.hasNext()) return null;
+                // Bound native traversal to one root so skipping unrelated data
+                // still observes cancellation between top-level code units.
+                Data root = roots.next();
+                children = DefinedDataIterator.byDataType(session.program(),
+                    new AddressSet(root.getMinAddress(), root.getMaxAddress()),
+                    StringDataInstance::isStringDataType);
+            }
+        }
+    }
+
     JsonArray list(JsonObject args, String pattern) throws CancelledException {
         ListQuery query = new ListQuery(session, args);
         String needle = pattern == null ? "" : pattern.toLowerCase(Locale.ROOT);
         JsonArray rows = new JsonArray();
-        DataIterator dataIter = session.program().getListing().getDefinedData(true);
-        while (dataIter.hasNext()) {
-            if (query.isFull()) break;
-            Data data = dataIter.next();
+        DefinedStrings dataIter = definedStrings();
+        Data data;
+        while (!query.isFull() && (data = dataIter.next()) != null) {
             if (!data.hasStringValue()) continue;
             String value;
             try {
@@ -48,6 +75,7 @@ public final class StringQueries {
             rows.add(row);
             query.record();
         }
+        session.monitor().checkCancelled();
         return rows;
     }
 }

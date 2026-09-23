@@ -100,6 +100,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Restrict named function targets to actual function names so entry aliases and
   internal labels cannot redirect function edits or deletion.
+- Include nested structure/array strings in string listing, searches, and
+  reference queries, and continue exact byte/text searches across address-space
+  boundaries after matching the final address.
 - Bind program selection to each queued operation so concurrent clients cannot
   redirect commands issued with `--program`, including guarded edits and import
   follow-up requests. Batches retain each project's selection across nested rows

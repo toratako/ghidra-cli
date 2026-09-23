@@ -8,11 +8,9 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
-import ghidra.program.model.listing.DataIterator;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Reference;
@@ -143,15 +141,13 @@ public final class SearchCommands {
         String needle = pattern.toLowerCase(Locale.ROOT);
 
         try {
-            Listing listing = session.program().getListing();
             ReferenceManager refMgr = session.program().getReferenceManager();
             FunctionManager fm = session.program().getFunctionManager();
             JsonArray results = new JsonArray();
 
-            DataIterator dataIter = listing.getDefinedData(true);
-            while (dataIter.hasNext()) {
-                session.monitor().checkCancelled();
-                Data data = dataIter.next();
+            StringQueries.DefinedStrings dataIter = stringQueries.definedStrings();
+            Data data;
+            while ((data = dataIter.next()) != null) {
                 if (!data.hasStringValue()) continue;
 
                 Object value = data.getValue();
@@ -185,6 +181,7 @@ public final class SearchCommands {
                 }
             }
 
+            session.monitor().checkCancelled();
             JsonObject result = new JsonObject();
             result.add("results", results);
             result.addProperty("count", results.size());
@@ -306,11 +303,11 @@ public final class SearchCommands {
                 item.addProperty("encoding", encoding);
             }
             results.add(item);
-            try {
-                addr = found.addNoWrap(1);
-            } catch (ghidra.program.model.address.AddressOverflowException e) {
-                break;
-            }
+            // Walk the memory set rather than incrementing within one address
+            // space: a match at its maximum must not hide later spaces.
+            var remaining = memory.getLoadedAndInitializedAddressSet().getAddresses(found, true);
+            remaining.next(); // The matching address itself is included.
+            addr = remaining.hasNext() ? remaining.next() : null;
         }
         JsonObject result = new JsonObject();
         result.add("results", results);

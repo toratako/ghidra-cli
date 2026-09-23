@@ -493,3 +493,71 @@ public class CreateSearchWindowFixture extends GhidraScript {
         std::panic::resume_unwind(panic);
     }
 }
+
+#[test]
+#[serial]
+fn exact_search_continues_after_address_space_maximum() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("search-spaces-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateSearchSpacesFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:32:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("search spaces fixture");
+            try {
+                var space = program.getAddressFactory().getDefaultAddressSpace();
+                program.getMemory().createInitializedBlock("end", space.getMaxAddress(),
+                    1, (byte) 'X', monitor, false);
+                program.getMemory().createInitializedBlock("later", space.getAddress(0x1000),
+                    1, (byte) 'X', monitor, true);
+            } finally { program.endTransaction(tx, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        for result in [
+            client.find_bytes("58").unwrap(),
+            client.find_text("X", "ascii").unwrap(),
+        ] {
+            assert_eq!(result["count"], 2, "{result}");
+            assert_eq!(result["results"][0]["address"], "0xffffffff");
+            assert_eq!(result["results"][1]["address"], "later:0x00001000");
+        }
+        for command in ["find_bytes", "find_text"] {
+            let result = client
+                .send_command(
+                    command,
+                    Some(serde_json::json!({
+                        "hex": "58", "text": "X", "limit": 1
+                    })),
+                )
+                .unwrap();
+            assert_eq!(result["count"], 1);
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

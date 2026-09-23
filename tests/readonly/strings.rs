@@ -226,3 +226,60 @@ fn defined_strings_share_lengths_and_page_after_both_predicates() {
         std::panic::resume_unwind(panic);
     }
 }
+
+#[test]
+#[serial]
+fn defined_strings_and_references_include_nested_structures_and_arrays() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("nested-strings-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/scripts/CreateNestedStringFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let expected: Vec<_> = ["nest_A", "nest_B", "nest_C"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, value)| {
+                json!({
+                    "address": format!("0x{:08x}", 0x2000 + i * 8),
+                    "value": value,
+                    "char_length": 6,
+                    "byte_length": 8,
+                })
+            })
+            .collect();
+        assert_eq!(
+            client.list_strings(None, None, None).unwrap()["strings"],
+            json!(expected)
+        );
+        assert_eq!(
+            client.find_string("NEST").unwrap()["results"],
+            json!(expected)
+        );
+        let page = client
+            .find_string_page("nest", Some(1), Some("_".into()), Some(1))
+            .unwrap();
+        assert_eq!(page["results"], json!([expected[1]]));
+        let refs = client.string_refs("nest".into()).unwrap();
+        assert_eq!(refs["count"], 3);
+        for (i, row) in refs["results"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(row["string_address"], expected[i]["address"]);
+            assert_eq!(row["string_value"], expected[i]["value"]);
+            assert_eq!(row["from"], format!("0x{:08x}", 0x1000 + i));
+            assert_eq!(row["to"], format!("0x{:08x}", 0x2002 + i * 8));
+            assert_eq!(row["string_offset"], 2);
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
