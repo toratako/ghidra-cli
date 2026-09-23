@@ -70,8 +70,8 @@ fn check_raw_layout(language: &str, pointer_size: usize, big_endian: bool) {
 
     let output = common::ghidra(&harness)
         .args([
-            "vtable",
-            "read",
+            "memory",
+            "read-vtable",
             "absolute_address_point",
             "--entries",
             "5",

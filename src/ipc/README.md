@@ -326,8 +326,9 @@ normalized code entry, never a containing function. Normalization cannot escape
 an overlay. Unavailable metadata is null; thunk identities contain `address`
 and qualified `name`. Original-source reads do not decode pointer candidates.
 
-`vtable_read` takes an address-point `target`, `entries` (1..65536), required
-`abi` (`itanium` or `msvc`), and `encoding` (`absolute` by default, or
+`memory read-vtable` sends `vtable_read` with an address-point `target`,
+`entries` (1..65536), required `abi` (`itanium` or `msvc`), and
+`encoding` (`absolute` by default, or
 `relative32` for Itanium). It reads explicit slots without registering data or
 inferring table boundaries. The single-object response contains `address`,
 `abi`, `encoding`, `pointer_size`, `entry_size`, `endian`, `requested_entries`,

@@ -56,9 +56,6 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
     if let Commands::Memory(command) = command {
         memory::validate(command)?;
     }
-    if let Commands::Vtable(cli::VtableCommands::Read(args)) = command {
-        args.validate().map_err(anyhow::Error::msg)?;
-    }
     if let Commands::Listing(cli::ListingCommands::Undefine(args)) = command {
         for (label, value) in [("START", &args.start), ("--end", &args.end)] {
             anyhow::ensure!(
@@ -177,15 +174,6 @@ pub(super) fn execute_via_bridge(
             }
         }
         Commands::Memory(cmd) => memory::execute(client, cmd),
-        Commands::Vtable(cli::VtableCommands::Read(args)) => client.send_command(
-            "vtable_read",
-            Some(json!({
-                "target": args.target,
-                "entries": args.entries,
-                "abi": args.abi,
-                "encoding": args.encoding,
-            })),
-        ),
         Commands::Data(cmd) => match cmd {
             cli::DataCommands::List(_) => {
                 client.send_command("data_list", Some(json!({"limit": list_limit})))

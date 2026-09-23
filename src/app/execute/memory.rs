@@ -4,6 +4,10 @@ use serde_json::{json, Value};
 
 pub(super) fn validate(command: &MemoryCommands) -> anyhow::Result<()> {
     let addresses: Vec<&str> = match command {
+        MemoryCommands::ReadVtable(args) => {
+            args.validate().map_err(anyhow::Error::msg)?;
+            vec![]
+        }
         MemoryCommands::FileMappings(args) => args.source_at.iter().map(String::as_str).collect(),
         MemoryCommands::Block(command) => match command {
             MemoryBlockCommands::Create(args) => vec![&args.start],
@@ -65,6 +69,15 @@ pub(super) fn execute(client: &BridgeClient, command: &MemoryCommands) -> anyhow
                 "address": args.address,
                 "size": args.size,
                 "source": args.source,
+            })),
+        ),
+        MemoryCommands::ReadVtable(args) => client.send_command(
+            "vtable_read",
+            Some(json!({
+                "target": args.target,
+                "entries": args.entries,
+                "abi": args.abi,
+                "encoding": args.encoding,
             })),
         ),
     }

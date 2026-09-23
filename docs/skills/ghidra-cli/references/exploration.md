@@ -136,12 +136,12 @@ for byte edits, see [patching](low-level.md#patching).
 ```bash
 ghidra-cli memory read 0x405020 --size 64 --project target
 ghidra-cli find address-tables --start 0x405000 --end 0x405fff --min-entries 3 --project target
-ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --project target
-ghidra-cli vtable read 0x140005020 --entries 8 --abi msvc --project target
-ghidra-cli vtable read 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
+ghidra-cli memory read-vtable 0x405020 --entries 8 --abi itanium --project target
+ghidra-cli memory read-vtable 0x140005020 --entries 8 --abi msvc --project target
+ghidra-cli memory read-vtable 0x405020 --entries 8 --abi itanium --encoding relative32 --project target
 ```
 
-For `vtable read`, supply the address point (slot 0, where an object's vptr
+For `memory read-vtable`, supply the address point (slot 0, where an object's vptr
 points), which can differ from a symbol marking the start of the whole table.
 Choose the ABI and encoding from the binary's layout. `relative32` reads LLVM's
 32-bit relative layout, including its RTTI proxy. The requested slot count is

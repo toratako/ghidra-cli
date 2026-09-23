@@ -112,7 +112,6 @@ impl ResultShape {
             | Commands::Namespace(_)
             | Commands::Bookmark(_)
             | Commands::Memory(_)
-            | Commands::Vtable(_)
             | Commands::Data(_)
             | Commands::Listing(_)
             | Commands::Type(_)

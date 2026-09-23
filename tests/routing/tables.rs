@@ -105,8 +105,8 @@ fn vtable_reads_preserve_targets_and_nested_slots_in_standalone_and_batch() {
                 outer.requests.lock().unwrap().clear();
                 selected.requests.lock().unwrap().clear();
                 let mut args = vec![
-                    "vtable",
-                    "read",
+                    "memory",
+                    "read-vtable",
                     target,
                     "--entries",
                     "0x3",
@@ -321,8 +321,8 @@ fn address_table_human_output_preserves_scope_and_scan_completion() {
 fn incompatible_vtable_layout_fails_before_program_selection_and_batch_execution() {
     let bridge = RecordedBridge::new();
     let args = [
-        "vtable",
-        "read",
+        "memory",
+        "read-vtable",
         "bank1:0x4000",
         "--entries",
         "4",
