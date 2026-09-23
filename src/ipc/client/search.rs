@@ -3,6 +3,25 @@ use anyhow::Result;
 use serde_json::json;
 
 impl BridgeClient {
+    /// Find decompiler indirect-call evidence for a callee through a vtable.
+    pub fn find_virtual_callers(
+        &self,
+        function: &str,
+        vtable: &str,
+        entries: u32,
+        abi: crate::cli::VtableAbi,
+        within: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        self.send_decompile_command(
+            "find_virtual_callers",
+            json!({
+                "function": function, "vtable": vtable, "entries": entries,
+                "abi": abi, "within": within, "limit": limit,
+            }),
+        )
+    }
+
     /// List strings.
     pub fn list_strings(
         &self,

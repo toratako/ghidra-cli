@@ -21,6 +21,13 @@ references share the underlying relationship's edge cost. Omitted references
 remain distinguishable from unresolved ones. Raw p-code keeps its instruction
 listing contract.
 
+`find_virtual_callers` accepts `function` (callee), `vtable` (address point),
+`entries`, `abi`, optional `within` (caller scope), `limit`, and `timeout_secs`.
+It uses the shared native decompiler budget and long-operation socket wait.
+The result contains candidate `calls` and contextual `target`, `vtable`,
+matching `slots`, `scope`, and `scan`; `scan.unresolved` retains both call
+resolution gaps and unreadable slots. This operation reads absolute pointers.
+
 ## Connection and timeout boundaries
 
 Each request uses a fresh localhost TCP connection for one newline-terminated

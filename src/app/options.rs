@@ -91,6 +91,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::ListingCommands::Flow(cmd) => cmd.options().project.clone(),
         },
         Commands::Find(cmd) => match cmd {
+            cli::FindCommands::VirtualCallers(args) => args.options.project.clone(),
             cli::FindCommands::AddressTables(args) => args.options.project.clone(),
             cli::FindCommands::String(args) => args.options.project.clone(),
             cli::FindCommands::Text(args) => args.options.project.clone(),
@@ -290,6 +291,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::ListingCommands::Flow(cmd) => cmd.options().program.clone(),
         },
         Commands::Find(cmd) => match cmd {
+            cli::FindCommands::VirtualCallers(args) => args.options.program.clone(),
             cli::FindCommands::AddressTables(args) => args.options.program.clone(),
             cli::FindCommands::String(args) => args.options.program.clone(),
             cli::FindCommands::Text(args) => args.options.program.clone(),
@@ -593,6 +595,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::GraphCommands::Callees(args) => Some(args.options.clone()),
         },
         Commands::Find(cmd) => match cmd {
+            cli::FindCommands::VirtualCallers(args) => Some(args.options.clone()),
             cli::FindCommands::AddressTables(args) => Some(args.options.clone()),
             cli::FindCommands::String(args) => Some(args.options.clone()),
             cli::FindCommands::Text(args) => Some(args.options.clone()),
@@ -625,7 +628,8 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
             | cli::GraphCommands::Callees(_),
         )
         | Commands::Find(
-            cli::FindCommands::AddressTables(_)
+            cli::FindCommands::VirtualCallers(_)
+            | cli::FindCommands::AddressTables(_)
             | cli::FindCommands::Text(_)
             | cli::FindCommands::Bytes(_)
             | cli::FindCommands::Instruction(_)

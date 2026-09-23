@@ -1,6 +1,103 @@
 use super::*;
 
 #[test]
+fn virtual_callers_separates_callee_vtable_and_optional_caller_scope() {
+    for (abi, expected_abi) in [("itanium", VtableAbi::Itanium), ("msvc", VtableAbi::Msvc)] {
+        for within in [None, Some("dispatch")] {
+            let mut argv = vec![
+                "ghidra-cli",
+                "find",
+                "virtual-callers",
+                "Widget::draw",
+                "--vtable",
+                "overlay:0x401020",
+                "--entries",
+                "010",
+                "--abi",
+                abi,
+                "--project",
+                "selected",
+                "--program",
+                "sample",
+                "--limit",
+                "0",
+            ];
+            if let Some(within) = within {
+                argv.extend(["--within", within]);
+            }
+            let cli = Cli::try_parse_from(argv).unwrap();
+            let Commands::Find(FindCommands::VirtualCallers(args)) = cli.command else {
+                panic!("expected virtual callers");
+            };
+            assert_eq!(args.function, "Widget::draw");
+            assert_eq!(args.vtable, "overlay:0x401020");
+            assert_eq!(args.entries, 10);
+            assert_eq!(args.abi, expected_abi);
+            assert_eq!(args.within.as_deref(), within);
+            assert_eq!(args.options.project.as_deref(), Some("selected"));
+            assert_eq!(args.options.program.as_deref(), Some("sample"));
+            assert_eq!(args.options.limit, Some(0));
+            args.validate().unwrap();
+        }
+    }
+}
+
+#[test]
+fn virtual_callers_requires_complete_table_interpretation_and_bounded_entries() {
+    let required = [
+        "Widget::draw",
+        "--vtable",
+        "0x401020",
+        "--entries",
+        "2",
+        "--abi",
+        "itanium",
+    ];
+    for omitted in [0..1, 1..3, 3..5, 5..7] {
+        let argv = ["ghidra-cli", "find", "virtual-callers"].into_iter().chain(
+            required
+                .iter()
+                .enumerate()
+                .filter_map(|(i, &value)| (!omitted.contains(&i)).then_some(value)),
+        );
+        assert!(Cli::try_parse_from(argv).is_err(), "omitted {omitted:?}");
+    }
+    for (entries, expected) in [("1", 1), ("0x10", 16), ("0x10000", 65536)] {
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "find",
+            "virtual-callers",
+            "0x2000",
+            "--vtable",
+            "vtable_symbol",
+            "--entries",
+            entries,
+            "--abi",
+            "msvc",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command, Commands::Find(FindCommands::VirtualCallers(args)) if args.entries == expected)
+        );
+    }
+    for entries in ["0", "65537", "-1"] {
+        assert!(Cli::try_parse_from([
+            "ghidra-cli",
+            "find",
+            "virtual-callers",
+            "draw",
+            "--vtable",
+            "0x2000",
+            "--entries",
+            entries,
+            "--abi",
+            "itanium",
+        ])
+        .is_err());
+    }
+}
+
+#[test]
 fn cfg_and_high_pcode_accept_bounded_results_without_row_queries() {
     for (command, high) in [
         (vec!["ghidra-cli", "graph", "cfg", "main"], false),

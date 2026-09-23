@@ -643,7 +643,8 @@ code entry, and direct/final thunk identities separately. Use Ghidra's pointer
 and code-mode APIs, retaining overlays; do not resolve a containing function as
 the pointer's target. Neither reader defines instructions or data.
 
-`VtableCommands` reads a caller-selected address point and count;
+`VtableCommands` and `VirtualCallersCommands` share `VtableReader` for a
+caller-selected address point and count;
 `VtableHeaders` owns the explicit Itanium/MSVC layouts. Absolute Itanium uses
 native-width header fields. LLVM relative32 components are relative to the
 address point (including nonzero slot indices), and RTTI goes through a
@@ -653,6 +654,23 @@ are shallow reads; no table-length heuristic or class recovery runs. Expected
 memory failures become field/slot evidence; cancellation and unexpected API
 failures propagate. Root completeness counts slot reads separately from header
 completeness. Shared session ownership and transactions remain unchanged.
+
+`VirtualCallersCommands` matches the target's exact entry or a Ghidra thunk chain
+against the selected absolute-pointer slots, preserving each matching slot.
+`VirtualCallTrace` follows native High P-code definitions at machine indirect
+calls, using same-instruction raw definitions when optimization removed a load.
+Concrete different slots are excluded; unknown bases retain only type or offset
+evidence. Static types never establish dynamic object identity. Phi merges,
+INDIRECT side effects, unsupported expressions, and trace budgets retain
+unresolved diagnostics. No memory snapshot or earlier STORE is assumed to give
+an object's runtime vptr. Indirect jumps/tail calls are outside this call search.
+
+`DecompileScan` is shared by semantic type searches and virtual callers. It owns
+request-local enumeration, native failure/warning accounting, limits and scope;
+the session owns the native decompiler. Each function finishes inspection before
+a pushed result cap stops the next function. Refer to the query module for
+coverage and empty-slot semantics. Neither helper retains native results across
+requests or starts transactions, creates references, or applies types.
 
 `AddressTableSearch` loads the native `AddressTable` detector through Ghidra's
 application classloader without importing its private GUI package into the

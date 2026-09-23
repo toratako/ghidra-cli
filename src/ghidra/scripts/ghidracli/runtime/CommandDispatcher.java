@@ -10,6 +10,7 @@ import ghidracli.analysis.PcodeCommands;
 import ghidracli.analysis.SemanticTypeUsesCommands;
 import ghidracli.analysis.StructureInferenceCommands;
 import ghidracli.analysis.VtableCommands;
+import ghidracli.analysis.VirtualCallersCommands;
 import ghidracli.function.FunctionBodyCommands;
 import ghidracli.function.FunctionCallSignatureCommands;
 import ghidracli.function.FunctionCommands;
@@ -67,6 +68,7 @@ final class CommandDispatcher {
     private final SearchCommands searchCommands;
     private final AddressTableSearch addressTableSearch;
     private final VtableCommands vtableCommands;
+    private final VirtualCallersCommands virtualCallersCommands;
     private final SymbolCommands symbolCommands;
     private final NamespaceCommands namespaceCommands;
     private final EquateCommands equateCommands;
@@ -125,6 +127,7 @@ final class CommandDispatcher {
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         addressTableSearch = new AddressTableSearch(session, addressResolver);
         vtableCommands = new VtableCommands(session, addressResolver);
+        virtualCallersCommands = new VirtualCallersCommands(session, addressResolver, functionQueries);
         symbolCommands = new SymbolCommands(session);
         namespaceCommands = new NamespaceCommands(session);
         equateCommands = new EquateCommands(session);
@@ -315,6 +318,7 @@ final class CommandDispatcher {
             case "read_memory":     return memoryCommands.handleReadMemory(args);
             case "vtable_read":     return vtableCommands.handleRead(args);
             case "find_address_tables": return addressTableSearch.handleFindAddressTables(args);
+            case "find_virtual_callers": return virtualCallersCommands.handle(args);
             default:                return null;
         }
     }

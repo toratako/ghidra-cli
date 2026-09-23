@@ -99,6 +99,16 @@ successful decompilation does not prove that the recovered types or control flow
 are exhaustive. An entry with no listing instruction is a failed inspection,
 even if Ghidra could synthesize a bad-instruction HighFunction there.
 
+`find virtual-callers` uses the same decompiler scan and limit-only fetch plan.
+`--within` selects one caller body; omission selects all internal function bodies.
+Filtering, sorting, offsets and counts fetch all candidates before residual
+selection. Target/table/slot evidence, scope and scan diagnostics remain context.
+`omitted_calls` counts only known candidates withheld within visited functions.
+An empty selected-slot match needs no decompilation: `stop_reason` is
+`target_not_in_table`, and the functions remain counted as unvisited. Unreadable
+slots instead keep the search incomplete with `table_read_failed`. Neither a
+completed traversal nor type/offset evidence proves runtime call reachability.
+
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before
 filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.

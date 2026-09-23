@@ -56,6 +56,8 @@ mod tables;
 mod thunks;
 #[path = "routing/types.rs"]
 mod types;
+#[path = "routing/virtual_callers.rs"]
+mod virtual_callers;
 
 fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
@@ -529,6 +531,7 @@ impl RecordedBridge {
                     }
                     "vtable_read" => tables::vtable_fixture(args, &program),
                     "find_address_tables" => tables::address_tables_fixture(args),
+                    "find_virtual_callers" => virtual_callers::fixture(args),
                     "memory_file_mappings" => memory::file_mappings_fixture(args, &program),
                     "memory_block_create"
                     | "memory_block_rename"

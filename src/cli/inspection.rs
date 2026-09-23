@@ -95,6 +95,8 @@ pub struct XRefFromArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum FindCommands {
+    /// Find indirect-call candidates by a function's slots in an explicit vtable
+    VirtualCallers(FindVirtualCallersArgs),
     /// Find candidate address tables using Ghidra's native search
     AddressTables(FindAddressTablesArgs),
     /// Find a case-insensitive substring in defined strings
@@ -107,6 +109,45 @@ pub enum FindCommands {
     Instruction(FindInstructionArgs),
     /// Find immediate values and displacements in already-disassembled instructions
     Constant(FindConstantArgs),
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct FindVirtualCallersArgs {
+    /// Callee: exact function name or explicit 0x-prefixed address
+    #[arg(value_name = "FUNCTION", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub function: String,
+    /// Vtable address point (slot 0): exact symbol name or explicit address
+    #[arg(long, value_name = "ADDRESS_POINT", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub vtable: String,
+    /// Number of absolute-pointer slots to inspect; table length is not inferred
+    #[arg(long, value_name = "N", value_parser = |value: &str| super::numeric::ranged::<u32>(value, 1, 65_536))]
+    pub entries: u32,
+    /// Explicit C++ ABI used to interpret the vtable
+    #[arg(long, value_enum)]
+    pub abi: super::memory::VtableAbi,
+    /// Search within one function (default: all internal functions)
+    #[arg(long, value_name = "FUNCTION", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub within: Option<String>,
+    #[command(flatten)]
+    pub options: QueryOptions,
+}
+
+impl FindVirtualCallersArgs {
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=65_536).contains(&self.entries) {
+            return Err("--entries must be an integer from 1 to 65536".into());
+        }
+        for (name, value) in [
+            ("FUNCTION", Some(&self.function)),
+            ("--vtable", Some(&self.vtable)),
+            ("--within", self.within.as_ref()),
+        ] {
+            if value.is_some_and(|value| value.trim().is_empty()) {
+                return Err(format!("{name} must not be empty"));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

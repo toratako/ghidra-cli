@@ -41,6 +41,9 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
 
 /// Validate locally parsed command syntax before any program selection or edits.
 pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::Find(cli::FindCommands::VirtualCallers(args)) = command {
+        args.validate().map_err(anyhow::Error::msg)?;
+    }
     if let Commands::Type(cli::TypeCommands::Uses(args)) = command {
         anyhow::ensure!(
             args.function.is_none() || args.kind == Some(cli::TypeUseKind::Variable),
@@ -494,6 +497,14 @@ pub(super) fn execute_via_bridge(
         Commands::Find(cmd) => {
             use cli::FindCommands;
             match cmd {
+                FindCommands::VirtualCallers(args) => client.find_virtual_callers(
+                    &args.function,
+                    &args.vtable,
+                    args.entries,
+                    args.abi,
+                    args.within.as_deref(),
+                    list_limit,
+                ),
                 FindCommands::AddressTables(args) => client.send_command(
                     "find_address_tables",
                     Some(json!({
@@ -588,5 +599,51 @@ pub(super) fn execute_via_bridge(
             }
         }
         _ => anyhow::bail!("Command not supported"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use serde_json::json;
+
+    #[test]
+    fn virtual_callers_deserialized_commands_revalidate_before_query_planning() {
+        let cli = cli::Cli::try_parse_from([
+            "ghidra-cli",
+            "find",
+            "virtual-callers",
+            "Widget::draw",
+            "--vtable",
+            "0x2000",
+            "--entries",
+            "2",
+            "--abi",
+            "itanium",
+        ])
+        .unwrap();
+        let valid = serde_json::to_value(&cli.command).unwrap();
+        for (field, invalid) in [
+            ("entries", json!(0)),
+            ("entries", json!(65537)),
+            ("function", json!("")),
+            ("vtable", json!("  ")),
+            ("within", json!("")),
+        ] {
+            let mut raw = valid.clone();
+            raw["Find"]["VirtualCallers"][field] = invalid;
+            let command: Commands = serde_json::from_value(raw).unwrap();
+            assert!(
+                crate::app::parse_command_query(&command).is_err(),
+                "{field}"
+            );
+        }
+        for entries in [1, 65536] {
+            let mut raw = valid.clone();
+            raw["Find"]["VirtualCallers"]["entries"] = json!(entries);
+            let command: Commands = serde_json::from_value(raw).unwrap();
+            crate::app::parse_command_query(&command).unwrap();
+        }
     }
 }

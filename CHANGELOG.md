@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `find virtual-callers FUNCTION --vtable ADDRESS --entries N --abi itanium|msvc`
+  to search indirect calls through explicit absolute-pointer table slots. Optional
+  `--within FUNCTION` restricts the caller scope; results distinguish traced table
+  addresses, recovered types, and offset-only candidates, with incomplete-scan
+  diagnostics and no changes to references or types.
 - Add `function set-thunk FUNCTION --target FUNCTION` and `function clear-thunk`
   to edit a function's direct forwarding relationship, with before/after
   signatures, ABI storage, and direct/final targets. Clearing exposes the

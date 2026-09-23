@@ -159,6 +159,22 @@ extend past `--end`. Native boundary rules can split or miss a table, so inspect
 the bytes before choosing a VTable interpretation. Search context and
 completion are retained in `.meta`; filtering or sorting can require a full scan.
 
+To investigate an implementation reached through a known absolute-pointer table:
+
+```bash
+ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --project target
+ghidra-cli find virtual-callers Widget_draw --vtable 0x405020 --entries 8 --abi itanium --within dispatch --project target
+```
+
+`FUNCTION` is the callee; `--within` restricts the caller bodies searched. Inspect
+each candidate's `evidence`: `table_value` traces the selected slot's address,
+`table_type` associates a recovered table type, and `slot_offset` matches only an
+offset. The latter two do not establish the runtime table; unrelated classes
+often use the same slot. Branch merges and trace failures remain in
+`.meta.scan.unresolved`. Use the call-site address to inspect the caller before
+adding an xref. An incomplete scan or an unreadable table cannot establish that
+callers are absent; narrow `--within` to investigate failed functions.
+
 ## Analysis diagnostics
 
 ```bash

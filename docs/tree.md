@@ -172,6 +172,7 @@ ghidra-cli
 │   ├── set
 │   └── delete
 ├── find
+│   ├── virtual-callers
 │   ├── address-tables
 │   ├── string
 │   ├── text
@@ -208,4 +209,4 @@ ghidra-cli
     └── cancel
 ```
 
-196 command nodes (excluding the root), 0 aliases.
+197 command nodes (excluding the root), 0 aliases.

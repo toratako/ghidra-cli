@@ -231,6 +231,9 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
             {
                 text = render_type_uses(result, path, text, format)?;
             }
+            if result.meta.contains_key("vtable") {
+                text = render_virtual_callers(result, text, format)?;
+            }
             if let Some(excluded) = result
                 .meta
                 .get("unsupported_mappings")
@@ -286,6 +289,59 @@ fn render_type_uses(
         }
     }
     text.push_str(&rows);
+    render_search_diagnostics(result, text, format, "field evidence", "uses")
+}
+
+fn render_virtual_callers(
+    result: &CommandOutput,
+    rows: String,
+    format: OutputFormat,
+) -> anyhow::Result<String> {
+    let target = &result.meta["target"];
+    let table = &result.meta["vtable"];
+    let mut text = format!(
+        "Virtual caller candidates: {} ({})\nVTable address point: {} ({})\n",
+        target["function"].as_str().unwrap_or("?"),
+        target["address"].as_str().unwrap_or("?"),
+        table["address"].as_str().unwrap_or("?"),
+        table["abi"].as_str().unwrap_or("?"),
+    );
+    if let Some(scope) = result.meta.get("scope").filter(|scope| scope.is_object()) {
+        text.push_str(&format!(
+            "Within: {} ({})\n",
+            scope["function"].as_str().unwrap_or("?"),
+            scope["address"].as_str().unwrap_or("?"),
+        ));
+    } else {
+        text.push_str("Within: all internal functions\n");
+    }
+    text.push_str(&rows);
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    if !result.rows().is_empty() {
+        text.push_str("Evidence: table_value = traced table address; table_type = recovered type; slot_offset = offset only.\n");
+    }
+    if result
+        .meta
+        .get("scan")
+        .and_then(|scan| scan["stop_reason"].as_str())
+        == Some("target_not_in_table")
+    {
+        text.push_str(
+            "The selected table slots do not contain the target; no function scan was needed.\n",
+        );
+    }
+    render_search_diagnostics(result, text, format, "virtual-call evidence", "callers")
+}
+
+fn render_search_diagnostics(
+    result: &CommandOutput,
+    mut text: String,
+    format: OutputFormat,
+    unresolved_label: &str,
+    findings_label: &str,
+) -> anyhow::Result<String> {
     let Some(scan) = result.meta.get("scan") else {
         return Ok(text);
     };
@@ -302,9 +358,10 @@ fn render_type_uses(
             "Scan stopped at the result limit; use --limit 0 to scan all {scope}.\n"
         ));
     }
+    let unresolved_heading = format!("Unresolved {unresolved_label}");
     for (key, heading) in [
         ("failed_functions", "Functions that could not be decompiled"),
-        ("unresolved", "Unresolved field evidence"),
+        ("unresolved", unresolved_heading.as_str()),
         ("warnings", "Decompiler warnings"),
     ] {
         if let Some(details) = scan[key].as_array().filter(|rows| !rows.is_empty()) {
@@ -316,7 +373,9 @@ fn render_type_uses(
         }
     }
     if scan["complete"].as_bool() == Some(false) && scan["stop_reason"].as_str() != Some("limit") {
-        text.push_str("Search incomplete; an empty result does not establish absence of uses.\n");
+        text.push_str(&format!(
+            "Search incomplete; an empty result does not establish absence of {findings_label}.\n"
+        ));
     }
     Ok(text)
 }
@@ -339,6 +398,47 @@ mod tests {
     use super::*;
     use crate::filter;
     use clap::Parser;
+
+    #[test]
+    fn virtual_caller_human_output_keeps_scope_and_incomplete_empty_evidence() {
+        let result = CommandOutput::prepare(
+            serde_json::json!({
+                "target": {"function": "Widget::draw", "address": "0x2000"},
+                "vtable": {"address": "0x405020", "abi": "itanium"},
+                "slots": [],
+                "scope": {"function": "dispatch", "address": "0x1000"},
+                "calls": [],
+                "scan": {
+                    "complete": false, "stop_reason": "table_read_failed",
+                    "failed_functions": [{"function": "dispatch", "reason": "timeout"}],
+                    "unresolved": [{"slot_address": "0x405028", "reason": "unreadable_vtable_entry"}],
+                    "warnings": []
+                }
+            }),
+            ResultShape::Rows {
+                key: Some("calls"),
+                context: &["target", "vtable", "slots", "scope", "scan"],
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        for format in [OutputFormat::Compact, OutputFormat::Full] {
+            let text = render(&result, format).unwrap();
+            for expected in [
+                "Widget::draw (0x2000)",
+                "0x405020 (itanium)",
+                "Within: dispatch (0x1000)",
+                "timeout",
+                "unreadable_vtable_entry",
+                "Unresolved virtual-call evidence",
+                "absence of callers",
+            ] {
+                assert!(text.contains(expected), "missing {expected}: {text}");
+            }
+            assert!(!text.contains("absence of uses"), "{text}");
+        }
+    }
 
     #[test]
     fn semantic_search_reports_failed_and_unresolved_empty_results_in_human_output() {
