@@ -48,13 +48,13 @@ fn test_strings_list_schema_validation() {
 
 #[test]
 #[serial]
-fn test_memory_map_schema_validation() {
+fn test_memory_block_list_schema_validation() {
     require_ghidra!();
     let harness = harness();
 
     let result = ghidra(harness)
         .arg("memory")
-        .arg("map")
+        .args(["block", "list"])
         .with_project(test_project(), TEST_PROGRAM)
         .json_format()
         .run();
@@ -185,7 +185,7 @@ fn test_stats_has_all_fields() {
 
     let obj = json["stats"].as_object().expect("stats object");
     let stats: StatsResult = serde_json::from_value(json["stats"].clone()).unwrap();
-    let blocks = harness.client().unwrap().memory_map().unwrap();
+    let blocks = harness.client().unwrap().memory_block_list().unwrap();
     assert_eq!(
         stats.memory_blocks,
         blocks["blocks"].as_array().unwrap().len()

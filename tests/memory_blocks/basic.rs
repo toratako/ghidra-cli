@@ -75,7 +75,7 @@ fn read(client: &BridgeClient, address: &str, size: usize) -> Value {
 }
 
 fn map_block(client: &BridgeClient, start: &Value) -> Value {
-    client.memory_map().unwrap()["blocks"]
+    client.memory_block_list().unwrap()["blocks"]
         .as_array()
         .unwrap()
         .iter()
@@ -85,13 +85,13 @@ fn map_block(client: &BridgeClient, start: &Value) -> Value {
 }
 
 fn reject(client: &BridgeClient, name: &str, args: Value) {
-    let before = client.memory_map().unwrap();
+    let before = client.memory_block_list().unwrap();
     let error = client
         .send_command(name, Some(args.clone()))
         .expect_err(&format!("Invalid mutation accepted: {name} {args}"));
     let error = error.downcast_ref::<BridgeCommandError>().unwrap();
     assert_eq!(error.detail["rolled_back"], true, "{args}: {error:?}");
-    assert_eq!(client.memory_map().unwrap(), before, "{args}");
+    assert_eq!(client.memory_block_list().unwrap(), before, "{args}");
 }
 
 #[test]
@@ -131,11 +131,11 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
         client
             .send_command("read_memory", Some(json!({"address": "0x2000", "size": 4})))
             .expect_err("Uninitialized memory must not read as zero");
-        let before = client.memory_map().unwrap();
+        let before = client.memory_block_list().unwrap();
         client
             .memory_write("0x2000", "01020304")
             .expect_err("memory write must not initialize unknown storage");
-        assert_eq!(client.memory_map().unwrap(), before);
+        assert_eq!(client.memory_block_list().unwrap(), before);
 
         let mmio = cli(
             harness,
@@ -284,10 +284,10 @@ public class CreateBlockReadAliases extends GhidraScript {
             assert_eq!(mapped["initialized"], false);
             assert_eq!(read(client, start, 8)["hex"], expected);
         }
-        let saved = client.memory_map().unwrap();
+        let saved = client.memory_block_list().unwrap();
         client.program_close().unwrap();
         client.open_program(program).unwrap();
-        assert_eq!(client.memory_map().unwrap(), saved);
+        assert_eq!(client.memory_block_list().unwrap(), saved);
         assert_eq!(read(client, "0x4000", 16)["hex"], "00".repeat(16));
         assert_eq!(read(client, "0x5000", 16)["hex"], "ff".repeat(16));
         assert_eq!(
@@ -387,7 +387,7 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         assert_eq!(extra["after"]["base_space"], "ram");
         assert_eq!(extra["after"]["overlay"], true);
         assert_eq!(extra["after"]["start"], "bank1:0x00004000");
-        let blocks = client.memory_map().unwrap();
+        let blocks = client.memory_block_list().unwrap();
         let block_count = blocks["blocks"].as_array().unwrap().len();
         // Seed, physical block, initialized overlay, and uninitialized overlay.
         assert_eq!(block_count, 4);
@@ -430,10 +430,10 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
             "memory_block_set_volatile",
             json!({"block_start": "block_start_symbol", "value": true}),
         );
-        let saved = client.memory_map().unwrap();
+        let saved = client.memory_block_list().unwrap();
         client.program_close().unwrap();
         client.open_program(program).unwrap();
-        assert_eq!(client.memory_map().unwrap(), saved);
+        assert_eq!(client.memory_block_list().unwrap(), saved);
         assert_eq!(
             client.memory_info("bank1:0x2003").unwrap()["memory"]["name"],
             ".renamed"
@@ -515,10 +515,10 @@ public class CheckBlockSpaces extends GhidraScript {
         client
             .script_run_source(CHECK_SPACES, &[], &[], false)
             .unwrap();
-        let saved = client.memory_map().unwrap();
+        let saved = client.memory_block_list().unwrap();
         client.program_close().unwrap();
         client.open_program(program).unwrap();
-        assert_eq!(client.memory_map().unwrap(), saved);
+        assert_eq!(client.memory_block_list().unwrap(), saved);
         client
             .script_run_source(CHECK_SPACES, &[], &[], false)
             .unwrap();
@@ -530,7 +530,7 @@ public class CheckBlockSpaces extends GhidraScript {
 fn cancelled_creation_rolls_back_a_native_block_and_its_new_overlay_space() {
     require_ghidra!();
     with_fixture("x86:LE:64:default", |_, client, program| {
-        let before = client.memory_map().unwrap();
+        let before = client.memory_block_list().unwrap();
         let folder = format!("block-create-rollback-{}", uuid::Uuid::new_v4());
         // A separate database lets the production dispatcher own the request
         // transaction while the surrounding script retains its own session.
@@ -667,7 +667,7 @@ public class BlockCreateRollbackProbe extends GhidraScript {
             .unwrap();
         let copied = format!("/{folder}/{program}");
         client.open_program(&copied).unwrap();
-        assert_eq!(client.memory_map().unwrap(), before);
+        assert_eq!(client.memory_block_list().unwrap(), before);
         client
             .script_run_source(
                 r#"
@@ -735,10 +735,10 @@ public class CheckBlockByteSize extends GhidraScript {
             client
                 .script_run_source(CHECK_BYTES, &[expected_offset.into()], &[], false)
                 .unwrap();
-            let saved = client.memory_map().unwrap();
+            let saved = client.memory_block_list().unwrap();
             client.program_close().unwrap();
             client.open_program(program).unwrap();
-            assert_eq!(client.memory_map().unwrap(), saved);
+            assert_eq!(client.memory_block_list().unwrap(), saved);
             client
                 .script_run_source(CHECK_BYTES, &[expected_offset.into()], &[], false)
                 .unwrap();

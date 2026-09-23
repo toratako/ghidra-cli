@@ -527,7 +527,7 @@ impl RecordedBridge {
                         }
                         json!({"results": rows, "count": rows.len()})
                     }
-                    "memory_map" => {
+                    "memory_block_list" => {
                         let rows = vec![
                             json!({"name":"first", "observed_program": program}),
                             json!({"name":"second", "observed_program": program}),

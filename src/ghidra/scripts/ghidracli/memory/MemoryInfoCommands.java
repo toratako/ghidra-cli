@@ -90,7 +90,7 @@ public final class MemoryInfoCommands {
         return result;
     }
 
-    public JsonObject handleMemoryMap() {
+    public JsonObject handleMemoryBlockList() {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }

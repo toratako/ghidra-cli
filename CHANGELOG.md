@@ -58,6 +58,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `create` and `attach`; remove the top-level command.
 - Move calling-convention discovery to `program list-calling-conventions [NAME]`,
   matching its compiler-specification scope and supporting explicit program operands.
+- Rename `memory map` to `memory block list`, grouping block queries and edits.
+  Preserve list output and query options; remove the old command.
 - Move `type apply` to `listing define-data`, preserving its arguments, data
   definition behavior, and result fields.
 

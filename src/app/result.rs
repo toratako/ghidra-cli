@@ -41,7 +41,9 @@ impl ResultShape {
             }
             Commands::Symbol(SymbolCommands::Externals(_)) => Self::rows("externals"),
             Commands::Symbol(SymbolCommands::EntryPoints(_)) => Self::rows("entry_points"),
-            Commands::Memory(MemoryCommands::Map(_)) => Self::rows("blocks"),
+            Commands::Memory(MemoryCommands::Block(MemoryBlockCommands::List(_))) => {
+                Self::rows("blocks")
+            }
             Commands::Memory(MemoryCommands::FileMappings(_)) => Self::context(
                 "mappings",
                 &["unsupported_mappings", "file_offset", "source_at"],

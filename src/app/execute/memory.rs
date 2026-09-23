@@ -10,6 +10,7 @@ pub(super) fn validate(command: &MemoryCommands) -> anyhow::Result<()> {
         }
         MemoryCommands::FileMappings(args) => args.source_at.iter().map(String::as_str).collect(),
         MemoryCommands::Block(command) => match command {
+            MemoryBlockCommands::List(_) => vec![],
             MemoryBlockCommands::Create(args) => vec![&args.start],
             MemoryBlockCommands::Rename(args) => vec![&args.block_start],
             MemoryBlockCommands::SetPermissions(args) => vec![&args.block_start],
@@ -30,11 +31,11 @@ pub(super) fn validate(command: &MemoryCommands) -> anyhow::Result<()> {
 
 pub(super) fn execute(client: &BridgeClient, command: &MemoryCommands) -> anyhow::Result<Value> {
     match command {
-        MemoryCommands::Map(_) => client.memory_map(),
         MemoryCommands::FileMappings(args) => {
             client.memory_file_mappings(args.file_offset.as_deref(), args.source_at.as_deref())
         }
         MemoryCommands::Block(command) => match command {
+            MemoryBlockCommands::List(_) => client.memory_block_list(),
             MemoryBlockCommands::Create(args) => {
                 client.memory_block_create(MemoryBlockCreateRequest {
                     name: &args.name,

@@ -96,7 +96,7 @@ fn row(args: &[&str]) -> Value {
 
 #[test]
 #[serial]
-fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
+fn function_entry_attributes_match_memory_block_list_and_preserve_list_membership() {
     require_ghidra!();
     let listed = command(&["function", "list", "--limit", "0"]);
     listed.assert_success();
@@ -108,7 +108,7 @@ fn function_entry_attributes_match_memory_map_and_preserve_list_membership() {
         .unwrap()
         .iter()
         .any(|f| f["name"] == "outside"));
-    let memory = command(&["memory", "map", "--limit", "0"]);
+    let memory = command(&["memory", "block", "list", "--limit", "0"]);
     memory.assert_success();
     let memory: Value = memory.data();
     for (name, block) in [

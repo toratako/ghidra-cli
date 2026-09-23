@@ -437,7 +437,7 @@ public class CreateBlockConstraints extends GhidraScript {
             false,
         )
         .unwrap();
-    let before = client.memory_map().unwrap();
+    let before = client.memory_block_list().unwrap();
     for (start, destination, diagnostic) in [
         ("0x2000", "0x4000", "overlap"),
         ("0x2000", "0xffffffffffffff80", "overflow"),
@@ -467,9 +467,9 @@ public class CreateBlockConstraints extends GhidraScript {
             "mapped",
         );
     }
-    assert_eq!(client.memory_map().unwrap(), before);
+    assert_eq!(client.memory_block_list().unwrap(), before);
     reopen(&client, &name);
-    assert_eq!(client.memory_map().unwrap(), before);
+    assert_eq!(client.memory_block_list().unwrap(), before);
     check_state(&client, "2000", false);
     cleanup(&client, &name);
 }

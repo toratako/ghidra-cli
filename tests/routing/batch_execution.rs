@@ -281,7 +281,7 @@ fn batch_queries_inherit_targets_and_keep_program_selection() {
     }));
     let second = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "memory map\ncomment set 0x1000 --text marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
+        "memory block list\ncomment set 0x1000 --text marker --program B\nmemory block list\nmemory block list --program C\nmemory block list --project {} --program D\nmemory block list\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let output = first
@@ -309,7 +309,12 @@ fn batch_queries_inherit_targets_and_keep_program_selection() {
         assert!(selections.is_empty(), "{selections:?}");
         let actual: Vec<_> = requests
             .iter()
-            .filter(|r| matches!(r["command"].as_str(), Some("memory_map" | "comment_set")))
+            .filter(|r| {
+                matches!(
+                    r["command"].as_str(),
+                    Some("memory_block_list" | "comment_set")
+                )
+            })
             .map(|r| r["program"].as_str().unwrap())
             .collect();
         assert_eq!(actual, targets);

@@ -14,9 +14,9 @@ pub struct MemoryBlockCreateRequest<'a> {
 }
 
 impl BridgeClient {
-    /// Get memory map.
-    pub fn memory_map(&self) -> Result<serde_json::Value> {
-        self.send_command("memory_map", None)
+    /// List memory blocks.
+    pub fn memory_block_list(&self) -> Result<serde_json::Value> {
+        self.send_command("memory_block_list", None)
     }
 
     /// Read every direct mapping before client-side row queries are applied.

@@ -207,7 +207,7 @@ fn test_patch_odd_hex_length() {
     };
     let before_instruction = disasm();
     let before_memory = memory();
-    let before_map = client.send_command("memory_map", None).unwrap();
+    let before_map = client.send_command("memory_block_list", None).unwrap();
     for hex in ["909", "0x9", "", "0x", "  ", "ZZ", "+1"] {
         let error = client.memory_write(&address, hex).unwrap_err();
         assert!(
@@ -216,7 +216,10 @@ fn test_patch_odd_hex_length() {
         );
         assert_eq!(memory(), before_memory);
         assert_eq!(disasm(), before_instruction);
-        assert_eq!(client.send_command("memory_map", None).unwrap(), before_map);
+        assert_eq!(
+            client.send_command("memory_block_list", None).unwrap(),
+            before_map
+        );
     }
 }
 
@@ -332,7 +335,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             let receipt = client.define_code(address, None).unwrap();
             assert_eq!(receipt["landed"], true);
             let instructions = client.disasm(address, Some(2)).unwrap();
-            let map = client.send_command("memory_map", None).unwrap();
+            let map = client.send_command("memory_block_list", None).unwrap();
             let error = client.memory_write(address, "cccccccc").unwrap_err();
             assert!(
                 error.to_string().contains("fully mapped and initialized"),
@@ -345,7 +348,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
                 )
                 .unwrap();
             assert_eq!(after["instructions"], instructions["instructions"]);
-            assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+            assert_eq!(client.send_command("memory_block_list", None).unwrap(), map);
         }
 
         // A change to the shared source must be rejected before clearing or
@@ -359,7 +362,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
                 Some(serde_json::json!({"start":"0x4000","end":"0x5001"})),
             )
             .unwrap();
-        let map = client.send_command("memory_map", None).unwrap();
+        let map = client.send_command("memory_block_list", None).unwrap();
         let error = client.memory_write("0x4000", "11223344").unwrap_err();
         let error = error
             .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
@@ -388,10 +391,10 @@ public class CreatePatchRangeFixture extends GhidraScript {
                     .unwrap(),
                 instructions
             );
-            assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+            assert_eq!(client.send_command("memory_block_list", None).unwrap(), map);
         }
 
-        let map = client.send_command("memory_map", None).unwrap();
+        let map = client.send_command("memory_block_list", None).unwrap();
         client.memory_write("0x3000", "11223344").unwrap();
         let bytes = client
             .send_command(
@@ -410,7 +413,7 @@ public class CreatePatchRangeFixture extends GhidraScript {
             .unwrap_err();
         assert!(error.to_string().contains("32 bits"), "{error}");
 
-        assert_eq!(client.send_command("memory_map", None).unwrap(), map);
+        assert_eq!(client.send_command("memory_block_list", None).unwrap(), map);
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

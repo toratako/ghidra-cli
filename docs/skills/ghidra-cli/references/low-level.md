@@ -132,8 +132,8 @@ ghidra-cli memory block create .bank1_data --start bank1:0x4000 --size 256 --uni
 ghidra-cli memory block move ram:0x20000000 ram:0x21000000
 ```
 
-Block edits select the exact start returned by `memory map`. Preserve the address
-space qualifier; block names need not be unique. Renaming an overlay block leaves
+Block edits select the exact start returned by `memory block list`. Preserve the
+address space qualifier; block names need not be unique. Renaming an overlay block leaves
 its address-space name intact.
 
 Moving one block leaves the image base unchanged and does not fix embedded

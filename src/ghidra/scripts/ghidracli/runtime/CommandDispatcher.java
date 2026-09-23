@@ -179,7 +179,7 @@ final class CommandDispatcher {
             case "list_strings":    return listingCommands.handleListStrings(args);
             case "symbol_externals":    return symbolCommands.handleSymbolExternals(args);
             case "symbol_entry_points":    return symbolCommands.handleSymbolEntryPoints(args);
-            case "memory_map":      return memoryInfoCommands.handleMemoryMap();
+            case "memory_block_list": return memoryInfoCommands.handleMemoryBlockList();
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
             case "memory_file_mappings": return fileMappingCommands.handleFileMappings(args);
             case "memory_block_create": return memoryBlockCommands.handleCreate(args);

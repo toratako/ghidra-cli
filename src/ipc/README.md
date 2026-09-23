@@ -418,6 +418,9 @@ address/end/block_start/reason records, including when `source_at` is selected
 because indirect mappings cannot be classified as direct matches. Rust retains
 this context and supplied selectors in `meta`, and applies normal query paging.
 
+`memory_block_list` returns `{blocks, count}` for all Program memory blocks;
+row queries are applied by the client.
+
 `memory_block_create` takes `name`, explicit `start`, byte `size`, `permissions`
 (`r`/`w`/`x` combinations or `none`), and exactly `uninitialized: true` or integer
 `fill` (0..255). Optional `volatile` defaults false; optional `overlay` names a new
@@ -430,8 +433,8 @@ nonloaded overlays, such as overlays of `OTHER`, cannot be moved.
 Block edits return `{status, changed, before, after}` with nullable descriptions;
 delete also reports `overlay_removed`. Descriptions include name, bounds, byte
 size, permissions, initialized/loaded flags, address space, overlay/base space,
-native block type, and volatility. Map, info, and receipts share the same block
-description, including `initialized`. Mapped blocks cannot be edited, and
+native block type, and volatility. Block list, info, and receipts share the same
+block description, including `initialized`. Mapped blocks cannot be edited, and
 move/delete cannot affect indirect-mapping backing ranges. These are ordinary
 atomic requests with no automatic reanalysis; move/delete use Ghidra's native
 analysis-update semantics.

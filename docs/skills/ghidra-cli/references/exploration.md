@@ -120,7 +120,7 @@ For instruction-text matching and disassembly ranges, see
 
 ```bash
 ghidra-cli symbol list --limit 100 --project target
-ghidra-cli memory map --project target
+ghidra-cli memory block list --project target
 ghidra-cli memory info 0x401003 --project target
 ghidra-cli memory file-mappings --project target
 ghidra-cli memory file-mappings --file-offset 0x205 --limit 0 --project target

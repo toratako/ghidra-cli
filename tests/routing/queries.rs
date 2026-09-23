@@ -272,7 +272,7 @@ fn client_only_queries_apply_defaults_with_and_without_query_flags() {
             format!("default_limit: {configured}\n"),
         )
         .unwrap();
-        let (command, wire) = (vec!["memory", "map"], "memory_map");
+        let (command, wire) = (vec!["memory", "block", "list"], "memory_block_list");
         for (flags, count, first) in [
             (vec![], cap, "first"),
             (vec!["--json"], cap, "first"),

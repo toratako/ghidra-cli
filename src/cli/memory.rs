@@ -4,11 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum MemoryCommands {
-    /// Show memory map
-    Map(QueryOptions),
     /// List direct file mapping intervals, optionally matching an original-file offset
     FileMappings(MemoryFileMappingsArgs),
-    /// Create, edit, move, or delete memory blocks
+    /// List, create, edit, move, or delete memory blocks
     #[command(subcommand)]
     Block(MemoryBlockCommands),
     /// Show the instruction, data, function, and memory block at a target
@@ -35,6 +33,8 @@ pub struct MemoryFileMappingsArgs {
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum MemoryBlockCommands {
+    /// List memory layout as blocks
+    List(QueryOptions),
     /// Create a block with explicit initialization and permissions
     Create(MemoryBlockCreateArgs),
     /// Change a block's display name, preserving its address space
@@ -50,14 +50,15 @@ pub enum MemoryBlockCommands {
 }
 
 impl MemoryBlockCommands {
-    pub fn options(&self) -> &ObjectOptions {
+    pub fn options(&self) -> QueryOptions {
         match self {
-            Self::Create(args) => &args.options,
-            Self::Rename(args) => &args.options,
-            Self::SetPermissions(args) => &args.options,
-            Self::SetVolatile(args) => &args.options,
-            Self::Move(args) => &args.options,
-            Self::Delete(args) => &args.options,
+            Self::List(options) => options.clone(),
+            Self::Create(args) => (&args.options).into(),
+            Self::Rename(args) => (&args.options).into(),
+            Self::SetPermissions(args) => (&args.options).into(),
+            Self::SetVolatile(args) => (&args.options).into(),
+            Self::Move(args) => (&args.options).into(),
+            Self::Delete(args) => (&args.options).into(),
         }
     }
 }

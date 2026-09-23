@@ -70,9 +70,8 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             cli::StringsCommands::Refs(args) => args.options.project.clone(),
         },
         Commands::Memory(cmd) => match cmd {
-            cli::MemoryCommands::Map(opts) => opts.project.clone(),
             cli::MemoryCommands::FileMappings(args) => args.options.project.clone(),
-            cli::MemoryCommands::Block(cmd) => cmd.options().project.clone(),
+            cli::MemoryCommands::Block(cmd) => cmd.options().project,
             cli::MemoryCommands::Info(args) => args.options.project.clone(),
             cli::MemoryCommands::Read(args) => args.options.project.clone(),
             cli::MemoryCommands::ReadVtable(args) => args.options.project.clone(),
@@ -277,9 +276,8 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
             cli::StringsCommands::Refs(args) => args.options.program.clone(),
         },
         Commands::Memory(cmd) => match cmd {
-            cli::MemoryCommands::Map(opts) => opts.program.clone(),
             cli::MemoryCommands::FileMappings(args) => args.options.program.clone(),
-            cli::MemoryCommands::Block(cmd) => cmd.options().program.clone(),
+            cli::MemoryCommands::Block(cmd) => cmd.options().program,
             cli::MemoryCommands::Info(args) => args.options.program.clone(),
             cli::MemoryCommands::Read(args) => args.options.program.clone(),
             cli::MemoryCommands::ReadVtable(args) => args.options.program.clone(),
@@ -525,9 +523,8 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
             cli::StringsCommands::Refs(args) => Some(args.options.clone()),
         },
         Commands::Memory(cmd) => match cmd {
-            cli::MemoryCommands::Map(opts) => Some(opts.clone()),
             cli::MemoryCommands::FileMappings(args) => Some(args.options.clone()),
-            cli::MemoryCommands::Block(cmd) => Some(cmd.options().into()),
+            cli::MemoryCommands::Block(cmd) => Some(cmd.options()),
             cli::MemoryCommands::Info(args) => Some((&args.options).into()),
             cli::MemoryCommands::Read(args) => Some((&args.options).into()),
             cli::MemoryCommands::ReadVtable(args) => Some((&args.options).into()),

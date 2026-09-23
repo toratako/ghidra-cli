@@ -92,9 +92,9 @@ fn single_object_commands_reject_list_options() {
         }
     }
     for command in [
-        ["memory", "map"],
-        ["symbol", "externals"],
-        ["symbol", "entry-points"],
+        vec!["memory", "block", "list"],
+        vec!["symbol", "externals"],
+        vec!["symbol", "entry-points"],
     ] {
         Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain([
             "--filter",

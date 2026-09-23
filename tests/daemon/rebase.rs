@@ -514,12 +514,12 @@ public class UnmappedRebaseMetadata extends GhidraScript {
         client
             .script_run_source(METADATA, &[kind.into()], &[], false)
             .unwrap();
-        let before = client.memory_map().unwrap();
+        let before = client.memory_block_list().unwrap();
         if kind == "symbol" {
             assert_eq!(rebase(&client, "0x1000")["moved_blocks"], json!([]));
         }
         reject_rebase(&client, "0x5000", kind);
-        assert_eq!(client.memory_map().unwrap(), before);
+        assert_eq!(client.memory_block_list().unwrap(), before);
         assert_eq!(client.program_info().unwrap()["image_base"], "0x00001000");
         client.program_close().unwrap();
         client.open_program(&name).unwrap();

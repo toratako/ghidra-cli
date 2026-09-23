@@ -223,7 +223,7 @@ another consumer or terminate its checkout.
 | [`DecompileWarnings`](analysis/DecompileWarnings.java) | API diagnostics and warning-comment extraction from C markup, preserving provenance |
 | [`MemoryBlockInfo`](memory/MemoryBlockInfo.java) | Small block summaries for function queries and full descriptions for memory queries/receipts |
 | [`MemoryBlockCommands`](memory/MemoryBlockCommands.java) | Exact-start block creation/attribute changes and native movement/deletion |
-| [`MemoryInfoCommands`](memory/MemoryInfoCommands.java), [`MemorySources`](memory/MemorySources.java), [`FileMappingCommands`](memory/FileMappingCommands.java) | Memory map, listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
+| [`MemoryInfoCommands`](memory/MemoryInfoCommands.java), [`MemorySources`](memory/MemorySources.java), [`FileMappingCommands`](memory/FileMappingCommands.java) | Memory block listing, listing classification, preserved FileBytes provenance/reads, and direct mapping interval/reverse queries |
 | [`DataCommands`](listing/DataCommands.java) | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
 | [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | [`TypeArchiveCommands`](types/TypeArchiveCommands.java), [`TypeArchiveGraph`](types/TypeArchiveGraph.java) | GDT snapshots/publication, guarded root selection, dependency and ABI/identity validation |

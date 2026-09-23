@@ -80,7 +80,7 @@ pub struct Symbol {
     pub source: Option<String>,
 }
 
-/// Memory block from `ghidra-cli memory map`.
+/// Memory block from `ghidra-cli memory block list`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryBlock {
     pub name: String,

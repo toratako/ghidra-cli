@@ -92,9 +92,9 @@ ghidra-cli
 │   ├── get
 │   └── create
 ├── memory
-│   ├── map
 │   ├── file-mappings
 │   ├── block
+│   │   ├── list
 │   │   ├── create
 │   │   ├── rename
 │   │   ├── set-permissions
