@@ -40,13 +40,13 @@ fn test_xref_from_explicit_address_and_function_scope() {
     let harness = harness();
     let client = harness.client().unwrap();
     let main_addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
-    let run = |target: &str, function: bool| -> serde_json::Value {
+    let run = |target: &str, whole_function: bool| -> serde_json::Value {
         let mut command = ghidra(harness)
             .args(["xref", "from", target, "--limit", "0"])
             .with_project(test_project(), TEST_PROGRAM)
             .json_format();
-        if function {
-            command = command.arg("--function");
+        if whole_function {
+            command = command.arg("--whole-function");
         }
         let result = command.run();
         result.assert_success();
@@ -61,7 +61,7 @@ fn test_xref_from_explicit_address_and_function_scope() {
         .expect("main must reference something from an interior address");
     // An interior selector explicitly selects the same entire body.
     assert_eq!(run(inside, true), body);
-    // Without --function, even the entry selects only one source address.
+    // Without --whole-function, even the entry selects only one source address.
     for address in [main_addr.as_str(), inside] {
         let expected: Vec<_> = rows
             .iter()
@@ -178,7 +178,14 @@ fn xref_metadata_preserves_operand_distinct_references_in_both_directions() {
         }
         for args in [
             vec!["xref", "to", "xref_target", "--limit", "0"],
-            vec!["xref", "from", "xref_source", "--function", "--limit", "0"],
+            vec![
+                "xref",
+                "from",
+                "xref_source",
+                "--whole-function",
+                "--limit",
+                "0",
+            ],
         ] {
             let result = ghidra(harness)
                 .args(args)

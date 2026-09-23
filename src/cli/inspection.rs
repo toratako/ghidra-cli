@@ -23,7 +23,7 @@ pub struct StringRefsArgs {
 pub enum XRefCommands {
     /// Get cross-references to address
     To(XRefArgs),
-    /// Get cross-references from one address, or an entire function with --function
+    /// Get cross-references from one address, or an entire function with --whole-function
     From(XRefFromArgs),
     /// Create a reference of an explicit kind
     #[command(subcommand)]
@@ -88,7 +88,7 @@ pub struct XRefFromArgs {
     pub target: String,
     /// Read references from the whole containing function, including disjoint body ranges
     #[arg(long)]
-    pub function: bool,
+    pub whole_function: bool,
     #[command(flatten)]
     pub options: QueryOptions,
 }

@@ -18,7 +18,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
             "0x1000",
         ),
         (
-            vec!["xref", "from", "main", "--function", "--limit", "0"],
+            vec!["xref", "from", "main", "--whole-function", "--limit", "0"],
             "xrefs_from",
             "address",
             "main",
@@ -65,7 +65,7 @@ fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
         if wire == "xrefs_from" {
             assert_eq!(
                 standalone_request["args"]["function"],
-                args.contains(&"--function")
+                args.contains(&"--whole-function")
             );
         }
         bridge.requests.lock().unwrap().clear();

@@ -13,6 +13,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Use `--where` for target selection in symbol `rename`, `delete`,
   `set-namespace`, and `set-primary`, and function variable `get`/`set`;
   result queries keep `--filter`/`-f`.
+- Use `xref from TARGET --whole-function` to inspect the containing function.
 - Make program management targets positional; export takes a program name and
   `--export-format`, and rebase takes `--base`. Settings and memory operations
   use named options for values, sizes, permissions, and categories.

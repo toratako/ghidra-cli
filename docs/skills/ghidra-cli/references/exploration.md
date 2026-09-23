@@ -57,7 +57,7 @@ ghidra-cli find constant -1 --bits 32 --project target
 ghidra-cli find constant --min 0x20 --max 0x7e --project target
 ghidra-cli graph callers CreateProcessW --project target
 ghidra-cli xref to 0x401000 --project target
-ghidra-cli xref from main --function --project target
+ghidra-cli xref from main --whole-function --project target
 ghidra-cli graph calls --project target
 ghidra-cli graph callers parse_header --depth 3 --limit 100 --project target
 ghidra-cli graph callees main --depth 2 --limit 100 --project target

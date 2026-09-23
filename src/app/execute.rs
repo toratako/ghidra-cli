@@ -188,7 +188,7 @@ pub(super) fn execute_via_bridge(
             use cli::XRefCommands;
             match cmd {
                 XRefCommands::To(args) => client.xrefs_to(args.target.clone()),
-                XRefCommands::From(args) => client.xrefs_from(args.target.clone(), args.function),
+                XRefCommands::From(args) => client.xrefs_from(args.target.clone(), args.whole_function),
                 XRefCommands::Create(cli::XRefCreateCommands::Memory(args)) => client.send_command(
                     "xref_create_memory",
                     Some(json!({"from": args.from, "to": args.to, "operand_index": args.operand_index,
