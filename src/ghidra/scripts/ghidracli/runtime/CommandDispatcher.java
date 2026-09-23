@@ -43,6 +43,7 @@ import ghidracli.types.TypeDefinitionCommands;
 import ghidracli.types.TypeImportCommands;
 import ghidracli.types.TypeResizeCommands;
 import ghidracli.types.TypeResolver;
+import ghidracli.types.TypeUsesCommands;
 
 import static ghidracli.protocol.JsonProtocol.errorResponse;
 import static ghidracli.protocol.JsonProtocol.errorResult;
@@ -62,6 +63,7 @@ final class CommandDispatcher {
     private final NamespaceCommands namespaceCommands;
     private final EquateCommands equateCommands;
     private final TypeCommands typeCommands;
+    private final TypeUsesCommands typeUsesCommands;
     private final TypeDefinitionCommands typeDefinitionCommands;
     private final TypeResizeCommands typeResizeCommands;
     private final BitFieldCommands bitFieldCommands;
@@ -112,6 +114,7 @@ final class CommandDispatcher {
         namespaceCommands = new NamespaceCommands(session);
         equateCommands = new EquateCommands(session);
         typeCommands = new TypeCommands(session, typeResolver);
+        typeUsesCommands = new TypeUsesCommands(session, typeResolver);
         typeDefinitionCommands = new TypeDefinitionCommands(session, typeResolver);
         typeResizeCommands = new TypeResizeCommands(session, typeResolver);
         bitFieldCommands = new BitFieldCommands(session, typeResolver);
@@ -205,6 +208,7 @@ final class CommandDispatcher {
             // Type commands
             case "type_list":       return typeCommands.handleTypeList(args);
             case "type_get":        return typeCommands.handleTypeGet(args);
+            case "type_uses":       return typeUsesCommands.handleUses(args);
             case "type_clone":      return typeDefinitionCommands.handleClone(args);
             case "type_move":       return typeDefinitionCommands.handleMove(args);
             case "type_resize":     return typeResizeCommands.handleResize(args);

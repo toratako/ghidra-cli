@@ -112,6 +112,7 @@ ghidra-cli
 ├── type
 │   ├── list
 │   ├── get
+│   ├── uses
 │   ├── create
 │   │   ├── struct
 │   │   ├── union
@@ -200,4 +201,4 @@ ghidra-cli
     └── cancel
 ```
 
-188 command nodes (excluding the root), 0 aliases.
+189 command nodes (excluding the root), 0 aliases.

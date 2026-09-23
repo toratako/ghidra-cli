@@ -40,6 +40,8 @@ mod return_types;
 mod signatures;
 #[path = "types/unions.rs"]
 mod unions;
+#[path = "types/uses.rs"]
+mod uses;
 #[path = "types/variables.rs"]
 mod variables;
 

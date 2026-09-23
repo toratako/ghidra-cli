@@ -266,6 +266,10 @@ pub(super) fn execute_via_bridge(
                     client.type_list(list_limit, fetch.filter.as_deref(), fetch.offset)
                 }
                 TypeCommands::Get(args) => client.type_get(&args.name),
+                TypeCommands::Uses(args) => client.send_command(
+                    "type_uses",
+                    Some(json!({"type_name": args.type_name, "kind": args.kind, "limit": list_limit})),
+                ),
                 TypeCommands::Create(cmd) => match cmd {
                     TypeCreateCommands::Struct(args) => client.type_create(&args.name),
                     TypeCreateCommands::Union(args) => {

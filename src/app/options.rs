@@ -125,6 +125,7 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => opts.project.clone(),
             cli::TypeCommands::Get(args) => args.options.project.clone(),
+            cli::TypeCommands::Uses(args) => args.options.project.clone(),
             cli::TypeCommands::Create(cmd) => match cmd {
                 cli::TypeCreateCommands::Struct(args) => args.project.clone(),
                 cli::TypeCreateCommands::Union(args) => args.project.clone(),
@@ -318,6 +319,7 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => opts.program.clone(),
             cli::TypeCommands::Get(args) => args.options.program.clone(),
+            cli::TypeCommands::Uses(args) => args.options.program.clone(),
             cli::TypeCommands::Create(cmd) => match cmd {
                 cli::TypeCreateCommands::Struct(args) => args.program.clone(),
                 cli::TypeCreateCommands::Union(args) => args.program.clone(),
@@ -523,6 +525,7 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Type(cmd) => match cmd {
             cli::TypeCommands::List(opts) => Some(opts.clone()),
             cli::TypeCommands::Get(args) => Some((&args.options).into()),
+            cli::TypeCommands::Uses(args) => Some(args.options.clone()),
             cli::TypeCommands::Clone(args) => Some((&args.options).into()),
             cli::TypeCommands::Resize(args) => Some((&args.options).into()),
             cli::TypeCommands::Move(args) => Some((&args.options).into()),
@@ -610,6 +613,7 @@ pub(super) fn query_fetch_support(command: &Commands) -> crate::query::FetchSupp
         ) => Limit,
         Commands::Disasm(_) => Limit,
         Commands::Data(cli::DataCommands::List(_)) => Limit,
+        Commands::Type(cli::TypeCommands::Uses(_)) => Limit,
         _ => Client,
     }
 }

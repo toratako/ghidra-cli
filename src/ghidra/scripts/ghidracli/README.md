@@ -199,6 +199,7 @@ another consumer or terminate its checkout.
 | [`DataCommands`](listing/DataCommands.java) | Whole-object incoming reference counts, applied data values, interior component selection and bounded expansion |
 | [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | [`TypeDefinitionCommands`](types/TypeDefinitionCommands.java), [`TypeResizeCommands`](types/TypeResizeCommands.java), [`BitFieldCommands`](types/BitFieldCommands.java), [`BitFields`](types/BitFields.java) | Definition identity/settings, category operations, guarded size propagation, and shared explicit bitfield layouts |
+| [`TypeUsesCommands`](types/TypeUsesCommands.java) | Registered type identity, declaration wrapper paths, and applied-data/function-signature uses |
 | [`TagCommands`](function/TagCommands.java), [`TagSupport`](function/TagSupport.java), [`SymbolCommands`](symbol/SymbolCommands.java), [`CommentCommands`](symbol/CommentCommands.java), [`BookmarkCommands`](symbol/BookmarkCommands.java) | Program annotations and symbols |
 | [`NamespaceCommands`](symbol/NamespaceCommands.java), [`NamespaceSupport`](symbol/NamespaceSupport.java) | Root-relative namespace lookup, creation, and shared identity serialization |
 | [`EquateCommands`](symbol/EquateCommands.java) | Exact named constants, operand associations, and native dynamic-reference preservation |
@@ -243,6 +244,19 @@ The scan checks cancellation through defined fields and array elements; it does
 not expand implicit struct filler. Applied zero-length roots are rejected because
 Listing cannot represent their requested logical length. All failures use the
 ordinary request rollback boundary.
+
+`TypeUsesCommands` selects a registered Program type through `TypeResolver`, then
+matches manager-qualified local type IDs while following only typedef, pointer,
+and array wrappers. It reads top-level Listing data and function symbols in address
+order; the null symbol address set includes unmapped and external functions that
+`FunctionManager.getFunctions(boolean)` would miss. One row represents one data
+definition, return, or parameter. Signature `type`/`type_path` and `wrappers` describe
+the formal type; forced-indirect declarations also include `effective_type` and
+`effective_type_path`. Automatic parameters and thunk signature owners retain
+their native metadata. This request does not decompile or register types.
+`scan.complete` describes exhaustion of the selected declaration iterators,
+independently of subsequent Rust filtering and pagination. Cancellation fails the
+request instead of returning a successful partial scan.
 
 `FunctionReturnType` decompiles internal `DEFAULT` signatures before a return edit
 can lock an empty or partial input declaration. Rebuilding retains existing

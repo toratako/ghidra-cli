@@ -130,6 +130,14 @@ the instruction's numeric operand representation.
 ## Types
 
 ```bash
+ghidra-cli type uses /Recovered/Header --kind signature --filter 'role=parameter'
+ghidra-cli type uses /Recovered/Header --kind data
+```
+
+The search follows typedefs, pointers and arrays in top-level data and database
+signatures.
+
+```bash
 ghidra-cli type get Header --project target
 ghidra-cli type create struct Header --project target
 ghidra-cli type field append Header --name magic --type uint --project target

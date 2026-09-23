@@ -1,6 +1,6 @@
 use super::numeric;
 use super::options::{ObjectOptions, QueryOptions};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -9,6 +9,8 @@ pub enum TypeCommands {
     List(QueryOptions),
     /// Get type definition
     Get(TypeGetArgs),
+    /// Find a registered type in applied data and database function signatures
+    Uses(TypeUsesArgs),
     /// Create a struct, union, enum, or typedef
     #[command(subcommand)]
     Create(TypeCreateCommands),
@@ -107,6 +109,25 @@ pub struct TypeGetArgs {
     pub name: String,
     #[command(flatten)]
     pub options: ObjectOptions,
+}
+
+#[derive(ValueEnum, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TypeUseKind {
+    Data,
+    Signature,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeUsesArgs {
+    /// Registered type name or full type path; ambiguous names require a path
+    #[arg(value_name = "TYPE", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub type_name: String,
+    /// Scan only applied data or function signatures (default: both)
+    #[arg(long, value_enum)]
+    pub kind: Option<TypeUseKind>,
+    #[command(flatten)]
+    pub options: QueryOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

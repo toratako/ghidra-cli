@@ -78,6 +78,12 @@ matches for residual selection in Rust.
 `find bytes --regex` applies its native Ghidra regex before the fetch cap;
 residual selection still requests all matches.
 
+`type uses` also uses limit-only fetching. Its `--kind` selects the declaration
+iterators before matching, while row filters, sorting, offsets and counts require
+an uncapped fetch. Results keep `target_type_path`, `kinds` and `scan` as context;
+`scan.complete` concerns the database scan, not completeness of the displayed page.
+There is no total count of unvisited declarations when the scan stops at its limit.
+
 `disassemble`, with or without `--end`, and `function disassemble` also use
 this contract: no independent instruction-count window caps the input before
 filtering, sorting, offsetting, or counting. Plain limits are pushed to Java.

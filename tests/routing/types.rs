@@ -19,6 +19,177 @@ pub(super) fn category_list_fixture(args: &Value) -> Value {
     json!({"path": path, "categories": categories})
 }
 
+pub(super) fn uses_fixture(args: &Value) -> Value {
+    let mut rows = if args["type_name"] == "/Unused" {
+        vec![]
+    } else {
+        vec![
+            json!({"kind":"data", "name":"zeta", "address":"0x2000"}),
+            json!({"kind":"data", "name":"alpha", "address":"0x2040"}),
+            json!({"kind":"signature", "role":"return", "function":"process", "name":"result", "address":"0x1000"}),
+            json!({"kind":"signature", "role":"parameter", "function":"process", "name":"ctx", "address":"0x1000"}),
+        ]
+    };
+    if let Some(kind) = args["kind"].as_str() {
+        rows.retain(|row| row["kind"] == kind);
+    }
+    let count = rows.len();
+    if let Some(limit) = args["limit"].as_u64().filter(|limit| *limit != 0) {
+        rows.truncate(limit as usize);
+    }
+    let complete = rows.len() == count;
+    json!({"uses":rows, "target_type_path":args["type_name"],
+        "kinds":args["kind"].as_str().map_or(json!(["data", "signature"]), |kind| json!([kind])),
+        "scan":{"complete":complete, "stop_reason":if complete { Value::Null } else { json!("limit") }}})
+}
+
+#[test]
+fn type_uses_queries_preserve_scope_completion_and_standalone_batch_results() {
+    let outer = RecordedBridge::new();
+    let selected = RecordedBridge::new();
+    for (query, expected, fetch_limit, kind) in [
+        (
+            vec!["--limit", "1", "--fields", "name"],
+            json!([{"name":"zeta"}]),
+            json!(1),
+            Value::Null,
+        ),
+        (
+            vec![
+                "--filter",
+                "kind=signature AND role=parameter",
+                "--limit",
+                "1",
+                "--fields",
+                "name",
+            ],
+            json!([{"name":"ctx"}]),
+            Value::Null,
+            Value::Null,
+        ),
+        (
+            vec![
+                "--kind", "data", "--sort", "name", "--skip", "1", "--limit", "1", "--fields",
+                "name",
+            ],
+            json!([{"name":"zeta"}]),
+            Value::Null,
+            json!("data"),
+        ),
+        (
+            vec!["--kind", "signature", "--count"],
+            json!(2),
+            Value::Null,
+            json!("signature"),
+        ),
+        (
+            vec![
+                "--kind",
+                "signature",
+                "--skip",
+                "1",
+                "--limit",
+                "1",
+                "--count",
+            ],
+            json!(1),
+            Value::Null,
+            json!("signature"),
+        ),
+        (
+            vec!["--filter", "name=absent"],
+            json!([]),
+            Value::Null,
+            Value::Null,
+        ),
+    ] {
+        let mut standalone = Value::Null;
+        for batch in [false, true] {
+            selected.requests.lock().unwrap().clear();
+            let mut args = vec!["type", "uses", "/Widget"];
+            args.extend(query.iter().copied());
+            args.extend([
+                "--project",
+                selected.project.to_str().unwrap(),
+                "--program",
+                "B",
+            ]);
+            let output = run_envelope(&outer, &args, batch);
+            assert_eq!(output["data"], expected, "{args:?}: {output}");
+            assert_eq!(output["meta"]["target_type_path"], "/Widget");
+            assert_eq!(output["meta"]["scan"]["complete"], fetch_limit.is_null());
+            assert_eq!(
+                output["meta"]["kinds"],
+                kind.as_str()
+                    .map_or(json!(["data", "signature"]), |kind| json!([kind]))
+            );
+            if batch {
+                assert_eq!(output, standalone);
+            } else {
+                standalone = output;
+            }
+            let requests = selected.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2);
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"], json!({"program":"B"}));
+            assert_eq!(domain[1]["command"], "type_uses");
+            assert_eq!(
+                domain[1]["args"],
+                json!({"type_name":"/Widget", "kind":kind, "limit":fetch_limit})
+            );
+        }
+    }
+    let empty = run_envelope(&selected, &["type", "uses", "/Unused"], false);
+    assert_eq!(empty["data"], json!([]));
+    assert_eq!(empty["meta"]["scan"]["complete"], true);
+    for format in ["compact", "full"] {
+        let output = selected
+            .command()
+            .args([
+                "type", "uses", "/Widget", "--limit", "1", "--format", format,
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            text.contains("Type uses: /Widget (data, signature)"),
+            "{text}"
+        );
+        assert!(text.contains("Scan stopped at the result limit"), "{text}");
+    }
+    let ndjson = selected
+        .command()
+        .args([
+            "type",
+            "uses",
+            "/Widget",
+            "--kind",
+            "signature",
+            "--limit",
+            "0",
+            "--format",
+            "ndjson",
+            "--fields",
+            "name",
+        ])
+        .output()
+        .unwrap();
+    assert!(ndjson.status.success(), "{ndjson:?}");
+    assert_eq!(
+        String::from_utf8(ndjson.stdout)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>(),
+        vec![json!({"name":"result"}), json!({"name":"ctx"})]
+    );
+}
+
 fn run_envelope(bridge: &RecordedBridge, args: &[&str], batch: bool) -> Value {
     let output = if batch {
         std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(args)).unwrap();

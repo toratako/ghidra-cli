@@ -185,6 +185,36 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
         _ if result.is_count => Ok(serde_json::to_string(&result.data)?),
         OutputFormat::Compact | OutputFormat::Full => {
             let mut text = DefaultFormatter.format(result.rows(), format)?;
+            if let Some(path) = result
+                .meta
+                .get("target_type_path")
+                .and_then(serde_json::Value::as_str)
+            {
+                let kinds = result
+                    .meta
+                    .get("kinds")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                text = format!("Type uses: {path} ({kinds})\n{text}");
+                if result
+                    .meta
+                    .get("scan")
+                    .and_then(|scan| scan.get("complete"))
+                    == Some(&serde_json::Value::Bool(false))
+                {
+                    if !text.ends_with('\n') {
+                        text.push('\n');
+                    }
+                    text.push_str("Scan stopped at the result limit; use --limit 0 to scan all declarations.\n");
+                }
+            }
             if let Some(excluded) = result
                 .meta
                 .get("unsupported_mappings")

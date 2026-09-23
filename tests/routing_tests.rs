@@ -520,6 +520,7 @@ impl RecordedBridge {
                         json!({"id": "9007199254740993", "name": "Widget", "path": args["path"], "parent": "app", "kind": "class"})
                     }
                     "type_category_list" => types::category_list_fixture(args),
+                    "type_uses" => types::uses_fixture(args),
                     "type_clone"
                     | "type_resize"
                     | "type_move"

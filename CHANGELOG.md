@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add `type uses TYPE` to find registered types in applied data and database
+  function signatures, following typedefs, pointers, and arrays. Results retain
+  declaration paths, ABI and thunk provenance, and scan completion.
+
 ### Removed
 
 - Remove `ghidra-cli setup`. Install Ghidra and a compatible full JDK separately;
