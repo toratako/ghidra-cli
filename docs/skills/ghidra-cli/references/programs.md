@@ -37,9 +37,7 @@ ghidra-cli project restore ./target-20260922.gar target-copy --projects-dir ./re
 ```
 
 Archive waits for accepted work, saves pending edits, and leaves the bridge
-stopped. After a save failure, recover the live session before retrying.
-Use a fresh archive filename and a new restoration target; neither is overwritten.
-Restore creates the project without running analysis or selecting a Program.
+stopped. Use a fresh archive filename and a new restoration target.
 Archive publication requires hard-link support on the destination filesystem;
 if unavailable, create the GAR on a local filesystem and copy it afterward.
 
@@ -47,8 +45,6 @@ GAR carries local project contents, not GUI state, CLI configuration, or externa
 files. Inspect `external_dependencies.links` when moving projects: link targets
 are preserved, not bundled or rewritten. The scan covers project links only;
 `complete: false` means link inspection was unavailable for this Ghidra version.
-On failure, `bridge_state`, `published`, and any `remaining_paths` distinguish
-stopped sessions, completed publication, and cleanup that needs attention.
 
 ## External symbols and entry points
 
@@ -77,8 +73,6 @@ For enum options, select a constant from `choices`. Analyzer enablement is a
 boolean option, e.g. `analysis option set "ASCII Strings" false`.
 Setting options does not run analysis.
 
-Choose the analysis scope for the work you need to revisit:
-
 ```bash
 # Revisit a known region, including analysis triggered by its references.
 ghidra-cli analysis run --start 0x401000 --end 0x401fff --project target
@@ -94,12 +88,9 @@ not clear existing instructions; repair wrong decoding with
 `--pending` uses Ghidra's live queue, not a saved history of edits. Cancelling
 analysis, closing the program, and restarting the bridge discard queued work.
 After any of those, or after changing analyzer settings, request a range or full
-analysis to revisit the relevant code. An empty pending queue does not trigger
-full analysis.
+analysis to revisit the relevant code.
 The `analyzed` flag in `program list` records a completed full analysis, not
 whether subsequent edits have been analyzed; range/pending runs do not set it.
-Analysis can save partial changes on cancellation or failure. For save failures,
-use [save recovery](../SKILL.md#results-edits-and-jobs) before running analysis again.
 
 `program import INPUT --name NAME` saves under that project file name; omitting it
 uses the input file name, including a symlink's name rather than its target's
@@ -152,17 +143,14 @@ When the language and layout are correct but the load position is wrong:
 ghidra-cli program rebase 0x80000000 --project firmware --program firmware.bin
 ```
 
-The argument is the absolute new image base, not a displacement or the new
-address of the first memory block. Default-space blocks and their associated
-Program addresses move by the same displacement, including any MMIO blocks
-in that space. Overlays and other address spaces stay in place; inspect the
-returned block ranges before continuing address-based work.
+The argument is the absolute image base, which can differ from the first block's
+address. Default-space blocks and associated Program addresses move together,
+including MMIO. Overlays and other address spaces stay in place.
 
-Rebase leaves bytes unchanged, including embedded absolute pointers and
-immediates, and does not reapply loader relocations. Inspect affected pointers
-and references afterward. It does not run analysis; request reanalysis separately
-when needed. If correctness depends on the loader applying relocations again,
-use a separate import with the appropriate loader settings.
+Rebase leaves pointer and immediate bytes unchanged and does not run analysis
+or reapply loader relocations. Inspect affected pointers and references; if
+correctness depends on the loader applying relocations again, use a separate
+import with the appropriate loader settings.
 
 ## Export
 

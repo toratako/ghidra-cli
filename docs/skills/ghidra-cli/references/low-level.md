@@ -58,8 +58,7 @@ For headerless input, first choose the language and load parameters using
 
 ## Function bodies
 
-Use `function get` to inspect `body_ranges`, then replace the whole body when
-analysis assigned the wrong ranges:
+Inspect `body_ranges` with `function get` before replacing the whole body:
 
 ```bash
 ghidra-cli function get parse_header --project target
@@ -67,16 +66,14 @@ ghidra-cli function set-body parse_header \
   --range 0x401000 0x40107f --range 0x402000 0x40201f --project target
 ```
 
-The repeated inclusive ranges form a union; gaps remain outside the function.
 Keep the entry point, include complete instructions, and resolve ownership by
 other functions before extending the body. This changes body membership without
 creating instructions or merging functions.
 
 Shrinking a body can delete its local labels and stack/register references, and
-detach variable references in the removed region. The receipt reports observed
-losses. Restoring the old ranges does not restore those annotations. Saved
-call-site overrides can survive outside the new body; inspect or clear them with
-`function call-signature get/clear` using the original caller.
+detach variable references in the removed region. Restoring the old ranges does
+not restore those annotations. For overrides left outside the body, see
+[call-site prototypes](refinement.md#one-call-sites-prototype).
 
 ## Instruction flow
 
@@ -89,36 +86,32 @@ ghidra-cli listing flow set 0x401234 --fallthrough 0x401240 --project target
 ghidra-cli listing flow clear 0x401234 --override --fallthrough --project target
 ```
 
-Targets must be instruction starts. An explicit fallthrough destination must
-already be an instruction start in the same address space; use
-`listing define-code` first if it is undefined. Flow override and fallthrough
-are independent: setting one preserves the other. `--no-fallthrough` removes
-the successor, while `clear --fallthrough` restores the default successor.
+An explicit fallthrough must name an existing instruction start in the same
+address space; use `listing define-code` first if it is undefined. Flow override
+and fallthrough are independent; `clear --fallthrough` restores the default
+successor.
 
 `--no-fallthrough` can remove the Listing successor while decompiled C still
 continues after the call. To represent a caller returning after that call, use
 `--override call-return` and inspect `decompile`. Use `function set-noreturn`
 when the callee itself never returns.
 
-Flow edits can change reference types and graph/decompiler output, even though
-bytes stay the same. Inspect `listing flow get` and re-decompile; full analysis
-remains a separate `analysis run` operation.
+Flow edits can change reference types. Re-decompile to inspect their effect;
+full analysis remains a separate `analysis run` operation.
 
 ## Processor context
 
 Processor context controls how Ghidra decodes an address range. For example,
-`TMode=1` selects Thumb in an ARM language; it is not a runtime register edit.
-Inspect the selected language's registers and the affected range first:
+`TMode=1` selects Thumb in an ARM language:
 
 ```bash
 ghidra-cli program context list --project target
 ghidra-cli program context get TMode 0x1000 --end 0x101f --project target
 ```
 
-Readings distinguish `stored`, `default`, and `effective` values. A value's mask
-identifies known bits; unset bits are unknown, not zero. `clear` removes recorded
-values in the range, including values established by decoding or analysis. It
-does not undo the last `set`, and defaults can remain effective afterward.
+A context mask identifies known bits; unset bits are unknown, not zero.
+`clear` removes stored values, including those established by decoding or
+analysis; it does not undo the last `set`. Defaults can remain effective afterward.
 
 Context edits do not replace instructions or run analysis. Ghidra can reject a
 context change across existing instructions. To correct a misdecoded region,
@@ -131,10 +124,9 @@ ghidra-cli listing define-code 0x1000 --end 0x101f --project target
 ghidra-cli disassemble 0x1000 --end 0x101f --project target
 ```
 
-Each command saves separately; failure later in this sequence does not restore
-the definitions cleared by `listing undefine`. To remove a recorded override,
-use `program context clear TMode 0x1000 --end 0x101f --project target`, then
-inspect the effective value before decoding again.
+To remove stored context, use
+`program context clear TMode 0x1000 --end 0x101f --project target`, then inspect
+the effective value before decoding again.
 
 ## PCode and analyzer control
 
@@ -142,20 +134,15 @@ inspect the effective value before decoding again.
 ghidra-cli pcode at 0x401000 --project target
 ghidra-cli pcode function parse_header --project target
 ghidra-cli pcode function parse_header --high --project target
-ghidra-cli analysis option list --project target
-ghidra-cli analysis option set "ASCII Strings" false --project target
-ghidra-cli analysis option set "ASCII Strings" true --project target
-ghidra-cli analysis run --project target --program target.bin
 ```
 
 Raw `pcode at` and `pcode function` omit instruction flow overrides. High PCode
 comes through the decompiler and can therefore differ after a flow edit.
 
-High PCode connects operations to distinct values and their definition/use slots.
-Use value IDs to distinguish assignments sharing a register or stack location;
+High PCode value IDs distinguish assignments sharing a register or stack location;
 names and storage alone do not identify a value. IDs belong to one `result_id`,
-including block and symbol IDs. The High CFG reflects decompiler optimization
-and can differ from the instruction CFG returned by `graph cfg`.
+including block and symbol IDs. The High CFG reflects decompiler optimization;
+use `graph cfg` for instruction control flow.
 
 For `MULTIEQUAL`, input slots correspond to incoming High CFG edge indices.
 Special inputs such as `INDIRECT`'s operation reference are not ordinary value
@@ -176,21 +163,19 @@ ghidra-cli memory block create .bank1_data bank1:0x4000 256 --uninitialized --pe
 ghidra-cli memory block move ram:0x20000000 ram:0x21000000
 ```
 
-Uninitialized RAM/MMIO represents unknown values; `--fill` creates actual bytes.
-MMIO volatility and permissions guide analysis but do not emulate device behavior.
-`memory write` requires initialized memory, so choose fill when populating known
-bytes after creation.
+Use uninitialized memory for unknown RAM/MMIO values, or `--fill` to allow later
+`memory write` calls. MMIO volatility and permissions guide analysis but do not
+emulate device behavior.
 
 Block edits select the exact start returned by `memory map`. Preserve the address
-space qualifier; block names need not be unique. Overlay names identify separate
-address spaces, and renaming a block leaves its space name intact.
+space qualifier; block names need not be unique. Renaming an overlay block leaves
+its address-space name intact.
 
 Moving one block leaves the image base unchanged and does not fix embedded
 pointer values. Inspect outside incoming references afterward: native move/delete
 can leave them targeting the old address. Deleting a block also removes analysis
 in its range and can remove a whole function whose body crosses that range.
-Use `memory map`, `memory info`, and xrefs to check the result before choosing
-whether to run analysis. For whole-image relocation, use `program rebase`.
+For whole-image relocation, use `program rebase`.
 
 ## Patching
 

@@ -33,27 +33,21 @@ signature owner can differ; signature edits affect the final owner.
 is neither runtime stack usage nor stack purge; its owner identifies whose frame
 is shown when inspecting a thunk.
 
-`function var list/get` read the decompiler's locals and parameters, including
-inferred variables that have no saved definition. `get` separates that view from
-the saved definition; `set` reports database changes separately from the selected
-decompiler variable. Renaming an inferred local saves an undefined type so the
-decompiler continues inferring it. Editing an inferred parameter can save the
-other inferred parameters, including their types and storage; inspect
+Renaming an inferred local saves an undefined type so the decompiler continues
+inferring it. Editing an inferred parameter can save the other inferred
+parameters, including their types and storage; inspect
 `function get --with-signature` afterward.
 
-`--var` selects the current exact name. If it is ambiguous, narrow the returned
-candidates with `--filter`, using their kind, storage, ordinal, or first use.
-The edit requires exactly one match after filtering; re-read candidates if
-decompilation changes their identity. For example:
+Disambiguate `--var` names with `--filter`; re-read candidates if decompilation
+changes their identity:
 
 ```bash
 ghidra-cli function var set parse_header --var value \
   --filter 'kind=local AND first_use=0x00401234' --name length --project target
 ```
 
-Automatic `this` parameters derive their type from the class namespace and
-calling convention. Inspect those before trying to edit `this` as an ordinary
-parameter; class membership changes can affect the native type.
+Automatic `this` parameters derive their type from the [class namespace](#symbols)
+and calling convention.
 
 ### One call site's prototype
 
@@ -70,13 +64,12 @@ ghidra-cli function call-signature clear dispatch --at 0x401234 --project target
 
 The function target is the caller, and `--at` is the call instruction's start.
 The signature's function name does not rename or resolve its destination.
-Choose `--convention` from `function list-calling-conventions`; omission uses the
-Program default rather than inheriting a callee or decompiler guess.
+Omitting `--convention` uses the Program default rather than a callee or
+decompiler guess.
 
-`get` reads the saved override. An absent override does not mean the decompiler
-has no inferred prototype. After patching or changing the body, an override may
-remain saved for a call that no longer exists; inspect its applicability and use
-`clear` with the original caller and address to remove it.
+An absent override does not mean the decompiler has no inferred prototype.
+Saved overrides can outlive a patched call or body change; inspect their
+applicability with `get` and use `clear` with the original caller and address.
 
 ## Comments
 
@@ -99,8 +92,8 @@ ghidra-cli bookmark list --filter 'category=Review'
 ghidra-cli bookmark delete 0x401000 --category Review
 ```
 
-Each address can have several bookmarks. Type and category select one;
-deleting a `Note` in `Review` leaves analysis-error bookmarks at that address.
+Bookmark type and category select one bookmark at an address; deleting a `Note`
+in `Review` leaves analysis-error bookmarks there.
 
 ## Symbols
 
@@ -118,9 +111,8 @@ Ambiguous symbol rename/delete requires `--address` or `--filter`, or explicit
 `symbol get` accepts names or addresses.
 
 Namespace paths start at global scope, such as `app::Widget`. Moving a function
-into a class can change its native `this` parameter/type; inspect the returned
-function changes before continuing type recovery. A class namespace does not
-describe member layout or inheritance. Deleting a namespace through
+into a class can change its native `this` parameter/type. A class namespace does
+not describe member layout or inheritance. Deleting a namespace through
 `symbol delete` can also delete its children.
 
 ## References
@@ -152,8 +144,7 @@ ghidra-cli equate get READ_MODE
 ghidra-cli equate detach 0x401234 READ_MODE --operand 1
 ```
 
-The definition does not replace every occurrence of its value. `attach` selects
-one matching scalar operand; ambiguous matches fail without changing annotations.
+`attach` annotates one matching scalar operand, not every occurrence of the value.
 `detach` preserves the definition and its other uses; `delete` removes the
 definition and all its uses. Existing decompiler-specific references can have
 `operand_selectable: false`; an operand index cannot identify those uses safely.
@@ -217,13 +208,12 @@ ghidra-cli type move /Draft/HeaderV2 /Recovered
 
 Clone separates only the top-level definition. Referenced types remain shared;
 cloning `Node` to `NodeV2` leaves `next` pointing to `Node *`. Retarget that field
-explicitly when needed; packed structures do not support field type replacement.
-Clone and move require an existing destination category and reject name conflicts.
+explicitly when needed.
 
 Resize adjusts the undefined tail of a non-packed structure. It cannot remove
 defined fields, including explicit padding arrays. Size changes propagate to
-containing types and applied data; edits that cannot fit completely fail. Use
-an unapplied clone when experimenting with a layout that cannot fit existing uses.
+containing types and applied data. Use an unapplied clone when experimenting
+with a layout that cannot fit existing uses.
 
 ### Recovering unions
 
@@ -289,8 +279,8 @@ Use the returned component range and `bit_offset` when decoding its value.
 
 Width edits stay within that current minimal range, even if creation specified
 a larger storage size. Select bitfields by real name or a fresh ordinal because
-several fields can share one byte. Clear removes only the selected field and
-retains its neighbors. For ABI-driven packing, use a C declaration with `import-c`.
+several fields can share one byte. For ABI-driven packing, use a C declaration
+with `import-c`.
 
 ## Function tags
 

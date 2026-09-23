@@ -31,16 +31,14 @@ Use `graph cfg` to choose instruction ranges around a branch or join, including
 unreachable instructions recorded in the function body:
 
 ```bash
-ghidra-cli graph cfg parse_header --project target
 ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target
 ```
 
 CFG blocks retain their native boundaries; `body_intersection` shows which part
 belongs to the function. Inspect `calls` separately from successor `edges`, and
-`boundaries` for unresolved transfers and body crossings. An unknown destination
-is different from one omitted by an output budget. If `completion.output.complete`
-is false, raise the indicated budget before treating missing edges as absent.
-Output budgets do not limit native analysis time; use job control for long work.
+`boundaries` for unresolved transfers and body crossings. Raise the output budgets
+for an incomplete graph before treating missing edges as absent; these budgets
+do not limit native analysis time.
 
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
@@ -130,8 +128,7 @@ ghidra-cli data read packet_header --max-depth 3 --max-elements 100 --project ta
 ```
 
 `incoming_reference_count` counts Ghidra's recorded references to any address
-inside the object, including fields and array elements. It counts references,
-not distinct callers; unresolved indirect accesses are absent.
+inside the object, including fields and array elements, rather than just its start.
 
 `data read` interprets current memory using its applied type. Interior targets
 select a containing component and retain its `parents`; overlapping union
@@ -142,13 +139,12 @@ to compare current memory with preserved import bytes before relocations or
 patches. This requires a file mapping for the whole range; it does not reopen
 the executable on disk or decode original bytes as current-memory pointers.
 
-`memory file-mappings` relates preserved input-file ranges to their current
-memory placement. `--file-offset` uses the original file's byte offset and can
-match several placements, including overlays. To select one saved input, pass
+`memory file-mappings --file-offset` can match several placements of the same
+input bytes, including overlays. To select one saved input, pass
 `--source-at` an address mapped from it; `source_at` in the results is a reusable
 anchor until the layout changes. Filenames alone do not distinguish saved inputs.
-Inspect `meta.unsupported_mappings`: excluded indirect mappings mean that an
-empty result proves only the absence of a direct mapping.
+Indirect mappings are excluded and reported in `meta.unsupported_mappings`;
+an empty result proves only the absence of a direct mapping.
 
 For changing RAM/MMIO or overlays, see [memory layout](low-level.md#memory-layout);
 for byte edits, see [patching](low-level.md#patching).
