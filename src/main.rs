@@ -10,7 +10,7 @@ mod ipc;
 mod query;
 mod terminal;
 
-use app::{handle_management_command, run_command, run_setup};
+use app::{handle_management_command, run_command};
 use clap::Parser;
 use cli::{Cli, Commands};
 use serde_json::Value;
@@ -72,14 +72,6 @@ fn main() {
     let output = app::Output::new(&cli);
 
     let result = match &cli.command {
-        Commands::Setup(_) => {
-            // Setup needs async for downloading
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(run_setup(cli))
-        }
         Commands::Bridge(_) | Commands::Job(_) => handle_management_command(cli),
         _ => run_command(cli),
     };

@@ -10,19 +10,22 @@ bridge per project keeps analysis state in Ghidra's JVM between commands.
 
 ## Install
 
-Requires a stable Rust toolchain and a full JDK compatible with your Ghidra
-version (JDK 21 for Ghidra 12.x).
+Install [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) and a
+compatible full JDK (JDK 21 for Ghidra 12.x) separately. Building the CLI requires
+a stable Rust toolchain. See [runtime installation](docs/runtime.md#installation)
+for platform-specific requirements.
 
 ```bash
 git clone https://github.com/toratako/ghidra-cli
 cd ghidra-cli
 cargo install --path .
-ghidra-cli setup
 ghidra-cli doctor
 ```
 
-For an existing Ghidra installation, set `GHIDRA_INSTALL_DIR` instead of running
-`ghidra-cli setup`.
+Ghidra is detected from PATH and known installation locations. If it is not
+found, set `GHIDRA_INSTALL_DIR` or run
+`ghidra-cli config set ghidra_install_dir /path/to/ghidra`, then rerun `doctor`.
+Use `ghidra-cli doctor --runtime` to also verify bridge startup.
 
 ## Usage
 

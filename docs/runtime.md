@@ -2,12 +2,12 @@
 
 ## Installation
 
-Follow [the install steps](../README.md#install) using `ghidra-cli setup` or an
-existing Ghidra 11+ installation. A full JDK is required (`javac` and
+Install Ghidra 11+ separately through your package manager or extract an
+[official release](https://github.com/NationalSecurityAgency/ghidra/releases),
+then follow [the CLI install steps](../README.md#install).
+A full JDK is required (`javac` and
 `jdk.compiler`, not a JRE); Ghidra 12.x requires JDK 21 (older releases accept
 JDK 17). The CLI selects a suitable JDK automatically; `--java-home` overrides it.
-Use `setup --skip-java-check` to install Ghidra before a JDK is available;
-running Ghidra still requires a suitable full JDK.
 On macOS, build Ghidra's native components after extracting a release; the
 archive does not include the macOS decompiler. Follow Ghidra's
 [native build instructions](https://github.com/NationalSecurityAgency/ghidra/blob/Ghidra_12.1.3_build/GhidraDocs/GettingStarted.md#building-native-components)
@@ -26,17 +26,11 @@ project directory, starts and pings the real bridge, then stops it and removes
 the project. It uses the actual environment and settings/cache locations; it may
 populate Ghidra's normal caches. If shutdown fails, it retains the diagnostic
 project and reports its location. Prerequisite failures prevent the runtime probe.
-Setup downloads and extracts into private staging, validates the installation,
-and publishes it only when complete. It reuses a valid existing installation and
-refuses an incomplete existing destination; inspect that directory before moving
-or removing it and retrying. Saved installation paths are absolute.
-Setup preserves archive file modification times: Ghidra uses them to decide
-whether compiled `.sla` language definitions need rebuilding. Older CLI versions
-discarded these times, which can trigger unnecessary recompilation on import.
-To replace an affected installation, stop its running bridges and install the
-same Ghidra release into a new directory with `setup --version VERSION --dir DIR`.
-Setup selects the new installation in config; update `GHIDRA_INSTALL_DIR` too if
-it is set. Reusing the old directory does not repair its file times.
+Preserve file modification times when extracting a release: Ghidra compares
+compiled `.sla` language definitions with their sources, and incorrect times can
+trigger unnecessary recompilation on import. To repair an affected installation,
+stop its bridges, extract a fresh copy into a new directory, and select that path
+with `GHIDRA_INSTALL_DIR` or `config set ghidra_install_dir PATH`.
 
 ## Project configuration
 
@@ -57,7 +51,7 @@ through their PATH symlinks. Multiple distinct installations at the same priorit
 are an error: select one with `config set ghidra_install_dir PATH` (or fix an
 existing environment override). Detection does not choose the newest version or
 save its result. Arbitrary ZIP extraction locations require PATH or an explicit
-setting; the filesystem and setup's installation directory are not searched.
+setting; arbitrary filesystem locations are not searched.
 See the [installation implementation and layout sources](../src/ghidra/README.md#installation-selection).
 
 Set a persistent JDK with `ghidra-cli config set java_home /opt/jdk-21`.

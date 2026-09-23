@@ -2,7 +2,6 @@ pub mod bridge;
 pub mod installation;
 pub mod java;
 pub(crate) mod project;
-pub mod setup;
 
 use crate::config::Config;
 use crate::error::Result;

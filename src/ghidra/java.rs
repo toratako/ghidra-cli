@@ -270,22 +270,6 @@ fn pick_better_failure(a: JavaStatus, b: JavaStatus) -> JavaStatus {
     }
 }
 
-/// Human-readable explanation of a non-`Ok` [`JavaStatus`].
-pub fn describe_failure(status: &JavaStatus) -> String {
-    match status {
-        JavaStatus::Ok(info) => format!("JDK {} at {}", info.major, info.home.display()),
-        JavaStatus::JreNoCompiler { home, major } => format!(
-            "Java {major} at {} is a JRE (no javac / jdk.compiler). Ghidra needs a full JDK.",
-            home.display()
-        ),
-        JavaStatus::WrongVersion { home, major, min } => format!(
-            "JDK {major} at {} is below the required JDK {min}+.",
-            home.display()
-        ),
-        JavaStatus::NotFound => "No Java found on PATH or in common JDK locations.".to_string(),
-    }
-}
-
 /// Convenience: resolve the JDK for a given Ghidra install, folding in the
 /// explicit override from env/config. Returns `Ok(JdkInfo)` or a human-readable
 /// error describing exactly what's wrong and how to fix it.
@@ -319,6 +303,12 @@ pub fn resolve_for_ghidra(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ghidra_min_java_defaults_without_installation_properties() {
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(ghidra_min_java(root.path()), DEFAULT_MIN_JAVA);
+    }
 
     #[test]
     fn java_home_uses_a_launcher_compatible_path() {

@@ -1,6 +1,6 @@
 # CLI Application (`src/app/`)
 
-`src/main.rs` owns parsing, environment overrides, logging, setup's async runtime,
+`src/main.rs` owns parsing, environment overrides, logging,
 and error/exit reporting; these private modules own workflows. `src/cli.rs` owns
 the command tree and re-exports family arguments/query options from `src/cli/`.
 The library exposes that same definition to `xtask` for documentation generation.
@@ -23,7 +23,7 @@ and target checks in `src/cli/tests.rs`.
 | `result.rs` | Declare command result shapes, retain context/page metadata, and apply queries to produce the common result value |
 | `output.rs` | Render common results for standalone/batch/management output and route C-only decompiler diagnostics to stderr |
 | `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
-| `installation.rs` | Setup and doctor commands |
+| `installation.rs` | Doctor command |
 | `local.rs` | Configuration and project commands |
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
 
@@ -137,7 +137,7 @@ Management output uses the same preparation and preserves its text rendering.
 `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.
 A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
-wait timeouts exit 75, setup verification/doctor failures exit 1. Human-readable
+wait timeouts exit 75, doctor failures exit 1. Human-readable
 errors state when changes were rolled back or partial changes were saved without
 requiring verbose mode; JSON errors retain the structured detail flags.
 

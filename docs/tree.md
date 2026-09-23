@@ -194,11 +194,10 @@ ghidra-cli
 │   ├── restart
 │   ├── status
 │   └── ping
-├── job
-│   ├── list
-│   ├── get
-│   └── cancel
-└── setup
+└── job
+    ├── list
+    ├── get
+    └── cancel
 ```
 
-189 command nodes (excluding the root), 0 aliases.
+188 command nodes (excluding the root), 0 aliases.

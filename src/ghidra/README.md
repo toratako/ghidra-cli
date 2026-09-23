@@ -10,7 +10,6 @@
 | `bridge/headless.rs` | Private launcher discovery, Java environment selection, and compile diagnostics |
 | `bridge/sources.rs` | Embedded Java source inventory, complete bundle publication, and diagnostic source staging |
 | `installation.rs` | Installation resolution, shared file validation, diagnostics, and cited package layouts |
-| `setup.rs` | Ghidra download, installation with archive file times preserved, Java version check |
 | `mod.rs` | Module root, `GhidraClient` for project/installation operations |
 | `project.rs` | Project descriptor/data paths, persisted-data checks, and project-name enumeration |
 | `scripts/GhidraCliBridge.java` | GhidraScript entry point and access to inherited script state |
@@ -23,8 +22,8 @@ their process and stream lifetimes separately.
 
 `installation::resolve` selects a validated installation with its canonical path,
 version, and source. Config lookup delegates to it; doctor resolves once and uses
-that same installation for compilation and its runtime probe. Setup publication
-and launcher lookup share `installation::inspect` to reject incomplete trees.
+that same installation for compilation and its runtime probe. Launcher lookup
+also uses `installation::inspect` to reject incomplete trees.
 Validation checks the platform launcher, `Ghidra/application.properties`,
 `Utility.jar`, and `LaunchSupport.jar`; it accepts distro release names such as
 `DEV` and `NIX`. JVM/native compatibility remains doctor's responsibility.

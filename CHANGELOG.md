@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- Remove `ghidra-cli setup`. Install Ghidra and a compatible full JDK separately;
+  select the installation through automatic detection, `GHIDRA_INSTALL_DIR`, or
+  `config set ghidra_install_dir`, and verify it with `doctor --runtime`.
+
 ### Changed
 
 - Accept decimal and `0x`-prefixed hexadecimal integer arguments consistently;

@@ -1,82 +1,8 @@
 use super::output::Output;
 use super::project::load_config;
-use crate::cli::{Cli, Commands};
-use crate::config::Config;
 use crate::ghidra;
 use serde_json::json;
 use std::path::PathBuf;
-
-/// Handle the setup command - download and install Ghidra.
-pub(crate) async fn run_setup(cli: Cli) -> anyhow::Result<()> {
-    let output = Output::new(&cli);
-    let args = match cli.command {
-        Commands::Setup(args) => args,
-        _ => unreachable!(),
-    };
-
-    output.progress("Ghidra Setup Wizard");
-
-    // 1. Check Java — Ghidra needs a full JDK (not a JRE) to compile scripts.
-    if !args.skip_java_check {
-        let explicit = Config::load().ok().and_then(|c| c.get_java_home());
-        match ghidra::java::resolve_jdk(explicit.as_deref(), ghidra::java::DEFAULT_MIN_JAVA) {
-            ghidra::java::JavaStatus::Ok(info) => {
-                output.progress(&format!(
-                    "JDK {} found at {} (via {})",
-                    info.major,
-                    info.home.display(),
-                    info.source
-                ));
-            }
-            other => {
-                anyhow::bail!(
-                    "Java prerequisite check failed: {}. Use --skip-java-check to continue installation without checking Java.",
-                    ghidra::java::describe_failure(&other)
-                );
-            }
-        }
-    } else {
-        output.progress("Skipping Java check (--skip-java-check specified)");
-    }
-
-    // 2. Determine Install Directory
-    let install_base = if let Some(d) = args.dir {
-        PathBuf::from(d)
-    } else {
-        dirs::data_local_dir()
-            .ok_or(anyhow::anyhow!("Could not determine data directory"))?
-            .join("ghidra-cli")
-            .join("ghidra")
-    };
-
-    std::fs::create_dir_all(&install_base)?;
-
-    // 3. Install Ghidra
-    output.progress(&format!("Installing to: {}", install_base.display()));
-    let final_path =
-        ghidra::setup::install_ghidra(args.version, install_base, output.quiet || output.json)
-            .await?;
-
-    // Verify before publishing the selected path to configuration.
-    output.progress("Verifying installation...");
-    verify_setup(&final_path)?;
-    Config::update(|config| {
-        config.ghidra_install_dir = Some(final_path.clone());
-        Ok(())
-    })?;
-    output.result(
-        &json!({"installed": true, "path": final_path, "config_path": Config::config_path()?}),
-        &format!(
-            "Ghidra installed at: {}\nConfiguration updated. Verification passed!",
-            final_path.display()
-        ),
-    )
-}
-
-fn verify_setup(path: &std::path::Path) -> anyhow::Result<()> {
-    ghidra::bridge::find_headless_script(path).map(|_| ()).map_err(|err|
-        anyhow::anyhow!("Installation verification failed: {err}. The installation may be incomplete; rerun 'ghidra-cli setup'."))
-}
 
 pub(super) fn handle_doctor(
     projects_dir: &Option<PathBuf>,
@@ -279,16 +205,4 @@ pub(super) fn handle_doctor(
         failures.join("; ")
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn setup_verification_rejects_missing_launcher() {
-        let temp = tempfile::tempdir().unwrap();
-        let error = verify_setup(temp.path()).unwrap_err().to_string();
-        assert!(error.contains("verification failed"), "{error}");
-    }
 }

@@ -76,7 +76,7 @@ impl fmt::Display for DetectionError {
                 check.message
             )?;
         }
-        f.write_str("\nSet GHIDRA_INSTALL_DIR or use 'ghidra-cli config set ghidra_install_dir PATH' to select an installation. Use 'ghidra-cli setup' to install Ghidra.")
+        f.write_str("\nSet GHIDRA_INSTALL_DIR or use 'ghidra-cli config set ghidra_install_dir PATH' to select an existing Ghidra installation.")
     }
 }
 

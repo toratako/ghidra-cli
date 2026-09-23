@@ -1,4 +1,4 @@
-use clap::{Args, Subcommand};
+use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
@@ -20,20 +20,4 @@ pub enum ConfigCommands {
     },
     /// Reset configuration
     Reset,
-}
-
-/// Arguments for the setup command
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct SetupArgs {
-    /// Ghidra release number to install (e.g., "11.0" or "11.0.1"). Defaults to latest.
-    #[arg(long)]
-    pub version: Option<String>,
-
-    /// Installation directory. Defaults to standard data directory.
-    #[arg(long, short = 'd')]
-    pub dir: Option<String>,
-
-    /// Skip the Java prerequisite check during installation
-    #[arg(long)]
-    pub skip_java_check: bool,
 }

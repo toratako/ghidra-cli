@@ -15,7 +15,6 @@ use crate::ipc::client::BridgeClient;
 use crate::query::{Page, Query, QueryPlan};
 use execute::execute_via_bridge;
 use installation::handle_doctor;
-pub(super) use installation::run_setup;
 use local::{handle_config_command, handle_project_command};
 pub(super) use management::handle_management_command;
 use management::handle_program_save;

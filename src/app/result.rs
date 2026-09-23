@@ -108,8 +108,7 @@ impl ResultShape {
             | Commands::Config(_)
             | Commands::Doctor { .. }
             | Commands::Bridge(_)
-            | Commands::Job(_)
-            | Commands::Setup(_) => Self::Value,
+            | Commands::Job(_) => Self::Value,
         }
     }
 

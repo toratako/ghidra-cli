@@ -188,9 +188,6 @@ pub enum Commands {
     /// Inspect and cancel bridge jobs
     #[command(subcommand)]
     Job(JobCommands),
-
-    /// Download and setup Ghidra automatically
-    Setup(SetupArgs),
 }
 
 #[cfg(test)]

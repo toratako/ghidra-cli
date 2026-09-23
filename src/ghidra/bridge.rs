@@ -19,7 +19,7 @@ mod headless;
 mod import;
 mod sources;
 mod startup;
-pub use headless::{compile_check, find_headless_script};
+pub use headless::compile_check;
 pub use import::{import_oneshot, OneShotImportOptions};
 
 /// Which program, if any, the bridge opens before reporting readiness.
