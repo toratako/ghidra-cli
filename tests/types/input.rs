@@ -87,10 +87,9 @@ public class ApplyImportRollbackFixture extends GhidraScript {
     before.assert_success();
     let before: serde_json::Value = before.data();
 
-    // Both syntax and lexical failures follow a valid prefix that replaces
-    // Existing. The parser commits its nested transaction even on failure, so
-    // only the request boundary can restore all changes. The unterminated
-    // comment throws TokenMgrError rather than an Exception.
+    // Both syntax and lexical failures follow valid replacement declarations.
+    // They must leave the live definitions and their uses untouched. The
+    // unterminated comment throws TokenMgrError rather than an Exception.
     for invalid_suffix in ["struct Broken { int value[; };", "/* unterminated comment"] {
         let code = format!(
             "struct Existing {{ long long changed; }}; struct Fresh {{ int marker; }}; {invalid_suffix}"
@@ -141,6 +140,87 @@ public class CheckImportRollbackFixture extends GhidraScript {
 }
 "#,
                     &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
+        }
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn type_import_category_preserves_root_types_and_users_after_reopen() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let root_code = "typedef int Scalar; \
+        struct Item { int original; struct { int inner; } nested; }; \
+        typedef struct Item ItemAlias; typedef struct Item ExistingAlias; \
+        struct Holder { struct Item item; }; \
+        typedef int (*Callback)(struct Item *);";
+    type_command(&program, &["import-c", root_code]).assert_success();
+    let client = harness().client().unwrap();
+    let fixture = include_str!("CheckImportCategory.java");
+    client
+        .script_run_source(fixture, &["setup".to_string()], &[], false)
+        .unwrap();
+
+    let paths = [
+        "/Item",
+        "/ItemAlias",
+        "/ExistingAlias",
+        "/Holder",
+        "/Scalar",
+        "/Callback",
+    ];
+    let before: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|path| {
+            let result = type_command(&program, &["get", path]);
+            result.assert_success();
+            result.data()
+        })
+        .collect();
+
+    for (category, member_type, field, size) in [
+        ("/Equal", "int", "original", 8),
+        ("/Draft", "char", "replacement", 2),
+        ("/Draft", "short", "replacement", 4),
+    ] {
+        let code = format!(
+            "struct Item {{ {member_type} {field}; struct {{ {member_type} inner; }} nested; }}; \
+             typedef struct Item ItemAlias; struct Holder {{ struct Item item; }}; \
+             typedef int (*Callback)(struct Item *); \
+             typedef ExistingAlias ImportedAlias; \
+             struct Link {{ struct Link *next; Scalar key; struct Item item; }};"
+        );
+        let result = type_command(&program, &["import-c", "--category", category, &code]);
+        result.assert_success();
+        let receipt: serde_json::Value = result.data();
+        let item = receipt["types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == "Item")
+            .unwrap();
+        assert_eq!(item["path"], format!("{category}/Item"));
+        assert_eq!(item["size"], size);
+
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            for (path, expected) in paths.iter().zip(&before) {
+                let result = type_command(&program, &["get", path]);
+                result.assert_success();
+                assert_eq!(&result.data::<serde_json::Value>(), expected, "{path}");
+            }
+            client
+                .script_run_source(
+                    fixture,
+                    &[category.to_string(), field.to_string(), size.to_string()],
                     &[],
                     false,
                 )

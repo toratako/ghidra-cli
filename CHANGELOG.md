@@ -84,6 +84,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Resolve GAR source and destination paths consistently across preflight,
   bridge shutdown, and Ghidra locking when directory symlinks precede `..`.
+- Keep `type import-c --category` from replacing or moving same-named types
+  outside the destination category, including their existing uses.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

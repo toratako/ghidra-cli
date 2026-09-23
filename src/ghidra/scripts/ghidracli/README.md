@@ -185,6 +185,12 @@ their native counts into a Java `long`. Address spaces remain distinct. The
 count includes self-references and separate operands, and does not scan object
 bytes or expand components. `data read` does not perform this aggregation.
 
+`TypeImportCommands` parses detached definitions in a temporary data-type manager
+with the Program's data organization. It assigns destination categories to new
+definitions and their anonymous dependencies before resolving into the Program.
+References to existing types retain their source identity; explicitly declared
+types resolve within the requested category instead of replacing a same-named root.
+
 `TypeResizeCommands` follows native size propagation through composite, array,
 and typedef parents and scans their applied Listing data. Before committing it
 checks complete component lengths, native component counts, preserved definitions,
