@@ -9,10 +9,16 @@ use std::path::Path;
 use std::process::Command;
 use tracing::{info, warn};
 
+#[cfg(any(windows, test))]
+mod windows_jar;
+
 /// Both persistent and one-shot workflows use the selected installation.
 /// Directory launches retain Ghidra's own Java discovery as a last resort;
 /// a standalone JAR has no LaunchSupport wrapper and needs a resolved full JDK.
-pub(super) fn headless_command(installation: &Installation) -> Result<Command> {
+pub(super) fn headless_command(
+    installation: &Installation,
+    arguments: &[OsString],
+) -> Result<Command> {
     let explicit_java = crate::config::Config::load()?.get_java_home();
     let jdk = match java::resolve_for_ghidra(installation, explicit_java) {
         Ok(jdk) => {
@@ -33,12 +39,24 @@ pub(super) fn headless_command(installation: &Installation) -> Result<Command> {
         }
         Err(e) => anyhow::bail!(e),
     };
-    command_with_jdk(
+    let mut command = command_with_jdk(
         installation,
         jdk.as_ref(),
         std::env::var_os("GHIDRA_HEADLESS_MAXMEM"),
         std::env::var_os("GHIDRA_MAXMEM"),
-    )
+    )?;
+    match installation.kind {
+        InstallationKind::Directory => {
+            command.args(arguments);
+        }
+        InstallationKind::Jar => {
+            #[cfg(windows)]
+            windows_jar::configure(&mut command, &installation.path, arguments)?;
+            #[cfg(not(windows))]
+            command.arg("-jar").arg(&installation.path).args(arguments);
+        }
+    }
+    Ok(command)
 }
 
 fn command_with_jdk(
@@ -83,7 +101,6 @@ fn command_with_jdk(
             ]);
             #[cfg(windows)]
             command.arg("-Dlog4j.skipJansi=true");
-            command.arg("-jar").arg(&installation.path);
             command
         }
     };

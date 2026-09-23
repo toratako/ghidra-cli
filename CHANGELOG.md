@@ -110,6 +110,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Preserve Unicode JAR paths and headless arguments when launching standalone
+  Ghidra on Windows, including project paths outside the system code page.
 - Restrict named function targets to actual function names so entry aliases and
   internal labels cannot redirect function edits or deletion.
 - Include nested structure/array strings in string listing, searches, and

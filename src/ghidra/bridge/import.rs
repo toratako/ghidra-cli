@@ -47,8 +47,6 @@ pub(super) fn run_bootstrap(
     timeout: Option<Duration>,
 ) -> Result<Value> {
     let project_path = std::path::absolute(project_path)?;
-    let mut cmd = headless_command(installation)?;
-    let executable = std::path::PathBuf::from(cmd.get_program());
     let scripts = sources::install()?;
     let work = tempfile::tempdir().map_err(|e| {
         crate::error::path_io("import.temporary_directory", &std::env::temp_dir(), e)
@@ -62,15 +60,22 @@ pub(super) fn run_bootstrap(
         .context("Project has no parent directory")?;
     std::fs::create_dir_all(directory)
         .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
-    cmd.arg(directory)
-        .arg(project_path.file_name().context("Project has no name")?)
-        .arg("-noanalysis")
-        .arg("-scriptPath")
-        .arg(scripts)
-        .arg("-preScript")
-        .arg("GhidraCliBootstrap.java")
-        .arg(&request)
-        .arg(&receipt);
+    let arguments = [
+        directory.as_os_str().to_owned(),
+        project_path
+            .file_name()
+            .context("Project has no name")?
+            .to_owned(),
+        "-noanalysis".into(),
+        "-scriptPath".into(),
+        scripts.into_os_string(),
+        "-preScript".into(),
+        "GhidraCliBootstrap.java".into(),
+        request.as_os_str().to_owned(),
+        receipt.as_os_str().to_owned(),
+    ];
+    let mut cmd = headless_command(installation, &arguments)?;
+    let executable = std::path::PathBuf::from(cmd.get_program());
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -12,7 +12,7 @@ fn installation(path: PathBuf, kind: InstallationKind) -> Installation {
 }
 
 #[test]
-fn jar_launch_uses_selected_java_and_passes_the_jar_as_one_operand() {
+fn jar_launch_uses_selected_java_and_heap_limits() {
     let root = tempfile::Builder::new()
         .prefix("Ghidra launch's #日本語 ")
         .tempdir()
@@ -33,10 +33,6 @@ fn jar_launch_uses_selected_java_and_passes_the_jar_as_one_operand() {
     );
     let args: Vec<_> = command.get_args().collect();
     assert_eq!(args[0], "-Xmx4G");
-    assert_eq!(
-        &args[args.len() - 2..],
-        ["-jar".as_ref(), install.path.as_os_str()]
-    );
     assert!(command
         .get_envs()
         .any(|(key, value)| key == "JAVA_HOME" && value == Some(jdk.home.as_os_str())));

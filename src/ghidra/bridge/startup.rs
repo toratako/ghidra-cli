@@ -28,12 +28,8 @@ pub fn start_bridge(
     // Compute port file path
     let port_file = port_file_path(project_path)?;
 
-    // Build command
-    let mut cmd = headless_command(installation)?;
-    let executable = std::path::PathBuf::from(cmd.get_program());
-
     // analyzeHeadless expects: <parent_directory> <project_name>
-    let ghidra_project_dir = project_path.parent().unwrap_or(project_path);
+    let ghidra_project_dir = std::path::absolute(project_path.parent().unwrap_or(project_path))?;
     let ghidra_project_name = project_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -51,22 +47,26 @@ pub fn start_bridge(
         project_path.display()
     );
 
-    cmd.arg(ghidra_project_dir).arg(&ghidra_project_name);
-
     // Run only the bridge script, without -process/-import. Otherwise the
     // headless analyzer retains its own Program consumer until the bridge exits,
     // preventing deletion even after ProgramSession closes that program.
     // The bridge opens the optional program itself before publishing readiness.
-    cmd.arg("-noanalysis")
-        .arg("-scriptPath")
-        .arg(scripts_dir.to_str().unwrap())
-        .arg("-preScript")
-        .arg("GhidraCliBridge.java")
-        .arg(port_file.to_str().unwrap());
+    let mut arguments = vec![
+        ghidra_project_dir.into_os_string(),
+        ghidra_project_name.into(),
+        "-noanalysis".into(),
+        "-scriptPath".into(),
+        scripts_dir.into_os_string(),
+        "-preScript".into(),
+        "GhidraCliBridge.java".into(),
+        port_file.into_os_string(),
+    ];
     if let BridgeStartMode::Process { program_name } = &mode {
-        cmd.arg(program_name);
+        arguments.push(program_name.into());
     }
 
+    let mut cmd = headless_command(installation, &arguments)?;
+    let executable = std::path::PathBuf::from(cmd.get_program());
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

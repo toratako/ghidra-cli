@@ -29,7 +29,7 @@ pub(super) fn handle_doctor(
                 ghidra::installation::InstallationKind::Directory => {
                     ("directory", "analyzeHeadless")
                 }
-                ghidra::installation::InstallationKind::Jar => ("jar", "java -jar"),
+                ghidra::installation::InstallationKind::Jar => ("jar", "ghidra.JarRun"),
             };
             writeln!(report, "  Format: {kind}")?;
             writeln!(report, "  Headless launcher: OK ({launcher})")?;

@@ -58,7 +58,7 @@ impl JarRuntime {
         // supported runtime path characters in the detached JAR directory.
         let jar_directory = root.path().join("runtime's #日本語");
         std::fs::create_dir(&jar_directory).unwrap();
-        let jar = jar_directory.join("ghidra.jar");
+        let jar = jar_directory.join("ghidra 日本語.jar");
         std::fs::copy(source, &jar).expect("copy JAR outside the distribution/build directory");
         let jar = dunce::canonicalize(jar).unwrap();
         // Remove the build output before any runtime operation.
@@ -70,8 +70,8 @@ impl JarRuntime {
         .unwrap();
         std::fs::create_dir(root.path().join("tmp")).unwrap();
         Self {
-            project: root.path().join("original project"),
-            restored: root.path().join("restored project"),
+            project: root.path().join("original project 日本語"),
+            restored: root.path().join("restored project 日本語"),
             root,
             jar,
         }
@@ -144,11 +144,19 @@ fn official_jar_runs_detached_with_native_tools_and_durable_project_operations()
     assert_eq!(doctor["runtime"]["status"], "success", "{doctor}");
 
     let binary = common::fixture::fixture_binary();
-    runtime.run(project, &["program", "import", binary.to_str().unwrap()]);
+    // Ghidra rejects Japanese program names; project directories support Unicode.
+    let program = "sample program";
     runtime.run(
         project,
-        &["bridge", "start", "--program", common::FIXTURE_PROGRAM],
+        &[
+            "program",
+            "import",
+            binary.to_str().unwrap(),
+            "--name",
+            program,
+        ],
     );
+    runtime.run(project, &["bridge", "start", "--program", program]);
     let client = runtime.client(project);
     let function = common::helpers::get_fixture_function(&client, "add_numbers");
     let decompiled = client
@@ -188,13 +196,7 @@ public class PersistJarComment extends GhidraScript {
     runtime.run(project, &["bridge", "stop"]);
     let reopened = runtime.run(
         project,
-        &[
-            "comment",
-            "get",
-            &function.address,
-            "--program",
-            common::FIXTURE_PROGRAM,
-        ],
+        &["comment", "get", &function.address, "--program", program],
     );
     assert!(reopened
         .to_string()
@@ -224,13 +226,7 @@ public class PersistJarComment extends GhidraScript {
     );
     let restored = runtime.run(
         &runtime.restored,
-        &[
-            "comment",
-            "get",
-            &function.address,
-            "--program",
-            common::FIXTURE_PROGRAM,
-        ],
+        &["comment", "get", &function.address, "--program", program],
     );
     assert!(restored
         .to_string()

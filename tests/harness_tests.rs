@@ -208,7 +208,7 @@ const HEALTHY: &str =
 
 #[test]
 fn doctor_accepts_successful_headless_and_compile_checks() {
-    for launcher in ["analyzeHeadless", "java -jar"] {
+    for launcher in ["analyzeHeadless", "ghidra.JarRun"] {
         let healthy = HEALTHY.replace("analyzeHeadless", launcher);
         common::assert_doctor_ready(&doctor_output(true, &healthy, ""));
     }

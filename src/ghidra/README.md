@@ -65,8 +65,14 @@ Both use the same headless arguments:
 
 The directory entry point is `support/analyzeHeadless` (`.bat` on Windows).
 The standalone entry point is the selected JDK's `java -jar <ghidra.jar>` with
-headless JVM settings. Persistent startup, import, project bootstraps, and doctor
-share this construction; only the runtime format determines the entry point.
+headless JVM settings. On Windows, a Java source launcher invokes the same
+`ghidra.JarRun` entry point with Unicode arguments from a JSON environment value.
+Its manifest-only classpath JAR uses an escaped file URL to load the original
+Ghidra JAR in the system classloader. Both launcher files are published as an
+immutable cache under `bridge-sources/jar-launchers`, so a running JVM can keep
+using them after the CLI exits. Native Java arguments contain only ASCII entry
+point names; Java's ANSI argument conversion cannot corrupt the Ghidra paths.
+Persistent startup, import, project bootstraps, and doctor share this construction.
 Running bridges keep their original JVM until stopped or restarted.
 
 Omit `-process`: it leaves a headless-owned reference to the initial program that
@@ -167,8 +173,9 @@ A busy program lane is not evidence of a dead bridge. See the
   helpers. Projects use sibling `.gpr`/`.rep` artifacts; the bare path may not
   exist. Absolute paths alone do not resolve case or directory aliases, and
   unconditional lowercasing can merge distinct projects.
-- Pass OS paths as individual `Command` arguments. Quote generated CLI batch
-  paths for its parser; cover spaces, apostrophes, and backslashes.
+- Pass OS paths as individual `Command` arguments, except Windows standalone
+  Java launch, whose Unicode arguments use the shared launcher above. Quote
+  generated CLI batch paths for its parser; cover spaces, apostrophes, and backslashes.
 - Wait for JVM exit and close file handles before deleting or reopening files;
   Windows can retain project/file locks after a shutdown request.
 

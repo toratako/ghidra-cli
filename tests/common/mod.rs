@@ -372,7 +372,7 @@ pub fn assert_doctor_ready(doctor: &std::process::Output) {
     assert!(
         doctor.status.success()
             && (stdout.contains("Headless launcher: OK (analyzeHeadless)")
-                || stdout.contains("Headless launcher: OK (java -jar)"))
+                || stdout.contains("Headless launcher: OK (ghidra.JarRun)"))
             && stdout.contains("Checking bridge script compiles... OK")
             && !stdout.contains("NOT FOUND")
             && !stdout.contains("FAILED"),

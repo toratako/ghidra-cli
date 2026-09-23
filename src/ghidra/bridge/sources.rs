@@ -3,7 +3,10 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
+pub(super) const JAR_LAUNCHER: &str = include_str!("../scripts/GhidraCliJarLauncher.java");
+
 const SOURCES: &[(&str, &str)] = &[
+    ("GhidraCliJarLauncher.java", JAR_LAUNCHER),
     (
         "GhidraCliBootstrap.java",
         include_str!("../scripts/GhidraCliBootstrap.java"),
@@ -420,7 +423,18 @@ pub(super) fn write_to(directory: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn write_sources(directory: &Path, sources: &[(&str, &str)]) -> Result<Vec<PathBuf>> {
+    write_files(directory, &source_files(sources))
+}
+
+fn source_files<'a>(sources: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a [u8])> {
     sources
+        .iter()
+        .map(|(name, source)| (*name, source.as_bytes()))
+        .collect()
+}
+
+fn write_files(directory: &Path, files: &[(&str, &[u8])]) -> Result<Vec<PathBuf>> {
+    files
         .iter()
         .map(|(name, source)| {
             let path = directory.join(name);
@@ -448,11 +462,16 @@ pub(super) fn root_path() -> Result<PathBuf> {
 }
 
 fn install_sources(root: &Path, sources: &[(&str, &str)]) -> Result<PathBuf> {
+    install_files(root, &source_files(sources))
+}
+
+/// Publish immutable launch resources with the same lifetime as source bundles.
+pub(super) fn install_files(root: &Path, files: &[(&str, &[u8])]) -> Result<PathBuf> {
     let mut hash = md5::Context::new();
-    for (name, source) in sources {
+    for (name, contents) in files {
         hash.consume(name.as_bytes());
         hash.consume([0]);
-        hash.consume(source.as_bytes());
+        hash.consume(contents);
         hash.consume([0]);
     }
     let destination = root.join(format!("{:x}", hash.finalize()));
@@ -466,7 +485,7 @@ fn install_sources(root: &Path, sources: &[(&str, &str)]) -> Result<PathBuf> {
         .prefix(".staging-")
         .tempdir_in(root)
         .map_err(|e| crate::error::path_io("bridge.sources_staging", root, e))?;
-    write_sources(staging.path(), sources)?;
+    write_files(staging.path(), files)?;
     if let Err(error) = std::fs::rename(staging.path(), &destination) {
         // Another project may have published the identical complete bundle.
         if !destination.is_dir() {
