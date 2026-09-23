@@ -107,9 +107,17 @@ fn native_line_addresses_preserve_code_and_distinguish_call_sites_from_callees()
         let with = decompile("address-caller", true);
         assert_eq!(with["code"], plain["code"]);
         let code = with["code"].as_str().unwrap();
-        assert!(code.starts_with('\n'), "{code}");
+        let newline = if code.starts_with("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        assert!(code.starts_with(newline), "{code}");
         assert!(code.contains("address_caller("), "{code}");
-        assert!(code.contains("Japanese 日本語\n"), "{code}");
+        assert!(
+            code.contains(&format!("Japanese 日本語{newline}")),
+            "{code}"
+        );
         assert!(code.contains("second comment line"), "{code}");
 
         let mapped = mappings(&with);
@@ -140,8 +148,8 @@ fn native_line_addresses_preserve_code_and_distinguish_call_sites_from_callees()
             .enumerate()
             .map(|(index, line)| match mapped.get(&(index + 1)) {
                 Some(addresses) => format!(
-                    "{} // @ {}\n",
-                    line.strip_suffix('\n').unwrap(),
+                    "{} // @ {}{newline}",
+                    line.strip_suffix(newline).unwrap(),
                     addresses.join(", ")
                 ),
                 None => line.to_owned(),
