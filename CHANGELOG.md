@@ -91,6 +91,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Report only function names in `xref to`'s `to_function`, matching `xref from`.
 - Reject missing `program open/delete` targets during batch preflight before
   executing earlier commands, including nested batches.
+- Show excluded file-mapping ranges and reasons in compact/full output, and
+  avoid repeating fields in compact objects without a primary display field.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

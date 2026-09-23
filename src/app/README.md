@@ -131,6 +131,8 @@ graph's node queries to these structures.
 NDJSON renders list elements individually, other results as one JSON value,
 and empty lists as no output; it omits the outer wrapper and metadata. Batch
 NDJSON is one report value whose entries retain the common result envelopes.
+Compact/full file-mapping output also renders excluded ranges and reasons from
+metadata, including when no direct mapping rows remain. Count output stays numeric.
 Management output uses the same preparation and preserves its text rendering.
 `output.rs` renders reports;
 `src/terminal.rs` sends results to stdout and optional text-mode progress to stderr.

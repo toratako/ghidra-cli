@@ -223,47 +223,51 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     result.push_str(&kv.join("  "));
                 } else {
                     result.push_str(&parts.join("  "));
-                }
 
-                // Add extra context from secondary fields
-                let secondary: Vec<String> = map
-                    .iter()
-                    .filter(|(k, _)| {
-                        !matches!(
-                            k.as_str(),
-                            "address"
-                                | "name"
-                                | "size"
-                                | "value"
-                                | "mnemonic"
-                                | "bytes"
-                                | "operands"
-                                | "code"
-                                | "signature"
-                                | "signature_details"
-                                | "frame_details"
-                        )
-                    })
-                    .filter_map(|(k, v)| {
-                        let s = format_json_value(v);
-                        if s.is_empty()
-                            || (s == "null"
-                                && !matches!(
-                                    k.as_str(),
-                                    "entry_memory" | "database" | "before" | "after" | "override"
-                                ))
-                            || s == "\"\""
-                        {
-                            None
-                        } else {
-                            Some(format!("{}={}", k, s))
-                        }
-                    })
-                    .collect();
+                    // Add secondary fields only when the fallback has not rendered them.
+                    let secondary: Vec<String> = map
+                        .iter()
+                        .filter(|(k, _)| {
+                            !matches!(
+                                k.as_str(),
+                                "address"
+                                    | "name"
+                                    | "size"
+                                    | "value"
+                                    | "mnemonic"
+                                    | "bytes"
+                                    | "operands"
+                                    | "code"
+                                    | "signature"
+                                    | "signature_details"
+                                    | "frame_details"
+                            )
+                        })
+                        .filter_map(|(k, v)| {
+                            let s = format_json_value(v);
+                            if s.is_empty()
+                                || (s == "null"
+                                    && !matches!(
+                                        k.as_str(),
+                                        "entry_memory"
+                                            | "database"
+                                            | "before"
+                                            | "after"
+                                            | "override"
+                                    ))
+                                || s == "\"\""
+                            {
+                                None
+                            } else {
+                                Some(format!("{}={}", k, s))
+                            }
+                        })
+                        .collect();
 
-                if !secondary.is_empty() {
-                    result.push_str("  ");
-                    result.push_str(&secondary.join("  "));
+                    if !secondary.is_empty() {
+                        result.push_str("  ");
+                        result.push_str(&secondary.join("  "));
+                    }
                 }
 
                 result.push('\n');

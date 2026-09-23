@@ -175,6 +175,24 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
         OutputFormat::Json => Ok(serde_json::to_string_pretty(result)?),
         OutputFormat::JsonCompact => Ok(serde_json::to_string(result)?),
         _ if result.is_count => Ok(serde_json::to_string(&result.data)?),
+        OutputFormat::Compact | OutputFormat::Full => {
+            let mut text = DefaultFormatter.format(result.rows(), format)?;
+            if let Some(excluded) = result
+                .meta
+                .get("unsupported_mappings")
+                .and_then(serde_json::Value::as_array)
+                .filter(|rows| !rows.is_empty())
+            {
+                if result.rows().is_empty() {
+                    text = "No direct file mappings\n".to_string();
+                } else if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str("\nUnsupported file mappings (excluded):\n");
+                text.push_str(&DefaultFormatter.format(excluded, format)?);
+            }
+            Ok(text)
+        }
         _ => Ok(DefaultFormatter.format(result.rows(), format)?),
     }
 }

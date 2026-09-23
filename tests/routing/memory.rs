@@ -26,7 +26,10 @@ pub(super) fn file_mappings_fixture(args: &Value, program: &str) -> Value {
     };
     let mut result = json!({
         "mappings": rows,
-        "unsupported_mappings": [{"address": "ram:0x3000", "reason": "byte_mapped"}],
+        "unsupported_mappings": [{
+            "address": "ram:0x3000", "end": "ram:0x30ff", "block_start": "ram:0x3000",
+            "reason": "Indirect bit/byte memory mapping",
+        }],
     });
     if let Some(offset) = file_offset {
         result["file_offset"] = json!(offset);
@@ -272,7 +275,7 @@ fn file_mapping_queries_preserve_exclusions_after_projection_paging_and_count() 
                 "data": [{"address": "ram:0x1000"}],
                 "meta": {
                     "file_offset": 517, "source_at": "bank1:0x1005",
-                    "unsupported_mappings": [{"address": "ram:0x3000", "reason": "byte_mapped"}],
+                    "unsupported_mappings": defaults["meta"]["unsupported_mappings"],
                     "offset": 1, "limit": 1, "returned": 1,
                 },
             })

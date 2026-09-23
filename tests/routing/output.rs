@@ -8,6 +8,128 @@ fn document(bridge: &RecordedBridge, args: &[&str]) -> Value {
 }
 
 #[test]
+fn human_file_mappings_show_excluded_ranges_even_without_direct_rows() {
+    let bridge = RecordedBridge::new();
+    for format in ["compact", "full"] {
+        for offset in ["512", "999"] {
+            for flags in [vec![], vec!["--quiet", "--fields", "address"]] {
+                let output = bridge
+                    .command()
+                    .args([
+                        "memory",
+                        "file-mappings",
+                        "--file-offset",
+                        offset,
+                        "--format",
+                        format,
+                    ])
+                    .args(&flags)
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "{output:?}");
+                assert!(output.stderr.is_empty(), "{output:?}");
+                let text = String::from_utf8(output.stdout).unwrap();
+                let (direct, excluded) = text
+                    .split_once("Unsupported file mappings (excluded):\n")
+                    .unwrap_or_else(|| panic!("missing exclusions: {text}"));
+                for value in [
+                    "ram:0x3000",
+                    "ram:0x30ff",
+                    "Indirect bit/byte memory mapping",
+                ] {
+                    assert!(excluded.contains(value), "{text}");
+                }
+                if offset == "999" {
+                    assert!(direct.contains("No direct file mappings"), "{text}");
+                } else {
+                    assert!(direct.contains("ram:0x1000"), "{text}");
+                    assert_eq!(direct.contains("file_offset"), flags.is_empty(), "{text}");
+                }
+                assert!(!text.contains("returned"), "{text}");
+            }
+        }
+    }
+}
+
+#[test]
+fn file_mapping_exclusions_preserve_count_and_ndjson_contracts() {
+    let bridge = RecordedBridge::new();
+    for (offset, count) in [("512", "3\n"), ("999", "0\n")] {
+        for format in ["compact", "full", "ndjson"] {
+            let output = bridge
+                .command()
+                .args([
+                    "memory",
+                    "file-mappings",
+                    "--file-offset",
+                    offset,
+                    "--count",
+                    "--format",
+                    format,
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), count);
+        }
+        let output = bridge
+            .command()
+            .args([
+                "memory",
+                "file-mappings",
+                "--file-offset",
+                offset,
+                "--fields",
+                "address",
+                "--format",
+                "ndjson",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            if offset == "512" {
+                "{\"address\":\"ram:0x1000\"}\n"
+            } else {
+                ""
+            },
+        );
+    }
+}
+
+#[test]
+fn compact_fallback_displays_receipt_fields_once() {
+    let bridge = RecordedBridge::new();
+    for fields in [vec![], vec!["--fields", "changed"]] {
+        let output = bridge
+            .command()
+            .args([
+                "memory",
+                "block",
+                "rename",
+                "bank1:0x1000",
+                ".renamed",
+                "--format",
+                "compact",
+            ])
+            .args(&fields)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(text.matches("changed=true").count(), 1, "{text}");
+        if fields.is_empty() {
+            assert_eq!(text.matches("before=").count(), 1, "{text}");
+            assert_eq!(text.matches("after=").count(), 1, "{text}");
+            assert_eq!(text.matches("observed_program=A").count(), 1, "{text}");
+        } else {
+            assert_eq!(text, "changed=true\n");
+        }
+    }
+}
+
+#[test]
 fn json_results_match_batch_entries_and_retain_context_after_queries() {
     let bridge = RecordedBridge::new();
     for args in [
