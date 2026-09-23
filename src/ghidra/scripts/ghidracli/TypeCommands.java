@@ -4,21 +4,20 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import ghidra.program.model.address.Address;
 import ghidra.program.database.data.DataTypeUtilities;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.data.Array;
 import ghidra.program.model.data.BitFieldDataType;
-import ghidra.program.model.data.Dynamic;
-import ghidra.program.model.data.FactoryDataType;
-import ghidra.program.model.data.PointerDataType;
-import ghidra.program.model.mem.MemoryBufferImpl;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
+import ghidra.program.model.data.Dynamic;
 import ghidra.program.model.data.EnumDataType;
+import ghidra.program.model.data.FactoryDataType;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.ParameterDefinition;
 import ghidra.program.model.data.Pointer;
+import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.SourceArchive;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.StructureDataType;
@@ -30,8 +29,10 @@ import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
+import ghidra.program.model.mem.MemoryBufferImpl;
 import java.util.Iterator;
 import java.util.Locale;
+
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgInt;
@@ -569,7 +570,7 @@ final class TypeCommands {
             DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
             if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
             String comment = getArgString(args, "comment");
-            Integer bitSize = BitFieldCommands.bitSize(args);
+            Integer bitSize = BitFields.bitSize(args);
             if (target instanceof Union) {
                 if (bitSize != null)
                     return errorResult("Bit-field layout edits require a structure with packing disabled");
@@ -579,7 +580,7 @@ final class TypeCommands {
             Structure struct = (Structure) target;
             TypeFields.StructureSelection selected = TypeFields.structureSelection(struct, args);
             if (selected.field != null && selected.field.isBitFieldComponent())
-                return BitFieldCommands.set(struct, selected.field, getArgString(args, "field_name"),
+                return BitFields.set(struct, selected.field, getArgString(args, "field_name"),
                     type, comment, StructureFields.size(args), bitSize);
             if (bitSize != null) return errorResult("--bit-size requires an existing bit-field");
             return StructureFields.set(struct, selected,

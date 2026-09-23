@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgBool;
 import static ghidracli.JsonProtocol.getArgString;
@@ -25,11 +26,23 @@ final class FunctionCommands {
     private final ProgramSession session;
     private final AddressResolver addressResolver;
     private final FunctionQueries functionQueries;
+    private final InstructionListing instructions;
 
-    FunctionCommands(ProgramSession session, AddressResolver addressResolver, FunctionQueries functionQueries) {
+    FunctionCommands(ProgramSession session, AddressResolver addressResolver,
+            FunctionQueries functionQueries, InstructionListing instructions) {
         this.session = session;
         this.addressResolver = addressResolver;
         this.functionQueries = functionQueries;
+        this.instructions = instructions;
+    }
+
+    JsonObject handleFunctionDisasm(JsonObject args) throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        String target = getArgString(args, "target");
+        if (target == null || target.isEmpty()) return errorResult("Function target required");
+        Function function = functionQueries.findFunctionByNameOrAddress(target);
+        if (function == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+        return instructions.instructionsIn(function.getBody(), args);
     }
 
     JsonObject handleListFunctions(JsonObject args) throws ghidra.util.exception.CancelledException {

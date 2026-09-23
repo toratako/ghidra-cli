@@ -1,11 +1,13 @@
 package ghidracli;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.symbol.ExternalLocation;
+import ghidra.program.model.symbol.ExternalManager;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
@@ -17,8 +19,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
+import static ghidracli.JsonProtocol.getNonnegativeIntArg;
 
 final class SymbolCommands {
     private final ProgramSession session;
@@ -423,5 +427,66 @@ final class SymbolCommands {
         } catch (Exception e) {
             return errorResult("Failed to rename symbol: " + e.getMessage());
         }
+    }
+
+    JsonObject handleSymbolExternals(JsonObject args) {
+        if (session.program() == null) {
+            return errorResult("No program loaded");
+        }
+
+        int limit = getNonnegativeIntArg(args, "limit", 0);
+        JsonArray imports = new JsonArray();
+        SymbolTable symbolTable = session.program().getSymbolTable();
+        ExternalManager extMgr = session.program().getExternalManager();
+
+        SymbolIterator extSymbols = symbolTable.getExternalSymbols();
+        int count = 0;
+        while (extSymbols.hasNext()) {
+            if (limit > 0 && count >= limit) break;
+            Symbol symbol = extSymbols.next();
+            ExternalLocation extLoc = extMgr.getExternalLocation(symbol);
+            if (extLoc != null) {
+                JsonObject importData = new JsonObject();
+                importData.addProperty("name", symbol.getName());
+                importData.addProperty("address", AddressCodec.format(symbol.getAddress()));
+                importData.addProperty("library", extLoc.getLibraryName());
+                imports.add(importData);
+                count++;
+            }
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("externals", imports);
+        result.addProperty("count", imports.size());
+        return result;
+    }
+
+    JsonObject handleSymbolEntryPoints(JsonObject args) {
+        if (session.program() == null) {
+            return errorResult("No program loaded");
+        }
+
+        int limit = getNonnegativeIntArg(args, "limit", 0);
+        JsonArray exports = new JsonArray();
+        SymbolTable symbolTable = session.program().getSymbolTable();
+
+        SymbolIterator symIter = symbolTable.getSymbolIterator();
+        int count = 0;
+        while (symIter.hasNext()) {
+            if (limit > 0 && count >= limit) break;
+            Symbol symbol = symIter.next();
+            if (symbol.isExternalEntryPoint()) {
+                JsonObject exportData = new JsonObject();
+                exportData.addProperty("name", symbol.getName());
+                exportData.addProperty("address", AddressCodec.format(symbol.getAddress()));
+                exports.add(exportData);
+                count++;
+            }
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("entry_points", exports);
+        result.addProperty("count", exports.size());
+        return result;
     }
 }

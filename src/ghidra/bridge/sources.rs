@@ -316,6 +316,14 @@ const SOURCES: &[(&str, &str)] = &[
         "ghidracli/XrefCommands.java",
         include_str!("../scripts/ghidracli/XrefCommands.java"),
     ),
+    (
+        "ghidracli/InstructionListing.java",
+        include_str!("../scripts/ghidracli/InstructionListing.java"),
+    ),
+    (
+        "ghidracli/BitFields.java",
+        include_str!("../scripts/ghidracli/BitFields.java"),
+    ),
 ];
 
 /// Write a complete source tree into a private, empty directory.

@@ -1,5 +1,6 @@
 package ghidracli;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
@@ -7,7 +8,9 @@ import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
+
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 
@@ -81,6 +84,26 @@ final class MemoryInfoCommands {
         result.addProperty("end", AddressCodec.format(unit.getMaxAddress()));
         result.addProperty("size", unit.getLength());
         result.addProperty("offset", address.subtract(unit.getMinAddress()));
+        return result;
+    }
+
+    JsonObject handleMemoryMap() {
+        if (session.program() == null) {
+            return errorResult("No program loaded");
+        }
+
+        JsonArray blocks = new JsonArray();
+        Memory memory = session.program().getMemory();
+
+        for (MemoryBlock block : memory.getBlocks()) {
+            JsonObject blockData = MemoryBlockInfo.describe(block);
+            blockData.add("is_initialized", blockData.remove("initialized"));
+            blocks.add(blockData);
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("blocks", blocks);
+        result.addProperty("count", blocks.size());
         return result;
     }
 }

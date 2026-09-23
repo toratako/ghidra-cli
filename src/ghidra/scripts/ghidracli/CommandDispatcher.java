@@ -1,6 +1,7 @@
 package ghidracli;
 
 import com.google.gson.JsonObject;
+
 import static ghidracli.JsonProtocol.errorResponse;
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.successResponse;
@@ -49,8 +50,8 @@ final class CommandDispatcher {
         TypeResolver typeResolver = new TypeResolver(session);
         FunctionQueries functionQueries = new FunctionQueries(session, addressResolver);
         StringQueries stringQueries = new StringQueries(session);
-        ArtifactManifest artifacts = new ArtifactManifest(session);
-        functionCommands = new FunctionCommands(session, addressResolver, functionQueries);
+        InstructionListing instructions = new InstructionListing(session);
+        functionCommands = new FunctionCommands(session, addressResolver, functionQueries, instructions);
         decompileCommands = new DecompileCommands(session, functionQueries);
         functionSignatureCommands = new FunctionSignatureCommands(session, functionQueries, typeResolver);
         functionCallSignatureCommands = new FunctionCallSignatureCommands(session, functionQueries);
@@ -62,7 +63,7 @@ final class CommandDispatcher {
         programContextCommands = new ProgramContextCommands(session);
         programRebaseCommands = new ProgramRebaseCommands(session);
         programExportCommands = new ProgramExportCommands(session);
-        listingCommands = new ListingCommands(session, stringQueries);
+        listingCommands = new ListingCommands(session, addressResolver, stringQueries, instructions);
         xrefCommands = new XrefCommands(session, addressResolver, functionQueries);
         searchCommands = new SearchCommands(session, addressResolver, stringQueries);
         symbolCommands = new SymbolCommands(session);
@@ -79,12 +80,12 @@ final class CommandDispatcher {
         bookmarkCommands = new BookmarkCommands(session);
         graphCommands = new GraphCommands(session, functionQueries);
         instructionCfg = new InstructionCfg(session, functionQueries);
-        memoryCommands = new MemoryCommands(session, addressResolver, functionQueries);
+        memoryCommands = new MemoryCommands(session, addressResolver);
         memoryInfoCommands = new MemoryInfoCommands(session, addressResolver);
         fileMappingCommands = new FileMappingCommands(session);
         memoryBlockCommands = new MemoryBlockCommands(session);
         dataCommands = new DataCommands(session, addressResolver);
-        scriptCommands = new ScriptCommands(session, artifacts);
+        scriptCommands = new ScriptCommands(session);
     }
 
     private JsonObject dispatchCommand(String command, JsonObject args) throws Exception {
@@ -100,15 +101,15 @@ final class CommandDispatcher {
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);
             case "function_list_calling_conventions": return functionCommands.handleListCallingConventions();
-            case "function_disasm": return memoryCommands.handleFunctionDisasm(args);
+            case "function_disasm": return functionCommands.handleFunctionDisasm(args);
             case "rename_function": return functionCommands.handleRenameFunction(args);
             case "create_function": return functionCommands.handleCreateFunction(args);
             case "delete_function": return functionCommands.handleDeleteFunction(args);
             case "decompile":       return decompileCommands.handleDecompile(args);
             case "list_strings":    return listingCommands.handleListStrings(args);
-            case "symbol_externals":    return listingCommands.handleSymbolExternals(args);
-            case "symbol_entry_points":    return listingCommands.handleSymbolEntryPoints(args);
-            case "memory_map":      return listingCommands.handleMemoryMap();
+            case "symbol_externals":    return symbolCommands.handleSymbolExternals(args);
+            case "symbol_entry_points":    return symbolCommands.handleSymbolEntryPoints(args);
+            case "memory_map":      return memoryInfoCommands.handleMemoryMap();
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
             case "memory_file_mappings": return fileMappingCommands.handleFileMappings(args);
             case "memory_block_create": return memoryBlockCommands.handleCreate(args);
@@ -232,10 +233,10 @@ final class CommandDispatcher {
             // Memory writes
             case "memory_write":    return memoryCommands.handleMemoryWrite(args);
             // Other commands
-            case "disasm":          return memoryCommands.handleDisasm(args);
-            case "disasm_range":    return memoryCommands.handleDisasmRange(args);
-            case "define_code":     return memoryCommands.handleDefineCode(args);
-            case "clear_range":     return memoryCommands.handleClearRange(args);
+            case "disasm":          return listingCommands.handleDisasm(args);
+            case "disasm_range":    return listingCommands.handleDisasmRange(args);
+            case "define_code":     return listingCommands.handleDefineCode(args);
+            case "clear_range":     return listingCommands.handleClearRange(args);
             case "stats":           return programCommands.handleStats();
             // Script commands
             case "script_run":      return scriptCommands.handleScriptRun(args);

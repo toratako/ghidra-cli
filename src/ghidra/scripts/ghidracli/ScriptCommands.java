@@ -29,6 +29,7 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import org.osgi.framework.Bundle;
+
 import static ghidracli.JsonProtocol.errorResult;
 import static ghidracli.JsonProtocol.getArgString;
 import static ghidracli.JsonProtocol.getArgStringArray;
@@ -38,9 +39,9 @@ final class ScriptCommands {
     private final ProgramSession session;
     private final ArtifactManifest artifacts;
 
-    ScriptCommands(ProgramSession session, ArtifactManifest artifacts) {
+    ScriptCommands(ProgramSession session) {
         this.session = session;
-        this.artifacts = artifacts;
+        this.artifacts = new ArtifactManifest(session);
     }
 
     JsonObject handleScriptRun(JsonObject args) {
