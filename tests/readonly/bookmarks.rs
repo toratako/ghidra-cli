@@ -120,7 +120,7 @@ fn bookmarks_preserve_annotations_and_query_exact_addresses() {
         assert_eq!(run(&["bookmark", "list", "--limit", "0"]), json!(rows));
         assert_eq!(run(&["bookmark", "list", "--count"]), 6);
         assert_eq!(
-            run(&["bookmark", "list", "--offset", "3", "--limit", "1"]),
+            run(&["bookmark", "list", "--skip", "3", "--limit", "1"]),
             json!(rows[3..4])
         );
         assert_eq!(
@@ -169,7 +169,7 @@ fn bookmarks_preserve_annotations_and_query_exact_addresses() {
                 "--filter",
                 "type=Note",
                 "--sort=category",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "1",

@@ -49,6 +49,7 @@ fn test_memory_write_success() {
         .arg("memory")
         .arg("write")
         .arg(&main_addr)
+        .arg("--bytes")
         .arg("90909090") // 4 NOP bytes
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -68,11 +69,15 @@ fn test_program_export_binary() {
     let output_path = directory.path().join("patched.bin");
 
     let result = ghidra(harness)
-        .args(["program", "export", "binary"])
+        .args([
+            "program",
+            "export",
+            TEST_PROGRAM,
+            "--export-format",
+            "binary",
+        ])
         .arg("--output")
         .arg(output_path.to_str().unwrap())
-        .arg("--program")
-        .arg(TEST_PROGRAM)
         .run();
 
     result.assert_success();
@@ -103,6 +108,7 @@ fn test_patch_at_function_boundary() {
         .arg("memory")
         .arg("write")
         .arg(&func_addr)
+        .arg("--bytes")
         .arg("c3")
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -132,6 +138,7 @@ fn test_patch_invalid_address_fails() {
         .arg("memory")
         .arg("write")
         .arg("0xffffffffffffffff") // Very high address, unlikely to be mapped
+        .arg("--bytes")
         .arg("90")
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -165,6 +172,7 @@ fn test_patch_invalid_hex_fails() {
         .arg("memory")
         .arg("write")
         .arg(&main_addr)
+        .arg("--bytes")
         .arg("ZZZZ") // Invalid hex
         .arg("--program")
         .arg(TEST_PROGRAM)
@@ -226,6 +234,7 @@ fn test_patch_without_program_arg() {
         .arg("memory")
         .arg("write")
         .arg(&main_addr)
+        .arg("--bytes")
         .arg("90")
         // Note: --program is missing, should use default from bridge
         .run();
@@ -255,6 +264,7 @@ fn test_patch_output_format_structure() {
         .arg("memory")
         .arg("write")
         .arg(&main_addr)
+        .arg("--bytes")
         .arg("90")
         .arg("--program")
         .arg(TEST_PROGRAM)

@@ -205,14 +205,7 @@ fn bookmark_cli_preserves_japanese_multiline_stdin_and_file_text() {
         let file_text = "ファイルの調査\n二行目\n";
         std::fs::write(&path, file_text).unwrap();
         let output = ghidra(harness)
-            .args([
-                "bookmark",
-                "set",
-                "0x1001",
-                "--category",
-                "入力",
-                "--text-file",
-            ])
+            .args(["bookmark", "set", "0x1001", "--category", "入力", "--file"])
             .arg(path.to_str().unwrap())
             .with_project(test_project(), program)
             .run();
@@ -221,7 +214,15 @@ fn bookmark_cli_preserves_japanese_multiline_stdin_and_file_text() {
         assert_eq!(get(client, "0x1001")["bookmarks"][0]["comment"], file_text);
 
         let output = ghidra(harness)
-            .args(["bookmark", "set", "0x1001", "", "--category", "入力"])
+            .args([
+                "bookmark",
+                "set",
+                "0x1001",
+                "--text",
+                "",
+                "--category",
+                "入力",
+            ])
             .with_project(test_project(), program)
             .run();
         output.assert_success();

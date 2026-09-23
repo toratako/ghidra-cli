@@ -87,12 +87,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 assert_eq!(
                     cli(
                         command,
-                        &[
-                            "--offset",
-                            &offset.to_string(),
-                            "--limit",
-                            &limit.to_string()
-                        ]
+                        &["--skip", &offset.to_string(), "--limit", &limit.to_string()]
                     ),
                     json!(expected)
                 );
@@ -117,7 +112,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 let expected: Vec<_> = matching.iter().skip(1).take(2).cloned().collect();
                 assert_eq!(server[key], json!(expected), "{wire}, {needle:?}");
                 assert_eq!(
-                    cli(command, &["--filter", &filter, "--offset", "1"]),
+                    cli(command, &["--filter", &filter, "--skip", "1"]),
                     json!(expected)
                 );
                 assert_eq!(
@@ -131,7 +126,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                 assert_eq!(
                     cli(
                         command,
-                        &["--filter", &filter, "--offset", "1", "--limit", "1", "--count"]
+                        &["--filter", &filter, "--skip", "1", "--limit", "1", "--count"]
                     ),
                     json!(matching.len().saturating_sub(1).min(1))
                 );
@@ -167,7 +162,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                     "selected",
                     "--filter",
                     "name~FILE",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1"
@@ -178,7 +173,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
         assert_eq!(
             cli(
                 &["function", "list"],
-                &["--tag", "selected", "--filter", "name~i", "--offset", "2", "--limit", "1"]
+                &["--tag", "selected", "--filter", "name~i", "--skip", "2", "--limit", "1"]
             ),
             json!([])
         );
@@ -189,7 +184,7 @@ fn server_list_pages_match_full_rows_and_rust_string_semantics() {
                     "--untagged",
                     "--filter",
                     "name~i",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",

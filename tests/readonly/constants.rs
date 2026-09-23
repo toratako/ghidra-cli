@@ -187,12 +187,12 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         assert_eq!(with(&[]), json!(minus_one[..2]));
         assert_eq!(with(&["--limit", "0"]), json!(minus_one));
         assert_eq!(with(&["--count"]), minus_one.len());
-        assert_eq!(with(&["--offset", "3"]), json!(minus_one[3..5]));
+        assert_eq!(with(&["--skip", "3"]), json!(minus_one[3..5]));
         assert_eq!(
-            with(&["--offset", "3", "--limit", "0"]),
+            with(&["--skip", "3", "--limit", "0"]),
             json!(minus_one[3..])
         );
-        assert_eq!(with(&["--count", "--offset", "3", "--limit", "1"]), 1);
+        assert_eq!(with(&["--count", "--skip", "3", "--limit", "1"]), 1);
         let filter = "address='constant_overlay:0x1000'";
         assert_eq!(with(&["--filter", filter]), json!(overlay));
         assert_eq!(
@@ -202,7 +202,7 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         let projected = with(&[
             "--filter",
             "bits=32",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "1",
@@ -235,7 +235,7 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         );
         let batch_path = temp.path().join("constants.txt");
         std::fs::write(&batch_path,
-            "find constant -1 --filter bits=32 --offset 1 --limit 1 --fields address,value,bits\nfind constant --min 9007199254740992 --max 9007199254740993 --limit 0\nfind constant -1 --count\n").unwrap();
+            "find constant -1 --filter bits=32 --skip 1 --limit 1 --fields address,value,bits\nfind constant --min 9007199254740992 --max 9007199254740993 --limit 0\nfind constant -1 --count\n").unwrap();
         let batch = run(&["batch", batch_path.to_str().unwrap()]);
         let results = &batch["results"];
         assert_eq!(results[0]["result"]["data"], projected);

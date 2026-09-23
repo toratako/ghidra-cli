@@ -45,6 +45,7 @@ fn type_creation_parses_struct_enum_and_typedef_arguments() {
         "create",
         "typedef",
         "HeaderPointer",
+        "--type",
         "Header *",
     ])
     .unwrap();
@@ -82,7 +83,14 @@ fn type_creation_accepts_global_options_at_each_command_level() {
     for command in [
         vec!["type", "create", "struct", "Header"],
         vec!["type", "create", "enum", "Mode", "--member", "Read", "1"],
-        vec!["type", "create", "typedef", "HeaderAlias", "Header"],
+        vec![
+            "type",
+            "create",
+            "typedef",
+            "HeaderAlias",
+            "--type",
+            "Header",
+        ],
     ] {
         for position in [0, 1, 2, 3, command.len()] {
             for output_flag in ["--json", "--pretty"] {
@@ -131,15 +139,25 @@ fn type_creation_accepts_global_options_at_each_command_level() {
 #[test]
 fn type_resize_accepts_decimal_and_hex_sizes_with_zero_and_java_int_boundaries() {
     for (input, size) in [("0", 0), ("64", 64), ("0x40", 64), ("0X7fffffff", i32::MAX)] {
-        let cli =
-            Cli::try_parse_from(["ghidra-cli", "type", "resize", "/Draft/Header", input]).unwrap();
+        let cli = Cli::try_parse_from([
+            "ghidra-cli",
+            "type",
+            "resize",
+            "/Draft/Header",
+            "--size",
+            input,
+        ])
+        .unwrap();
         assert!(
             matches!(cli.command, Commands::Type(TypeCommands::Resize(args))
             if args.type_name == "/Draft/Header" && args.size == size)
         );
     }
     for size in ["-1", "2147483648", "0x80000000", "0x", "1.5"] {
-        assert!(Cli::try_parse_from(["ghidra-cli", "type", "resize", "/Header", size]).is_err());
+        assert!(
+            Cli::try_parse_from(["ghidra-cli", "type", "resize", "/Header", "--size", size])
+                .is_err()
+        );
     }
 }
 
@@ -345,4 +363,28 @@ fn enum_members_preserve_signed_and_prefixed_values_as_separate_operands() {
         "Unknown",
     ])
     .is_err());
+}
+
+#[test]
+fn import_c_requires_one_explicit_source() {
+    for source in [
+        vec!["--code", "typedef int Id;"],
+        vec!["--file", "types.h"],
+        vec!["--stdin"],
+    ] {
+        assert!(
+            Cli::try_parse_from(["ghidra-cli", "type", "import-c"].into_iter().chain(source))
+                .is_ok()
+        );
+    }
+    for source in [
+        vec![],
+        vec!["--code", "typedef int Id;", "--stdin"],
+        vec!["--file", "types.h", "--stdin"],
+    ] {
+        assert!(
+            Cli::try_parse_from(["ghidra-cli", "type", "import-c"].into_iter().chain(source))
+                .is_err()
+        );
+    }
 }

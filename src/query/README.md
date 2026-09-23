@@ -48,6 +48,10 @@ from the residual query. Projection never erases keys needed for sorting.
 
 When omitted, the limit defaults to `default_limit`, including with no query
 options, with projection only, or after filtering, sorting or offset.
+CLI pagination uses `--skip N`; the bridge arguments and page metadata retain
+`offset`. `--fields a,b` includes fields and `--exclude-fields a,b` excludes them;
+these projection options are mutually exclusive. Projection leaves the
+per-field descending prefix in `--sort=-size,name` independent.
 Explicit `--limit 0` is unlimited. `--count` ignores the
 configured limit but honors explicit offset/limit: it counts the selected page,
 not a separate total. The wire envelope's `count` is the number of returned rows.

@@ -182,7 +182,7 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
             graph(&[1, 2], &[1, 2, 3]),
             Value::Null,
         ),
-        (vec!["--offset", "1"], graph(&[1], &[1, 2]), Value::Null),
+        (vec!["--skip", "1"], graph(&[1], &[1, 2]), Value::Null),
         (
             vec!["--filter", "name=beta"],
             graph(&[2], &[3]),
@@ -190,13 +190,13 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
         ),
         (
             vec![
-                "--filter", "name~a", "--sort", "name", "--offset", "1", "--limit", "2",
+                "--filter", "name~a", "--sort", "name", "--skip", "1", "--limit", "2",
             ],
             graph(&[2, 3], &[3, 4]),
             Value::Null,
         ),
         (
-            vec!["--sort=-name", "--offset", "1", "--limit", "0"],
+            vec!["--sort=-name", "--skip", "1", "--limit", "0"],
             graph(&[3, 2, 1], &[1, 2, 3, 4]),
             Value::Null,
         ),
@@ -206,11 +206,17 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
             Value::Null,
         ),
         (
-            vec!["--sort", "name", "--limit", "2", "--fields=-id,address"],
+            vec![
+                "--sort",
+                "name",
+                "--limit",
+                "2",
+                "--exclude-fields=id,address",
+            ],
             projected,
             Value::Null,
         ),
-        (vec!["--offset", "99"], graph(&[], &[]), Value::Null),
+        (vec!["--skip", "99"], graph(&[], &[]), Value::Null),
         (
             vec!["--filter", "name=absent"],
             graph(&[], &[]),
@@ -218,7 +224,7 @@ fn graph_calls_queries_select_nodes_and_keep_outgoing_edges_in_standalone_and_ba
         ),
         (vec!["--count"], json!(4), Value::Null),
         (
-            vec!["--offset", "1", "--limit", "2", "--count"],
+            vec!["--skip", "1", "--limit", "2", "--count"],
             json!(2),
             Value::Null,
         ),
@@ -355,7 +361,7 @@ fn call_traversal_queries_share_rows_and_preserve_selection_before_limits() {
                 Value::Null,
             ),
             (
-                vec!["--sort", "-call_site", "--offset", "1", "--limit", "1"],
+                vec!["--sort", "-call_site", "--skip", "1", "--limit", "1"],
                 json!([call_rows_fixture()[1].clone()]),
                 Value::Null,
             ),
@@ -548,7 +554,7 @@ fn variable_list_queries_preserve_context_and_filter_before_paging() {
         "--filter",
         "kind=local",
         "--sort=-first_use",
-        "--offset",
+        "--skip",
         "1",
         "--limit",
         "1",

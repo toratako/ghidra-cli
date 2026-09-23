@@ -7,7 +7,7 @@ fn batch_on_error_controls_runtime_failures_after_preflight() {
         let bridge = RecordedBridge::new();
         std::fs::write(
             bridge.root.path().join("batch.txt"),
-            "comment set 0x1000 before\nsymbol rename missing renamed\ncomment set 0x1001 after\n",
+            "comment set 0x1000 --text before\nsymbol rename missing renamed\ncomment set 0x1001 --text after\n",
         )
         .unwrap();
         let mut command = bridge.command();
@@ -77,13 +77,13 @@ fn nested_batch_inherits_on_error_unless_overridden() {
         std::fs::write(
             bridge.root.path().join("batch.txt"),
             format!(
-                "comment set 0x1000 before\nbatch nested.txt{child_option}\ncomment set 0x1003 outer-after\n"
+                "comment set 0x1000 --text before\nbatch nested.txt{child_option}\ncomment set 0x1003 --text outer-after\n"
             ),
         )
         .unwrap();
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            "symbol rename missing renamed\ncomment set 0x1002 inner-after\n",
+            "symbol rename missing renamed\ncomment set 0x1002 --text inner-after\n",
         )
         .unwrap();
         let output = bridge
@@ -118,11 +118,11 @@ fn batch_routes_each_target_and_keeps_explicit_program_switches() {
     let second = RecordedBridge::new();
     std::fs::write(
         first.root.path().join("nested.txt"),
-        "comment set 0x1000 nested --program C\n",
+        "comment set 0x1000 --text nested --program C\n",
     )
     .unwrap();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "comment set 0x1000 marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
+        "comment set 0x1000 --text marker --program B\nprogram info\nbatch nested.txt\nprogram info --project {} --program D\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let result = first.run(&["batch", "batch.txt", "--program", "A"]);
@@ -229,7 +229,7 @@ fn batch_queries_inherit_targets_and_keep_program_selection() {
     let first = RecordedBridge::new();
     let second = RecordedBridge::new();
     std::fs::write(first.root.path().join("batch.txt"), format!(
-        "memory map\ncomment set 0x1000 marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
+        "memory map\ncomment set 0x1000 --text marker --program B\nmemory map\nmemory map --program C\nmemory map --project {} --program D\nmemory map\n",
         batch_path_argument(&second.project),
     )).unwrap();
     let output = first
@@ -260,7 +260,7 @@ fn batch_rejects_invalid_arguments_before_selecting_any_program() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        "function delete --program must-not-open\ncomment set 0x1000 after\n",
+        "function delete --program must-not-open\ncomment set 0x1000 --text after\n",
     )
     .unwrap();
     let output = bridge
@@ -283,12 +283,14 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
         let bridge = RecordedBridge::new();
         std::fs::write(
             bridge.root.path().join("nested.txt"),
-            format!("comment set 0x1000 {failure}\ncomment set 0x1000 must-not-run\n"),
+            format!(
+                "comment set 0x1000 --text {failure}\ncomment set 0x1000 --text must-not-run\n"
+            ),
         )
         .unwrap();
         std::fs::write(
             bridge.root.path().join("batch.txt"),
-            "program info\nbatch nested.txt\ncomment set 0x1000 must-not-run\n",
+            "program info\nbatch nested.txt\ncomment set 0x1000 --text must-not-run\n",
         )
         .unwrap();
         let output = bridge

@@ -13,12 +13,16 @@ pub struct ObjectOptions {
     #[arg(long)]
     pub project: Option<String>,
 
-    /// Field selection (comma-separated)
-    #[arg(long)]
+    /// Include only these fields (comma-separated)
+    #[arg(long, conflicts_with = "exclude_fields")]
     pub fields: Option<String>,
 
+    /// Exclude these fields (comma-separated)
+    #[arg(long)]
+    pub exclude_fields: Option<String>,
+
     /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    #[arg(long, value_enum, ignore_case = true)]
     pub format: Option<OutputFormat>,
 
     /// Output compact JSON (shorthand for --format=json-compact)
@@ -32,11 +36,12 @@ impl From<&ObjectOptions> for QueryOptions {
             program: options.program.clone(),
             project: options.project.clone(),
             fields: options.fields.clone(),
+            exclude_fields: options.exclude_fields.clone(),
             format: options.format,
             json: options.json,
             filter: None,
             limit: None,
-            offset: None,
+            skip: None,
             sort: None,
             count: false,
         }
@@ -60,12 +65,16 @@ pub struct QueryOptions {
     #[arg(short, long)]
     pub filter: Option<String>,
 
-    /// Field selection (comma-separated)
-    #[arg(long)]
+    /// Include only these fields (comma-separated)
+    #[arg(long, conflicts_with = "exclude_fields")]
     pub fields: Option<String>,
 
+    /// Exclude these fields (comma-separated)
+    #[arg(long)]
+    pub exclude_fields: Option<String>,
+
     /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    #[arg(long, value_enum, ignore_case = true)]
     pub format: Option<OutputFormat>,
 
     /// Maximum number of results (0 = unlimited; default 1000)
@@ -74,7 +83,7 @@ pub struct QueryOptions {
 
     /// Skip first N results
     #[arg(long)]
-    pub offset: Option<usize>,
+    pub skip: Option<usize>,
 
     /// Sort by field(s) (comma-separated, prefix with - for descending)
     #[arg(long, allow_hyphen_values = true)]

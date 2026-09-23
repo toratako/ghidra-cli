@@ -73,7 +73,14 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
             json!({"name": "WideMode", "members": [{"name": "Read", "value": "1"}], "size": 8}),
         ),
         (
-            vec!["type", "create", "typedef", "HeaderPointer", "Header *"],
+            vec![
+                "type",
+                "create",
+                "typedef",
+                "HeaderPointer",
+                "--type",
+                "Header *",
+            ],
             "type_typedef",
             json!({"name": "HeaderPointer", "base_type": "Header *"}),
         ),
@@ -95,17 +102,17 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
             json!({"type_name": "/Protocol/Header", "new_name": "HeaderV2", "category": null}),
         ),
         (
-            vec!["type", "resize", "/Draft/HeaderV2", "0x40"],
+            vec!["type", "resize", "/Draft/HeaderV2", "--size", "0x40"],
             "type_resize",
             json!({"type_name": "/Draft/HeaderV2", "size": 64}),
         ),
         (
-            vec!["type", "resize", "/Draft/Empty", "0"],
+            vec!["type", "resize", "/Draft/Empty", "--size", "0"],
             "type_resize",
             json!({"type_name": "/Draft/Empty", "size": 0}),
         ),
         (
-            vec!["type", "move", "/Header", "/Protocol"],
+            vec!["type", "move", "/Header", "--category", "/Protocol"],
             "type_move",
             json!({"type_name": "/Header", "category": "/Protocol"}),
         ),
@@ -365,7 +372,7 @@ fn category_queries_keep_path_context_and_apply_query_options_in_the_client() {
                     "type_count>0",
                     "--sort",
                     "name",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",
@@ -445,8 +452,8 @@ fn new_type_edit_receipts_keep_nested_fields_and_support_projection() {
     for batch in [false, true] {
         for mut args in [
             vec!["type", "clone", "/Header", "Draft"],
-            vec!["type", "resize", "/Header", "64"],
-            vec!["type", "move", "/Header", "/Protocol"],
+            vec!["type", "resize", "/Header", "--size", "64"],
+            vec!["type", "move", "/Header", "--category", "/Protocol"],
             vec!["type", "category", "create", "/Draft"],
             vec!["type", "category", "delete", "/Draft"],
             vec![
@@ -483,7 +490,7 @@ fn new_type_edit_receipts_keep_nested_fields_and_support_projection() {
 fn invalid_type_bounds_and_queries_fail_before_standalone_or_batch_bridge_work() {
     let bridge = RecordedBridge::new();
     for args in [
-        vec!["type", "resize", "/Header", "2147483648"],
+        vec!["type", "resize", "/Header", "--size", "2147483648"],
         vec![
             "type",
             "field",
@@ -542,7 +549,14 @@ fn type_import_reads_code_files_and_stdin_in_the_client() {
     std::fs::write(bridge.root.path().join("recovered types.h"), code).unwrap();
     for (args, input) in [
         (
-            vec!["type", "import-c", code, "--category", "/Recovered"],
+            vec![
+                "type",
+                "import-c",
+                "--code",
+                code,
+                "--category",
+                "/Recovered",
+            ],
             None,
         ),
         (

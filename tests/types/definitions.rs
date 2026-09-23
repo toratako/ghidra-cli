@@ -33,6 +33,7 @@ fn get_imported_and_cloned_function_definitions_exposes_saved_signatures() {
         &program,
         &[
             "import-c",
+            "--code",
             "int __cdecl ImportedCallback(int count, char *message, ...); void EmptyCallback(void);",
         ],
     );
@@ -434,6 +435,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         &program,
         &[
             "import-c",
+            "--code",
             "struct Item { int value; };",
             "--category",
             "/Draft",
@@ -443,6 +445,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         &program,
         &[
             "import-c",
+            "--code",
             "struct Item { char existing; };",
             "--category",
             "/Final",
@@ -471,11 +474,11 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         .is_empty());
     command(
         &program,
-        &["create", "typedef", "ItemAlias", "/Draft/Item *"],
+        &["create", "typedef", "ItemAlias", "--type", "/Draft/Item *"],
     );
     let alias = definition(&program, "/ItemAlias");
     let pointer_path = alias["base_type_path"].as_str().unwrap();
-    type_command(&program, &["move", pointer_path, "/Final"])
+    type_command(&program, &["move", pointer_path, "--category", "/Final"])
         .assert_failure()
         .assert_stderr_contains("editable named definition");
     assert_eq!(definition(&program, "/ItemAlias"), alias);
@@ -492,7 +495,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         serde_json::from_str::<Value>(&clone_collision.stderr).unwrap()["detail"]["rolled_back"],
         true
     );
-    type_command(&program, &["move", "/Draft/Item", "/Final"])
+    type_command(&program, &["move", "/Draft/Item", "--category", "/Final"])
         .assert_failure()
         .assert_stderr_contains("already exists");
     type_command(
@@ -507,7 +510,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
     )
     .assert_failure()
     .assert_stderr_contains("Category not found");
-    type_command(&program, &["move", "/Draft/Item", "/Missing"])
+    type_command(&program, &["move", "/Draft/Item", "--category", "/Missing"])
         .assert_failure()
         .assert_stderr_contains("Category not found");
     for path in ["/", "/Draft", "/Final"] {
@@ -519,7 +522,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
     reopen(&program);
     assert_eq!(definition(&program, "/Draft/Item"), source);
     assert_eq!(definition(&program, "/Final/Item"), collision);
-    let unchanged = command(&program, &["move", "/Draft/Item", "/Draft"]);
+    let unchanged = command(&program, &["move", "/Draft/Item", "--category", "/Draft"]);
     assert_eq!(unchanged["changed"], false);
     assert_eq!(unchanged["old_path"], "/Draft/Item");
     command(&program, &["rename", "/Draft/Item", "MovedItem"]);
@@ -527,7 +530,10 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         definition(&program, "/Draft/MovedItem")["universal_id"],
         source["universal_id"]
     );
-    let moved = command(&program, &["move", "/Draft/MovedItem", "/Final"]);
+    let moved = command(
+        &program,
+        &["move", "/Draft/MovedItem", "--category", "/Final"],
+    );
     assert_eq!(moved["old_path"], "/Draft/MovedItem");
     assert_eq!(moved["path"], "/Final/MovedItem");
     assert_eq!(moved["changed"], true);

@@ -143,6 +143,7 @@ fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
         &program,
         &[
             "import-c",
+            "--code",
             "union Payload { unsigned int tag; char raw[8]; }; struct Holder { int field; };",
             "--category",
             "/Recovered",
@@ -439,6 +440,7 @@ fn union_bitfield_metadata_and_deletion_preserve_other_members() {
         &program,
         &[
             "import-c",
+            "--code",
             "union Flags { unsigned int bits:3; unsigned int raw; };",
         ],
     ));

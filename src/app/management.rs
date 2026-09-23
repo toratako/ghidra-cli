@@ -125,7 +125,11 @@ pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> 
         unreachable!("handle_program_save dispatched for a non-Save Program command");
     };
     let project = args.project.clone().or_else(|| cli.project.clone());
-    let program = args.program.clone().or_else(|| cli.program.clone());
+    let program = args
+        .name
+        .clone()
+        .or_else(|| args.program.clone())
+        .or_else(|| cli.program.clone());
     let config = load_config(&cli.projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
     let Some(port) = bridge::is_bridge_running(&project_path) else {

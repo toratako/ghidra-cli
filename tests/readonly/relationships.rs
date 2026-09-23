@@ -221,7 +221,7 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
         result.assert_success();
         result.data()
     };
-    let page_flags = ["--sort", "name", "--offset", "1", "--limit", "2"];
+    let page_flags = ["--sort", "name", "--skip", "1", "--limit", "2"];
     let page = query(&page_flags);
     let selected = &nodes[1..3];
     assert_eq!(page["nodes"], serde_json::json!(selected));
@@ -235,7 +235,7 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
     assert_eq!(query(&["--count"]), serde_json::json!(nodes.len()));
     assert_eq!(query(&["--limit", "2", "--count"]), 2);
     assert_eq!(
-        query(&["--offset", &nodes.len().to_string(), "--limit", "2"]),
+        query(&["--skip", &nodes.len().to_string(), "--limit", "2"]),
         serde_json::json!({"nodes": [], "edges": [], "node_count": 0, "edge_count": 0})
     );
     let matching = query(&["--filter", "name~add_numbers", "--limit", "0"]);
@@ -254,11 +254,7 @@ fn test_graph_calls_queries_match_bridge_nodes_and_outgoing_edges() {
 
     let batch_dir = tempfile::tempdir().unwrap();
     let batch_file = batch_dir.path().join("graph.txt");
-    std::fs::write(
-        &batch_file,
-        "graph calls --sort name --offset 1 --limit 2\n",
-    )
-    .unwrap();
+    std::fs::write(&batch_file, "graph calls --sort name --skip 1 --limit 2\n").unwrap();
     let batch = ghidra(harness)
         .arg("batch")
         .arg(batch_file.to_str().unwrap())

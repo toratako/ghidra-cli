@@ -3,7 +3,7 @@ mod planner;
 pub(crate) use planner::{FetchParams, FetchSupport, Page, QueryPlan};
 
 use crate::cli::QueryOptions;
-use crate::error::Result;
+use crate::error::{GhidraError, Result};
 use crate::filter::Filter;
 use serde_json::Value as JsonValue;
 
@@ -21,10 +21,10 @@ impl Query {
     /// Build a Query from CLI QueryOptions. Returns None if no query processing is needed.
     pub fn from_options(opts: &QueryOptions) -> Result<Option<Self>> {
         let has_filter = opts.filter.is_some();
-        let has_fields = opts.fields.is_some();
+        let has_fields = opts.fields.is_some() || opts.exclude_fields.is_some();
         let has_sort = opts.sort.is_some();
         let has_count = opts.count;
-        let has_offset = opts.offset.is_some();
+        let has_offset = opts.skip.is_some();
         let has_limit = opts.limit.is_some();
 
         // Pagination also needs client-side processing when the caller fetches
@@ -34,11 +34,8 @@ impl Query {
         }
 
         let filter = opts.filter.as_ref().map(|f| Filter::parse(f)).transpose()?;
-        let fields = opts
-            .fields
-            .as_ref()
-            .map(|f| FieldSelector::parse(f))
-            .transpose()?;
+        let fields =
+            FieldSelector::from_options(opts.fields.as_deref(), opts.exclude_fields.as_deref())?;
         let sort = opts.sort.as_ref().map(|s| SortKey::parse(s));
 
         Ok(Some(Self {
@@ -46,7 +43,7 @@ impl Query {
             fields,
             // QueryPlan removes any offset already applied by the bridge.
             limit: opts.limit,
-            offset: opts.offset,
+            offset: opts.skip,
             sort,
             count_only: has_count,
         }))
@@ -216,20 +213,26 @@ impl FieldSelector {
         }
     }
 
-    pub fn parse(input: &str) -> Result<Self> {
-        if input.starts_with('-') {
-            // Exclude fields
-            let fields: Vec<String> = input
-                .trim_start_matches('-')
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect();
-            Ok(Self::exclude(fields))
+    pub fn from_options(include: Option<&str>, exclude: Option<&str>) -> Result<Option<Self>> {
+        let (input, excluding) = match (include, exclude) {
+            (Some(_), Some(_)) => {
+                return Err(GhidraError::InvalidFormat(
+                    "--fields and --exclude-fields cannot be combined".into(),
+                ));
+            }
+            (Some(input), None) => (input, false),
+            (None, Some(input)) => (input, true),
+            (None, None) => return Ok(None),
+        };
+        let fields = input
+            .split(',')
+            .map(|field| field.trim().to_string())
+            .collect();
+        Ok(Some(if excluding {
+            Self::exclude(fields)
         } else {
-            // Include fields
-            let fields: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
-            Ok(Self::include(fields))
-        }
+            Self::include(fields)
+        }))
     }
 }
 
@@ -273,16 +276,6 @@ mod tests {
             sort: None,
             count_only: false,
         }
-    }
-
-    #[test]
-    fn test_field_selector_parse() {
-        let selector = FieldSelector::parse("name,address,size").unwrap();
-        assert!(selector.include.is_some());
-        assert_eq!(selector.include.unwrap().len(), 3);
-
-        let selector = FieldSelector::parse("-metadata,internal").unwrap();
-        assert!(selector.exclude.is_some());
     }
 
     #[test]
@@ -339,22 +332,23 @@ mod tests {
             serde_json::json!({"name": "a", "size": 100}),
             serde_json::json!({"name": "medium", "size": 50}),
         ];
-        for fields in ["name", "-size"] {
+        for (include, exclude) in [(Some("name"), None), (None, Some("size"))] {
             let opts = QueryOptions {
                 program: None,
                 project: None,
                 filter: Some("size>1".to_string()),
-                fields: Some(fields.to_string()),
+                fields: include.map(str::to_string),
+                exclude_fields: exclude.map(str::to_string),
                 format: None,
                 json: false,
                 sort: Some("-size,name".to_string()),
-                offset: Some(1),
+                skip: Some(1),
                 limit: Some(1),
                 count: false,
             };
             let mut query = Query::from_options(&opts).unwrap().unwrap();
             let result: JsonValue = query.apply(data.clone()).unwrap();
-            assert_eq!(result, serde_json::json!([{"name": "z"}]), "{fields}");
+            assert_eq!(result, serde_json::json!([{"name": "z"}]));
             query.count_only = true;
             assert_eq!(query.apply(data.clone()).unwrap(), serde_json::json!(1));
             query.count_only = false;

@@ -106,9 +106,10 @@ mod tests {
             project: None,
             filter: None,
             fields: None,
+            exclude_fields: None,
             format: None,
             limit: None,
-            offset: None,
+            skip: None,
             sort: None,
             count: false,
             json: false,
@@ -123,7 +124,7 @@ mod tests {
     fn contains_pages_matching_rows_and_consumes_offset_once() {
         let mut opts = options();
         opts.filter = Some("name~item".into());
-        opts.offset = Some(3);
+        opts.skip = Some(3);
         let plan = plan(&opts, FetchSupport::Paged("name"));
         assert_eq!(
             plan.fetch,
@@ -156,7 +157,7 @@ mod tests {
             ] {
                 let mut opts = options();
                 opts.filter = filter.map(str::to_string);
-                opts.offset = Some(2);
+                opts.skip = Some(2);
                 opts.limit = Some(3);
                 let plan = plan(&opts, support);
                 if filter.is_some() || support != FetchSupport::Paged("name") {
@@ -172,7 +173,7 @@ mod tests {
         for count in [false, true] {
             let mut opts = options();
             opts.filter = Some("name~item".into());
-            opts.offset = Some(1);
+            opts.skip = Some(1);
             opts.count = count;
             opts.sort = (!count).then(|| "-size".into());
             let plan = plan(&opts, FetchSupport::Paged("name"));
@@ -215,7 +216,7 @@ mod tests {
                                 opts.filter = filter.map(str::to_string);
                                 opts.sort = sort.map(str::to_string);
                                 opts.count = count;
-                                opts.offset = offset;
+                                opts.skip = offset;
                                 opts.limit = limit;
                                 opts.fields = Some("name".into());
                                 let plan = plan(&opts, support);

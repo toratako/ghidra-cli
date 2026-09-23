@@ -144,7 +144,15 @@ fn editing_capabilities_are_required_before_program_selection_or_edits() {
         std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
         for args in [
             vec!["program", "info", "--program", "B"],
-            vec!["comment", "set", "0x1000", "marker", "--program", "B"],
+            vec![
+                "comment",
+                "set",
+                "0x1000",
+                "--text",
+                "marker",
+                "--program",
+                "B",
+            ],
             vec!["program", "import", "binary", "--no-analyze"],
         ] {
             bridge.requests.lock().unwrap().clear();
@@ -258,7 +266,7 @@ fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
             "comment_delete",
         ),
         (
-            vec!["comment", "delete", "0x1000", "--comment-type", "pre"],
+            vec!["comment", "delete", "0x1000", "--type", "pre"],
             "comment_delete",
         ),
     ] {

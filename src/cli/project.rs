@@ -35,19 +35,19 @@ pub enum ProjectCommands {
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub enum ProgramCommands {
     /// List all programs in the project
-    List(ProgramTargetArgs),
+    List(ProgramListArgs),
     /// Open/switch to a program
-    Open(ProgramTargetArgs),
+    Open(ProgramNameArgs),
     /// Close a program
     Close(ProgramTargetArgs),
     /// Delete a program
-    Delete(ProgramTargetArgs),
+    Delete(ProgramNameArgs),
     /// Show program information
-    Info(super::options::ObjectOptions),
+    Info(ProgramObjectArgs),
     /// Show program statistics
-    Stats(super::options::ObjectOptions),
+    Stats(ProgramObjectArgs),
     /// List program relocations
-    ListRelocations(super::options::QueryOptions),
+    ListRelocations(ProgramQueryArgs),
     /// Inspect and edit processor decoding context without redefining instructions
     #[command(subcommand)]
     Context(ProgramContextCommands),
@@ -118,7 +118,11 @@ pub struct ProgramContextClearArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ProgramRebaseArgs {
+    /// Program name (default: selected program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
     /// New absolute image base in the default address space, with an explicit 0x prefix
+    #[arg(long)]
     pub base: String,
     #[command(flatten)]
     pub options: super::ObjectOptions,
@@ -126,6 +130,9 @@ pub struct ProgramRebaseArgs {
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ProgramTargetArgs {
+    /// Program name (overrides --program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
@@ -133,9 +140,45 @@ pub struct ProgramTargetArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ProgramListArgs {
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ProgramNameArgs {
+    /// Program name (overrides --program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: String,
+    #[arg(long)]
+    pub project: Option<String>,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ProgramObjectArgs {
+    /// Program name (default: selected program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub options: super::ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct ProgramQueryArgs {
+    /// Program name (default: selected program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub options: super::QueryOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct ExportArgs {
+    /// Program name (overrides --program)
+    #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: String,
     /// Export format
-    #[arg(value_parser = ["xml", "c", "binary", "gzf", "asm", "hex", "html"], ignore_case = true)]
+    #[arg(long = "export-format", value_parser = ["xml", "c", "binary", "gzf", "asm", "hex", "html"], ignore_case = true)]
     pub format: String,
     #[arg(long)]
     pub program: Option<String>,

@@ -105,7 +105,9 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             &[
                 "create",
                 ".ram",
+                "--start",
                 "ram:0x2000",
+                "--size",
                 "16",
                 "--uninitialized",
                 "--permissions",
@@ -141,7 +143,9 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             &[
                 "create",
                 ".mmio",
+                "--start",
                 "ram:0x3000",
+                "--size",
                 "16",
                 "--uninitialized",
                 "--permissions",
@@ -156,7 +160,9 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             &[
                 "create",
                 ".zero",
+                "--start",
                 "ram:0x4000",
+                "--size",
                 "16",
                 "--fill",
                 "0x00",
@@ -172,7 +178,9 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             &[
                 "create",
                 ".filled",
+                "--start",
                 "ram:0x5000",
+                "--size",
                 "16",
                 "--fill",
                 "0xff",
@@ -186,15 +194,27 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             "unmapped"
         );
 
-        let permissions = cli(harness, program, &["set-permissions", "0x5000", "r"]);
+        let permissions = cli(
+            harness,
+            program,
+            &["set-permissions", "0x5000", "--permissions", "r"],
+        );
         assert_eq!(permissions["status"], "updated");
         assert_eq!(permissions["before"], filled["after"]);
         assert_eq!(permissions["after"]["permissions"], "r");
         assert_eq!(permissions["changed"], true);
-        let none = cli(harness, program, &["set-permissions", "0x5000", "none"]);
+        let none = cli(
+            harness,
+            program,
+            &["set-permissions", "0x5000", "--permissions", "none"],
+        );
         assert_eq!(none["before"], permissions["after"]);
         assert_eq!(none["after"]["permissions"], "");
-        let unchanged = cli(harness, program, &["set-permissions", "0x5000", "none"]);
+        let unchanged = cli(
+            harness,
+            program,
+            &["set-permissions", "0x5000", "--permissions", "none"],
+        );
         assert_eq!(unchanged["status"], "unchanged");
         assert_eq!(unchanged["changed"], false);
         assert_eq!(unchanged["before"], unchanged["after"]);
@@ -296,7 +316,9 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
             &[
                 "create",
                 ".shared",
+                "--start",
                 "ram:0x2000",
+                "--size",
                 "16",
                 "--fill",
                 "0x11",
@@ -310,7 +332,9 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
             &[
                 "create",
                 ".shared",
+                "--start",
                 "ram:0x2000",
+                "--size",
                 "16",
                 "--overlay",
                 "bank1",
@@ -358,7 +382,9 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
             &[
                 "create",
                 ".shared",
+                "--start",
                 "bank1:0x4000",
+                "--size",
                 "16",
                 "--uninitialized",
                 "--permissions",
@@ -372,7 +398,7 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         let changed = cli(
             harness,
             program,
-            &["set-permissions", "bank1:0x00002000", "w"],
+            &["set-permissions", "bank1:0x00002000", "--permissions", "w"],
         );
         assert_eq!(changed["after"]["permissions"], "w");
         let changed = cli(

@@ -66,9 +66,10 @@ pub struct MemoryBlockCreateArgs {
     /// Block display name
     pub name: String,
     /// Explicit start address, qualified with the space name for an existing overlay
+    #[arg(long)]
     pub start: String,
     /// Positive size in decimal bytes
-    #[arg(value_parser = parse_block_size)]
+    #[arg(long, value_parser = parse_block_size)]
     pub size: i64,
     /// Create memory without known byte values
     #[arg(long)]
@@ -104,7 +105,7 @@ pub struct MemoryBlockPermissionsArgs {
     /// Exact block start as an explicit address, including its space when needed
     pub block_start: String,
     /// Replacement combination of r, w, x, or none
-    #[arg(value_parser = parse_permissions)]
+    #[arg(long, value_parser = parse_permissions)]
     pub permissions: String,
     #[command(flatten)]
     pub options: ObjectOptions,
@@ -207,6 +208,7 @@ pub struct MemReadArgs {
     /// Explicit 0x-prefixed start address or exact symbol name (e.g. main)
     pub address: String,
     /// Number of bytes to read in decimal (e.g. 64)
+    #[arg(long)]
     pub size: usize,
     /// Read current memory or preserved imported bytes; original requires a file mapping for the whole range
     #[arg(long, value_enum, default_value = "memory")]
@@ -227,6 +229,7 @@ pub struct MemWriteArgs {
     /// Explicit 0x-prefixed start address or exact symbol name
     pub address: String,
     /// Hex bytes, contiguous or quoted with spaces
+    #[arg(long = "bytes", value_name = "HEX")]
     pub hex: String,
     #[arg(long)]
     pub program: Option<String>,

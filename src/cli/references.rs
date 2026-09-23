@@ -40,6 +40,7 @@ pub struct EquateCreateArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct EquateOperandArgs {
     /// Explicit address of the instruction start
+    #[arg(long = "at", value_name = "ADDRESS")]
     pub address: String,
     /// Exact name of an existing definition
     pub name: String,

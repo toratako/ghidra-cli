@@ -202,7 +202,7 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
         vec!["--count", "2"],
         vec!["--filter", "mnemonic=RET"],
         vec!["--sort", "address"],
-        vec!["--offset", "1"],
+        vec!["--skip", "1"],
         vec!["--fields", "address"],
         vec!["--format", "asm"],
     ] {

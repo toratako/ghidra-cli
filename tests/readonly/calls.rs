@@ -295,7 +295,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             "callee=search_leaf",
             "--sort",
             "call_site",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "1",
@@ -324,7 +324,7 @@ public class CreateCallSearchFixture extends GhidraScript {
         let dir = tempfile::tempdir().unwrap();
         let batch_file = dir.path().join("calls.txt");
         std::fs::write(&batch_file,
-            "graph callees search_caller --filter 'callee=search_leaf' --sort call_site --offset 1 --limit 1 --fields caller,callee,call_site\n").unwrap();
+            "graph callees search_caller --filter 'callee=search_leaf' --sort call_site --skip 1 --limit 1 --fields caller,callee,call_site\n").unwrap();
         let batch = ghidra(harness())
             .arg("batch")
             .arg(batch_file.to_str().unwrap())

@@ -28,7 +28,7 @@ fn constant_queries_preserve_values_and_apply_selection_in_standalone_and_batch(
                     "--filter",
                     "bits >= 16",
                     "--sort=-address",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",
@@ -136,14 +136,14 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
             ),
             (vec!["--sort=-address"], 1, "0x009f", Value::Null),
             (
-                vec!["--offset", "100", "--limit", "2"],
+                vec!["--skip", "100", "--limit", "2"],
                 2,
                 "0x0064",
                 Value::Null,
             ),
             (vec!["--count"], 160, "", Value::Null),
             (
-                vec!["--count", "--offset", "100", "--limit", "2"],
+                vec!["--count", "--skip", "100", "--limit", "2"],
                 2,
                 "",
                 Value::Null,
@@ -175,7 +175,7 @@ fn search_queries_use_planned_limits_without_truncating_selection() {
                 let sent: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
                 assert_eq!(sent.len(), 1);
                 let server_page = wire == "find_string"
-                    && flags.contains(&"--offset")
+                    && flags.contains(&"--skip")
                     && !flags.contains(&"--count");
                 assert_eq!(
                     sent[0]["args"]["limit"],
@@ -205,7 +205,7 @@ fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
     ]);
     for (flags, expected, fetch_filter, fetch_offset, fetch_limit) in [
         (
-            vec!["--filter", "value~'5'", "--offset", "1", "--limit", "2"],
+            vec!["--filter", "value~'5'", "--skip", "1", "--limit", "2"],
             rows.clone(),
             json!("5"),
             json!(1),
@@ -215,7 +215,7 @@ fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
             vec![
                 "--filter",
                 "value~'5' AND byte_length>10",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "2",
@@ -230,7 +230,7 @@ fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
                 "--filter",
                 "value~'5'",
                 "--sort=-value",
-                "--offset",
+                "--skip",
                 "12",
                 "--limit",
                 "2",
@@ -244,7 +244,7 @@ fn string_search_pages_after_pattern_and_filter_in_standalone_and_batch() {
             vec![
                 "--filter",
                 "value~'5'",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "2",
@@ -401,7 +401,7 @@ fn string_reference_queries_process_rows_in_standalone_and_batch_results() {
         ),
         (
             "needle",
-            vec!["--sort", "-from", "--offset", "1", "--limit", "1"],
+            vec!["--sort", "-from", "--skip", "1", "--limit", "1"],
             json!([all[0].clone()]),
         ),
     ] {

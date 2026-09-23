@@ -76,7 +76,14 @@ public class DefineExportCoverageFixture extends GhidraScript {
     let header = directory.path().join("globals.h");
     std::fs::write(&header, "unrelated header").unwrap();
     let result = common::ghidra(&harness)
-        .args(["program", "export", "c", "--output"])
+        .args([
+            "program",
+            "export",
+            &program,
+            "--export-format",
+            "c",
+            "--output",
+        ])
         .arg(c_path.to_str().unwrap())
         .arg("--json")
         .run();
@@ -118,7 +125,14 @@ public class ExportTestLocale extends GhidraScript {
         // Clap accepts uppercase format names; the JVM locale must not change
         // which exporter handles them.
         let result = common::ghidra(&harness)
-            .args(["program", "export", "BINARY", "--output"])
+            .args([
+                "program",
+                "export",
+                &program,
+                "--export-format",
+                "BINARY",
+                "--output",
+            ])
             .arg(raw_path.to_str().unwrap())
             .arg("--json")
             .run();

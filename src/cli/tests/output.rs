@@ -19,22 +19,20 @@ fn output_formats_accept_supported_spellings() {
         for spelling in [name.to_string(), name.to_uppercase()] {
             assert_eq!(spelling.parse::<OutputFormat>().unwrap(), expected);
             for command in [["symbol", "externals"], ["function", "list"]] {
-                for flag in ["-o", "--format"] {
-                    let cli = Cli::try_parse_from([
-                        "ghidra-cli",
-                        command[0],
-                        command[1],
-                        flag,
-                        &spelling,
-                    ])
-                    .unwrap();
-                    let format = match cli.command {
-                        Commands::Symbol(SymbolCommands::Externals(opts)) => opts.format,
-                        Commands::Function(FunctionCommands::List(args)) => args.options.format,
-                        _ => panic!("unexpected command"),
-                    };
-                    assert_eq!(format, Some(expected));
-                }
+                let cli = Cli::try_parse_from([
+                    "ghidra-cli",
+                    command[0],
+                    command[1],
+                    "--format",
+                    &spelling,
+                ])
+                .unwrap();
+                let format = match cli.command {
+                    Commands::Symbol(SymbolCommands::Externals(opts)) => opts.format,
+                    Commands::Function(FunctionCommands::List(args)) => args.options.format,
+                    _ => panic!("unexpected command"),
+                };
+                assert_eq!(format, Some(expected));
             }
         }
     }
@@ -70,7 +68,7 @@ fn shared_format_help_lists_supported_choices() {
 #[test]
 fn single_object_commands_reject_list_options() {
     for command in [
-        ["memory", "read", "0x1000", "64"].as_slice(),
+        ["memory", "read", "0x1000", "--size", "64"].as_slice(),
         ["program", "info"].as_slice(),
         ["program", "stats"].as_slice(),
     ] {
@@ -79,7 +77,7 @@ fn single_object_commands_reject_list_options() {
             ["-f", "size>0"].as_slice(),
             ["--count"].as_slice(),
             ["--limit", "1"].as_slice(),
-            ["--offset", "1"].as_slice(),
+            ["--skip", "1"].as_slice(),
             ["--sort", "size"].as_slice(),
         ] {
             let error = Cli::try_parse_from(
@@ -104,11 +102,29 @@ fn single_object_commands_reject_list_options() {
             "--count",
             "--limit",
             "1",
-            "--offset",
+            "--skip",
             "1",
             "--sort",
             "name",
         ]))
         .unwrap();
+    }
+}
+
+#[test]
+fn projection_modes_are_mutually_exclusive() {
+    for command in [
+        ["function", "list"].as_slice(),
+        ["program", "info"].as_slice(),
+    ] {
+        let error = Cli::try_parse_from(
+            ["ghidra-cli"]
+                .into_iter()
+                .chain(command.iter().copied())
+                .chain(["--fields", "name", "--exclude-fields", "size"]),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 }

@@ -61,7 +61,7 @@ public class CreateDeletionArchives extends GhidraScript {
         .unwrap();
     let selected = client.program_info().unwrap()["path"].clone();
     for path in ["types.gdt", "/archives/types.gdt"] {
-        let output = project_cli(&project, &["program", "delete", "--program", path]);
+        let output = project_cli(&project, &["program", "delete", path]);
         assert_eq!(output.status.code(), Some(1), "{output:?}");
         let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
         assert!(
@@ -132,10 +132,7 @@ public class CopyDeletionTargets extends GhidraScript {
 
     // Copied files retain the same internal Program name. Deleting a closed
     // copy must not switch away from or close the initial program.
-    let output = project_cli(
-        &project,
-        &["program", "delete", "--program", "/copies/closed"],
-    );
+    let output = project_cli(&project, &["program", "delete", "/copies/closed"]);
     assert!(output.status.success(), "{output:?}");
     assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
     client
@@ -157,12 +154,12 @@ public class CheckDeletedCopy extends GhidraScript {
         )
         .unwrap();
 
-    let output = project_cli(&project, &["program", "delete", "--program", "/missing"]);
+    let output = project_cli(&project, &["program", "delete", "/missing"]);
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stderr).contains("Program not found"));
     assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
 
-    let output = project_cli(&project, &["program", "delete", "--program", TEST_PROGRAM]);
+    let output = project_cli(&project, &["program", "delete", TEST_PROGRAM]);
     assert!(output.status.success(), "{output:?}");
     assert_eq!(client.bridge_info().unwrap()["has_current_program"], false);
     assert_eq!(
@@ -173,10 +170,7 @@ public class CheckDeletedCopy extends GhidraScript {
 
     client.open_program("/copies/later").unwrap();
     client.program_close().unwrap();
-    let output = project_cli(
-        &project,
-        &["program", "delete", "--program", "/copies/later"],
-    );
+    let output = project_cli(&project, &["program", "delete", "/copies/later"]);
     assert!(output.status.success(), "{output:?}");
     assert_eq!(client.bridge_info().unwrap()["has_current_program"], false);
     assert!(client.open_program("/copies/later").is_err());
@@ -190,7 +184,7 @@ fn test_program_delete_from_stopped_bridge_and_empty_project() {
     // The harness retains cleanup ownership across CLI stop/start invocations.
     let harness = DaemonTestHarness::new(project.to_str().unwrap(), TEST_PROGRAM).unwrap();
     ghidra_cli::ghidra::bridge::stop_bridge(&project).unwrap();
-    let output = project_cli(&project, &["program", "delete", "--program", TEST_PROGRAM]);
+    let output = project_cli(&project, &["program", "delete", TEST_PROGRAM]);
     assert!(output.status.success(), "{output:?}");
     ghidra_cli::ghidra::bridge::stop_bridge(&project).unwrap();
 
@@ -261,7 +255,7 @@ public class ReleaseDeletionTarget extends GhidraScript {
     let batch = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(
         batch.path(),
-        format!("program delete --program {TEST_PROGRAM}\nprogram list\n"),
+        format!("program delete {TEST_PROGRAM}\nprogram list\n"),
     )
     .unwrap();
     let output = project_cli(&project, &["batch", batch.path().to_str().unwrap()]);

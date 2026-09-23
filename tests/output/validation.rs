@@ -1,6 +1,23 @@
 use super::isolated_command;
 
 #[test]
+fn export_destination_does_not_select_parser_diagnostic_format() {
+    let temp = tempfile::tempdir().unwrap();
+    for destination in ["table", "c", "json"] {
+        let output = isolated_command(&temp)
+            .args(["program", "export", "sample", "-o", destination])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["message"]
+            .as_str()
+            .unwrap()
+            .contains("--export-format"));
+    }
+}
+
+#[test]
 fn mutations_reject_query_and_bulk_options_before_loading_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.yaml"), "invalid: [yaml").unwrap();
@@ -10,7 +27,7 @@ fn mutations_reject_query_and_bulk_options_before_loading_config() {
         vec!["function", "delete", "main", "--filter", "name=other"],
         vec!["function", "delete", "main", "-f", "name=other"],
         vec!["function", "delete", "main", "--sort", "name"],
-        vec!["function", "delete", "main", "--offset", "1"],
+        vec!["function", "delete", "main", "--skip", "1"],
         vec!["function", "delete", "main", "--limit", "0"],
         vec!["function", "delete", "main", "--count"],
     ] {
@@ -33,7 +50,7 @@ fn batch_validation_precedes_configuration_loading_and_bridge_startup() {
     std::fs::write(&config, original).unwrap();
     std::fs::write(
         temp.path().join("batch.txt"),
-        "config set default_project changed\ncomment set 0x1000 before\nfunction list --filter invalid\nfunction delete\n",
+        "config set default_project changed\ncomment set 0x1000 --text before\nfunction list --filter invalid\nfunction delete\n",
     )
     .unwrap();
     for flags in [vec![], vec!["--pretty"]] {
@@ -81,8 +98,8 @@ fn type_import_requires_exactly_one_input_source() {
     let temp = tempfile::tempdir().unwrap();
     for args in [
         vec!["type", "import-c"],
-        vec!["type", "import-c", "int x;", "--file", "types.h"],
-        vec!["type", "import-c", "int x;", "--stdin"],
+        vec!["type", "import-c", "--code", "int x;", "--file", "types.h"],
+        vec!["type", "import-c", "--code", "int x;", "--stdin"],
         vec!["type", "import-c", "--file", "types.h", "--stdin"],
     ] {
         let output = isolated_command(&temp).args(&args).output().unwrap();
@@ -182,7 +199,10 @@ fn invalid_choices_list_valid_values_before_loading_config() {
                 vec!["symbol", "externals", "--format", "potato"],
                 "json, json-compact, ndjson",
             ),
-            (vec!["function", "list", "-o", "auto"], "csv, tsv, table"),
+            (
+                vec!["function", "list", "--format", "auto"],
+                "csv, tsv, table",
+            ),
         ] {
             let output = isolated_command(&temp)
                 .args(&flags)

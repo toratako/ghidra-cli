@@ -113,7 +113,7 @@ fn parse_cli() -> Cli {
                 } else if arg == "--pretty" {
                     output.json = true;
                     output.pretty = true;
-                } else if arg == "--format" || arg == "-o" {
+                } else if arg == "--format" {
                     format = args
                         .next()
                         .and_then(|arg| arg.to_str())

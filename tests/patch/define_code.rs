@@ -124,7 +124,7 @@ public class CreateDisasmFailureFixture extends GhidraScript {
         let batch = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
             batch.path(),
-            "listing define-code 0x8000\ncomment set 0x1000 must-not-run\n",
+            "listing define-code 0x8000\ncomment set 0x1000 --text must-not-run\n",
         )
         .unwrap();
         let failed_batch = ghidra(harness)

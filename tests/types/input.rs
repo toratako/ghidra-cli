@@ -52,7 +52,11 @@ fn type_import_parse_failure_restores_types_and_applied_data_after_reopen() {
     let program = create_type_edit_program("x86:LE:64:default");
     type_command(
         &program,
-        &["import-c", "struct Existing { int value; int tail; };"],
+        &[
+            "import-c",
+            "--code",
+            "struct Existing { int value; int tail; };",
+        ],
     )
     .assert_success();
     let client = harness().client().unwrap();
@@ -94,7 +98,7 @@ public class ApplyImportRollbackFixture extends GhidraScript {
         let code = format!(
             "struct Existing {{ long long changed; }}; struct Fresh {{ int marker; }}; {invalid_suffix}"
         );
-        let failed = type_command(&program, &["import-c", &code]);
+        let failed = type_command(&program, &["import-c", "--code", &code]);
         failed
             .assert_failure()
             .assert_stderr_contains("C parse error");
@@ -159,7 +163,7 @@ fn type_import_category_preserves_root_types_and_users_after_reopen() {
         typedef struct Item ItemAlias; typedef struct Item ExistingAlias; \
         struct Holder { struct Item item; }; \
         typedef int (*Callback)(struct Item *);";
-    type_command(&program, &["import-c", root_code]).assert_success();
+    type_command(&program, &["import-c", "--code", root_code]).assert_success();
     let client = harness().client().unwrap();
     let fixture = include_str!("CheckImportCategory.java");
     client
@@ -195,7 +199,10 @@ fn type_import_category_preserves_root_types_and_users_after_reopen() {
              typedef ExistingAlias ImportedAlias; \
              struct Link {{ struct Link *next; Scalar key; struct Item item; }};"
         );
-        let result = type_command(&program, &["import-c", "--category", category, &code]);
+        let result = type_command(
+            &program,
+            &["import-c", "--category", category, "--code", &code],
+        );
         result.assert_success();
         let receipt: serde_json::Value = result.data();
         let item = receipt["types"]
@@ -248,6 +255,7 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .arg("import-c")
         .arg("--category")
         .arg(&category_a)
+        .arg("--code")
         .arg(&def_a)
         .with_project(test_project(), TEST_PROGRAM)
         .run()
@@ -258,6 +266,7 @@ fn test_type_import_c_category_keeps_existing_same_named_types() {
         .arg("import-c")
         .arg("--category")
         .arg(&category_b)
+        .arg("--code")
         .arg(&def_b)
         .with_project(test_project(), TEST_PROGRAM)
         .run()

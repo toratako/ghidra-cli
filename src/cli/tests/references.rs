@@ -33,40 +33,48 @@ fn equate_values_preserve_all_64_bits_and_reject_truncation() {
 }
 
 #[test]
-fn bookmark_inputs_and_namespace_destinations_are_exclusive() {
+fn annotation_mutations_require_one_text_source() {
+    for command in [
+        vec!["ghidra-cli", "comment", "set", "0x1000"],
+        vec![
+            "ghidra-cli",
+            "bookmark",
+            "set",
+            "0x1000",
+            "--category",
+            "Review",
+        ],
+    ] {
+        for source in [
+            vec!["--text", ""],
+            vec!["--file", "note.txt"],
+            vec!["--stdin"],
+        ] {
+            assert!(Cli::try_parse_from(command.iter().copied().chain(source)).is_ok());
+        }
+        for sources in [
+            vec![],
+            vec!["--text", "text", "--stdin"],
+            vec!["--stdin", "--file", "note.txt"],
+            vec!["--text", "text", "--file", "note.txt"],
+        ] {
+            assert!(Cli::try_parse_from(command.iter().copied().chain(sources)).is_err());
+        }
+    }
+}
+
+#[test]
+fn bookmark_identity_and_namespace_destination_are_required() {
     for args in [
-        vec![
-            "bookmark",
-            "set",
-            "0x1000",
-            "text",
-            "--stdin",
-            "--category",
-            "Review",
-        ],
-        vec![
-            "bookmark",
-            "set",
-            "0x1000",
-            "--stdin",
-            "--text-file",
-            "note.txt",
-            "--category",
-            "Review",
-        ],
-        vec![
-            "bookmark",
-            "set",
-            "0x1000",
-            "text",
-            "--text-file",
-            "note.txt",
-            "--category",
-            "Review",
-        ],
-        vec!["bookmark", "set", "0x1000", "--category", "Review"],
         vec!["bookmark", "delete", "0x1000"],
-        vec!["symbol", "set-namespace", "label", "app", "--global"],
+        vec![
+            "symbol",
+            "set-namespace",
+            "label",
+            "--namespace",
+            "app",
+            "--global",
+        ],
         vec!["symbol", "set-namespace", "label"],
     ] {
         assert!(Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args)).is_err());

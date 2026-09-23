@@ -89,7 +89,14 @@ fn invalid_mutation_arguments_fail_before_bridge_or_config_errors() {
     std::fs::write(bridge.root.path().join("invalid.yaml"), "default_limit: [").unwrap();
     for args in [
         vec!["function", "delete"],
-        vec!["comment", "set", "0x1000", "marker", "--unknown-option"],
+        vec![
+            "comment",
+            "set",
+            "0x1000",
+            "--text",
+            "marker",
+            "--unknown-option",
+        ],
     ] {
         for invalid_config in [false, true] {
             let mut command = bridge.command();
@@ -192,7 +199,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
     let flags = [
         "--filter name=other",
         "--sort name",
-        "--offset 1",
+        "--skip 1",
         "--limit 0",
         "--count",
     ];
@@ -200,7 +207,7 @@ fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
         "function delete main",
         "listing define-code 0x1000",
         "comment delete 0x1000 --all",
-        "memory read 0x1000 8",
+        "memory read 0x1000 --size 8",
         "program info",
         "program stats",
     ]

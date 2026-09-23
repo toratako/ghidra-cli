@@ -38,7 +38,7 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
                 "0x1000",
                 "overlay:0x2000",
                 "--operand=-1",
-                "--ref-type",
+                "--type",
                 "data",
             ],
             "xref_create_memory",
@@ -80,12 +80,28 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
             json!({"name":"FLAG", "value":"-9223372036854775808"}),
         ),
         (
-            vec!["equate", "attach", "0x1000", "FLAG", "--operand", "1"],
+            vec![
+                "equate",
+                "attach",
+                "FLAG",
+                "--at",
+                "0x1000",
+                "--operand",
+                "1",
+            ],
             "equate_attach",
             json!({"name":"FLAG", "address":"0x1000", "operand_index":1}),
         ),
         (
-            vec!["equate", "detach", "0x1000", "FLAG", "--operand", "1"],
+            vec![
+                "equate",
+                "detach",
+                "FLAG",
+                "--at",
+                "0x1000",
+                "--operand",
+                "1",
+            ],
             "equate_detach",
             json!({"name":"FLAG", "address":"0x1000", "operand_index":1}),
         ),
@@ -123,6 +139,7 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
                 "symbol",
                 "set-namespace",
                 "shared",
+                "--namespace",
                 "app::Widget",
                 "--address",
                 "0xab",
@@ -152,6 +169,7 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
                 "bookmark",
                 "set",
                 "EXTERNAL:0x1000",
+                "--text",
                 "確認する",
                 "--category",
                 "Review",
@@ -173,17 +191,17 @@ fn annotation_commands_route_exact_arguments_and_targets_in_standalone_and_batch
             json!({"address":"overlay:0x1000", "type":"note", "category":"review"}),
         ),
         (
-            vec!["tag", "attach", "main", "Reviewed", "Crypto"],
+            vec!["tag", "attach", "Reviewed", "Crypto", "--function", "main"],
             "tag_attach",
             json!({"function":"main", "tags":["Reviewed", "Crypto"]}),
         ),
         (
-            vec!["tag", "detach", "main", "Reviewed"],
+            vec!["tag", "detach", "Reviewed", "--function", "main"],
             "tag_detach",
             json!({"function":"main", "tags":["Reviewed"], "all":false}),
         ),
         (
-            vec!["tag", "detach", "main", "--all"],
+            vec!["tag", "detach", "--all", "--function", "main"],
             "tag_detach",
             json!({"function":"main", "tags":[], "all":true}),
         ),
@@ -249,7 +267,7 @@ fn definition_queries_and_nested_receipts_use_the_shared_result_contract() {
                     "name!=zeta",
                     "--sort",
                     "name",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",
@@ -288,7 +306,15 @@ fn definition_queries_and_nested_receipts_use_the_shared_result_contract() {
         for args in [
             vec!["xref", "set-primary", "0x1000", "0x2000", "--operand", "1"],
             vec!["bookmark", "delete", "0x1000", "--category", "Review"],
-            vec!["equate", "attach", "0x1000", "FLAG", "--operand", "1"],
+            vec![
+                "equate",
+                "attach",
+                "FLAG",
+                "--at",
+                "0x1000",
+                "--operand",
+                "1",
+            ],
             vec!["namespace", "create", "app"],
             vec!["symbol", "set-primary", "shared", "--address", "0xab"],
         ] {
@@ -316,17 +342,18 @@ fn invalid_annotation_edits_fail_during_preflight_before_program_selection() {
             "0x2000",
             "--operand",
             "0",
-            "--ref-type",
+            "--type",
             "DATA",
         ],
         vec!["xref", "delete", "0x1000", "0x2000"],
-        vec!["equate", "attach", "0x1000", "FLAG", "--operand=-1"],
+        vec!["equate", "attach", "FLAG", "--at", "0x1000", "--operand=-1"],
         vec!["equate", "create", "FLAG", "9223372036854775808"],
         vec!["bookmark", "delete", "dead", "--category", "Review"],
         vec![
             "symbol",
             "set-namespace",
             "shared",
+            "--namespace",
             "app",
             "--filter",
             "invalid",
@@ -360,7 +387,7 @@ fn invalid_annotation_edits_fail_during_preflight_before_program_selection() {
 fn ambiguous_symbol_edits_report_stable_candidates_without_sending_a_mutation() {
     let bridge = RecordedBridge::new();
     for args in [
-        vec!["symbol", "set-namespace", "shared", "app"],
+        vec!["symbol", "set-namespace", "shared", "--namespace", "app"],
         vec!["symbol", "set-primary", "shared"],
     ] {
         bridge.requests.lock().unwrap().clear();
@@ -400,7 +427,7 @@ fn bookmark_text_inputs_preserve_unicode_whitespace_and_empty_text() {
                     "0x1000",
                     "--category",
                     "Review",
-                    "--text-file",
+                    "--file",
                     "note.txt",
                 ],
                 batched,
@@ -442,7 +469,7 @@ fn symbols_sharing_an_address_still_require_a_unique_namespace_or_id() {
     for (command, destination) in [("set-primary", None), ("set-namespace", Some("other"))] {
         let mut args = vec!["symbol", command, "scoped"];
         if let Some(destination) = destination {
-            args.push(destination);
+            args.extend(["--namespace", destination]);
         }
         args.extend(["--address", "0xab"]);
         bridge.requests.lock().unwrap().clear();

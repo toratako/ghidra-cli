@@ -60,7 +60,7 @@ fn prepared_batches_execute_the_validated_content_after_files_change() {
     let prepared = prepare(&outer, None, |_| Ok(())).unwrap();
 
     // Replacing either source after preflight must not change what executes.
-    std::fs::write(&outer, "comment set 0x1000 changed\n").unwrap();
+    std::fs::write(&outer, "comment set 0x1000 --text changed\n").unwrap();
     std::fs::remove_file(&child).unwrap();
     let mut executed = Vec::new();
     let report = execute_batch(&prepared, BatchErrorPolicy::Continue, |line| {

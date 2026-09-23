@@ -159,7 +159,7 @@ fn instruction_queries_forward_ranges_and_apply_query_options_after_fetch() {
             "--fields",
             "address",
             "--sort=-address",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "1",
@@ -211,12 +211,12 @@ fn disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
             json!(1),
             Value::Null,
         ),
-        (vec!["--offset", "1"], json!([all[1]]), Value::Null),
+        (vec!["--skip", "1"], json!([all[1]]), Value::Null),
         (vec!["--sort=-address"], json!([all[2]]), Value::Null),
         (
             vec![
                 "--sort=-address",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "1",
@@ -227,7 +227,7 @@ fn disassembly_queries_select_rows_before_paging_in_standalone_and_batch() {
             Value::Null,
         ),
         (
-            vec!["--offset", "1", "--limit", "1", "--count"],
+            vec!["--skip", "1", "--limit", "1", "--count"],
             json!(1),
             Value::Null,
         ),

@@ -131,14 +131,14 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 json!([all[20]]),
             ),
             (
-                vec!["--offset", "12", "--limit", "2"],
+                vec!["--skip", "12", "--limit", "2"],
                 json!([all[12], all[13]]),
             ),
-            (vec!["--offset", "12", "--limit", "2", "--count"], json!(2)),
+            (vec!["--skip", "12", "--limit", "2", "--count"], json!(2)),
             (
                 vec![
                     "--sort=-address",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",
@@ -276,15 +276,9 @@ fn check_disasm_limits(
     assert_eq!(cli(&[]), json!(&rows[..12]));
     assert_eq!(cli(&["--limit", "0"]), json!(rows));
     assert_eq!(cli(&["--limit", "13"]), json!(&rows[..13]));
-    assert_eq!(
-        cli(&["--offset", "12", "--limit", "2"]),
-        json!(&rows[12..14])
-    );
+    assert_eq!(cli(&["--skip", "12", "--limit", "2"]), json!(&rows[12..14]));
     assert_eq!(cli(&["--count"]), json!(rows.len()));
-    assert_eq!(
-        cli(&["--offset", "12", "--limit", "2", "--count"]),
-        json!(2)
-    );
+    assert_eq!(cli(&["--skip", "12", "--limit", "2", "--count"]), json!(2));
     let returns: Vec<_> = rows.iter().filter(|row| row["mnemonic"] == "RET").collect();
     assert!(returns.len() >= 3);
     assert_eq!(
@@ -303,7 +297,7 @@ fn check_disasm_limits(
             "--filter",
             "mnemonic=RET",
             "--sort=-address",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "2",
@@ -362,7 +356,7 @@ fn test_disasm_end_includes_only_instruction_starts_in_range() {
             "--end",
             end,
             "--sort=-address",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "1",

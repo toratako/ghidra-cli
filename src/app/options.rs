@@ -189,13 +189,13 @@ pub(super) fn extract_project_from_command(command: &Commands) -> Option<String>
             },
             cli::ProgramCommands::Rebase(args) => args.options.project.clone(),
             cli::ProgramCommands::Import(args) => args.project.clone(),
-            cli::ProgramCommands::ListRelocations(opts) => opts.project.clone(),
+            cli::ProgramCommands::ListRelocations(args) => args.options.project.clone(),
             cli::ProgramCommands::List(args) => args.project.clone(),
             cli::ProgramCommands::Open(args) => args.project.clone(),
             cli::ProgramCommands::Close(args) => args.project.clone(),
             cli::ProgramCommands::Delete(args) => args.project.clone(),
             cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
-                args.project.clone()
+                args.options.project.clone()
             }
             cli::ProgramCommands::Export(args) => args.project.clone(),
             cli::ProgramCommands::Save(args) => args.project.clone(),
@@ -380,18 +380,22 @@ pub(super) fn extract_program_from_command(command: &Commands) -> Option<String>
                 cli::ProgramContextCommands::Set(args) => args.options.program.clone(),
                 cli::ProgramContextCommands::Clear(args) => args.options.program.clone(),
             },
-            cli::ProgramCommands::Rebase(args) => args.options.program.clone(),
-            cli::ProgramCommands::Import(_) => None,
-            cli::ProgramCommands::ListRelocations(opts) => opts.program.clone(),
-            cli::ProgramCommands::List(args) => args.program.clone(),
-            cli::ProgramCommands::Open(args) => args.program.clone(),
-            cli::ProgramCommands::Close(args) => args.program.clone(),
-            cli::ProgramCommands::Delete(args) => args.program.clone(),
-            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
-                args.program.clone()
+            cli::ProgramCommands::Rebase(args) => {
+                args.name.clone().or_else(|| args.options.program.clone())
             }
-            cli::ProgramCommands::Export(args) => args.program.clone(),
-            cli::ProgramCommands::Save(args) => args.program.clone(),
+            cli::ProgramCommands::Import(_) => None,
+            cli::ProgramCommands::ListRelocations(args) => {
+                args.name.clone().or_else(|| args.options.program.clone())
+            }
+            cli::ProgramCommands::List(_) => None,
+            cli::ProgramCommands::Open(args) => Some(args.name.clone()),
+            cli::ProgramCommands::Close(args) => args.name.clone().or_else(|| args.program.clone()),
+            cli::ProgramCommands::Delete(args) => Some(args.name.clone()),
+            cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args) => {
+                args.name.clone().or_else(|| args.options.program.clone())
+            }
+            cli::ProgramCommands::Export(args) => Some(args.name.clone()),
+            cli::ProgramCommands::Save(args) => args.name.clone().or_else(|| args.program.clone()),
         },
         Commands::Equate(cmd) => match cmd {
             cli::EquateCommands::List(opts) => opts.program.clone(),
@@ -446,10 +450,12 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
         Commands::Decompile(args) => Some((&args.options).into()),
         Commands::Disasm(args) => Some(args.options.clone()),
         Commands::Listing(cli::ListingCommands::Flow(cmd)) => Some(cmd.options().into()),
-        Commands::Program(cli::ProgramCommands::Info(opts) | cli::ProgramCommands::Stats(opts)) => {
-            Some(opts.into())
+        Commands::Program(cli::ProgramCommands::Info(args) | cli::ProgramCommands::Stats(args)) => {
+            Some((&args.options).into())
         }
-        Commands::Program(cli::ProgramCommands::ListRelocations(opts)) => Some(opts.clone()),
+        Commands::Program(cli::ProgramCommands::ListRelocations(args)) => {
+            Some(args.options.clone())
+        }
         Commands::Symbol(
             cli::SymbolCommands::Externals(opts) | cli::SymbolCommands::EntryPoints(opts),
         ) => Some(opts.clone()),
@@ -469,10 +475,11 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
                 program: args.program.clone(),
                 project: args.project.clone(),
                 fields: args.fields.clone(),
+                exclude_fields: args.exclude_fields.clone(),
                 format: args.format,
                 filter: None,
                 limit: None,
-                offset: None,
+                skip: None,
                 sort: None,
                 count: false,
                 json: false,
@@ -547,10 +554,11 @@ pub(super) fn extract_query_options(command: &Commands) -> Option<QueryOptions> 
                 program: args.program.clone(),
                 project: args.project.clone(),
                 fields: args.fields.clone(),
+                exclude_fields: args.exclude_fields.clone(),
                 format: args.format,
                 filter: None,
                 limit: None,
-                offset: None,
+                skip: None,
                 sort: None,
                 count: false,
                 json: false,

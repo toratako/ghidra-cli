@@ -14,7 +14,7 @@ fn analysis_options_route_targets_values_and_queries_in_standalone_and_batch() {
                 "name~\"Analyzer.\"",
                 "--sort",
                 "name",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "1",

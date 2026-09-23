@@ -69,7 +69,7 @@ pub struct SymbolSetNamespaceArgs {
     #[command(flatten)]
     pub selection: SymbolSelectionArgs,
     /// Existing namespace/class path from global scope
-    #[arg(required_unless_present = "global", conflicts_with = "global")]
+    #[arg(long, required_unless_present = "global", conflicts_with = "global")]
     pub namespace: Option<String>,
     /// Move the symbol to global scope
     #[arg(long)]
@@ -206,6 +206,7 @@ pub struct TagSetCommentArgs {
     /// Tag name
     pub name: String,
     /// New comment text; empty string clears the comment
+    #[arg(long = "text")]
     pub comment: String,
     #[arg(long)]
     pub program: Option<String>,
@@ -216,12 +217,9 @@ pub struct TagSetCommentArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TagAttachArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET")]
+    #[arg(long = "function", value_name = "TARGET")]
     pub target: String,
     /// One or more tag names to attach
-    // `required = true` is mandatory: num_args = 1.. alone does NOT make a
-    // positional required — `ghidra-cli tag attach crypto` would parse with the tag
-    // name consumed as TARGET and an empty tag list.
     #[arg(value_name = "TAG", required = true, num_args = 1..)]
     pub tags: Vec<String>,
     #[arg(long)]
@@ -233,7 +231,7 @@ pub struct TagAttachArgs {
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub struct TagDetachArgs {
     /// Exact function name or explicit 0x-prefixed address
-    #[arg(value_name = "TARGET")]
+    #[arg(long = "function", value_name = "TARGET")]
     pub target: String,
     /// Tag names to detach
     #[arg(value_name = "TAG", num_args = 0.., required_unless_present = "all")]
@@ -264,13 +262,13 @@ pub struct BookmarkSetArgs {
     /// Explicit address; no function-start normalization is performed
     pub address: String,
     /// Bookmark text; an empty string leaves an empty bookmark
-    #[arg(required_unless_present_any = ["stdin", "text_file"])]
+    #[arg(long, required_unless_present_any = ["stdin", "text_file"])]
     pub text: Option<String>,
     /// Read bookmark text from stdin
     #[arg(long, conflicts_with_all = ["text", "text_file"])]
     pub stdin: bool,
     /// Read bookmark text from a UTF-8 file
-    #[arg(long, conflicts_with = "text")]
+    #[arg(long = "file", conflicts_with = "text")]
     pub text_file: Option<std::path::PathBuf>,
     /// Exact, case-sensitive bookmark type
     #[arg(long = "type", default_value = "Note")]
@@ -330,7 +328,7 @@ pub struct CommentDeleteArgs {
     /// Explicit address, e.g. 0x401000 or overlay:0x1000
     pub address: String,
     /// Comment type to delete
-    #[arg(long, value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
+    #[arg(long = "type", value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
     pub comment_type: Option<String>,
     /// Delete all EOL, PRE, POST, and PLATE comments at this address
     #[arg(long)]
@@ -342,10 +340,13 @@ pub struct CommentDeleteArgs {
     #[arg(long)]
     pub project: Option<String>,
     /// Fields to include in the deletion receipt (comma-separated)
-    #[arg(long)]
+    #[arg(long, conflicts_with = "exclude_fields")]
     pub fields: Option<String>,
+    /// Fields to exclude from the deletion receipt (comma-separated)
+    #[arg(long)]
+    pub exclude_fields: Option<String>,
     /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    #[arg(long, value_enum, ignore_case = true)]
     pub format: Option<super::OutputFormat>,
 }
 
@@ -353,18 +354,18 @@ pub struct CommentDeleteArgs {
 pub struct CommentSetArgs {
     /// Explicit address, e.g. 0x401000 or overlay:0x1000
     pub address: String,
-    /// Comment text. Omit when using --stdin or --text-file: a shell argument
+    /// Comment text. Omit when using --stdin or --file: a shell argument
     /// is subject to shell metacharacter expansion (e.g. backticks) before
     /// ghidra-cli ever sees it, which can silently corrupt free-form prose.
-    #[arg(required_unless_present_any = ["stdin", "text_file"])]
+    #[arg(long, required_unless_present_any = ["stdin", "text_file"])]
     pub text: Option<String>,
-    #[arg(long, value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
+    #[arg(long = "type", value_parser = ["eol", "pre", "post", "plate"], ignore_case = true)]
     pub comment_type: Option<String>,
-    /// Read comment text from stdin instead of the TEXT argument
+    /// Read comment text from stdin instead of --text
     #[arg(long, conflicts_with_all = ["text", "text_file"])]
     pub stdin: bool,
-    /// Read comment text from a file instead of the TEXT argument
-    #[arg(long, conflicts_with = "text")]
+    /// Read comment text from a file instead of --text
+    #[arg(long = "file", conflicts_with = "text")]
     pub text_file: Option<std::path::PathBuf>,
     #[arg(long)]
     pub program: Option<String>,

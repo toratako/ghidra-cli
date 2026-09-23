@@ -133,7 +133,7 @@ public class CreatePointerTargets extends GhidraScript {
         .expect("create pointer targets");
 
     let output = common::ghidra(&harness)
-        .args(["memory", "read", "0x1000"])
+        .args(["memory", "read", "0x1000", "--size"])
         .arg(bytes.len().to_string())
         .json_format()
         .run();
@@ -354,13 +354,17 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
         )
         .expect("mapping traversal must propagate cancellation");
     let output = common::ghidra(&harness)
-        .args(["memory", "read", "0x1000", "8", "--source", "original"])
+        .args([
+            "memory", "read", "0x1000", "--size", "8", "--source", "original",
+        ])
         .json_format()
         .run();
     output.assert_success();
     assert_eq!(output.data::<Value>(), read_original(&client, "0x1000", 8));
     let output = common::ghidra(&harness)
-        .args(["memory", "read", "0x1000", "8", "--source", "memory"])
+        .args([
+            "memory", "read", "0x1000", "--size", "8", "--source", "memory",
+        ])
         .json_format()
         .run();
     output.assert_success();

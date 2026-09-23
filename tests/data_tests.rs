@@ -73,7 +73,7 @@ fn assert_reference_counts(harness: &common::DaemonTestHarness, client: &BridgeC
             "--filter",
             "name^references_ AND incoming_reference_count >= 2",
             "--sort=-incoming_reference_count",
-            "--offset",
+            "--skip",
             "1",
             "--limit",
             "1",
@@ -248,7 +248,7 @@ fn applied_data_values_and_bounded_traversal() {
             "name",
             "--limit",
             "2",
-            "--offset",
+            "--skip",
             "1",
         ])
         .json_format()

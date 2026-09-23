@@ -73,8 +73,8 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
         assert_eq!(run(&[]), json!(rows[..2]));
         assert_eq!(run(&["--limit", "0"]), expected);
         assert_eq!(run(&["--count"]), 4);
-        assert_eq!(run(&["--offset", "2"]), json!(rows[2..]));
-        assert_eq!(run(&["--offset", "10"]), json!([]));
+        assert_eq!(run(&["--skip", "2"]), json!(rows[2..]));
+        assert_eq!(run(&["--skip", "10"]), json!([]));
         assert_eq!(
             run(&["--filter", "status='FAILURE'", "--fields", "address,status"]),
             json!([{"address":"0x00001010", "status":"FAILURE"}])
@@ -84,11 +84,11 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
             json!([rows[3]])
         );
         assert_eq!(
-            run(&["--sort", "type", "--offset", "1", "--limit", "2", "--fields", "type"]),
+            run(&["--sort", "type", "--skip", "1", "--limit", "2", "--fields", "type"]),
             json!([{"type":7}, {"type":17}])
         );
         assert_eq!(run(&["--filter", "status='APPLIED'", "--count"]), 1);
-        assert_eq!(run(&["--count", "--offset", "1", "--limit", "2"]), 2);
+        assert_eq!(run(&["--count", "--skip", "1", "--limit", "2"]), 2);
 
         client
             .script_run_source(

@@ -103,7 +103,7 @@ fn external_symbols_and_entry_points_paginate_after_fetching_for_queries_and_bat
     let bridge = RecordedBridge::new();
     let command = "symbol";
     for kind in ["externals", "entry-points"] {
-        let args = [command, kind, "--offset", "1", "--limit", "1"];
+        let args = [command, kind, "--skip", "1", "--limit", "1"];
         assert_eq!(bridge.run(&args), json!([{"name": "second"}]));
         std::fs::write(bridge.root.path().join("batch.txt"), args.join(" ")).unwrap();
         assert_eq!(
@@ -124,12 +124,9 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
             json!([{"name": "small", "size": 10}]),
         ),
         (vec!["--sort=-size"], json!([{"name": "large", "size": 30}])),
+        (vec!["--skip", "1"], json!([{"name": "small", "size": 10}])),
         (
-            vec!["--offset", "1"],
-            json!([{"name": "small", "size": 10}]),
-        ),
-        (
-            vec!["--filter", "size>0", "--sort=-size", "--offset", "1"],
+            vec!["--filter", "size>0", "--sort=-size", "--skip", "1"],
             json!([{"name": "medium", "size": 20}]),
         ),
         (
@@ -137,7 +134,7 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
                 "--filter",
                 "size>0",
                 "--sort=-size",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "0",
@@ -162,7 +159,7 @@ fn default_limit_is_applied_after_client_row_selection_for_standalone_and_batch(
                 .filter(|r| r["command"] == "list_functions")
                 .collect();
             assert_eq!(lists.len(), 1);
-            if flags == ["--offset", "1"] {
+            if flags == ["--skip", "1"] {
                 assert_eq!(lists[0]["args"]["offset"], 1);
                 assert_eq!(lists[0]["args"]["limit"], 1);
             } else {
@@ -178,19 +175,32 @@ fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
     let command = ["function", "list"];
     for (flags, expected, server_limit, server_offset) in [
         (
-            vec!["--filter", "name~L", "--offset", "1"],
+            vec!["--filter", "name~L", "--skip", "1"],
             json!([{"name":"small", "size":10}]),
             json!(1),
             json!(1),
         ),
         (
-            vec!["--filter", "name~L", "--offset", "1", "--limit", "0"],
+            vec!["--filter", "name~L", "--skip", "1", "--limit", "0"],
             json!([{"name":"small", "size":10}, {"name":"large", "size":30}]),
             json!(null),
             json!(1),
         ),
         (
-            vec!["--filter", "name~L", "--offset", "1", "--count"],
+            vec![
+                "--filter",
+                "name~L",
+                "--skip",
+                "1",
+                "--exclude-fields",
+                "size",
+            ],
+            json!([{"name":"small"}]),
+            json!(1),
+            json!(1),
+        ),
+        (
+            vec!["--filter", "name~L", "--skip", "1", "--count"],
             json!(2),
             json!(null),
             json!(null),
@@ -202,7 +212,7 @@ fn contains_and_offset_share_one_plan_for_standalone_and_batch() {
                 "--sort=-size",
                 "--fields",
                 "name",
-                "--offset",
+                "--skip",
                 "1",
             ],
             json!([{"name":"small"}]),
@@ -238,7 +248,7 @@ fn unsupported_list_offset_fetches_enough_rows() {
     for command in [vec!["symbol", "externals"], vec!["symbol", "entry-points"]] {
         let args: Vec<_> = command
             .into_iter()
-            .chain(["--offset", "1", "--limit", "1"])
+            .chain(["--skip", "1", "--limit", "1"])
             .collect();
         assert_eq!(bridge.run(&args), json!([{"name":"second"}]));
     }
@@ -271,10 +281,10 @@ fn client_only_queries_apply_defaults_with_and_without_query_flags() {
             (vec!["--limit", "0"], 3, "first"),
             (vec!["--limit", "1"], 1, "first"),
             (vec!["--sort=-name"], cap, "third"),
-            (vec!["--offset", "1"], 2, "second"),
+            (vec!["--skip", "1"], 2, "second"),
             (vec!["--filter", "name=third"], 1, "third"),
             (vec!["--count"], 3, ""),
-            (vec!["--count", "--offset", "1", "--limit", "1"], 1, ""),
+            (vec!["--count", "--skip", "1", "--limit", "1"], 1, ""),
         ] {
             for batch in [false, true] {
                 let mut args = command.clone();
@@ -335,14 +345,14 @@ fn api_lists_fetch_all_rows_before_standalone_and_batch_queries() {
             (vec!["--limit", "0"], json!(rows)),
             (vec!["--limit", "2"], json!([rows[0], rows[1]])),
             (vec!["--filter", &filter], json!([rows[2]])),
-            (vec!["--offset", "1"], json!([rows[1]])),
+            (vec!["--skip", "1"], json!([rows[1]])),
             (vec!["--sort", field], json!([rows[1]])),
             (vec!["--count"], json!(3)),
             (vec!["--filter", &filter, "--count"], json!(1)),
-            (vec!["--offset", "1", "--limit", "1", "--count"], json!(1)),
+            (vec!["--skip", "1", "--limit", "1", "--count"], json!(1)),
             (
                 vec![
-                    "--sort", field, "--offset", "1", "--limit", "1", "--fields", field,
+                    "--sort", field, "--skip", "1", "--limit", "1", "--fields", field,
                 ],
                 json!([{field: "beta"}]),
             ),

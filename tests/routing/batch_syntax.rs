@@ -8,7 +8,7 @@ fn batch_preserves_quoted_signatures_types_and_comments() {
         bridge.root.path().join("batch.txt"),
         r#"function set-signature parse_header --signature "int parse_header(char *buf, int len)"
 function set-return-type parse_header --type 'unsigned long'
-comment set 0x1000 'Header length includes the prefix'
+comment set 0x1000 --text 'Header length includes the prefix'
 "#,
     )
     .unwrap();
@@ -45,12 +45,12 @@ fn batch_unescapes_arguments_without_expanding_shell_syntax() {
     std::fs::write(
         bridge.root.path().join("batch.txt"),
         concat!(
-            r#"comment set 0x1000 "say \"hello\"; path C:\temp; slash \\; \$value"
-comment set 0x1001 escaped\ spaces\ and\ \'quotes\'
-comment set 0x1002 '$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal'
-comment set 0x1003 ""
+            r#"comment set 0x1000 --text "say \"hello\"; path C:\temp; slash \\; \$value"
+comment set 0x1001 --text escaped\ spaces\ and\ \'quotes\'
+comment set 0x1002 --text '$HOME $(echo expanded) `echo expanded` *.bin > out | cat # literal'
+comment set 0x1003 --text ""
 "#,
-            "comment set 0x1004 trailing\\ \n",
+            "comment set 0x1004 --text trailing\\ \n",
         ),
     )
     .unwrap();
@@ -78,7 +78,7 @@ fn batch_reports_all_malformed_quoting_before_executing_any_lines() {
     let bridge = RecordedBridge::new();
     std::fs::write(
         bridge.root.path().join("batch.txt"),
-        "# commands\ncomment set 0x1000 'unfinished\ncomment set 0x1001 \"unfinished\ncomment set 0x1002 trailing\\\ncomment set 0x1003 'valid after errors'\n",
+        "# commands\ncomment set 0x1000 --text 'unfinished\ncomment set 0x1001 --text \"unfinished\ncomment set 0x1002 --text trailing\\\ncomment set 0x1003 --text 'valid after errors'\n",
     )
     .unwrap();
     let output = bridge
@@ -121,7 +121,7 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
         std::fs::create_dir(bridge.root.path().join("scripts")).unwrap();
         std::fs::write(
             bridge.root.path().join("scripts/batch.txt"),
-            "comment set 0x1000 before\nbatch nested.txt\nbatch missing.txt\nfunction delete\n",
+            "comment set 0x1000 --text before\nbatch nested.txt\nbatch missing.txt\nfunction delete\n",
         )
         .unwrap();
         // Nested files use the invocation's cwd, including names containing an apostrophe.
@@ -132,7 +132,7 @@ fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
         .unwrap();
         std::fs::write(
             bridge.root.path().join("nested valid's.txt"),
-            "comment set 0x1001 child\n",
+            "comment set 0x1001 --text child\n",
         )
         .unwrap();
         let output = bridge
@@ -196,7 +196,7 @@ fn batch_can_reuse_a_nested_file_after_its_previous_invocation_finishes() {
     .unwrap();
     std::fs::write(
         bridge.root.path().join("nested valid's.txt"),
-        "comment set 0x1000 nested\n",
+        "comment set 0x1000 --text nested\n",
     )
     .unwrap();
     let report = bridge.run(&["batch", "scripts/batch.txt"]);

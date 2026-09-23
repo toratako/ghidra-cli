@@ -190,12 +190,9 @@ public class CreateSearchLimitFixture extends GhidraScript {
             assert_eq!(with(&["--limit", "120"]), json!(rows[..120]));
             assert_eq!(with(&[]), json!(rows[..2]));
             assert_eq!(with(&["--fields", "address"]).as_array().unwrap().len(), 2);
-            assert_eq!(with(&["--offset", "100"]), json!(rows[100..102]));
-            assert_eq!(
-                with(&["--offset", "100", "--limit", "0"]),
-                json!(rows[100..])
-            );
-            assert_eq!(with(&["--count", "--offset", "100", "--limit", "2"]), 2);
+            assert_eq!(with(&["--skip", "100"]), json!(rows[100..102]));
+            assert_eq!(with(&["--skip", "100", "--limit", "0"]), json!(rows[100..]));
+            assert_eq!(with(&["--count", "--skip", "100", "--limit", "2"]), 2);
             let filter = format!("address='{}'", rows[159]["address"].as_str().unwrap());
             assert_eq!(with(&["--filter", &filter]), json!([rows[159]]));
             let mut descending = rows.clone();
@@ -276,7 +273,7 @@ public class CreateSearchLimitFixture extends GhidraScript {
             assert_eq!(run(&projected).as_array().unwrap().len(), 2);
         }
         let batch_path = temp.path().join("limits.txt");
-        std::fs::write(&batch_path, "function list --filter name~password_case_\nfunction list --filter name~password_case_ --fields name\nfind bytes 4341505f4e4545444c455f --count\nfunction list --offset 100 --limit 0\n").unwrap();
+        std::fs::write(&batch_path, "function list --filter name~password_case_\nfunction list --filter name~password_case_ --fields name\nfind bytes 4341505f4e4545444c455f --count\nfunction list --skip 100 --limit 0\n").unwrap();
         let batch = run(&["batch", batch_path.to_str().unwrap()]);
         let results = &batch["results"];
         assert_eq!(results[0]["result"]["data"].as_array().unwrap().len(), 2);

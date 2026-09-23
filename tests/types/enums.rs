@@ -118,7 +118,11 @@ fn enum_deletion_rejects_ambiguous_types_and_wrong_kind_before_mutation() {
     let program = create_type_edit_program("x86:LE:64:default");
     for (category, value) in [("/First", 1), ("/Second", 2)] {
         let definition = format!("enum Mode {{ Keep={value}, Remove={value} }};");
-        type_command(&program, &["import-c", &definition, "--category", category]).assert_success();
+        type_command(
+            &program,
+            &["import-c", "--code", &definition, "--category", category],
+        )
+        .assert_success();
     }
     type_command(&program, &["create", "struct", "Holder"]).assert_success();
     type_command(

@@ -3,9 +3,16 @@ use super::*;
 #[test]
 fn program_export_requires_output_for_every_format() {
     for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
-        let error = Cli::try_parse_from(["ghidra-cli", "program", "export", format])
-            .err()
-            .expect("export destination is required");
+        let error = Cli::try_parse_from([
+            "ghidra-cli",
+            "program",
+            "export",
+            "sample",
+            "--export-format",
+            format,
+        ])
+        .err()
+        .expect("export destination is required");
         assert_eq!(
             error.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
@@ -16,6 +23,8 @@ fn program_export_requires_output_for_every_format() {
                 "ghidra-cli",
                 "program",
                 "export",
+                "sample",
+                "--export-format",
                 format,
                 flag,
                 "exported.file",
@@ -24,6 +33,8 @@ fn program_export_requires_output_for_every_format() {
             let Commands::Program(ProgramCommands::Export(args)) = cli.command else {
                 panic!("expected program export");
             };
+            assert_eq!(args.name, "sample");
+            assert_eq!(args.format, format);
             assert_eq!(args.output, "exported.file");
         }
     }
@@ -37,6 +48,8 @@ fn program_export_formats_accept_supported_spellings() {
                 "ghidra-cli",
                 "program",
                 "export",
+                "sample",
+                "--export-format",
                 &spelling,
                 "-o",
                 "exported.file",
@@ -188,6 +201,72 @@ fn project_archives_have_explicit_operands_independent_of_global_selection() {
         cli.projects_dir.as_deref(),
         Some(std::path::Path::new("copies"))
     );
+}
+
+#[test]
+fn program_target_operands_are_separate_from_global_context() {
+    for action in [
+        "open",
+        "delete",
+        "close",
+        "save",
+        "info",
+        "stats",
+        "list-relocations",
+        "rebase",
+        "export",
+    ] {
+        let mut argv = vec![
+            "ghidra-cli",
+            "--program",
+            "context",
+            "program",
+            action,
+            "target",
+        ];
+        if action == "rebase" {
+            argv.extend(["--base", "0x400000"]);
+        }
+        if action == "export" {
+            argv.extend(["--export-format", "binary", "--output", "sample.bin"]);
+        }
+        let parsed = Cli::try_parse_from(argv).unwrap();
+        assert_eq!(parsed.program.as_deref(), Some("context"));
+        let target = match parsed.command {
+            Commands::Program(ProgramCommands::Open(args) | ProgramCommands::Delete(args)) => {
+                Some(args.name)
+            }
+            Commands::Program(ProgramCommands::Close(args) | ProgramCommands::Save(args)) => {
+                args.name
+            }
+            Commands::Program(ProgramCommands::Info(args) | ProgramCommands::Stats(args)) => {
+                args.name
+            }
+            Commands::Program(ProgramCommands::ListRelocations(args)) => args.name,
+            Commands::Program(ProgramCommands::Rebase(args)) => args.name,
+            Commands::Program(ProgramCommands::Export(args)) => Some(args.name),
+            _ => unreachable!(),
+        };
+        assert_eq!(target.as_deref(), Some("target"));
+    }
+}
+
+#[test]
+fn program_context_commands_can_omit_the_target_operand() {
+    for action in [
+        "close",
+        "save",
+        "info",
+        "stats",
+        "list-relocations",
+        "rebase",
+    ] {
+        let mut argv = vec!["ghidra-cli", "program", action];
+        if action == "rebase" {
+            argv.extend(["--base", "0x400000"]);
+        }
+        Cli::try_parse_from(argv).unwrap();
+    }
 }
 
 #[test]

@@ -231,6 +231,11 @@ impl RecordedBridge {
                         program = args["program"].as_str().unwrap().to_owned();
                         json!({"program": program})
                     }
+                    "list_programs" => json!({
+                        "programs": [{"name": "A"}, {"name": "B"}],
+                        "has_current_program": true,
+                        "current_program_name": program,
+                    }),
                     "import" => json!({"program": "imported"}),
                     "analysis_run" => {
                         let mode = if args["pending"] == true {

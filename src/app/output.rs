@@ -141,7 +141,7 @@ fn output_format(cli: &Cli) -> OutputFormat {
 }
 
 fn output_format_with_default(cli: &Cli, configured: Option<OutputFormat>) -> OutputFormat {
-    // Explicit -o > --json/--pretty > configured format > TTY detection.
+    // Explicit --format > --json/--pretty > configured format > TTY detection.
     let opts = extract_query_options(&cli.command);
     let explicit_format = opts.as_ref().and_then(|o| o.format);
 
@@ -223,18 +223,21 @@ mod tests {
             ["function", "list"].as_slice(),
             ["program", "info"].as_slice(),
             ["program", "stats"].as_slice(),
-            ["memory", "read", "0x1000", "64"].as_slice(),
+            ["memory", "read", "0x1000", "--size", "64"].as_slice(),
         ] {
             for (flags, expected) in [
                 (vec!["--json"], OutputFormat::JsonCompact),
                 (vec!["--pretty"], OutputFormat::Json),
                 (vec!["--json", "--pretty"], OutputFormat::Json),
-                (vec!["--json", "-o", "table"], OutputFormat::Table),
+                (vec!["--json", "--format", "table"], OutputFormat::Table),
                 (
-                    vec!["--pretty", "-o", "JSON-COMPACT"],
+                    vec!["--pretty", "--format", "JSON-COMPACT"],
                     OutputFormat::JsonCompact,
                 ),
-                (vec!["--pretty", "-o", "NDJSON"], OutputFormat::JsonStream),
+                (
+                    vec!["--pretty", "--format", "NDJSON"],
+                    OutputFormat::JsonStream,
+                ),
             ] {
                 let cli = Cli::try_parse_from(
                     ["ghidra-cli"]

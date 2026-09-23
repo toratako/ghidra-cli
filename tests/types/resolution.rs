@@ -244,11 +244,11 @@ public class CreateAmbiguousTypes extends GhidraScript {
         vec![
             "field", "append", "Holder", "--name", "bad", "--type", "Shared",
         ],
-        vec!["create", "typedef", "AmbiguousAlias", "Shared"],
+        vec!["create", "typedef", "AmbiguousAlias", "--type", "Shared"],
         vec!["rename", "Shared", "Renamed"],
         vec!["delete", "Shared"],
         vec!["field", "delete", "Shared", "--field", "missing"],
-        vec!["apply", "0x1000", "Shared", "--force"],
+        vec!["apply", "0x1000", "--type", "Shared", "--force"],
     ] {
         let failed = type_command(&program, &args);
         failed.assert_failure();
@@ -410,7 +410,7 @@ public class PrepareTypeApplyMemory extends GhidraScript {
         ("0x1004", "byte[2147483647]"),
         ("0xfffffffc", "byte[8]"),
     ] {
-        let failed = type_command(&program, &["apply", address, ty, "--force"]);
+        let failed = type_command(&program, &["apply", address, "--type", ty, "--force"]);
         failed.assert_failure();
         let error: Value = serde_json::from_str(&failed.stderr).unwrap();
         assert!(
@@ -441,7 +441,11 @@ public class CheckTypeApplyPreservation extends GhidraScript {
             .unwrap();
     }
     // Valid forced replacement still succeeds after all rejected requests.
-    type_command(&program, &["apply", "0x1004", "byte[4]", "--force"]).assert_success();
+    type_command(
+        &program,
+        &["apply", "0x1004", "--type", "byte[4]", "--force"],
+    )
+    .assert_success();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 
@@ -458,7 +462,7 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
         ),
         (
             "TypedefCollision",
-            vec!["create", "typedef", "TypedefCollision", "byte"],
+            vec!["create", "typedef", "TypedefCollision", "--type", "byte"],
             "typedef",
         ),
         (
@@ -474,7 +478,7 @@ fn type_creation_reports_the_registered_conflict_name_and_path() {
     ] {
         // Different kinds force Ghidra to retain both definitions under unique names.
         let initial = if kind == "struct" {
-            vec!["create", "typedef", name, "byte"]
+            vec!["create", "typedef", name, "--type", "byte"]
         } else {
             vec!["create", "struct", name]
         };

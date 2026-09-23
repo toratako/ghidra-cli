@@ -86,7 +86,7 @@ fn context_and_rebase_route_targets_and_arguments_in_standalone_and_batch() {
             false,
         ),
         (
-            vec!["program", "rebase", "ram:0x80000000"],
+            vec!["program", "rebase", "--base", "ram:0x80000000"],
             "program_rebase",
             json!({"base": "ram:0x80000000"}),
             false,
@@ -148,7 +148,7 @@ fn context_lists_apply_queries_and_keep_range_metadata_in_standalone_and_batch()
                     "bit_length>1",
                     "--sort",
                     "name",
-                    "--offset",
+                    "--skip",
                     "1",
                     "--limit",
                     "1",
@@ -185,7 +185,7 @@ fn context_lists_apply_queries_and_keep_range_metadata_in_standalone_and_batch()
             .into_iter()
             .chain([
                 "--sort=-start",
-                "--offset",
+                "--skip",
                 "1",
                 "--limit",
                 "1",
@@ -250,7 +250,7 @@ fn context_edits_and_rebase_keep_nested_receipts_with_object_projection() {
             }
         }
         for projected in [false, true] {
-            let mut args = vec!["program", "rebase", "0x80000000"];
+            let mut args = vec!["program", "rebase", "--base", "0x80000000"];
             if projected {
                 args.extend(["--fields", "new_base,moved_blocks,unchanged_blocks"]);
             }

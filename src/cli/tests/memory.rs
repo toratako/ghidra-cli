@@ -8,7 +8,9 @@ fn parse_block_create(args: &[&str]) -> Result<Cli, clap::Error> {
             "block",
             "create",
             ".ram",
+            "--start",
             "ram:0x1000",
+            "--size",
         ]
         .into_iter()
         .chain(args.iter().copied()),
@@ -106,6 +108,7 @@ fn block_attribute_edits_require_unambiguous_replacement_values() {
             "block",
             "set-permissions",
             "ram:0x1000",
+            "--permissions",
             permissions,
         ])
         .is_err());

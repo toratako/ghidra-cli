@@ -135,17 +135,15 @@ fn json_results_match_batch_entries_and_retain_context_after_queries() {
     for args in [
         vec!["tag", "get", "review"],
         vec!["tag", "get", "review", "--fields", "name"],
-        vec!["memory", "read", "0x1000", "8"],
+        vec!["memory", "read", "0x1000", "--size", "8"],
         vec!["decompile", "warned", "--fields", "code,warnings"],
         vec!["function", "list"],
         vec![
-            "function", "list", "--filter", "name~l", "--offset", "1", "--limit", "1", "--fields",
+            "function", "list", "--filter", "name~l", "--skip", "1", "--limit", "1", "--fields",
             "name",
         ],
         vec!["function", "list", "--count"],
-        vec![
-            "function", "list", "--offset", "1", "--limit", "2", "--count",
-        ],
+        vec!["function", "list", "--skip", "1", "--limit", "2", "--count"],
         vec![
             "graph",
             "calls",
@@ -180,7 +178,7 @@ fn json_results_match_batch_entries_and_retain_context_after_queries() {
     let page = document(
         &bridge,
         &[
-            "function", "list", "--offset", "2", "--limit", "1", "--fields", "name",
+            "function", "list", "--skip", "2", "--limit", "1", "--fields", "name",
         ],
     );
     assert_eq!(
@@ -380,7 +378,11 @@ fn configured_format_applies_to_query_rows_and_explicit_flags_override_it() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(String::from_utf8(output.stdout).unwrap(), "name\nfirst\n");
-    for flags in [vec!["--json"], vec!["--pretty"], vec!["-o", "json-compact"]] {
+    for flags in [
+        vec!["--json"],
+        vec!["--pretty"],
+        vec!["--format", "json-compact"],
+    ] {
         let output = bridge
             .command()
             .args(["symbol", "externals"])

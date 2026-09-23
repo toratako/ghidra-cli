@@ -26,7 +26,7 @@ fn targets_require_one_positional() {
             "--convention",
             "__cdecl",
         ],
-        vec!["function", "set-noreturn"],
+        vec!["function", "set-noreturn", "--value", "true"],
         vec![
             "function", "var", "set", "--var", "local_10", "--name", "value",
         ],
@@ -142,7 +142,7 @@ fn canonical_commands_parse() {
         vec!["find", "string", "hello"],
         vec!["graph", "callers", "main"],
         vec!["graph", "callees", "main"],
-        vec!["type", "import-c", "typedef int Word;"],
+        vec!["type", "import-c", "--code", "typedef int Word;"],
         vec!["function", "list"],
         vec!["function", "get", "main"],
         vec!["function", "list-calling-conventions"],
@@ -182,8 +182,16 @@ fn import_and_type_apply_options_parse() {
     assert_eq!(args.name.as_deref(), Some("saved.bin"));
     assert_eq!(args.language.as_deref(), Some("x86:LE:32:default"));
     assert_eq!(args.compiler_spec.as_deref(), Some("gcc"));
-    let cli =
-        Cli::try_parse_from(["ghidra-cli", "type", "apply", "0x1000", "int", "--force"]).unwrap();
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "apply",
+        "0x1000",
+        "--type",
+        "int",
+        "--force",
+    ])
+    .unwrap();
     let Commands::Type(TypeCommands::Apply(args)) = cli.command else {
         panic!("expected type apply")
     };

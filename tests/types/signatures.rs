@@ -9,6 +9,7 @@ fn create_program(bits: u32) -> String {
         &program,
         &[
             "import-c",
+            "--code",
             "struct Entry { int value; };",
             "--category",
             "/Recovered",

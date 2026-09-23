@@ -62,7 +62,7 @@ pub struct SetNoReturnArgs {
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Set to false to clear a previously-set no-return flag
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    #[arg(long, required = true, action = clap::ArgAction::Set)]
     pub value: bool,
     #[arg(long)]
     pub program: Option<String>,
@@ -118,10 +118,13 @@ pub struct FunctionDeleteArgs {
     #[arg(long)]
     pub project: Option<String>,
     /// Fields to include in the deletion receipt (comma-separated)
-    #[arg(long)]
+    #[arg(long, conflicts_with = "exclude_fields")]
     pub fields: Option<String>,
+    /// Fields to exclude from the deletion receipt (comma-separated)
+    #[arg(long)]
+    pub exclude_fields: Option<String>,
     /// Output format (omitted: compact on TTY, json-compact otherwise)
-    #[arg(long, short = 'o', value_enum, ignore_case = true)]
+    #[arg(long, value_enum, ignore_case = true)]
     pub format: Option<super::OutputFormat>,
 }
 

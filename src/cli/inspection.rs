@@ -50,7 +50,7 @@ pub struct XRefCreateMemoryArgs {
     #[arg(long = "operand", value_name = "N", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
     pub operand_index: i32,
     /// Meaning of the reference
-    #[arg(long, ignore_case = true, value_parser = ["DATA", "READ", "WRITE", "READ_WRITE", "INDIRECTION", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL", "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP"])]
+    #[arg(long = "type", ignore_case = true, value_parser = ["DATA", "READ", "WRITE", "READ_WRITE", "INDIRECTION", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL", "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP"])]
     pub ref_type: String,
     #[command(flatten)]
     pub options: ObjectOptions,

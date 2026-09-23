@@ -135,6 +135,7 @@ pub struct CreateUnionArgs {
 pub struct ApplyTypeArgs {
     /// Explicit address, e.g. 0x404000 or overlay:0x1000
     pub address: String,
+    #[arg(long = "type", value_name = "TYPE")]
     pub type_name: String,
     /// Clear conflicting code/data units (including instructions) before applying the type
     #[arg(long)]
@@ -149,6 +150,7 @@ pub struct ApplyTypeArgs {
 #[command(group(clap::ArgGroup::new("source").required(true).args(["code", "file", "stdin"])))]
 pub struct ImportCArgs {
     /// C code containing type definitions
+    #[arg(long)]
     pub code: Option<String>,
     /// Read C definitions from a UTF-8 file (relative to the CLI working directory)
     #[arg(long, value_name = "PATH")]
@@ -205,7 +207,7 @@ pub struct TypeResizeArgs {
     /// Nonpacked struct name or full type path
     pub type_name: String,
     /// New total byte size, in decimal or 0x hexadecimal; zero is allowed
-    #[arg(value_parser = parse_type_integer)]
+    #[arg(long, value_parser = parse_type_integer)]
     pub size: i32,
     #[command(flatten)]
     pub options: ObjectOptions,
@@ -216,6 +218,7 @@ pub struct TypeMoveArgs {
     /// Registered struct, union, enum, typedef, or function type name or path
     pub type_name: String,
     /// Existing destination category path
+    #[arg(long)]
     pub category: String,
     #[command(flatten)]
     pub options: ObjectOptions,
@@ -259,6 +262,7 @@ pub struct TypedefArgs {
     /// Name for the new typedef
     pub name: String,
     /// Base type to alias (e.g., "int", "dword", "MyStruct")
+    #[arg(long = "type", value_name = "BASE_TYPE")]
     pub base_type: String,
     #[arg(long)]
     pub program: Option<String>,

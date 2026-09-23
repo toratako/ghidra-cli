@@ -17,10 +17,10 @@ fn resolve_annotation_text(
         crate::terminal::read_stdin(description)
     } else if let Some(path) = text_file {
         std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read --text-file {}: {}", path.display(), e))
+            .map_err(|e| anyhow::anyhow!("Failed to read --file {}: {}", path.display(), e))
     } else {
         text.clone()
-            .ok_or_else(|| anyhow::anyhow!("TEXT argument required (or use --stdin / --text-file)"))
+            .ok_or_else(|| anyhow::anyhow!("--text, --file, or --stdin required"))
     }
 }
 
@@ -33,7 +33,7 @@ fn resolve_c_source(args: &cli::ImportCArgs) -> anyhow::Result<String> {
     } else {
         args.code
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("C code, --file, or --stdin required"))?
+            .ok_or_else(|| anyhow::anyhow!("--code, --file, or --stdin required"))?
     };
     anyhow::ensure!(!code.trim().is_empty(), "C definitions must not be empty");
     Ok(code)
@@ -208,20 +208,9 @@ pub(super) fn execute_via_bridge(
                     unreachable!("program import is dispatched before bridge execution")
                 }
                 ProgramCommands::List(_) => client.list_programs(),
-                ProgramCommands::Open(args) => {
-                    let program = args.program.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("Program name required. Use --program <name>")
-                    })?;
-                    client.open_program(program)
-                }
+                ProgramCommands::Open(args) => client.open_program(&args.name),
                 ProgramCommands::Close(_) => client.program_close(),
-                ProgramCommands::Delete(args) => {
-                    let program = args
-                        .program
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("Program name required"))?;
-                    client.program_delete(program)
-                }
+                ProgramCommands::Delete(args) => client.program_delete(&args.name),
                 ProgramCommands::Info(_) => client.program_info(),
                 ProgramCommands::Context(cmd) => match cmd {
                     cli::ProgramContextCommands::List(_) => client.program_context_list(),

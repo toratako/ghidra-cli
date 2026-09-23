@@ -2,14 +2,35 @@ use super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
 #[test]
+fn listing_programs_does_not_select_a_context_program() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_program: configured\n",
+    )
+    .unwrap();
+    for args in [
+        vec!["program", "list"],
+        vec!["program", "list", "--program", "context"],
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        bridge.run(&args);
+        let requests = bridge.requests.lock().unwrap();
+        assert!(requests.iter().any(|r| r["command"] == "list_programs"));
+        assert!(requests.iter().all(|r| r["command"] != "open_program"));
+    }
+}
+
+#[test]
 fn program_info_and_stats_support_projection_and_format_in_standalone_and_batch() {
     for (subcommand, wire_command) in [("info", "program_info"), ("stats", "stats")] {
         let bridge = RecordedBridge::new();
         let args = [
             "program",
             subcommand,
-            "--program",
             "B",
+            "--program",
+            "ignored",
             "--fields",
             "observed_program",
             "--format",
@@ -78,7 +99,16 @@ fn memory_read_preserves_bytes_and_pointers_with_output_options() {
     for fields in [None, Some("size,hex,pointers")] {
         for batch in [false, true] {
             bridge.requests.lock().unwrap().clear();
-            let mut args = vec!["memory", "read", "0x1000", "8", "--program", "B", "--json"];
+            let mut args = vec![
+                "memory",
+                "read",
+                "0x1000",
+                "--size",
+                "8",
+                "--program",
+                "B",
+                "--json",
+            ];
             if let Some(fields) = fields {
                 args.extend(["--fields", fields, "--format", "json-compact"]);
             }
@@ -170,7 +200,7 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
         if batch {
             std::fs::write(
                 bridge.root.path().join("batch.txt"),
-                "memory write main '90 c3' --program B\n",
+                "memory write main --bytes '90 c3' --program B\n",
             )
             .unwrap();
             let result = bridge.run(&["batch", "batch.txt"]);
@@ -179,7 +209,15 @@ fn memory_write_routes_hex_and_targets_in_standalone_and_batch() {
                 "B"
             );
         } else {
-            let result = bridge.run(&["memory", "write", "main", "90 c3", "--program", "B"]);
+            let result = bridge.run(&[
+                "memory",
+                "write",
+                "main",
+                "--bytes",
+                "90 c3",
+                "--program",
+                "B",
+            ]);
             assert_eq!(result["observed_program"], "B");
         }
         let requests = bridge.requests.lock().unwrap();
@@ -239,6 +277,48 @@ fn api_reads_honor_project_overrides_in_standalone_and_batch() {
             assert!(requests
                 .iter()
                 .any(|r| r["command"] == "open_program" && r["args"]["program"] == "B"));
+        }
+    }
+}
+
+#[test]
+fn program_operands_select_the_target_before_optional_program_operations() {
+    let bridge = RecordedBridge::new();
+    for (args, wire) in [
+        (vec!["program", "close", "B"], "program_close"),
+        (vec!["program", "save", "B"], "program_save"),
+        (
+            vec!["program", "list-relocations", "B"],
+            "program_list_relocations",
+        ),
+        (
+            vec!["program", "rebase", "B", "--base", "0x80000000"],
+            "program_rebase",
+        ),
+    ] {
+        for batched in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let args: Vec<_> = args
+                .iter()
+                .copied()
+                .chain(["--program", "ignored"])
+                .collect();
+            if batched {
+                std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args))
+                    .unwrap();
+                bridge.run(&["batch", "batch.txt"]);
+            } else {
+                bridge.run(&args);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let domain: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] != "bridge_info")
+                .collect();
+            assert_eq!(domain.len(), 2, "{args:?}: {domain:?}");
+            assert_eq!(domain[0]["command"], "open_program");
+            assert_eq!(domain[0]["args"], json!({"program": "B"}));
+            assert_eq!(domain[1]["command"], wire);
         }
     }
 }

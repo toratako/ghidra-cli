@@ -199,17 +199,19 @@ fn execute_bridge_command(
             }
 
             _ => {
-                // A deletion target is a project file, not a program to select.
-                let deleting_program = matches!(
+                // Project-wide file operations do not select a program.
+                let project_operation = matches!(
                     &cli.command,
-                    Commands::Program(cli::ProgramCommands::Delete(_))
+                    Commands::Program(
+                        cli::ProgramCommands::Delete(_) | cli::ProgramCommands::List(_)
+                    )
                 );
-                let selected_program = if deleting_program {
+                let selected_program = if project_operation {
                     None
                 } else {
                     extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
                 };
-                let startup_program = if deleting_program {
+                let startup_program = if project_operation {
                     None
                 } else {
                     selected_program

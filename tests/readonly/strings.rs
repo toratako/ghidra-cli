@@ -194,7 +194,7 @@ fn defined_strings_share_lengths_and_page_after_both_predicates() {
             );
             assert_eq!(cli(command, &["--filter", "char_length=1", "--count"]), 2);
         }
-        let flags = ["--filter", "value~_A", "--offset", "1", "--limit", "1"];
+        let flags = ["--filter", "value~_A", "--skip", "1", "--limit", "1"];
         assert_eq!(cli(&["find", "string", "file"], &flags), json!([rows[16]]));
         // Projection follows sorting, and counts select the requested page.
         let flags = [
@@ -215,7 +215,7 @@ fn defined_strings_share_lengths_and_page_after_both_predicates() {
         assert_eq!(
             cli(
                 &["find", "string", "file"],
-                &["--filter", "value~_", "--offset", "1", "--limit", "2", "--count"]
+                &["--filter", "value~_", "--skip", "1", "--limit", "2", "--count"]
             ),
             2
         );

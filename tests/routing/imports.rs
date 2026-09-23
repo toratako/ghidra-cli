@@ -125,7 +125,15 @@ fn os_file_paths_are_resolved_in_the_cli_working_directory() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
     bridge.run(&["program", "import", "binary", "--no-analyze"]);
-    bridge.run(&["program", "export", "c", "-o", "export.c"]);
+    bridge.run(&[
+        "program",
+        "export",
+        "imported",
+        "--export-format",
+        "c",
+        "-o",
+        "export.c",
+    ]);
     let requests = bridge.requests.lock().unwrap();
     for (command, key, filename) in [
         ("import", "binary_path", "binary"),

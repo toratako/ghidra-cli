@@ -38,6 +38,7 @@ fn test_comment_set_and_get() {
         .arg("comment")
         .arg("set")
         .arg(&addr)
+        .arg("--text")
         .arg("test comment from integration test")
         .arg("--project")
         .arg(test_project())
@@ -74,6 +75,7 @@ fn test_comment_list() {
         .arg("comment")
         .arg("set")
         .arg(addr)
+        .arg("--text")
         .arg("another comment")
         .arg("--project")
         .arg(test_project())
@@ -165,7 +167,7 @@ fn comment_delete_selected_type_preserves_other_comments() {
             "comment",
             "delete",
             &addr,
-            "--comment-type",
+            "--type",
             "pRe",
             "--project",
             test_project(),
@@ -238,7 +240,7 @@ fn comment_delete_applies_fields_and_format_to_receipt() {
     let client = harness.client().unwrap();
     let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
-    for (format_flag, format) in [("--format", "json-compact"), ("-o", "csv")] {
+    for format in ["json-compact", "csv"] {
         client
             .comment_set(&addr, "delete receipt projection", Some("EOL"))
             .unwrap();
@@ -250,7 +252,7 @@ fn comment_delete_applies_fields_and_format_to_receipt() {
                 "--all",
                 "--fields",
                 "status",
-                format_flag,
+                "--format",
                 format,
                 "--project",
                 test_project(),
@@ -292,7 +294,7 @@ fn comment_delete_rejects_query_flags_without_mutating_comments() {
     for flag in [
         vec!["--filter", "type=EOL"],
         vec!["--sort", "type"],
-        vec!["--offset", "1"],
+        vec!["--skip", "1"],
         vec!["--limit", "0"],
         vec!["--count"],
     ] {

@@ -24,11 +24,14 @@ fn field<'a>(definition: &'a Value, name: &str) -> &'a Value {
 }
 
 fn resize(program: &str, name: &str, size: u32) -> Value {
-    success(type_command(program, &["resize", name, &size.to_string()]))
+    success(type_command(
+        program,
+        &["resize", name, "--size", &size.to_string()],
+    ))
 }
 
 fn rejected(program: &str, name: &str, size: u32) {
-    let result = type_command(program, &["resize", name, &size.to_string()]);
+    let result = type_command(program, &["resize", name, "--size", &size.to_string()]);
     result.assert_failure();
     let error: Value = serde_json::from_str(&result.stderr).unwrap();
     assert_eq!(error["detail"]["rolled_back"], true, "{error}");
