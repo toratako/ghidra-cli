@@ -96,6 +96,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Include saved function definitions in `type get`, with return and parameter
   types, calling convention, variadic state, and no-return state.
 - Stop program statistics scans cooperatively when their job is cancelled.
+- Select program exporters independently of the JVM locale for uppercase formats.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

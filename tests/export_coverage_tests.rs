@@ -100,10 +100,36 @@ public class DefineExportCoverageFixture extends GhidraScript {
         .contains("does not verify complete function coverage")));
 
     let raw_path = directory.path().join("memory.bin");
-    let raw = client
-        .program_export("binary", Some(raw_path.to_str().unwrap()))
-        .expect("export initialized memory");
-    assert_receipt(&raw, &program, "binary", &[&raw_path]);
+    const SET_LOCALE: &str = r#"
+import ghidra.app.script.GhidraScript;
+import java.util.Locale;
+public class ExportTestLocale extends GhidraScript {
+    public void run() {
+        println(Locale.getDefault().toLanguageTag());
+        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
+    }
+}
+"#;
+    let previous = client
+        .script_run_source(SET_LOCALE, &["tr-TR".to_owned()], &[], false)
+        .unwrap();
+    let previous = previous["stdout"].as_str().unwrap().trim().to_owned();
+    let exported = std::panic::catch_unwind(|| {
+        // Clap accepts uppercase format names; the JVM locale must not change
+        // which exporter handles them.
+        let result = common::ghidra(&harness)
+            .args(["program", "export", "BINARY", "--output"])
+            .arg(raw_path.to_str().unwrap())
+            .arg("--json")
+            .run();
+        result.assert_success();
+        result.data::<Value>()
+    });
+    client
+        .script_run_source(SET_LOCALE, &[previous], &[], false)
+        .unwrap();
+    let raw = exported.unwrap_or_else(|error| std::panic::resume_unwind(error));
+    assert_receipt(&raw, &program, "BINARY", &[&raw_path]);
     // Neither the gap nor the uninitialized block is present in raw output.
     assert_eq!(std::fs::read(&raw_path).unwrap(), bytes);
     assert!(raw["limitations"][0]

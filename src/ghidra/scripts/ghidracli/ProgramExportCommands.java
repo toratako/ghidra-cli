@@ -43,7 +43,7 @@ final class ProgramExportCommands {
             classMap.put("hex", "ghidra.app.util.exporter.IntelHexExporter");
             classMap.put("html", "ghidra.app.util.exporter.HtmlExporter");
 
-            String className = classMap.get(exportFormat.toLowerCase());
+            String className = classMap.get(exportFormat.toLowerCase(java.util.Locale.ROOT));
             if (className == null) {
                 return errorResult("Unsupported export format: " + exportFormat
                     + " (supported: xml, c, binary, gzf, asm, hex, html)");
