@@ -56,33 +56,24 @@ impl BridgeClient {
         self.send_command("memory_block_create", Some(request))
     }
 
-    pub fn memory_block_rename(&self, block_start: &str, name: &str) -> Result<serde_json::Value> {
-        self.send_command(
-            "memory_block_rename",
-            Some(json!({"block_start": block_start, "name": name})),
-        )
-    }
-
-    pub fn memory_block_set_permissions(
+    pub fn memory_block_set(
         &self,
         block_start: &str,
-        permissions: &str,
+        name: Option<&str>,
+        permissions: Option<&str>,
+        volatile: Option<bool>,
     ) -> Result<serde_json::Value> {
-        self.send_command(
-            "memory_block_set_permissions",
-            Some(json!({"block_start": block_start, "permissions": permissions})),
-        )
-    }
-
-    pub fn memory_block_set_volatile(
-        &self,
-        block_start: &str,
-        value: bool,
-    ) -> Result<serde_json::Value> {
-        self.send_command(
-            "memory_block_set_volatile",
-            Some(json!({"block_start": block_start, "value": value})),
-        )
+        let mut args = json!({"block_start": block_start});
+        if let Some(name) = name {
+            args["name"] = json!(name);
+        }
+        if let Some(permissions) = permissions {
+            args["permissions"] = json!(permissions);
+        }
+        if let Some(volatile) = volatile {
+            args["volatile"] = json!(volatile);
+        }
+        self.send_command("memory_block_set", Some(args))
     }
 
     pub fn memory_block_move(&self, block_start: &str, start: &str) -> Result<serde_json::Value> {

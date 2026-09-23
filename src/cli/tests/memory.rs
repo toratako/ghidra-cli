@@ -106,38 +106,32 @@ fn block_attribute_edits_require_unambiguous_replacement_values() {
             "ghidra-cli",
             "memory",
             "block",
-            "set-permissions",
+            "set",
             "ram:0x1000",
             "--permissions",
             permissions,
         ])
         .is_err());
     }
-    assert!(Cli::try_parse_from([
-        "ghidra-cli",
-        "memory",
-        "block",
-        "set-volatile",
-        "ram:0x1000",
-    ])
-    .is_err());
+    assert!(Cli::try_parse_from(["ghidra-cli", "memory", "block", "set", "ram:0x1000",]).is_err());
     for value in ["true", "false"] {
         let cli = Cli::try_parse_from([
             "ghidra-cli",
             "memory",
             "block",
-            "set-volatile",
+            "set",
             "ram:0x1000",
-            "--value",
+            "--volatile",
             value,
         ])
         .unwrap();
-        let Commands::Memory(MemoryCommands::Block(MemoryBlockCommands::SetVolatile(args))) =
-            cli.command
+        let Commands::Memory(MemoryCommands::Block(MemoryBlockCommands::Set(args))) = cli.command
         else {
-            panic!("expected set-volatile");
+            panic!("expected memory block set");
         };
-        assert_eq!(args.value, value == "true");
+        assert_eq!(args.volatile, Some(value == "true"));
+        assert!(args.name.is_none());
+        assert!(args.permissions.is_none());
     }
 }
 

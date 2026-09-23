@@ -53,6 +53,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consolidate memory block attribute edits into `memory block set BLOCK_START`
+  with `--name`, `--permissions`, and `--volatile true|false`. Multiple attributes
+  change atomically; omitted attributes are preserved. Block creation also takes
+  an explicit boolean for `--volatile` (default false).
+
 - Move function tag operations from `tag` to `function tag`. Keep shared
   program-level definitions separate from function attachments through
   `create` and `attach`; remove the top-level command.

@@ -82,53 +82,41 @@ public final class MemoryBlockCommands {
         return receipt("created", null, MemoryBlockInfo.describe(actual));
     }
 
-    public JsonObject handleRename(JsonObject args) throws Exception {
+    public JsonObject handleSet(JsonObject args) throws Exception {
         if (session.program() == null) return errorResult("No program loaded");
         MemoryBlock block = selectedBlock(args);
-        String name = blockName(args);
+        if (!args.has("name") && !args.has("permissions") && !args.has("volatile")) {
+            throw new IllegalArgumentException("Set requires name, permissions, or volatile");
+        }
+        String name = args.has("name") ? blockName(args) : block.getName();
+        int permissions = args.has("permissions") ? permissions(args) : permissionFlags(block);
+        boolean isVolatile = booleanArg(args, "volatile", block.isVolatile());
         JsonObject before = MemoryBlockInfo.describe(block);
-        if (block.getName().equals(name)) return receipt("unchanged", before, before);
+        if (block.getName().equals(name) && permissionFlags(block) == permissions
+                && block.isVolatile() == isVolatile) {
+            return receipt("unchanged", before, before);
+        }
         Address start = block.getStart();
         Address end = block.getEnd();
         session.monitor().checkCancelled();
-        block.setName(name);
-        session.monitor().checkCancelled();
-        MemoryBlock actual = retainedBlock(start, end);
-        if (!actual.getName().equals(name)) {
-            throw new IllegalStateException("Ghidra did not retain the requested block name");
+        if (!block.getName().equals(name)) {
+            block.setName(name);
+            block = retainedBlock(start, end);
         }
-        return receipt("updated", before, MemoryBlockInfo.describe(actual));
-    }
-
-    public JsonObject handleSetPermissions(JsonObject args) throws Exception {
-        if (session.program() == null) return errorResult("No program loaded");
-        MemoryBlock block = selectedBlock(args);
-        int permissions = permissions(args);
-        JsonObject before = MemoryBlockInfo.describe(block);
-        if (permissionFlags(block) == permissions) return receipt("unchanged", before, before);
-        session.monitor().checkCancelled();
-        block.setPermissions((permissions & MemoryBlock.READ) != 0,
-            (permissions & MemoryBlock.WRITE) != 0, (permissions & MemoryBlock.EXECUTE) != 0);
         session.monitor().checkCancelled();
         if (permissionFlags(block) != permissions) {
-            throw new IllegalStateException("Ghidra did not retain the requested block permissions");
+            block.setPermissions((permissions & MemoryBlock.READ) != 0,
+                (permissions & MemoryBlock.WRITE) != 0, (permissions & MemoryBlock.EXECUTE) != 0);
         }
-        return receipt("updated", before, MemoryBlockInfo.describe(block));
-    }
-
-    public JsonObject handleSetVolatile(JsonObject args) throws Exception {
-        if (session.program() == null) return errorResult("No program loaded");
-        MemoryBlock block = selectedBlock(args);
-        boolean value = booleanArg(args, "value", null);
-        JsonObject before = MemoryBlockInfo.describe(block);
-        if (block.isVolatile() == value) return receipt("unchanged", before, before);
         session.monitor().checkCancelled();
-        block.setVolatile(value);
+        if (block.isVolatile() != isVolatile) block.setVolatile(isVolatile);
         session.monitor().checkCancelled();
-        if (block.isVolatile() != value) {
-            throw new IllegalStateException("Ghidra did not retain the requested volatile attribute");
+        MemoryBlock actual = retainedBlock(start, end);
+        if (!actual.getName().equals(name) || permissionFlags(actual) != permissions
+                || actual.isVolatile() != isVolatile) {
+            throw new IllegalStateException("Ghidra did not retain the requested block attributes");
         }
-        return receipt("updated", before, MemoryBlockInfo.describe(block));
+        return receipt("updated", before, MemoryBlockInfo.describe(actual));
     }
 
     public JsonObject handleMove(JsonObject args) throws Exception {

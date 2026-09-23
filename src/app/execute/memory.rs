@@ -12,9 +12,7 @@ pub(super) fn validate(command: &MemoryCommands) -> anyhow::Result<()> {
         MemoryCommands::Block(command) => match command {
             MemoryBlockCommands::List(_) => vec![],
             MemoryBlockCommands::Create(args) => vec![&args.start],
-            MemoryBlockCommands::Rename(args) => vec![&args.block_start],
-            MemoryBlockCommands::SetPermissions(args) => vec![&args.block_start],
-            MemoryBlockCommands::SetVolatile(args) => vec![&args.block_start],
+            MemoryBlockCommands::Set(args) => vec![&args.block_start],
             MemoryBlockCommands::Move(args) => vec![&args.block_start, &args.start],
             MemoryBlockCommands::Delete(args) => vec![&args.block_start],
         },
@@ -48,15 +46,12 @@ pub(super) fn execute(client: &BridgeClient, command: &MemoryCommands) -> anyhow
                     overlay: args.overlay.as_deref(),
                 })
             }
-            MemoryBlockCommands::Rename(args) => {
-                client.memory_block_rename(&args.block_start, &args.name)
-            }
-            MemoryBlockCommands::SetPermissions(args) => {
-                client.memory_block_set_permissions(&args.block_start, &args.permissions)
-            }
-            MemoryBlockCommands::SetVolatile(args) => {
-                client.memory_block_set_volatile(&args.block_start, args.value)
-            }
+            MemoryBlockCommands::Set(args) => client.memory_block_set(
+                &args.block_start,
+                args.name.as_deref(),
+                args.permissions.as_deref(),
+                args.volatile,
+            ),
             MemoryBlockCommands::Move(args) => {
                 client.memory_block_move(&args.block_start, &args.start)
             }

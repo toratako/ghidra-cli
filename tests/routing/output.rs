@@ -107,8 +107,9 @@ fn compact_fallback_displays_receipt_fields_once() {
             .args([
                 "memory",
                 "block",
-                "rename",
+                "set",
                 "bank1:0x1000",
+                "--name",
                 ".renamed",
                 "--format",
                 "compact",

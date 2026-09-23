@@ -151,6 +151,7 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
                 "--permissions",
                 "rw",
                 "--volatile",
+                "true",
             ],
         );
         assert_eq!(mmio["after"]["volatile"], true);
@@ -194,11 +195,7 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
             "unmapped"
         );
 
-        let permissions = cli(
-            harness,
-            program,
-            &["set-permissions", "0x5000", "--permissions", "r"],
-        );
+        let permissions = cli(harness, program, &["set", "0x5000", "--permissions", "r"]);
         assert_eq!(permissions["status"], "updated");
         assert_eq!(permissions["before"], filled["after"]);
         assert_eq!(permissions["after"]["permissions"], "r");
@@ -206,40 +203,28 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
         let none = cli(
             harness,
             program,
-            &["set-permissions", "0x5000", "--permissions", "none"],
+            &["set", "0x5000", "--permissions", "none"],
         );
         assert_eq!(none["before"], permissions["after"]);
         assert_eq!(none["after"]["permissions"], "");
         let unchanged = cli(
             harness,
             program,
-            &["set-permissions", "0x5000", "--permissions", "none"],
+            &["set", "0x5000", "--permissions", "none"],
         );
         assert_eq!(unchanged["status"], "unchanged");
         assert_eq!(unchanged["changed"], false);
         assert_eq!(unchanged["before"], unchanged["after"]);
 
-        let cleared = cli(
-            harness,
-            program,
-            &["set-volatile", "0x3000", "--value", "false"],
-        );
+        let cleared = cli(harness, program, &["set", "0x3000", "--volatile", "false"]);
         assert_eq!(cleared["status"], "updated");
         assert_eq!(cleared["before"], mmio["after"]);
         assert_eq!(cleared["after"]["volatile"], false);
         assert_eq!(cleared["changed"], true);
-        let restored = cli(
-            harness,
-            program,
-            &["set-volatile", "0x3000", "--value", "true"],
-        );
+        let restored = cli(harness, program, &["set", "0x3000", "--volatile", "true"]);
         assert_eq!(restored["before"], cleared["after"]);
         assert_eq!(restored["after"], mmio["after"]);
-        let unchanged = cli(
-            harness,
-            program,
-            &["set-volatile", "0x3000", "--value", "true"],
-        );
+        let unchanged = cli(harness, program, &["set", "0x3000", "--volatile", "true"]);
         assert_eq!(unchanged["status"], "unchanged");
         assert_eq!(unchanged["changed"], false);
         assert_eq!(unchanged["before"], unchanged["after"]);
@@ -347,7 +332,7 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         let renamed = cli(
             harness,
             program,
-            &["rename", "bank1:0x00002000", ".renamed"],
+            &["set", "bank1:0x00002000", "--name", ".renamed"],
         );
         assert_eq!(renamed["status"], "updated");
         assert_eq!(renamed["before"], overlay["after"]);
@@ -362,7 +347,7 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         let unchanged = cli(
             harness,
             program,
-            &["rename", "bank1:0x00002000", ".renamed"],
+            &["set", "bank1:0x00002000", "--name", ".renamed"],
         );
         assert_eq!(unchanged["status"], "unchanged");
         assert_eq!(unchanged["changed"], false);
@@ -398,38 +383,61 @@ fn overlays_keep_explicit_space_identity_and_edits_require_exact_block_starts() 
         let changed = cli(
             harness,
             program,
-            &["set-permissions", "bank1:0x00002000", "--permissions", "w"],
+            &[
+                "set",
+                "bank1:0x00002000",
+                "--name",
+                ".mmio",
+                "--permissions",
+                "w",
+                "--volatile",
+                "true",
+            ],
         );
-        assert_eq!(changed["after"]["permissions"], "w");
-        let changed = cli(
+        let mut expected = renamed["after"].clone();
+        expected["name"] = json!(".mmio");
+        expected["permissions"] = json!("w");
+        expected["volatile"] = json!(true);
+        assert_eq!(changed["before"], renamed["after"]);
+        assert_eq!(changed["after"], expected);
+        assert_eq!(changed["status"], "updated");
+        let unchanged = cli(
             harness,
             program,
-            &["set-volatile", "bank1:0x00002000", "--value", "true"],
+            &[
+                "set",
+                "bank1:0x00002000",
+                "--name",
+                ".mmio",
+                "--permissions",
+                "w",
+                "--volatile",
+                "true",
+            ],
         );
-        assert_eq!(changed["after"]["volatile"], true);
+        assert_eq!(unchanged["status"], "unchanged");
+        assert_eq!(unchanged["changed"], false);
+        assert_eq!(unchanged["before"], expected);
+        assert_eq!(unchanged["after"], expected);
+        let renamed = cli(
+            harness,
+            program,
+            &["set", "bank1:0x00002000", "--name", ".renamed"],
+        );
+        expected["name"] = json!(".renamed");
+        assert_eq!(renamed["after"], expected);
         let untouched = map_block(client, &physical["after"]["start"]);
         assert_eq!(untouched["permissions"], "rw");
         assert_eq!(untouched["volatile"], false);
 
-        // One shared target validator must reject both interiors and real symbols.
-        // Other operations use representative targets to guard their dispatch wiring.
+        // All attributes share the exact, space-aware target validator.
         for target in ["0x2001", "block_start_symbol", ".shared", "bank1:0x2001"] {
             reject(
                 client,
-                "memory_block_rename",
-                json!({"block_start": target, "name": ".wrong"}),
+                "memory_block_set",
+                json!({"block_start": target, "name": ".wrong", "permissions": "none", "volatile": false}),
             );
         }
-        reject(
-            client,
-            "memory_block_set_permissions",
-            json!({"block_start": "0x2001", "permissions": "none"}),
-        );
-        reject(
-            client,
-            "memory_block_set_volatile",
-            json!({"block_start": "block_start_symbol", "value": true}),
-        );
         let saved = client.memory_block_list().unwrap();
         client.program_close().unwrap();
         client.open_program(program).unwrap();
@@ -482,16 +490,18 @@ fn creation_validation_and_collisions_leave_memory_and_overlay_spaces_unchanged(
         overlay["start"] = json!("ram:0xffffffffffffffff");
         overlay["size"] = json!(2);
         reject(client, "memory_block_create", overlay);
-        reject(
-            client,
-            "memory_block_set_permissions",
-            json!({"block_start": "0x2000", "permissions": "read"}),
-        );
-        reject(
-            client,
-            "memory_block_set_volatile",
-            json!({"block_start": "0x2000", "value": "false"}),
-        );
+        reject(client, "memory_block_set", json!({"block_start": "0x2000"}));
+        for (field, value) in [
+            ("name", json!("")),
+            ("permissions", json!("read")),
+            ("volatile", json!("false")),
+            ("volatile", Value::Null),
+        ] {
+            let mut args = json!({"block_start": "0x2000", "name": ".changed",
+                "permissions": "rx", "volatile": true});
+            args[field] = value;
+            reject(client, "memory_block_set", args);
+        }
 
         // A map comparison alone would miss an empty space leaked on failed creation.
         const CHECK_SPACES: &str = r#"
@@ -527,7 +537,7 @@ public class CheckBlockSpaces extends GhidraScript {
 
 #[test]
 #[serial]
-fn cancelled_creation_rolls_back_a_native_block_and_its_new_overlay_space() {
+fn block_creation_and_compound_edits_roll_back_after_native_mutations() {
     require_ghidra!();
     with_fixture("x86:LE:64:default", |_, client, program| {
         let before = client.memory_block_list().unwrap();
@@ -550,6 +560,8 @@ import java.lang.reflect.Proxy;
 public class BlockCreateRollbackProbe extends GhidraScript {
     private Program selected;
     private boolean nativeCreationObserved;
+    private String editFault;
+    private boolean read, write, execute, isVolatile;
     private final TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
     private void require(boolean condition, String message) {
         if (!condition) throw new IllegalStateException(message);
@@ -560,7 +572,9 @@ public class BlockCreateRollbackProbe extends GhidraScript {
         require(program.getMemory().getBlocks().length == 1,
             "Cancelled creation retained a block");
         var seed = program.getMemory().getBlock("seed");
-        require(seed != null && seed.getSize() == 16
+        require(seed != null && seed.isRead() == read && seed.isWrite() == write
+            && seed.isExecute() == execute && seed.isVolatile() == isVolatile
+            && seed.getSize() == 16
             && program.getMemory().getByte(seed.getStart()) == (byte) 0x17,
             "Cancellation changed existing memory");
     }
@@ -569,6 +583,9 @@ public class BlockCreateRollbackProbe extends GhidraScript {
         DomainFile file = currentProgram.getDomainFile().copyTo(folder, monitor);
         Object owner = new Object();
         Program real = (Program) file.getDomainObject(owner, true, false, monitor);
+        var original = real.getMemory().getBlock("seed");
+        read = original.isRead(); write = original.isWrite();
+        execute = original.isExecute(); isVolatile = original.isVolatile();
         Object session = null;
         try {
             Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
@@ -596,6 +613,27 @@ public class BlockCreateRollbackProbe extends GhidraScript {
                             "Cancellation preceded native initialized block creation");
                         nativeCreationObserved = true;
                         requestMonitor.cancel();
+                    }
+                    if (editFault != null && method.getName().equals("getBlock")
+                            && result instanceof ghidra.program.model.mem.MemoryBlock block) {
+                        var blockClass = ghidra.program.model.mem.MemoryBlock.class;
+                        return Proxy.newProxyInstance(blockClass.getClassLoader(),
+                            new Class<?>[]{blockClass}, (blockProxy, blockMethod, blockArgs) -> {
+                                Object value;
+                                try { value = blockMethod.invoke(block, blockArgs); }
+                                catch (InvocationTargetException error) { throw error.getCause(); }
+                                if (blockMethod.getName().equals("setVolatile")) {
+                                    require(block.getName().equals(".edited") && block.isExecute()
+                                        && !block.isRead() && !block.isWrite()
+                                        && block.isVolatile() != isVolatile,
+                                        "Fault preceded compound native edits");
+                                    String mode = editFault;
+                                    editFault = null;
+                                    if (mode.equals("cancel")) requestMonitor.cancel();
+                                    else throw new IllegalStateException("injected error after compound edits");
+                                }
+                                return value;
+                            });
                     }
                     return result;
                 });
@@ -642,6 +680,22 @@ public class BlockCreateRollbackProbe extends GhidraScript {
             require(!detail.has("partial_changes_saved"), response.toString());
             requestMonitor.clearCancelled();
             checkAbsent(real);
+            for (String mode : new String[]{"error", "cancel"}) {
+                editFault = mode;
+                var edit = new JsonObject();
+                edit.addProperty("block_start", "0x100");
+                edit.addProperty("name", ".edited");
+                edit.addProperty("permissions", "x");
+                edit.addProperty("volatile", !isVolatile);
+                var failed = (JsonObject) execute.invoke(dispatcher, "memory_block_set", edit);
+                require(editFault == null, "Test did not reach compound native edits");
+                require(failed.get("status").getAsString().equals("error"), failed.toString());
+                var failure = failed.getAsJsonObject("detail");
+                require(failure.get("rolled_back").getAsBoolean(), failed.toString());
+                if (mode.equals("cancel")) require(failure.get("cancelled").getAsBoolean(), failed.toString());
+                requestMonitor.clearCancelled();
+                checkAbsent(real);
+            }
             Object reader = new Object();
             Program saved = (Program) file.getReadOnlyDomainObject(reader,
                 DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
@@ -712,7 +766,7 @@ fn block_sizes_count_bytes_in_word_and_segmented_spaces_and_starts_round_trip() 
             assert_eq!(read(client, returned_start, 3)["hex"], "a5a5a5");
             let renamed = command(
                 client,
-                "memory_block_rename",
+                "memory_block_set",
                 json!({
                     "block_start": returned_start, "name": ".renamed_odd"
                 }),

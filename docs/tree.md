@@ -96,9 +96,7 @@ ghidra-cli
 │   ├── block
 │   │   ├── list
 │   │   ├── create
-│   │   ├── rename
-│   │   ├── set-permissions
-│   │   ├── set-volatile
+│   │   ├── set
 │   │   ├── move
 │   │   └── delete
 │   ├── info
@@ -214,4 +212,4 @@ ghidra-cli
     └── cancel
 ```
 
-202 command nodes (excluding the root), 0 aliases.
+200 command nodes (excluding the root), 0 aliases.

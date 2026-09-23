@@ -37,12 +37,8 @@ pub enum MemoryBlockCommands {
     List(QueryOptions),
     /// Create a block with explicit initialization and permissions
     Create(MemoryBlockCreateArgs),
-    /// Change a block's display name, preserving its address space
-    Rename(MemoryBlockRenameArgs),
-    /// Replace all read, write, and execute permissions
-    SetPermissions(MemoryBlockPermissionsArgs),
-    /// Set or clear a block's volatile attribute
-    SetVolatile(MemoryBlockVolatileArgs),
+    /// Set block attributes together, preserving omitted values
+    Set(MemoryBlockSetArgs),
     /// Move a whole block and its analysis within the same address space
     Move(MemoryBlockMoveArgs),
     /// Delete a block and its associated analysis
@@ -54,9 +50,7 @@ impl MemoryBlockCommands {
         match self {
             Self::List(options) => options.clone(),
             Self::Create(args) => (&args.options).into(),
-            Self::Rename(args) => (&args.options).into(),
-            Self::SetPermissions(args) => (&args.options).into(),
-            Self::SetVolatile(args) => (&args.options).into(),
+            Self::Set(args) => (&args.options).into(),
             Self::Move(args) => (&args.options).into(),
             Self::Delete(args) => (&args.options).into(),
         }
@@ -84,7 +78,7 @@ pub struct MemoryBlockCreateArgs {
     #[arg(long, value_parser = parse_permissions)]
     pub permissions: String,
     /// Mark the block volatile, as for MMIO
-    #[arg(long)]
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
     pub volatile: bool,
     /// Create a new overlay space with this name over START's physical space
     #[arg(long, value_name = "NAME")]
@@ -94,33 +88,19 @@ pub struct MemoryBlockCreateArgs {
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct MemoryBlockRenameArgs {
+#[command(group(clap::ArgGroup::new("edit").required(true).multiple(true).args(["name", "permissions", "volatile"])))]
+pub struct MemoryBlockSetArgs {
     /// Exact block start as an explicit address, including its space when needed
     pub block_start: String,
-    /// New block display name
-    pub name: String,
-    #[command(flatten)]
-    pub options: ObjectOptions,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct MemoryBlockPermissionsArgs {
-    /// Exact block start as an explicit address, including its space when needed
-    pub block_start: String,
+    /// New block display name; preserves its address space
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub name: Option<String>,
     /// Replacement combination of r, w, x, or none
     #[arg(long, value_parser = parse_permissions)]
-    pub permissions: String,
-    #[command(flatten)]
-    pub options: ObjectOptions,
-}
-
-#[derive(Args, Clone, Serialize, Deserialize, Debug)]
-pub struct MemoryBlockVolatileArgs {
-    /// Exact block start as an explicit address, including its space when needed
-    pub block_start: String,
-    /// Whether the block is volatile
-    #[arg(long, required = true, action = clap::ArgAction::Set)]
-    pub value: bool,
+    pub permissions: Option<String>,
+    /// Whether the block is volatile; omit to preserve its current value
+    #[arg(long, action = clap::ArgAction::Set)]
+    pub volatile: Option<bool>,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

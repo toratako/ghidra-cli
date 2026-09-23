@@ -135,7 +135,7 @@ For analyzer settings and full, range, or pending analysis, see
 
 ```bash
 ghidra-cli memory block create .ram --start ram:0x20000000 --size 65536 --uninitialized --permissions rw
-ghidra-cli memory block create .mmio --start ram:0x40000000 --size 4096 --uninitialized --permissions rw --volatile
+ghidra-cli memory block create .mmio --start ram:0x40000000 --size 4096 --uninitialized --permissions rw --volatile true
 ghidra-cli memory block create .bank1 --start ram:0x1000 --size 8192 --overlay bank1 --fill 0xff --permissions rx
 ghidra-cli memory block create .bank1_data --start bank1:0x4000 --size 256 --uninitialized --permissions rw
 ghidra-cli memory block move ram:0x20000000 ram:0x21000000

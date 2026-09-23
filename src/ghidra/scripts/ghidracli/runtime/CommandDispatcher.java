@@ -183,9 +183,7 @@ final class CommandDispatcher {
             case "memory_info":     return memoryInfoCommands.handleInfo(args);
             case "memory_file_mappings": return fileMappingCommands.handleFileMappings(args);
             case "memory_block_create": return memoryBlockCommands.handleCreate(args);
-            case "memory_block_rename": return memoryBlockCommands.handleRename(args);
-            case "memory_block_set_permissions": return memoryBlockCommands.handleSetPermissions(args);
-            case "memory_block_set_volatile": return memoryBlockCommands.handleSetVolatile(args);
+            case "memory_block_set": return memoryBlockCommands.handleSet(args);
             case "memory_block_move": return memoryBlockCommands.handleMove(args);
             case "memory_block_delete": return memoryBlockCommands.handleDelete(args);
             case "data_list":       return dataCommands.handleList(args);

@@ -425,10 +425,11 @@ row queries are applied by the client.
 (`r`/`w`/`x` combinations or `none`), and exactly `uninitialized: true` or integer
 `fill` (0..255). Optional `volatile` defaults false; optional `overlay` names a new
 space over the physical start space. An existing overlay is selected in `start`.
-`memory_block_rename`, `memory_block_set_permissions`,
-`memory_block_set_volatile`, `memory_block_move`, and `memory_block_delete` take
-an exact explicit `block_start`; their new values are `name`, `permissions`,
-boolean `value`, or explicit `start`, respectively. Move stays in the same space;
+`memory_block_set`, `memory_block_move`, and `memory_block_delete` take an exact
+explicit `block_start`. Set requires at least one of `name`, `permissions`, or
+boolean `volatile`; omitted attributes are preserved, and supplied attributes
+change in one atomic request. Permissions replace the complete permission set.
+Move takes an explicit new `start` and stays in the same space;
 nonloaded overlays, such as overlays of `OTHER`, cannot be moved.
 Block edits return `{status, changed, before, after}` with nullable descriptions;
 delete also reports `overlay_removed`. Descriptions include name, bounds, byte
