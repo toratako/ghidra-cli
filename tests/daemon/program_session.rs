@@ -323,6 +323,10 @@ fn test_handlers_follow_program_switch_and_close() {
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
     let client = harness.client().unwrap();
+    let original_internal_name = client.program_info().unwrap()["internal_program_name"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let initial_count = client.list_programs().unwrap()["count"].as_u64().unwrap();
     assert_eq!(
         client.bridge_info().unwrap()["program_count"],
@@ -347,6 +351,8 @@ public class CopyBridgeProgram extends GhidraScript {
     let info = client.program_info().unwrap();
     assert_eq!(info["name"], "alternate");
     assert_eq!(info["path"], alternate);
+    assert_eq!(info["internal_program_name"], original_internal_name);
+    assert_ne!(info["internal_program_name"], info["name"]);
     let state = client.bridge_info().unwrap();
     assert_eq!(state["current_program"], "alternate");
     assert_eq!(state["current_program_path"], alternate);

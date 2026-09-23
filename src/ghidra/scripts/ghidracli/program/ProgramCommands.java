@@ -44,6 +44,7 @@ public final class ProgramCommands {
         JsonObject result = new JsonObject();
         result.addProperty("name", session.programName());
         result.addProperty("path", session.programPath());
+        result.addProperty("internal_program_name", session.program().getName());
         result.addProperty("executable_path", session.program().getExecutablePath());
         result.addProperty("executable_format", session.program().getExecutableFormat());
         result.addProperty("executable_md5", executableHash(session.program().getExecutableMD5()));

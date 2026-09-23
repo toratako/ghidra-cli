@@ -531,6 +531,8 @@ blocks, including overlays, mapped blocks, and uninitialized blocks.
 
 `program_info` adds nullable `executable_md5` and `executable_sha256` from
 imported-file metadata, not from current memory bytes.
+Its `name` and `path` identify the selected DomainFile; `internal_program_name`
+is `Program.getName()` and can differ after a project-file copy or rename.
 Its `language_id` and `compiler_spec_id` are exact import-compatible IDs;
 `language` remains a display description and `compiler` is executable metadata.
 
