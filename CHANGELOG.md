@@ -93,6 +93,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   executing earlier commands, including nested batches.
 - Show excluded file-mapping ranges and reasons in compact/full output, and
   avoid repeating fields in compact objects without a primary display field.
+- Include saved function definitions in `type get`, with return and parameter
+  types, calling convention, variadic state, and no-return state.
 - Restore GAR archives created by Ghidra on Windows by normalizing entry path
   separators before safety checks, collision detection, and extraction.
 

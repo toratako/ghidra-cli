@@ -16,6 +16,7 @@ import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.EnumDataType;
 import ghidra.program.model.data.FunctionDefinition;
+import ghidra.program.model.data.ParameterDefinition;
 import ghidra.program.model.data.Pointer;
 import ghidra.program.model.data.SourceArchive;
 import ghidra.program.model.data.Structure;
@@ -143,6 +144,21 @@ final class TypeCommands {
             typeInfo.addProperty("base_type_path", td.getDataType().getPathName());
         } else if (dataType instanceof FunctionDefinition) {
             typeInfo.addProperty("kind", "functiondef");
+            FunctionDefinition function = (FunctionDefinition) dataType;
+            typeInfo.addProperty("comment", function.getComment());
+            typeInfo.addProperty("calling_convention", function.getCallingConventionName());
+            typeInfo.addProperty("variadic", function.hasVarArgs());
+            typeInfo.addProperty("no_return", function.hasNoReturn());
+            typeInfo.add("return", describeSignatureType(function.getReturnType()));
+            JsonArray parameters = new JsonArray();
+            for (ParameterDefinition parameter : function.getArguments()) {
+                JsonObject row = describeSignatureType(parameter.getDataType());
+                row.addProperty("ordinal", parameter.getOrdinal());
+                row.addProperty("name", parameter.getName());
+                row.addProperty("comment", parameter.getComment());
+                parameters.add(row);
+            }
+            typeInfo.add("params", parameters);
         } else if (dataType instanceof Pointer) {
             typeInfo.addProperty("kind", "pointer");
         } else if (dataType instanceof Array) {
@@ -152,6 +168,14 @@ final class TypeCommands {
         }
 
         return typeInfo;
+    }
+
+    private static JsonObject describeSignatureType(DataType type) {
+        JsonObject result = new JsonObject();
+        result.addProperty("type", type.getName());
+        result.addProperty("type_path", type.getPathName());
+        result.addProperty("size", type.getLength());
+        return result;
     }
 
     private static void addIdentity(JsonObject result, DataType type) {

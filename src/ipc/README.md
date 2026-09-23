@@ -420,6 +420,11 @@ offset is not relative to the entire base type or structure.
 does not describe an open archive connection. Struct and union sizes report
 logical zero for empty definitions.
 
+Function-definition types additionally include `return`, ordered `params`,
+`calling_convention`, `variadic`, `no_return`, and nullable `comment`.
+Return/parameter records contain `type`, `type_path`, and byte `size`; parameters
+also contain `ordinal`, `name`, and nullable `comment` from the saved definition.
+
 `type_clone` takes `type_name`, `new_name`, and optional existing `category`;
 `type_move` takes `type_name` and existing `category`. Clones get local identities
 and share dependencies; moves retain identity. `type_category_list/create/delete`

@@ -26,6 +26,71 @@ fn reopen(program: &str) {
 
 #[test]
 #[serial]
+fn get_imported_and_cloned_function_definitions_exposes_saved_signatures() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    command(
+        &program,
+        &[
+            "import-c",
+            "int __cdecl ImportedCallback(int count, char *message, ...); void EmptyCallback(void);",
+        ],
+    );
+    let original = definition(&program, "ImportedCallback");
+    assert_eq!(original["kind"], "functiondef");
+    assert_eq!(original["calling_convention"], "__cdecl");
+    assert_eq!(original["variadic"], true);
+    assert_eq!(original["no_return"], false);
+    assert_eq!(
+        original["return"],
+        json!({"type": "int", "type_path": "/int", "size": 4})
+    );
+    let parameters = original["params"].as_array().unwrap();
+    assert_eq!(parameters.len(), 2);
+    for (ordinal, (name, type_name, size)) in [("count", "int", 4), ("message", "char *", 8)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(parameters[ordinal]["ordinal"], ordinal);
+        assert_eq!(parameters[ordinal]["name"], name);
+        assert_eq!(parameters[ordinal]["type"], type_name);
+        assert_eq!(parameters[ordinal]["type_path"], format!("/{type_name}"));
+        assert_eq!(parameters[ordinal]["size"], size);
+    }
+    let empty = definition(&program, "EmptyCallback");
+    assert_eq!(empty["return"]["type"], "void");
+    assert_eq!(empty["params"], json!([]));
+    assert_eq!(empty["variadic"], false);
+
+    let receipt = command(
+        &program,
+        &[
+            "clone",
+            original["path"].as_str().unwrap(),
+            "ClonedCallback",
+        ],
+    );
+    reopen(&program);
+    assert_eq!(definition(&program, "ImportedCallback"), original);
+    let cloned = definition(&program, receipt["path"].as_str().unwrap());
+    for key in [
+        "return",
+        "params",
+        "calling_convention",
+        "variadic",
+        "no_return",
+    ] {
+        assert_eq!(cloned[key], original[key], "{key}");
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn clone_composites_preserves_saved_layout_settings_and_shared_external_dependencies() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
@@ -256,6 +321,26 @@ public class CreateOtherCloneDefinitions extends GhidraScript {
         .iter()
         .map(|name| definition(&program, &format!("/Types/{name}")))
         .collect();
+    let callback = &originals[3];
+    assert_eq!(callback["comment"], "callback comment");
+    assert_eq!(callback["calling_convention"], "__cdecl");
+    assert_eq!(callback["variadic"], true);
+    assert_eq!(callback["no_return"], true);
+    assert_eq!(
+        callback["return"],
+        json!({"type": "Alias", "type_path": "/Types/Alias", "size": 4})
+    );
+    assert_eq!(
+        callback["params"],
+        json!([{
+            "ordinal": 0,
+            "name": "arg",
+            "type": "Relative",
+            "type_path": "/Types/Relative",
+            "size": 8,
+            "comment": "argument comment"
+        }])
+    );
     for name in names {
         let receipt = command(
             &program,
@@ -264,6 +349,17 @@ public class CreateOtherCloneDefinitions extends GhidraScript {
         assert_eq!(receipt["path"], format!("/Types/{name}Copy"));
     }
     reopen(&program);
+    let cloned_callback = definition(&program, "/Types/CallbackCopy");
+    for key in [
+        "comment",
+        "calling_convention",
+        "variadic",
+        "no_return",
+        "return",
+        "params",
+    ] {
+        assert_eq!(cloned_callback[key], callback[key], "{key}");
+    }
     run_script(
         &program,
         r#"
