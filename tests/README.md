@@ -16,7 +16,8 @@ checks `ghidra-cli doctor` once per test executable and retains failures with th
 diagnostics; never turn a failed prerequisite into a skip. The parent test
 process must keep its Ghidra/JDK configuration fixed. Tests of doctor itself or
 changed child environments invoke doctor directly.
-Set `GHIDRA_INSTALL_DIR` to the installation and provide a suitable full JDK;
+Set `GHIDRA_INSTALL_DIR` to the installation or `GHIDRA_JAR` to an official
+standalone JAR, and provide a suitable full JDK;
 see [runtime installation](../docs/runtime.md#installation).
 
 `cargo xtask test` shares a fresh temporary fixture across suites for one
@@ -58,6 +59,15 @@ the release, runner OS/architecture, and installer/native-build sources.
 Archive extraction tests run on all three native platforms to verify timestamps,
 Unix executable permissions, and checksum failure before extraction.
 
+The `standalone-jar` CI job runs `standalone_jar_tests` on Linux, Windows, and
+macOS. The suite builds the official default JAR from the selected distribution
+(or copies an explicitly selected JAR), relocates it outside that distribution,
+and selects it through `GHIDRA_JAR` for child CLI commands. Native components
+must be built before producing the JAR; the shared install action handles this
+for macOS. This coverage supplements the existing directory-runtime jobs.
+Run it locally with `cargo test --test standalone_jar_tests -- --nocapture`;
+no separate prebuilt JAR is needed when `GHIDRA_INSTALL_DIR` is configured.
+
 Markdown-only changes skip Ghidra setup and integration jobs; unit/CLI tests,
 the command tree check, and lint still run. Other changes run every suite on
 Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel groups
@@ -97,6 +107,7 @@ Filter a domain with, for example,
 | `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
 | `command_tests` | Version flags, doctor, config |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
+| `standalone_jar_tests` | Relocated official default JAR, doctor, imports, bridge operations, and project lifecycle |
 | `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
 | `routing_tests` | Recorded bridge requests: management/jobs, batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory, package/path consistency, acyclic package imports, and source publication |

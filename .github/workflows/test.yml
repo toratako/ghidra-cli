@@ -248,3 +248,42 @@ jobs:
         timeout-minutes: 80
         env:
           RUST_LOG: info
+
+  # Build the official default single JAR and exercise it outside the distribution.
+  standalone-jar:
+    needs: [changes, ghidra-setup]
+    if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    concurrency:
+      group: ${{ github.workflow }}-standalone-jar-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-26]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Ghidra
+        uses: ./.github/actions/install-ghidra
+        timeout-minutes: 20
+
+      - name: Test detached official standalone JAR
+        run: cargo test --test standalone_jar_tests --verbose -- --nocapture
+        timeout-minutes: 20
+        env:
+          RUST_LOG: info
