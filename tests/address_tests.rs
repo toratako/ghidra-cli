@@ -72,6 +72,15 @@ public class CreateAddressFixture extends GhidraScript {
         var symbols = currentProgram.getSymbolTable();
         symbols.createLabel(space.getAddress(0x1000), "ambiguous", SourceType.USER_DEFINED);
         symbols.createLabel(space.getAddress(0x1100), "ambiguous", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1000), "entry_alias", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1005), "interior_label", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1005), "FUN_00001400", SourceType.USER_DEFINED);
+        for (int i = 0; i < 2; i++) {
+            var namespace = symbols.createNameSpace(null, "scope" + i, SourceType.USER_DEFINED);
+            var address = space.getAddress(0x1300 + i * 0x10);
+            functions.createFunction("ambiguous", namespace, address,
+                new AddressSet(address, address), SourceType.USER_DEFINED);
+        }
         for (String name : new String[] {"0x", "0X", "0xnothex", "0x1000junk"}) {
             symbols.createLabel(space.getAddress(0x1500), name, SourceType.USER_DEFINED);
         }
@@ -86,6 +95,7 @@ public class CreateAddressFixture extends GhidraScript {
 
     check_name_and_address_reads(&client);
     check_invalid_targets_do_not_mutate(&client, &harness);
+    check_labels_do_not_select_functions(&client, &harness);
     check_address_only_ipc(&client);
     check_mutation_targets(&client, &harness);
     check_address_codec(&client);
@@ -254,6 +264,48 @@ fn check_invalid_targets_do_not_mutate(client: &BridgeClient, harness: &common::
         client.list_functions(None, None, &[], false, None).unwrap(),
         before
     );
+}
+
+fn check_labels_do_not_select_functions(
+    client: &BridgeClient,
+    harness: &common::DaemonTestHarness,
+) {
+    let before = get_function(client, "add");
+    for (label, address) in [
+        ("entry_alias", "0x00001000"),
+        ("interior_label", "0x00001005"),
+    ] {
+        assert_eq!(
+            client.symbol_get(label).unwrap()["symbols"][0]["address"],
+            address
+        );
+        assert_eq!(
+            client.disasm(label, Some(1)).unwrap()["instructions"][0]["address"],
+            address
+        );
+        common::ghidra(harness)
+            .args(["function", "delete", label])
+            .run()
+            .assert_failure();
+        assert!(client.function_disasm(label, None).is_err());
+        assert_eq!(get_function(client, "add"), before);
+    }
+    // Explicit interior addresses still select the containing function.
+    assert_eq!(get_function(client, "0x1005"), before);
+    client
+        .send_command(
+            "function_set_noreturn",
+            Some(json!({"target": "0x1005", "value": true})),
+        )
+        .unwrap();
+    assert_eq!(get_function(client, "add")["no_return"], true);
+    client
+        .send_command(
+            "function_set_noreturn",
+            Some(json!({"target": "0x1005", "value": false})),
+        )
+        .unwrap();
+    assert_eq!(get_function(client, "add"), before);
 }
 
 fn check_address_only_ipc(client: &BridgeClient) {

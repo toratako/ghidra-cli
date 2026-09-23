@@ -63,8 +63,13 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                 if (program.getListing().getInstructionContaining(start.add(0xc2)) != null) {
                     throw new IllegalStateException("Fixture gap must remain undefined");
                 }
-                program.getSymbolTable().createLabel(start, "shared_target", SourceType.USER_DEFINED);
-                program.getSymbolTable().createLabel(start.add(0x20), "shared_target", SourceType.USER_DEFINED);
+                for (int i = 0; i < 2; i++) {
+                    var namespace = program.getSymbolTable().createNameSpace(null,
+                        "scope" + i, SourceType.USER_DEFINED);
+                    var entry = start.add(0xd0 + i * 0x10);
+                    fm.createFunction("shared_target", namespace, entry,
+                        new AddressSet(entry), SourceType.USER_DEFINED);
+                }
             } finally { program.endTransaction(tx, true); }
             state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
         } finally { program.release(this); }

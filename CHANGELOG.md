@@ -98,6 +98,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Restrict named function targets to actual function names so entry aliases and
+  internal labels cannot redirect function edits or deletion.
 - Bind program selection to each queued operation so concurrent clients cannot
   redirect commands issued with `--program`, including guarded edits and import
   follow-up requests. Batches retain each project's selection across nested rows

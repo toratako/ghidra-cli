@@ -254,9 +254,14 @@ public final class FunctionQueries {
         if (explicit != null) return fm.getFunctionContaining(explicit);
 
         Map<Address, Function> candidates = new LinkedHashMap<>();
-        for (Address address : addressResolver.namedAddresses(nameOrAddr.trim())) {
-            Function function = fm.getFunctionContaining(address);
-            if (function != null) candidates.put(function.getEntryPoint(), function);
+        String name = nameOrAddr.trim();
+        for (Address address : addressResolver.namedAddresses(name)) {
+            Function function = fm.getFunctionAt(address);
+            // Labels at an entry or inside a body do not name the function.
+            if (function != null && (function.getName().equals(name)
+                    || function.getSymbol().getName(true).equals(name))) {
+                candidates.put(function.getEntryPoint(), function);
+            }
         }
         if (candidates.size() > 1) {
             throw new IllegalArgumentException("Ambiguous function target '" + nameOrAddr
