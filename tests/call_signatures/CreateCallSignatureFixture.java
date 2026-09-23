@@ -2,7 +2,13 @@ import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.data.CategoryPath;
+import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.ParameterDefinitionImpl;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.StructureDataType;
+import ghidra.program.model.data.TypedefDataType;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.FlowOverride;
@@ -51,6 +57,17 @@ public class CreateCallSignatureFixture extends GhidraScript {
                 thunk.setThunkedFunction(callee);
                 program.getListing().getInstructionAt(space.getAddress(0x1300)).setFlowOverride(FlowOverride.CALL);
                 function(program, "branch_caller", 0x1400, "e9fbfcffff");
+
+                var manager = program.getDataTypeManager();
+                var recovered = new CategoryPath("/Recovered");
+                var profile = manager.addDataType(new StructureDataType(recovered, "Profile", 4, manager), null);
+                var callback = new FunctionDefinitionDataType(new CategoryPath("/Callbacks"), "ProfileCmp", manager);
+                callback.setReturnType(IntegerDataType.dataType);
+                callback.setArguments(new ParameterDefinitionImpl("entry", new PointerDataType(profile, manager), null));
+                var savedCallback = manager.addDataType(callback, null);
+                // A common import shape: the callback definition and pointer typedef have the same name.
+                manager.addDataType(new TypedefDataType(recovered, "ProfileCmp",
+                    new PointerDataType(savedCallback, manager), manager), null);
             } finally {
                 program.endTransaction(tx, true);
             }

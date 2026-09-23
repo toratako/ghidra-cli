@@ -311,6 +311,17 @@ it never follows a thunk target. Receipts contain `function`, `address`,
 Counts describe observed native changes. Reapplying the current union returns
 `changed: false` and zero counts.
 
+`function_set_signature` and `function_call_signature_set` accept one C function
+declaration in `signature`, with an optional trailing semicolon and nested
+function-pointer parameters. Optional `type_bindings: [{name, path}, ...]` maps
+C identifiers to exact data-type paths for this declaration only; it does not
+register alias types. Unbound type names use shared type resolution and reject
+ambiguity. Type-resolution errors retain `detail.type_name` and ambiguous matches
+add `detail.candidates`; syntax errors retain source positions when available.
+Explicit `const`, `volatile`, `restrict`, and `_Atomic` qualifiers are rejected
+because Ghidra function datatypes cannot preserve them. Parsing and validation
+precede application through the ordinary atomic request boundary.
+
 `function_call_signature_get/set/clear` take caller `target` and explicit `at`.
 Set also takes `signature` and optional `convention`; omission chooses the Program
 default and inline convention text is rejected. Every result identifies

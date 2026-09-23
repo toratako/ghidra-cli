@@ -484,6 +484,77 @@ fn decompile_line_addresses_preserve_raw_code_projection_and_batch_output() {
 }
 
 #[test]
+fn signature_type_bindings_preserve_pairs_and_duplicates_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for (base, wire, mut expected) in [
+        (
+            vec!["function", "set-signature", "entry"],
+            "function_set_signature",
+            json!({"target": "entry"}),
+        ),
+        (
+            vec![
+                "function",
+                "call-signature",
+                "set",
+                "entry",
+                "--at",
+                "0x1010",
+            ],
+            "function_call_signature_set",
+            json!({"target": "entry", "at": "0x1010", "convention": null}),
+        ),
+    ] {
+        expected["signature"] = json!("void entry(Profile *base, Cmp compare)");
+        for bound in [false, true] {
+            let mut args = base.clone();
+            args.extend([
+                "--signature",
+                "void entry(Profile *base, Cmp compare)",
+                "--program",
+                "B",
+            ]);
+            if bound {
+                args.extend([
+                    "--bind-type",
+                    "Profile",
+                    "/Recovered Types/Profile",
+                    "--bind-type",
+                    "Cmp",
+                    "/Recovered/Cmp",
+                    "--bind-type",
+                    "Cmp",
+                    "/Other/Cmp",
+                ]);
+                expected["type_bindings"] = json!([
+                    {"name": "Profile", "path": "/Recovered Types/Profile"},
+                    {"name": "Cmp", "path": "/Recovered/Cmp"},
+                    {"name": "Cmp", "path": "/Other/Cmp"},
+                ]);
+            }
+            for batch in [false, true] {
+                bridge.requests.lock().unwrap().clear();
+                if batch {
+                    std::fs::write(
+                        bridge.root.path().join("signatures.txt"),
+                        batch_arguments(&args),
+                    )
+                    .unwrap();
+                    bridge.run(&["batch", "signatures.txt"]);
+                } else {
+                    bridge.run(&args);
+                }
+                let requests = bridge.requests.lock().unwrap();
+                let edits: Vec<_> = requests.iter().filter(|r| r["command"] == wire).collect();
+                assert_eq!(edits.len(), 1);
+                assert_eq!(edits[0]["args"], expected);
+                assert_eq!(edits[0]["program"], "B");
+            }
+        }
+    }
+}
+
+#[test]
 fn function_body_and_call_signature_preserve_scope_and_options_in_batches() {
     let bridge = RecordedBridge::new();
     for (args, wire, expected) in [
@@ -775,6 +846,39 @@ fn function_edit_selectors_are_validated_before_program_selection_and_batch_exec
             "main",
             "--at",
             "1010",
+        ],
+        vec![
+            "function",
+            "set-signature",
+            "main",
+            "--signature",
+            "void main(void)",
+            "--bind-type",
+            "Bad-Name",
+            "/Recovered/Profile",
+        ],
+        vec![
+            "function",
+            "call-signature",
+            "set",
+            "main",
+            "--at",
+            "0x1010",
+            "--signature",
+            "void callback(void)",
+            "--bind-type",
+            "Profile",
+            "Recovered/Profile",
+        ],
+        vec![
+            "function",
+            "set-signature",
+            "main",
+            "--signature",
+            "void main(void)",
+            "--bind-type",
+            "Profile",
+            "/Recovered/",
         ],
         vec![
             "function", "var", "set", "main", "--var", "value", "--where", "invalid", "--name",

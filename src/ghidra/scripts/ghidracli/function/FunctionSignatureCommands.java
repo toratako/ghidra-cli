@@ -35,7 +35,7 @@ public final class FunctionSignatureCommands {
             Function func = functionQueries.findFunctionByNameOrAddress(target);
             if (func == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
 
-            var funcDef = FunctionSignatureSupport.parse(session, func.getSignature(), sigStr);
+            var funcDef = FunctionSignatureSupport.parse(session, sigStr, args.get("type_bindings"), false);
 
             ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
                 func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
@@ -62,7 +62,7 @@ public final class FunctionSignatureCommands {
             }
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to set signature: " + e.getMessage());
+            return errorResult("Failed to set signature: " + e.getMessage(), e);
         }
     }
 

@@ -364,6 +364,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/types/BitFields.java"),
     ),
     (
+        "ghidracli/types/SignatureTypes.java",
+        include_str!("../scripts/ghidracli/types/SignatureTypes.java"),
+    ),
+    (
         "ghidracli/types/StructureFields.java",
         include_str!("../scripts/ghidracli/types/StructureFields.java"),
     ),

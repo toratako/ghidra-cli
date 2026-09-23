@@ -97,6 +97,18 @@ fn check(client: &BridgeClient, arguments: &[&str]) {
         .unwrap();
 }
 
+fn type_inventory(client: &BridgeClient) -> Value {
+    let result = client
+        .script_run_source(
+            include_str!("call_signatures/CheckCallSignatureFixture.java"),
+            &["inventory".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    serde_json::from_str(result["stdout"].as_str().unwrap().trim()).unwrap()
+}
+
 fn check_calls(client: &BridgeClient, expected: &[usize]) {
     // Use the bridge's retained native decompiler so edits must invalidate its cache.
     let pcode = client.pcode_function("caller", true, None, None).unwrap();
@@ -206,6 +218,90 @@ fn direct_overrides_affect_only_selected_calls_and_preserve_shared_saved_types()
 
 #[test]
 #[serial]
+fn nested_and_bound_callbacks_preserve_type_identity_and_reject_partial_replacement() {
+    require_ghidra!();
+    fixture(|client, program| {
+        let original_callee = function(client, "callee");
+        let original_caller = function(client, "caller");
+        let original_other_site = get(client, "caller", "0x1012");
+        let original_types = type_inventory(client);
+        let output = common::ghidra(harness())
+            .args([
+                "function",
+                "call-signature",
+                "set",
+                "caller",
+                "--at",
+                "0x1005",
+                "--signature",
+                "int unrelated_name(ProfileCmp cmp, int (*visit)(Profile *entry, int (*finish)(Profile *entry, int status)))",
+                "--bind-type",
+                "ProfileCmp",
+                "/Recovered/ProfileCmp",
+                "--convention",
+                "__regparm3",
+                "--json",
+            ])
+            .with_project(test_project(), program)
+            .run();
+        output.assert_success();
+        let receipt: Value = output.data();
+        assert_eq!(receipt["changed"], true);
+        assert_eq!(receipt["after"]["calling_convention"], "__regparm3");
+        assert_eq!(receipt["after"]["params"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            receipt["after"]["params"][0]["type_path"],
+            "/Recovered/ProfileCmp"
+        );
+
+        let before = get(client, "caller", "0x1005");
+        let types_before = type_inventory(client);
+        for (path, original) in original_types.as_object().unwrap() {
+            assert_eq!(
+                &types_before[path], original,
+                "Original type changed: {path}"
+            );
+        }
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            check(client, &["callbacks"]);
+            assert_eq!(get(client, "caller", "0x1005"), before);
+            assert_eq!(get(client, "caller", "0x1012"), original_other_site);
+            assert_eq!(function(client, "callee"), original_callee);
+            assert_eq!(function(client, "caller"), original_caller);
+            assert_eq!(type_inventory(client), types_before);
+        }
+
+        // The parser encounters an inline callback before the invalid last argument.
+        // Neither that partial declaration nor its replacement marker may persist.
+        rejected(
+            client,
+            json!({
+                "target":"caller",
+                "at":"0x1005",
+                "signature":"int rejected(ProfileCmp cmp, int (*temporary)(Profile *entry), int + trailing)",
+                "type_bindings":[{"name":"ProfileCmp","path":"/Recovered/ProfileCmp"}],
+            }),
+            "Invalid function signature:",
+        );
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            assert_eq!(get(client, "caller", "0x1005"), before);
+            assert_eq!(get(client, "caller", "0x1012"), original_other_site);
+            assert_eq!(type_inventory(client), types_before);
+            check(client, &["callbacks"]);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn indirect_variadic_thunk_and_effective_flow_calls_use_the_selected_caller() {
     require_ghidra!();
     fixture(|client, _| {
@@ -285,7 +381,7 @@ fn indirect_variadic_thunk_and_effective_flow_calls_use_the_selected_caller() {
             ),
             (
                 json!({"target":"indirect_caller","at":"0x1204","signature":"int __cdecl site(void)"}),
-                "return type",
+                "--convention",
             ),
             (
                 json!({"target":"indirect_caller","at":"0x1204","signature":"int site(int value)","convention":"imaginary_abi"}),

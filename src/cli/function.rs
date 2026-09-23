@@ -152,6 +152,8 @@ pub struct SetSignatureArgs {
     /// C-style signature string, e.g. "int main(int argc, char** argv)"
     #[arg(long)]
     pub signature: String,
+    #[command(flatten)]
+    pub type_bindings: SignatureTypeBindings,
     #[arg(long)]
     pub program: Option<String>,
     #[arg(long)]
@@ -287,11 +289,62 @@ pub struct CallSignatureSetArgs {
     /// C-style prototype; its function name does not rename a symbol
     #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub signature: String,
+    #[command(flatten)]
+    pub type_bindings: SignatureTypeBindings,
     /// Supported calling convention; omitted uses the Program default
     #[arg(long, value_name = "NAME", value_parser = clap::builder::NonEmptyStringValueParser::new())]
     pub convention: Option<String>,
     #[command(flatten)]
     pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct SignatureTypeBindings {
+    /// Bind a C type identifier to an exact absolute data type path; repeat for each binding
+    #[arg(long = "bind-type", num_args = 2, value_names = ["NAME", "PATH"], action = clap::ArgAction::Append)]
+    pub bind_type: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct SignatureTypeBinding<'a> {
+    pub name: &'a str,
+    pub path: &'a str,
+}
+
+impl SignatureTypeBindings {
+    pub fn validate(&self) -> Result<(), String> {
+        let (bindings, remainder) = self.bind_type.as_chunks::<2>();
+        if !remainder.is_empty() {
+            return Err("--bind-type requires NAME PATH pairs".into());
+        }
+        for [name, path] in bindings {
+            let mut bytes = name.bytes();
+            if !bytes
+                .next()
+                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+                || !bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                return Err(format!(
+                    "Invalid --bind-type name '{name}': use a C identifier"
+                ));
+            }
+            if !path.starts_with('/') || path.ends_with('/') {
+                return Err(format!(
+                    "Invalid --bind-type path '{path}': use an absolute data type path including its type name"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn bindings(&self) -> Vec<SignatureTypeBinding<'_>> {
+        self.bind_type
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[name, path]| SignatureTypeBinding { name, path })
+            .collect()
+    }
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]

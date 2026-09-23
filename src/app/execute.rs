@@ -57,6 +57,16 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
             "--function requires --kind variable"
         );
     }
+    let type_bindings = match command {
+        Commands::Function(cli::FunctionCommands::SetSignature(args)) => Some(&args.type_bindings),
+        Commands::Function(cli::FunctionCommands::CallSignature(
+            cli::CallSignatureCommands::Set(args),
+        )) => Some(&args.type_bindings),
+        _ => None,
+    };
+    if let Some(type_bindings) = type_bindings {
+        type_bindings.validate().map_err(anyhow::Error::msg)?;
+    }
     if let Commands::Function(cli::FunctionCommands::SetBody(args)) = command {
         anyhow::ensure!(
             !args.ranges.is_empty() && args.ranges.len().is_multiple_of(2),

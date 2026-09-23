@@ -17,6 +17,14 @@ ghidra-cli function get parse_header --with-signature --project target
 ghidra-cli function set-noreturn abort_path --value true --project target
 ```
 
+Bind ambiguous type names to candidate paths in function or call-site signatures:
+
+```bash
+ghidra-cli function set-signature dispatch \
+  --bind-type Handler /Recovered/Handler \
+  --signature 'void dispatch(Handler handler, void (*on_error)(int))'
+```
+
 `function set-return-type` can save inferred parameter locations without fixing
 their types.
 

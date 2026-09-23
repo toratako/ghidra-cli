@@ -77,7 +77,7 @@ public final class FunctionCallSignatureCommands {
             }
             Saved previous = findSaved(site);
             FunctionDefinitionDataType definition = FunctionSignatureSupport.parse(session,
-                previous == null ? null : previous.signature(), required(args, "signature"));
+                required(args, "signature"), args.get("type_bindings"), true);
             String convention = getArgString(args, "convention");
             if (convention == null) {
                 var model = session.program().getCompilerSpec().getDefaultCallingConvention();

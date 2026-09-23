@@ -1,6 +1,7 @@
-//! C signature spelling, qualifier rejection, and persisted pointer types.
+//! C declarators, explicit type binding, and atomic saved signatures.
 
 use super::*;
+use ghidra_cli::ipc::protocol::BridgeCommandError;
 use serde_json::{json, Value};
 
 fn create_program(bits: u32) -> String {
@@ -50,8 +51,260 @@ fn function() -> Value {
     harness()
         .client()
         .unwrap()
-        .send_command("get_function", Some(json!({"address": "0x1000"})))
+        .send_command(
+            "get_function",
+            Some(json!({"address": "0x1000", "with_signature": true})),
+        )
         .unwrap()
+}
+
+fn type_inventory(program: &str) -> Value {
+    let result = type_command(program, &["list", "--limit", "0", "--sort", "path"]);
+    result.assert_success();
+    result.data()
+}
+
+fn callback_fixture(mode: &str) -> Value {
+    let result = harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("SignatureCallbackFixture.java"),
+            &[mode.to_string()],
+            &[],
+            false,
+        )
+        .unwrap();
+    serde_json::from_str(result["stdout"].as_str().unwrap().trim()).unwrap()
+}
+
+fn assert_unchanged_after_reopen(program: &str, signature: &Value, inventory: &Value) {
+    let client = harness().client().unwrap();
+    for reopen in [false, true] {
+        if reopen {
+            client.program_close().unwrap();
+            client.open_program(program).unwrap();
+        }
+        assert_eq!(function(), *signature);
+        assert_eq!(type_inventory(program), *inventory);
+    }
+}
+
+#[test]
+#[serial]
+fn explicit_signature_bindings_resolve_typedef_collisions_without_persisting_aliases() {
+    require_ghidra!();
+    let program = create_program(64);
+    let identities = callback_fixture("create");
+    // A parameter name can equal an ambiguous type name; explicit undefined
+    // types must also remain valid rather than being confused with parser loss.
+    set_signature(
+        &program,
+        "void lookup(Profile *ProfileCmp, undefined value)",
+    )
+    .assert_success();
+    let before = function();
+    assert_eq!(
+        before["signature_details"]["params"][0]["name"],
+        "ProfileCmp"
+    );
+    assert_eq!(
+        before["signature_details"]["params"][1]["type"],
+        "undefined"
+    );
+    let types_before = type_inventory(&program);
+    let ambiguous = set_signature(&program, "void lookup(Profile *base, ProfileCmp cmp)");
+    ambiguous.assert_failure();
+    let error: Value = serde_json::from_str(&ambiguous.stderr).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("Ambiguous type name"),
+        "{error}"
+    );
+    assert_eq!(error["detail"]["type_name"], "ProfileCmp");
+    assert_eq!(
+        error["detail"]["candidates"],
+        json!(["/Callbacks/ProfileCmp", "/Recovered/ProfileCmp"])
+    );
+    assert_eq!(error["detail"]["rolled_back"], true);
+    assert_unchanged_after_reopen(&program, &before, &types_before);
+
+    let client = harness().client().unwrap();
+    for (declaration, bindings) in [
+        (
+            "void lookup(Profile *base, ProfileCmp cmp)",
+            vec![("ProfileCmp", "/Recovered/ProfileCmp")],
+        ),
+        (
+            "void lookup(SelectedProfile *base, ChosenProfileCmp cmp);",
+            vec![
+                ("SelectedProfile", "/Recovered/Profile"),
+                ("ChosenProfileCmp", "/Recovered/ProfileCmp"),
+            ],
+        ),
+    ] {
+        let mut command = ghidra(harness())
+            .args([
+                "function",
+                "set-signature",
+                "0x1000",
+                "--signature",
+                declaration,
+            ])
+            .with_project(test_project(), &program)
+            .arg("--json");
+        for (name, path) in bindings {
+            command = command.args(["--bind-type", name, path]);
+        }
+        command.run().assert_success();
+        let saved = function();
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(function(), saved);
+        assert_eq!(callback_fixture("bound"), identities);
+        assert_eq!(type_inventory(&program), types_before);
+    }
+
+    // An explicit binding is local to one parse and must not become a new type.
+    let saved = function();
+    let failed = set_signature(&program, "void lookup(SelectedProfile *base)");
+    failed.assert_failure();
+    assert!(failed.stderr.contains("SelectedProfile"), "{failed:?}");
+    assert_unchanged_after_reopen(&program, &saved, &types_before);
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn invalid_bridge_signature_bindings_leave_saved_state_unchanged() {
+    require_ghidra!();
+    let program = create_program(64);
+    set_signature(&program, "int lookup(Entry *entry)").assert_success();
+    let before = function();
+    let types_before = type_inventory(&program);
+    let client = harness().client().unwrap();
+    for (bindings, diagnostic) in [
+        (
+            json!([{"name": "int", "path": "/Recovered/Entry"}]),
+            "non-keyword C identifier",
+        ),
+        (
+            json!([
+                {"name": "ChosenEntry", "path": "/Recovered/Entry"},
+                {"name": "ChosenEntry", "path": "/Recovered/Entry"}
+            ]),
+            "Duplicate type binding: ChosenEntry",
+        ),
+        (
+            json!([{"name": "ChosenEntry", "path": "/Missing/Entry"}]),
+            "Type not found: /Missing/Entry",
+        ),
+    ] {
+        let failed = client
+            .send_command(
+                "function_set_signature",
+                Some(json!({
+                    "target": "0x1000",
+                    "signature": "void renamed(Entry *entry)",
+                    "type_bindings": bindings,
+                })),
+            )
+            .unwrap_err();
+        let error = failed.downcast_ref::<BridgeCommandError>().unwrap();
+        assert!(error.to_string().contains(diagnostic), "{error:?}");
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert!(error.detail.get("partial_changes_saved").is_none());
+        assert_unchanged_after_reopen(&program, &before, &types_before);
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn nested_callback_declarators_preserve_saved_types_on_32_and_64_bit_programs() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for bits in [32, 64] {
+        let program = create_program(bits);
+        let identities = callback_fixture("create");
+        for (declaration, mode) in [
+            (
+                "void lookup(Profile *base, int (*cmp)(Profile *left, Profile *right))",
+                "direct",
+            ),
+            (
+                "void lookup(Profile *base, int (*cmp)(Profile *left, int (*predicate)(Profile *entry)));",
+                "nested",
+            ),
+        ] {
+            set_signature(&program, declaration).assert_success();
+            let saved = function();
+            client.program_close().unwrap();
+            client.open_program(&program).unwrap();
+            assert_eq!(function(), saved);
+            assert_eq!(callback_fixture(mode), identities);
+        }
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn invalid_c_declarations_leave_saved_signature_and_type_inventory_unchanged() {
+    require_ghidra!();
+    let program = create_program(64);
+    set_signature(&program, "int lookup(Entry *entry)").assert_success();
+    let before = function();
+    let types_before = type_inventory(&program);
+    for declaration in [
+        "void renamed(UnknownSignatureType *value)",
+        "void renamed(int (*callback)(int value), UnknownSignatureType *other)",
+        "int renamed(Missing)",
+        "int renamed(int (*cmp)(Missing))",
+        "void renamed(struct Missing *value)",
+        "void renamed(int data[Unknown])",
+        "void renamed(int *__ptr32 value)",
+        "void renamed(int value=2)",
+        "void renamed(int &value)",
+        "void renamed(int (value))",
+        "void renamed(int (*callback)(int value)",
+        "void renamed(void); int unexpected_global;",
+        "void renamed(void), second(void);",
+        "void renamed(void) { }",
+        "typedef int UnexpectedAlias; void renamed(UnexpectedAlias value);",
+    ] {
+        let failed = set_signature(&program, declaration);
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(
+            error["detail"]["rolled_back"], true,
+            "{declaration}: {error}"
+        );
+        assert!(error["detail"].get("partial_changes_saved").is_none());
+        if declaration.contains("UnknownSignatureType") {
+            assert!(error["message"]
+                .as_str()
+                .unwrap()
+                .contains("UnknownSignatureType"));
+        }
+        if declaration.contains("Missing") {
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Type not found: Missing"),
+                "{declaration}: {error}"
+            );
+        }
+        assert_unchanged_after_reopen(&program, &before, &types_before);
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
 }
 
 #[test]
@@ -293,11 +546,13 @@ public class CreateSignatureTestProgram extends GhidraScript {
             Some(serde_json::json!({"address": "signature_target"})),
         )
         .unwrap();
+    let types_before = type_inventory(&program);
 
     // This is valid C syntax, but applying the parameter conflicts with a label
     // in the function's namespace. Ghidra changes the return type before checking
-    // that conflict, then reports false without throwing.
-    let invalid = set_signature("void signature_target(int collision)");
+    // that conflict, then reports false without throwing. The callback types
+    // resolved during this failed edit must also roll back.
+    let invalid = set_signature("void signature_target(int (*collision)(int value))");
     invalid.assert_failure();
     let error: serde_json::Value = serde_json::from_str(&invalid.stderr).unwrap();
     assert_eq!(error["status"], "error");
@@ -317,6 +572,7 @@ public class CreateSignatureTestProgram extends GhidraScript {
         )
         .unwrap();
     assert_eq!(after, before);
+    assert_eq!(type_inventory(&program), types_before);
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
     let saved = client
@@ -326,6 +582,7 @@ public class CreateSignatureTestProgram extends GhidraScript {
         )
         .unwrap();
     assert_eq!(saved, before);
+    assert_eq!(type_inventory(&program), types_before);
 
     let repaired = set_signature("void signature_target(int recovered)");
     repaired.assert_success();

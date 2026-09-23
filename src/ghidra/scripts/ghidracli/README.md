@@ -507,14 +507,22 @@ type before resolving its stored path; a matching path alone can name an unrelat
 user type. Rename success requires the actual name
 to match the request, since immutable Ghidra types can ignore `setName()`.
 
-`FunctionSignatureSupport` uses `FunctionSignatureParser` with a missing space inserted
-between a pointer return declarator and its function name. Explicit C type
-qualifiers are rejected before parsing because Ghidra function datatypes cannot
-retain them; switching to `CParser` would silently discard some qualifiers.
+`FunctionSignatureSupport` shares `CParser` between whole-function and call-site
+signature edits. It accepts one function declaration with an optional trailing
+semicolon, including nested function-pointer parameters, and parses in a scratch
+data-type manager using the target Program's data organization. Existing types
+resolve through `TypeResolver`, preserving ambiguity diagnostics instead of
+selecting the first matching name. Request-local `type_bindings` map C identifiers
+to exact type paths without adding alias types to the Program. Parsing and
+validation complete before application; `ProgramSession` owns rollback and saving,
+including any types created during application.
+Explicit `const`, `volatile`, `restrict`, and `_Atomic` qualifiers are rejected
+before parsing because Ghidra function datatypes cannot retain them.
 Call-site signatures choose calling convention through a separate validated
 argument, defaulting to the Program convention; they discard the declaration's
 function name without renaming or resolving a callee.
-Persistence and qualifier rejection are covered in `tests/types/signatures.rs`.
+Signature parsing, type selection, persistence, and rejected-input rollback are
+covered in `tests/types/signatures.rs` and `tests/call_signatures/`.
 
 `FunctionQueries.functionContext` supplies `is_external` and `entry_memory` to
 function get/list, decompilation results, and native decompilation failure details.

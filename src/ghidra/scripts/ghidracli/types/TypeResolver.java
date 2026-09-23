@@ -96,11 +96,7 @@ public final class TypeResolver {
         // A full path never falls back to another category or an alias.
         // Builtins may still be addressed by their exact path (e.g. /int).
         if (trimmed.startsWith("/")) {
-            DataType found = dtm.getDataType(trimmed);
-            if (found == null) {
-                found = BuiltInDataTypeManager.getDataTypeManager().getDataType(trimmed);
-            }
-            return found != null ? found.clone(dtm) : null;
+            return resolveDataTypePath(trimmed);
         }
 
         // Scan by simple name: the program's own data type manager first,
@@ -114,6 +110,10 @@ public final class TypeResolver {
             found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), trimmed, trimmed);
         }
         if (found != null) return found.clone(dtm);
+
+        // Ghidra's default undefined type is not enumerated by its built-in
+        // manager until another type or a Program references it.
+        if (trimmed.equals(DataType.DEFAULT.getName())) return DataType.DEFAULT.clone(dtm);
 
         // Fixed-width aliases must not inherit the target ABI's int/long sizes
         // or a program type shadowing a canonical primitive name.
@@ -137,6 +137,16 @@ public final class TypeResolver {
             if (found == null) {
                 found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), canonical, trimmed);
             }
+        }
+        return found != null ? found.clone(dtm) : null;
+    }
+
+    /** Exact registered path lookup, without interpreting pointer/array expressions. */
+    public DataType resolveDataTypePath(String path) {
+        DataTypeManager dtm = session.program().getDataTypeManager();
+        DataType found = dtm.getDataType(path);
+        if (found == null) {
+            found = BuiltInDataTypeManager.getDataTypeManager().getDataType(path);
         }
         return found != null ? found.clone(dtm) : null;
     }

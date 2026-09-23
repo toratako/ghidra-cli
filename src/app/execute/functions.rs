@@ -88,10 +88,10 @@ pub(super) fn execute(
         ),
         FunctionCommands::SetSignature(args) => client.send_command(
             "function_set_signature",
-            Some(json!({
-                "target": args.target,
-                "signature": args.signature,
-            })),
+            Some(with_type_bindings(
+                json!({"target": args.target, "signature": args.signature}),
+                &args.type_bindings,
+            )),
         ),
         FunctionCommands::SetReturnType(args) => {
             client.function_set_return_type(&args.target, &args.return_type)
@@ -124,8 +124,11 @@ pub(super) fn execute(
             ),
             cli::CallSignatureCommands::Set(args) => client.send_command(
                 "function_call_signature_set",
-                Some(json!({"target": args.target, "at": args.at,
-                    "signature": args.signature, "convention": args.convention})),
+                Some(with_type_bindings(
+                    json!({"target": args.target, "at": args.at,
+                        "signature": args.signature, "convention": args.convention}),
+                    &args.type_bindings,
+                )),
             ),
             cli::CallSignatureCommands::Clear(args) => client.send_command(
                 "function_call_signature_clear",
@@ -171,6 +174,13 @@ pub(super) fn execute(
             Some(json!({"target": args.target, "bytes": args.bytes, "unknown": args.unknown})),
         ),
     }
+}
+
+fn with_type_bindings(mut args: Value, type_bindings: &cli::SignatureTypeBindings) -> Value {
+    if !type_bindings.bind_type.is_empty() {
+        args["type_bindings"] = json!(type_bindings.bindings());
+    }
+    args
 }
 
 /// A --where expression selects from the full list, before any output projection or limit.
