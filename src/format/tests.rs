@@ -149,6 +149,156 @@ fn c_and_asm_formats_render_code_without_json_escaping() {
 }
 
 #[test]
+fn human_decompile_addresses_follow_physical_lines_and_preserve_details() {
+    let code = concat!(
+        "\nint 日本語(void)\n\n{\n",
+        "  /* first\n     second */\n  \n",
+        "  return call(1) + call(2);\n}\n\n"
+    );
+    let response = json!({
+        "code": code,
+        "name": "日本語",
+        "signature": "int 日本語(void)",
+        "line_addresses": [{"line": 8, "addresses": ["0x1004", "0x1010", "0x1017"]}],
+        "basic_block_count": 1,
+        "warnings": [{"source": "decompiler", "address": null, "message": "partial recovery"}],
+        "params": [{"name": "count", "type": "int", "storage": "register:0"}]
+    });
+    for format in [OutputFormat::Compact, OutputFormat::Full] {
+        let output = DefaultFormatter.format(&[&response], format).unwrap();
+        let rendered_lines: Vec<_> = output
+            .lines()
+            .filter_map(|line| line.split_once(" | "))
+            .collect();
+        assert_eq!(rendered_lines.len(), 10);
+        for (index, ((gutter, text), original)) in
+            rendered_lines.iter().zip(code.lines()).enumerate()
+        {
+            assert_eq!(*text, original);
+            let (line, addresses) = gutter.trim().split_once("  ").unwrap();
+            assert_eq!(line.parse::<usize>().unwrap(), index + 1);
+            assert_eq!(
+                addresses.trim(),
+                if index == 7 {
+                    "0x1004, 0x1010, 0x1017"
+                } else {
+                    "-"
+                }
+            );
+        }
+        assert!(rendered_lines[0].0.starts_with(" 1"));
+        assert!(rendered_lines[9].0.starts_with("10"));
+        assert!(output.contains("Basic blocks (decompiler): 1\n"));
+        assert!(output.contains("Warnings:\n  [decompiler] partial recovery\n"));
+        assert!(output.contains("Parameters:\n  int count (register:0)\n"));
+    }
+}
+
+#[test]
+fn c_decompile_addresses_preserve_comments_and_escaped_literals() {
+    // Native comment tokens have no operation mapping. Quoted literals are
+    // emitted as whole tokens, including escaped backslashes and newlines.
+    let code = concat!(
+        "\nvoid example(void)\n{\n",
+        "  /* 日本語 \\\n",
+        "     second line */\n",
+        "  print(\"a\\\\b\\n\");\n",
+        "  return; // existing comment\n}\n\n"
+    );
+    let response = json!({
+        "code": code,
+        "line_addresses": [
+            {"line": 6, "addresses": ["0x1004", "0x1008"]},
+            {"line": 7, "addresses": ["0x1010"]}
+        ],
+        "warnings": [{"source": "decompiler", "address": null, "message": "partial recovery"}]
+    });
+    let output = DefaultFormatter
+        .format(&[&response], OutputFormat::C)
+        .unwrap();
+    assert_eq!(
+        output,
+        concat!(
+            "\nvoid example(void)\n{\n",
+            "  /* 日本語 \\\n",
+            "     second line */\n",
+            "  print(\"a\\\\b\\n\"); // @ 0x1004, 0x1008\n",
+            "  return; // existing comment // @ 0x1010\n}\n\n"
+        )
+    );
+    for format in [
+        OutputFormat::Json,
+        OutputFormat::JsonCompact,
+        OutputFormat::JsonStream,
+    ] {
+        let output = DefaultFormatter.format(&[&response], format).unwrap();
+        let value: JsonValue = serde_json::from_str(&output).unwrap();
+        assert_eq!(
+            if format == OutputFormat::JsonStream {
+                &value
+            } else {
+                &value[0]
+            },
+            &response
+        );
+    }
+}
+
+#[test]
+fn empty_decompile_addresses_are_distinct_from_absent_annotations() {
+    let code = "return 1;\n\n";
+    let requested = json!({"code": code, "line_addresses": []});
+    let absent = json!({"code": code});
+    for format in [OutputFormat::Compact, OutputFormat::Full] {
+        let requested = DefaultFormatter.format(&[&requested], format).unwrap();
+        let absent = DefaultFormatter.format(&[&absent], format).unwrap();
+        assert!(requested.contains("1  - | return 1;\n2  - | \n"));
+        assert!(absent.ends_with(code));
+        assert!(!absent.contains(" | "));
+    }
+    assert_eq!(
+        DefaultFormatter
+            .format(&[requested], OutputFormat::C)
+            .unwrap(),
+        code
+    );
+}
+
+#[test]
+fn decompile_field_projection_controls_annotations_and_code_fallback() {
+    use crate::query::{FieldSelector, Query};
+
+    let code = "return 1;\n";
+    let rows = [json!({
+        "code": code,
+        "name": "example",
+        "line_addresses": [{"line": 1, "addresses": ["0x1004"]}]
+    })];
+    let query = Query::default();
+    let plain = query
+        .select_fields(
+            &rows,
+            &FieldSelector::exclude(vec!["line_addresses".into()]),
+        )
+        .unwrap();
+    for format in [OutputFormat::Compact, OutputFormat::Full, OutputFormat::C] {
+        let output = DefaultFormatter.format(&plain, format).unwrap();
+        assert!(output.ends_with(code));
+        assert!(!output.contains("0x1004"));
+    }
+    let without_code = query
+        .select_fields(&rows, &FieldSelector::exclude(vec!["code".into()]))
+        .unwrap();
+    let output = DefaultFormatter
+        .format(&without_code, OutputFormat::C)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Vec<JsonValue>>(&output).unwrap(),
+        without_code
+    );
+}
+
+#[test]
 fn tabular_output_keeps_fields_first_seen_in_later_rows() {
     let data = [
         json!({"name": "foo"}),

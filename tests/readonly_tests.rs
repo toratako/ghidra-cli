@@ -24,6 +24,8 @@ mod cfg;
 mod constants;
 #[path = "readonly/decompile.rs"]
 mod decompile;
+#[path = "readonly/decompile_addresses.rs"]
+mod decompile_addresses;
 #[path = "readonly/decompile_cli.rs"]
 mod decompile_cli;
 #[path = "readonly/decompile_details.rs"]

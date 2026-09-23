@@ -71,7 +71,7 @@ fn bytes(client: &BridgeClient, size: usize) -> Value {
 
 fn decompile(client: &BridgeClient) -> String {
     client
-        .decompile("flow_caller".to_owned(), false, false, false)
+        .decompile("flow_caller".to_owned(), false, false, false, false)
         .unwrap()["code"]
         .as_str()
         .unwrap()

@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `decompile --with-addresses` to relate C lines to native instruction
+  positions, with a structured JSON mapping, human-readable address gutters,
+  and inline address comments in C output.
 - Add `find function-candidates` to find unowned instruction starts backed by
   effective CALL references. Candidates retain call-site evidence and distinct
   call counts; destination bounds and scan completion support focused recovery

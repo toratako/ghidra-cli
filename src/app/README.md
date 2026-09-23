@@ -59,8 +59,11 @@ use `--where` only to narrow the exact `--var` name to one candidate, then send
 its program/function/modification/row guard for bridge revalidation. Their
 projection-only output controls never change target selection or filter receipts.
 Decompilation diagnostics are result fields in JSON and human formats. C-only
-output retains the generated C and sends API diagnostics absent from its warning
-comments to stderr; field projection and quiet mode still apply.
+output sends API diagnostics absent from its warning comments to stderr; field
+projection and quiet mode still apply. `--with-addresses` retains the raw `code`
+and adds `line_addresses` in JSON. Compact/full rendering adds a line/address
+gutter; C rendering appends address comments to mapped lines. Projecting away
+`line_addresses` leaves the C unannotated.
 `program import` owns its startup and selection workflow; `--name` is the saved
 file name, independent of global `--program` and configured target defaults.
 Import binds follow-up analysis or information requests to the imported program.

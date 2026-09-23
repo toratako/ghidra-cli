@@ -378,6 +378,9 @@ pub struct DecompileArgs {
     /// Include recovered switch jump tables
     #[arg(long)]
     pub with_jump_tables: bool,
+    /// Include related instruction addresses for each decompiled C line
+    #[arg(long)]
+    pub with_addresses: bool,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

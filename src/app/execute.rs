@@ -171,6 +171,7 @@ pub(super) fn execute_via_bridge(
             args.with_vars,
             args.with_params,
             args.with_jump_tables,
+            args.with_addresses,
         ),
         Commands::Function(cmd) => functions::execute(client, cmd, fetch),
         Commands::Strings(cmd) => {

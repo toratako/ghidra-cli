@@ -540,8 +540,20 @@ they do not establish the source expression's signedness or original width.
 `is_default` follows Ghidra's switch analyzer: the native `0xbad1abe1` label or
 the first destination beyond the label array. Later missing labels stay null.
 An empty array means no tables were returned; null means HighFunction is
-unavailable. Without the flag, the field is omitted. Explicit C output remains
-code-only.
+unavailable. Without the flag, the field is omitted.
+
+`with_addresses: true` adds sparse `line_addresses: [{line, addresses}]` to
+decompilation. Lines are one-based within the unchanged `code` string, including
+leading blank lines; only lines with related instruction positions are included.
+Addresses come from each display token's P-code operation, are deduplicated and
+sorted within each line, and use the shared address syntax. They are navigation
+positions, not all instructions implementing the statement. The same address may
+occur on several lines. No positions are inferred from neighboring tokens,
+comments, labels, or enclosing address ranges. An empty array means no direct
+operation positions were obtained; the field is omitted without the flag.
+Compact/full output displays line and address gutters. C output appends
+`// @ ADDRESS, ...` to mapped lines when the mapping survives field projection;
+JSON retains the original C and the separate mapping.
 
 `graph_callers` and `graph_callees` take `function`, `depth`, and `limit` and
 return `{target, calls, count}`. Each call has `caller`, nullable `caller_address`,

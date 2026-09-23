@@ -416,6 +416,7 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
             };
             assert_eq!(result["basic_block_count"], 3);
             assert_eq!(result.get("jump_tables").is_some(), with_jump_tables);
+            assert!(result.get("line_addresses").is_none());
             if with_jump_tables {
                 assert_eq!(result["jump_tables"].as_array().unwrap().len(), 2);
                 assert_eq!(
@@ -431,7 +432,52 @@ fn decompile_forwards_jump_table_selection_without_truncating_nested_results() {
             assert_eq!(decompile.len(), 1);
             assert_eq!(
                 decompile[0]["args"],
-                json!({"address": "main", "with_vars": false, "with_params": false, "with_jump_tables": with_jump_tables, "timeout_secs": 0})
+                json!({"address": "main", "with_vars": false, "with_params": false, "with_jump_tables": with_jump_tables, "with_addresses": false, "timeout_secs": 0})
+            );
+        }
+    }
+}
+
+#[test]
+fn decompile_line_addresses_preserve_raw_code_projection_and_batch_output() {
+    let bridge = RecordedBridge::new();
+    for fields in [None, Some("code,line_addresses"), Some("code")] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec!["decompile", "main", "--with-addresses", "--program", "B"];
+            if let Some(fields) = fields {
+                args.extend(["--fields", fields]);
+            }
+            let result = if batch {
+                std::fs::write(
+                    bridge.root.path().join("addresses.txt"),
+                    batch_arguments(&args),
+                )
+                .unwrap();
+                bridge.run(&["batch", "addresses.txt"])["results"][0]["result"]["data"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(result["code"], "int main(void) {\n  return 0;\n}\n");
+            if fields == Some("code") {
+                assert!(result.get("line_addresses").is_none());
+            } else {
+                assert_eq!(
+                    result["line_addresses"],
+                    json!([{"line": 2, "addresses": ["0x1004", "0x1008"]}])
+                );
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"] == "decompile")
+                .collect();
+            assert_eq!(operations.len(), 1);
+            assert_eq!(operations[0]["program"], "B");
+            assert_eq!(
+                operations[0]["args"],
+                json!({"address": "main", "with_vars": false, "with_params": false,
+                    "with_jump_tables": false, "with_addresses": true, "timeout_secs": 0})
             );
         }
     }

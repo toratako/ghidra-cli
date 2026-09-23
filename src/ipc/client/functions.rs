@@ -73,6 +73,7 @@ impl BridgeClient {
         with_vars: bool,
         with_params: bool,
         with_jump_tables: bool,
+        with_addresses: bool,
     ) -> Result<serde_json::Value> {
         self.send_decompile_command(
             "decompile",
@@ -81,6 +82,7 @@ impl BridgeClient {
                 "with_vars": with_vars,
                 "with_params": with_params,
                 "with_jump_tables": with_jump_tables,
+                "with_addresses": with_addresses,
             }),
         )
     }

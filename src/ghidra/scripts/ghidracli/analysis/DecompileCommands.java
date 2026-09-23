@@ -61,6 +61,9 @@ public final class DecompileCommands {
                 result.add("signature", JsonNull.INSTANCE);
             }
             result.addProperty("code", code);
+            if (getArgBool(args, "with_addresses", false)) {
+                result.add("line_addresses", DecompileAddresses.collect(results, session));
+            }
             result.add("warnings", DecompileWarnings.collect(results));
             HighFunction highFunc = results.getHighFunction();
             if (highFunc == null) {

@@ -403,6 +403,11 @@ impl RecordedBridge {
                                 {"switch_address": "0x1040", "cases": [{"label": 2, "address": "0x1050", "is_default": false}]},
                             ]);
                         }
+                        if args["with_addresses"] == true {
+                            result["line_addresses"] = json!([
+                                {"line": 2, "addresses": ["0x1004", "0x1008"]}
+                            ]);
+                        }
                         result
                     }
                     "data_list" => {

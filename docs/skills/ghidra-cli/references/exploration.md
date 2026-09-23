@@ -8,6 +8,7 @@ ghidra-cli function get main --project target
 ghidra-cli decompile main --with-vars --with-params --project target
 ghidra-cli decompile dispatch --with-jump-tables --project target
 ghidra-cli decompile main --format c --project target
+ghidra-cli decompile parse_packet --with-addresses --format c --project target
 ghidra-cli graph callees main --project target
 ghidra-cli xref to main --project target
 ghidra-cli xref to malloc --project target
@@ -19,6 +20,11 @@ the entry block, not every body range.
 
 `basic_block_count` counts optimized decompiler blocks. Jump tables contain
 only recovered destinations; an empty result does not rule out an indirect branch.
+
+Use `--with-addresses` after reading C to locate instructions for closer inspection.
+The positions are attached to displayed operations, not every instruction behind
+an expression: a condition may identify the branch but omit the preceding compare.
+Inspect the surrounding disassembly before choosing a patch location.
 
 ```bash
 ghidra-cli graph cfg parse_header --max-nodes 2000 --max-edges 8000 --project target

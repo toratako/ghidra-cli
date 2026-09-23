@@ -26,7 +26,7 @@ fn command(harness: &common::DaemonTestHarness, target: &str, edit: &[&str]) -> 
 
 fn decompile(client: &BridgeClient) -> String {
     let result = client
-        .decompile("caller".to_owned(), false, false, false)
+        .decompile("caller".to_owned(), false, false, false, false)
         .expect("decompile caller");
     result["code"].as_str().expect("caller C code").to_owned()
 }

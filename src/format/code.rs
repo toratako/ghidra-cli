@@ -1,4 +1,4 @@
-use super::{format_json_value, OutputFormat};
+use super::{decompile, format_json_value, OutputFormat};
 use crate::error::Result;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -12,7 +12,11 @@ pub(super) fn format_code<T: Serialize>(data: &[T], format: OutputFormat) -> Res
     for row in &rows {
         match format {
             OutputFormat::C if row.get("code").and_then(JsonValue::as_str).is_some() => {
-                output.push_str(row["code"].as_str().unwrap());
+                output.push_str(&decompile::format_code(
+                    row["code"].as_str().unwrap(),
+                    row.get("line_addresses"),
+                    decompile::AddressStyle::Comments,
+                ));
             }
             OutputFormat::Asm if row.get("mnemonic").and_then(JsonValue::as_str).is_some() => {
                 let address = row

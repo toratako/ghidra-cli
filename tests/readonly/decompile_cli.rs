@@ -158,7 +158,7 @@ public class CreateOrderedParametersFixture extends GhidraScript {
             }
         }
         let before = client
-            .decompile("ordered_params".into(), true, true, false)
+            .decompile("ordered_params".into(), true, true, false, false)
             .unwrap();
         for (command, base_args) in &requests {
             for timeout in [
@@ -189,7 +189,7 @@ public class CreateOrderedParametersFixture extends GhidraScript {
         }
         assert_eq!(
             client
-                .decompile("ordered_params".into(), true, true, false)
+                .decompile("ordered_params".into(), true, true, false, false)
                 .unwrap(),
             before
         );

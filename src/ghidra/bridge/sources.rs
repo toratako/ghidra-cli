@@ -29,6 +29,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/analysis/CallReferences.java"),
     ),
     (
+        "ghidracli/analysis/DecompileAddresses.java",
+        include_str!("../scripts/ghidracli/analysis/DecompileAddresses.java"),
+    ),
+    (
         "ghidracli/analysis/DecompileCommands.java",
         include_str!("../scripts/ghidracli/analysis/DecompileCommands.java"),
     ),

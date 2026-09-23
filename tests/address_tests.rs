@@ -150,7 +150,9 @@ fn check_name_and_address_reads(client: &BridgeClient) {
             address
         );
         assert_eq!(
-            client.decompile(name.into(), false, false, false).unwrap()["address"],
+            client
+                .decompile(name.into(), false, false, false, false)
+                .unwrap()["address"],
             address
         );
         assert_eq!(

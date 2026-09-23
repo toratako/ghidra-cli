@@ -403,7 +403,7 @@ fn test_explicit_c_and_asm_output_match_ghidra_results() {
     let address = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
     let client = harness.client().unwrap();
     let decompiled = client
-        .decompile(address.clone(), false, false, false)
+        .decompile(address.clone(), false, false, false, false)
         .unwrap();
     let result = ghidra(harness)
         .args(["decompile", &address, "--format", "c"])

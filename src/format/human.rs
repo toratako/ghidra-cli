@@ -1,4 +1,4 @@
-use super::{flow, format_json_value, frame, signature, structure, vtable};
+use super::{decompile, flow, format_json_value, frame, signature, structure, vtable};
 use crate::error::Result;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -147,7 +147,11 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                         result.push('\n');
                     }
                     format_function_attributes(map, &mut result);
-                    result.push_str(code);
+                    result.push_str(&decompile::format_code(
+                        code,
+                        map.get("line_addresses"),
+                        decompile::AddressStyle::Gutter,
+                    ));
                     if !code.ends_with('\n') {
                         result.push('\n');
                     }
@@ -333,7 +337,11 @@ pub(super) fn format_full<T: Serialize>(data: &[T]) -> Result<String> {
                     }
                     format_function_attributes(map, &mut result);
                     result.push('\n');
-                    result.push_str(code);
+                    result.push_str(&decompile::format_code(
+                        code,
+                        map.get("line_addresses"),
+                        decompile::AddressStyle::Gutter,
+                    ));
                     if !code.ends_with('\n') {
                         result.push('\n');
                     }

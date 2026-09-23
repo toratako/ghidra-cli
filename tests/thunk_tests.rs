@@ -108,7 +108,7 @@ fn assert_relation(snapshot: &Value, direct: &Value, effective: &Value) {
 
 fn decompile(client: &BridgeClient) -> String {
     client
-        .decompile("caller".to_owned(), false, false, false)
+        .decompile("caller".to_owned(), false, false, false, false)
         .unwrap()["code"]
         .as_str()
         .expect("caller C code")
