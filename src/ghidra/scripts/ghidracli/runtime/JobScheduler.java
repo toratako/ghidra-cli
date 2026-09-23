@@ -9,10 +9,11 @@ import ghidra.util.task.TaskMonitor;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayDeque;
 import java.util.Iterator;
+import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static ghidracli.protocol.JsonProtocol.errorResponse;
 import static ghidracli.protocol.JsonProtocol.errorResult;
@@ -20,14 +21,13 @@ import static ghidracli.protocol.JsonProtocol.successResponse;
 
 final class JobScheduler {
     private static final int MAX_PROGRAM_QUEUE = 256;
-    private static final int MAX_RETAINED_JOBS = 100;
     private static final int MAX_STATUS_JOBS = 25;
     private final Object lifecycleLock = new Object();
     // Queue membership, active ownership, and state transitions share one lock.
     private final ArrayDeque<ProgramJob> programQueue = new ArrayDeque<>();
-    private final ConcurrentHashMap<Long, JobRecord> jobs = new ConcurrentHashMap<>();
-    private final ConcurrentLinkedDeque<Long> completedJobIds = new ConcurrentLinkedDeque<>();
-    private final AtomicLong nextJobId = new AtomicLong(1);
+    private final ConcurrentHashMap<String, JobRecord> jobs = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedDeque<String> completedJobIds = new ConcurrentLinkedDeque<>();
+    private final JobResultStore results = new JobResultStore();
     private final long startTime = System.currentTimeMillis();
     private final ProgramSession session;
     private final CommandDispatcher commands;
@@ -56,7 +56,7 @@ final class JobScheduler {
     boolean isShutdownComplete() { return shutdownComplete; }
 
     private static class JobRecord {
-        final long id;
+        final String id;
         final String command;
         final long enqueuedAt;
         final JobTaskMonitor monitor = new JobTaskMonitor();
@@ -65,8 +65,9 @@ final class JobScheduler {
         volatile long startedAt;
         volatile long finishedAt;
         volatile String error;
+        JobResultStore.Entry result;
 
-        JobRecord(long id, String command) {
+        JobRecord(String id, String command) {
             this.id = id;
             this.command = command;
             this.enqueuedAt = System.currentTimeMillis();
@@ -76,7 +77,7 @@ final class JobScheduler {
     private static class ProgramJob {
         final JobRecord record;
         final JsonObject args;
-        // Response ownership ends with delivery; history retains metadata only.
+        // History owns only the bounded encoded snapshot, never this future or request.
         final CompletableFuture<JsonObject> completion = new CompletableFuture<>();
 
         ProgramJob(JobRecord record, JsonObject args) {
@@ -142,6 +143,7 @@ final class JobScheduler {
             refreshBridgeSnapshot();
         }
 
+        byte[] snapshot = results.snapshot(result);
         synchronized (lifecycleLock) {
             boolean failed = "error".equals(responseStatus);
             record.state = record.monitor.isCancelled()
@@ -150,7 +152,7 @@ final class JobScheduler {
             record.error = failure;
             record.finishedAt = System.currentTimeMillis();
             activeJob = null;
-            retainCompletedJob(record.id);
+            retainCompletedJob(record, snapshot);
         }
         job.completion.complete(result);
     }
@@ -199,7 +201,7 @@ final class JobScheduler {
         return saved;
     }
 
-    CompletableFuture<JsonObject> handleRequest(String line) {
+    BridgeReply handleRequest(String line) {
         try {
             JsonObject req = JsonParser.parseString(line).getAsJsonObject();
             String command = req.has("command") ? req.get("command").getAsString() : null;
@@ -207,13 +209,7 @@ final class JobScheduler {
                 ? req.getAsJsonObject("args") : new JsonObject();
 
             if (command == null || command.isEmpty()) {
-                return CompletableFuture.completedFuture(
-    /**
-     * Error response carrying structured detail (e.g. a conflicting code
-     * unit's type/range, or a containing function's name/entry/size) alongside
-     * the message, so callers can act on it without a follow-up round trip.
-     */
-                    errorResponse("Command required"));
+                return BridgeReply.immediate(errorResponse("Command required"));
             }
 
             // Wait outside the bounded program queue, without occupying a
@@ -221,36 +217,88 @@ final class JobScheduler {
             if ("shutdown_wait".equals(command)) {
                 synchronized (lifecycleLock) {
                     beginShutdown();
-                    return shutdownCompletion;
+                    return BridgeReply.pending(shutdownCompletion);
                 }
+            }
+
+            if ("job_result".equals(command)) {
+                String id = jobId(args);
+                // Lookup/decoding and socket writes use the bounded response pool.
+                return BridgeReply.deferred(() -> handleJobResult(id));
             }
 
             if (isControlCommand(command)) {
                 synchronized (lifecycleLock) {
-                    return CompletableFuture.completedFuture(handleControlCommand(command, args));
+                    results.expire(System.currentTimeMillis());
+                    return BridgeReply.immediate(handleControlCommand(command, args));
                 }
             }
 
-            JobRecord record = new JobRecord(nextJobId.getAndIncrement(), command);
+            JobRecord record = new JobRecord(jobId(req), command);
             ProgramJob job = new ProgramJob(record, args.deepCopy());
 
             synchronized (lifecycleLock) {
                 if (!acceptingJobs) {
-                    return CompletableFuture.completedFuture(errorResponse("Bridge is draining and is not accepting new program jobs"));
+                    return BridgeReply.immediate(errorResponse("Bridge is draining and is not accepting new program jobs"));
+                }
+                if (jobs.containsKey(record.id)) {
+                    return BridgeReply.immediate(errorResponse("Job ID already exists; retrieve its result instead of resending the operation"));
+                }
+                if (programQueue.size() >= MAX_PROGRAM_QUEUE) {
+                    return BridgeReply.immediate(errorResponse("Bridge program queue is full; retry shortly"));
                 }
                 jobs.put(record.id, record);
-                if (programQueue.size() >= MAX_PROGRAM_QUEUE) {
-                    jobs.remove(record.id);
-                    return CompletableFuture.completedFuture(errorResponse("Bridge program queue is full; retry shortly"));
-                }
                 programQueue.addLast(job);
                 lifecycleLock.notifyAll();
             }
-            return job.completion;
+            return BridgeReply.pending(job.completion);
         } catch (Exception e) {
-            return CompletableFuture.completedFuture(
+            return BridgeReply.immediate(
                 errorResponse(e.getMessage()));
         }
+    }
+
+    private static String jobId(JsonObject object) {
+        if (!object.has("job_id") || object.get("job_id").isJsonNull()
+                || !object.get("job_id").isJsonPrimitive()
+                || !object.getAsJsonPrimitive("job_id").isString()) {
+            throw new IllegalArgumentException("job_id must be a UUID");
+        }
+        String value = object.get("job_id").getAsString();
+        String canonical = UUID.fromString(value).toString();
+        if (!canonical.equalsIgnoreCase(value)) {
+            throw new IllegalArgumentException("job_id must be a UUID");
+        }
+        return canonical;
+    }
+
+    private JsonObject handleJobResult(String id) {
+        JsonObject result;
+        byte[] body;
+        synchronized (lifecycleLock) {
+            results.expire(System.currentTimeMillis());
+            JobRecord record = jobs.get(id);
+            if (record == null) {
+                JsonObject detail = new JsonObject();
+                detail.addProperty("job_id", id);
+                detail.addProperty("result_state", "unknown");
+                return errorResponse("Job was not found; this does not establish that the operation was not executed", detail);
+            }
+            result = jobToJson(record, queuePosition(id));
+            if (record.result == null || record.result.body == null) {
+                JsonObject detail = new JsonObject();
+                detail.addProperty("job_id", id);
+                detail.addProperty("result_state", record.result == null ? "pending" : record.result.state);
+                detail.add("job", result);
+                return errorResponse(record.result == null
+                    ? "Job has not finished; retrieve its result again later"
+                    : "Job result is unavailable (" + record.result.state + "); inspect the job and program state before repeating the operation", detail);
+            }
+            body = record.result.body;
+        }
+        // The byte array is immutable; eviction may drop the cache reference while we read it.
+        result.add("response", JsonParser.parseString(new String(body, StandardCharsets.UTF_8)));
+        return successResponse(result);
     }
 
     private boolean isControlCommand(String command) {
@@ -304,7 +352,7 @@ final class JobScheduler {
     private JsonObject handleBridgeInfo() {
         JsonObject result = new JsonObject();
         String programName = currentProgramNameSnapshot;
-        result.addProperty("protocol_version", 2);
+        result.addProperty("protocol_version", 3);
         result.addProperty("current_program_path", currentProgramPathSnapshot);
         result.addProperty("has_current_program", programName != null);
         result.addProperty("auto_save", true);
@@ -326,7 +374,7 @@ final class JobScheduler {
 
     private JsonObject handleStatus() {
         JsonObject result = new JsonObject();
-        result.addProperty("protocol_version", 2);
+        result.addProperty("protocol_version", 3);
         result.addProperty("uptime_ms", System.currentTimeMillis() - startTime);
         addQueueSummary(result, true);
         return result;
@@ -334,7 +382,7 @@ final class JobScheduler {
 
     private JsonObject handleJobStatus(JsonObject args) {
         if (args != null && args.has("job_id") && !args.get("job_id").isJsonNull()) {
-            long id = args.get("job_id").getAsLong();
+            String id = jobId(args);
             JobRecord record = jobs.get(id);
             if (record == null) {
                 JsonObject result = new JsonObject();
@@ -353,7 +401,7 @@ final class JobScheduler {
     private JsonObject handleJobCancel(JsonObject args) {
         JobRecord target;
         if (args != null && args.has("job_id") && !args.get("job_id").isJsonNull()) {
-            target = jobs.get(args.get("job_id").getAsLong());
+            target = jobs.get(jobId(args));
         } else {
             target = activeJob;
         }
@@ -363,7 +411,7 @@ final class JobScheduler {
         }
 
         JobRecord active = activeJob;
-        if (active != null && active.id == target.id) {
+        if (active != null && active.id.equals(target.id)) {
             target.state = "cancel_requested";
             target.monitor.cancel();
             JsonObject result = new JsonObject();
@@ -381,8 +429,8 @@ final class JobScheduler {
             target.error = "Cancelled before execution";
             JsonObject response = errorResponse(target.error);
             response.addProperty("job_id", target.id);
+            retainCompletedJob(target, results.snapshot(response));
             queued.completion.complete(response);
-            retainCompletedJob(target.id);
 
             JsonObject result = new JsonObject();
             result.addProperty("job_id", target.id);
@@ -398,19 +446,19 @@ final class JobScheduler {
         return result;
     }
 
-    private ProgramJob findQueuedJob(long id) {
+    private ProgramJob findQueuedJob(String id) {
         for (ProgramJob job : programQueue) {
-            if (job.record.id == id) {
+            if (job.record.id.equals(id)) {
                 return job;
             }
         }
         return null;
     }
 
-    private int queuePosition(long id) {
+    private int queuePosition(String id) {
         int position = 0;
         for (ProgramJob job : programQueue) {
-            if (job.record.id == id) {
+            if (job.record.id.equals(id)) {
                 return position;
             }
             position++;
@@ -442,7 +490,7 @@ final class JobScheduler {
         result.add("queued_jobs", queued);
 
         JsonArray recent = new JsonArray();
-        Iterator<Long> ids = completedJobIds.descendingIterator();
+        Iterator<String> ids = completedJobIds.descendingIterator();
         while (ids.hasNext() && recent.size() < MAX_STATUS_JOBS) {
             JobRecord record = jobs.get(ids.next());
             if (record != null) {
@@ -457,6 +505,9 @@ final class JobScheduler {
         result.addProperty("id", record.id);
         result.addProperty("command", record.command);
         result.addProperty("state", record.state);
+        JsonObject availability = new JsonObject();
+        availability.addProperty("state", "pending");
+        result.add("result", record.result == null ? availability : record.result.status());
         result.addProperty("enqueued_at_ms", record.enqueuedAt);
         if (record.startedAt > 0) result.addProperty("started_at_ms", record.startedAt);
         if (record.finishedAt > 0) result.addProperty("finished_at_ms", record.finishedAt);
@@ -475,11 +526,13 @@ final class JobScheduler {
         return result;
     }
 
-    private void retainCompletedJob(long id) {
-        completedJobIds.addLast(id);
-        while (completedJobIds.size() > MAX_RETAINED_JOBS) {
-            Long expired = completedJobIds.pollFirst();
-            if (expired != null) jobs.remove(expired);
+    private void retainCompletedJob(JobRecord record, byte[] snapshot) {
+        record.result = results.retain(snapshot, record.finishedAt);
+        completedJobIds.addLast(record.id);
+        while (completedJobIds.size() > JobResultStore.MAX_JOBS) {
+            String expired = completedJobIds.pollFirst();
+            JobRecord removed = expired == null ? null : jobs.remove(expired);
+            if (removed != null) results.forget(removed.result);
         }
     }
 

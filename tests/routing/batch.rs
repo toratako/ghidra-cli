@@ -262,11 +262,20 @@ fn lost_batch_response_stops_nested_and_outer_execution_and_names_the_project() 
     let (report, diagnostic) = failed_report(&outer, &["batch", "batch.txt"]);
     assert_eq!(diagnostic["exit_code"], 1);
     assert_eq!(report["outcome_unknown"], true);
-    assert_eq!(report["recovery"]["action"], "inspect_state");
+    assert_eq!(report["recovery"]["action"], "retrieve_result");
     assert_eq!(report["recovery"]["reason"], "outcome_unknown");
     assert_eq!(report["recovery"]["project"], json!(other.project));
     let argv: Vec<String> = serde_json::from_value(report["recovery"]["argv"].clone()).unwrap();
-    assert_eq!(&argv[1..3], ["job", "list"]);
+    assert_eq!(&argv[1..3], ["job", "result"]);
+    let request = other
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|request| request["args"]["text"] == "test-lost-response")
+        .unwrap()
+        .clone();
+    assert_eq!(argv[3], request["job_id"].as_str().unwrap());
     for bridge in [&outer, &other] {
         assert!(!bridge
             .requests

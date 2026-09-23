@@ -2,7 +2,7 @@
 
 use super::BridgeClient;
 use crate::ipc::protocol::{
-    BridgeCommandError, BridgeOutcomeUnknownError, BridgeRequest, BridgeResponse,
+    BridgeCommandError, BridgeJob, BridgeOutcomeUnknownError, BridgeRequest, BridgeResponse,
     BridgeTimeoutError,
 };
 use anyhow::{Context, Result};
@@ -218,8 +218,20 @@ impl BridgeClient {
             .set_write_timeout(remaining_timeout(deadline, Some(Duration::from_secs(30)))?)
             .context("Failed to set bridge write timeout before sending request")?;
 
+        let job_id = (!matches!(
+            command,
+            "ping"
+                | "status"
+                | "bridge_info"
+                | "job_status"
+                | "job_cancel"
+                | "job_result"
+                | "shutdown_wait"
+        ))
+        .then(|| uuid::Uuid::new_v4().to_string());
         let request = BridgeRequest {
             command: command.to_string(),
+            job_id: job_id.clone(),
             args,
         };
 
@@ -306,15 +318,28 @@ impl BridgeClient {
                 "Invalid bridge response status: '{}'",
                 response.status
             );
+            if response.job_id.is_some() || (job_id.is_some() && response.status == "success") {
+                anyhow::ensure!(
+                    response.job_id == job_id,
+                    "Bridge response job ID does not match the sent request"
+                );
+            }
             Ok(response)
         })()
         .map_err(|error| {
-            if error.downcast_ref::<BridgeTimeoutError>().is_some() {
+            let error = if error.downcast_ref::<BridgeTimeoutError>().is_some() {
                 error
             } else {
                 error.context(BridgeOutcomeUnknownError {
                     command: command.to_owned(),
                 })
+            };
+            match job_id {
+                Some(id) => error.context(BridgeJob {
+                    id,
+                    command: command.to_owned(),
+                }),
+                None => error,
             }
         })?;
 

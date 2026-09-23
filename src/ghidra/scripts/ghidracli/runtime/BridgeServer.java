@@ -13,7 +13,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -36,13 +35,13 @@ final class BridgeServer {
     private final ServerSocket serverSocket;
     private final ExecutorService connectionExecutor;
     private final ExecutorService responseExecutor;
-    private final Function<String, CompletableFuture<JsonObject>> requests;
+    private final Function<String, BridgeReply> requests;
     private final Runnable shutdown;
     private final BooleanSupplier shutdownRequested;
     private final Consumer<String> errors;
     private final Thread acceptor;
 
-    BridgeServer(Function<String, CompletableFuture<JsonObject>> requests, Runnable shutdown,
+    BridgeServer(Function<String, BridgeReply> requests, Runnable shutdown,
             BooleanSupplier shutdownRequested, Consumer<String> errors) throws IOException {
         this.requests = requests;
         this.shutdown = shutdown;
@@ -149,22 +148,24 @@ final class BridgeServer {
                 return;
             }
 
-            CompletableFuture<JsonObject> completion = requests.apply(line.trim());
-            if (completion.isDone()) {
-                respondAndClose(client, completion.join());
+            BridgeReply reply = requests.apply(line.trim());
+            if (!reply.asynchronous) {
+                respondAndClose(client, reply.completion.join().get());
                 return;
             }
 
-            completion.whenComplete((result, error) -> {
-                JsonObject response = result;
-                if (error != null) {
-                    Throwable cause = error.getCause() == null ? error : error.getCause();
-                    response = errorResponse(cause.getMessage());
-                }
-                final JsonObject completedResponse = response;
+            reply.completion.whenComplete((result, error) -> {
                 try {
-                    responseExecutor.execute(
-                        () -> respondAndClose(client, completedResponse));
+                    responseExecutor.execute(() -> {
+                        JsonObject response;
+                        try {
+                            if (error != null) throw new IllegalStateException(error);
+                            response = result.get();
+                        } catch (Exception failure) {
+                            response = errorResponse(failure.getMessage());
+                        }
+                        respondAndClose(client, response);
+                    });
                 } catch (RejectedExecutionException e) {
                     try {
                         client.close();

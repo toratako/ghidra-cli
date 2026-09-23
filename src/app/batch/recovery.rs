@@ -1,4 +1,5 @@
 use super::PreparedBatch;
+use crate::app::recovery::render_command;
 use crate::app::{options, project};
 use crate::cli::Cli;
 use crate::ipc::protocol::BridgeCommandError;
@@ -58,6 +59,8 @@ struct Recovery {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     argv: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    job_id: Option<String>,
 }
 
 fn failures<'a>(report: &'a Value, parents: &[Location], found: &mut Vec<Failure<'a>>) {
@@ -154,6 +157,7 @@ fn describe(report: &Value, project: &Path) -> Option<Recovery> {
         working_directory: std::env::current_dir().ok()?,
         message: message.to_owned(),
         argv: None,
+        job_id: failure.row["detail"]["job_id"].as_str().map(str::to_owned),
     })
 }
 
@@ -234,7 +238,13 @@ pub(crate) fn add_recovery(
             recovery.message = "Changes from the failed command were rolled back. Verify the selected program in every project used by the remaining commands before resuming; a single restart command cannot restore the target context.".to_owned();
         }
     } else if matches!(recovery.reason, "timeout" | "outcome_unknown") {
-        recovery.argv = Some(command(cli, &["job", "list"], &recovery.project));
+        if let Some(id) = recovery.job_id.as_deref() {
+            recovery.action = "retrieve_result";
+            recovery.message = "Retrieve this bridge operation's result before choosing a restart line. One batch line can send multiple operations; check the returned command before resuming.".to_owned();
+            recovery.argv = Some(command(cli, &["job", "result", id], &recovery.project));
+        } else {
+            recovery.argv = Some(command(cli, &["job", "list"], &recovery.project));
+        }
     } else if recovery.reason == "save_failed" {
         recovery.argv = Some(command(cli, &["program", "save"], &recovery.project));
     }
@@ -252,28 +262,6 @@ pub(crate) fn add_recovery(
     let mut detail = report.detail.clone();
     detail["recovery"] = serde_json::to_value(recovery).expect("batch recovery is serializable");
     error.context(BridgeCommandError { message, detail })
-}
-
-fn render_command(argv: &[String]) -> String {
-    let quote = |arg: &String| {
-        if !arg.is_empty()
-            && arg
-                .bytes()
-                .all(|ch| ch.is_ascii_alphanumeric() || b"_./:=+-".contains(&ch))
-        {
-            arg.clone()
-        } else if cfg!(windows) {
-            format!("'{}'", arg.replace('\'', "''"))
-        } else {
-            format!("'{}'", arg.replace('\'', "'\\''"))
-        }
-    };
-    let rendered = argv.iter().map(quote).collect::<Vec<_>>().join(" ");
-    if cfg!(windows) {
-        format!("& {rendered}")
-    } else {
-        rendered
-    }
 }
 
 #[cfg(test)]

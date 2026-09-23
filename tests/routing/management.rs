@@ -1,5 +1,99 @@
-use super::RecordedBridge;
+use super::{RecordedBridge, ACTIVE_JOB_ID, JOB_ID};
 use serde_json::{json, Value};
+
+#[test]
+fn only_unknown_outcomes_show_job_identity_and_targeted_recovery() {
+    for flags in [vec!["--json"], vec![]] {
+        for text in ["reviewed", "test-rollback", "test-lost-response"] {
+            let bridge = RecordedBridge::new();
+            std::fs::write(
+                bridge.root.path().join("config.yaml"),
+                "default_output_format: full\n",
+            )
+            .unwrap();
+            let output = bridge
+                .command()
+                .args(["comment", "set", "0x1000", "--text", text])
+                .args(&flags)
+                .output()
+                .unwrap();
+            let requests = bridge.requests.lock().unwrap();
+            let edits: Vec<_> = requests
+                .iter()
+                .filter(|request| request["command"] == "comment_set")
+                .collect();
+            assert_eq!(edits.len(), 1, "{output:?}");
+            assert!(!requests
+                .iter()
+                .any(|request| request["command"] == "job_result"));
+            let id = edits[0]["job_id"].as_str().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if text == "reviewed" {
+                assert!(output.status.success(), "{output:?}");
+                assert!(stderr.is_empty());
+                assert!(!stdout.contains(id));
+            } else {
+                assert_eq!(output.status.code(), Some(1), "{output:?}");
+                assert!(stdout.is_empty());
+                if text == "test-rollback" {
+                    assert!(!stderr.contains(id));
+                    assert!(!stderr.contains("job result"));
+                } else if flags == ["--json"] {
+                    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+                    assert_eq!(diagnostic["detail"]["job_id"], id);
+                    assert_eq!(diagnostic["detail"]["command"], "comment_set");
+                    assert_eq!(
+                        diagnostic["detail"]["recovery"]["argv"],
+                        json!([
+                            "ghidra-cli",
+                            "job",
+                            "result",
+                            id,
+                            "--project",
+                            bridge.project
+                        ])
+                    );
+                } else {
+                    assert!(stderr.contains(&format!("job result {id}")), "{stderr}");
+                    assert!(stderr.contains("--project"), "{stderr}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn recovery_identifies_a_lost_preparatory_request_without_claiming_the_edit_ran() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .args([
+            "--json",
+            "comment",
+            "set",
+            "0x1000",
+            "--text",
+            "must-not-run",
+            "--program",
+            "test-lost-selection",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    let requests = bridge.requests.lock().unwrap();
+    assert!(!requests
+        .iter()
+        .any(|request| request["command"] == "comment_set"));
+    let selection = requests
+        .iter()
+        .find(|request| request["command"] == "open_program")
+        .unwrap();
+    assert_eq!(error["detail"]["job_id"], selection["job_id"]);
+    assert_eq!(error["detail"]["command"], "open_program");
+    assert_eq!(error["detail"]["recovery"]["argv"][3], selection["job_id"]);
+}
 
 #[test]
 fn management_commands_preserve_control_requests_and_json_output() {
@@ -10,15 +104,20 @@ fn management_commands_preserve_control_requests_and_json_output() {
             (vec!["bridge", "ping"], "ping", Value::Null),
             (vec!["job", "list"], "status", Value::Null),
             (
-                vec!["job", "get", "0x2a"],
+                vec!["job", "get", JOB_ID],
                 "job_status",
-                json!({"job_id": 42}),
+                json!({"job_id": JOB_ID}),
+            ),
+            (
+                vec!["job", "result", JOB_ID],
+                "job_result",
+                json!({"job_id": JOB_ID}),
             ),
             (vec!["job", "cancel"], "job_cancel", json!({"job_id": null})),
             (
-                vec!["job", "cancel", "0042"],
+                vec!["job", "cancel", JOB_ID],
                 "job_cancel",
-                json!({"job_id": 42}),
+                json!({"job_id": JOB_ID}),
             ),
         ] {
             bridge.requests.lock().unwrap().clear();
@@ -48,9 +147,10 @@ fn management_commands_preserve_control_requests_and_json_output() {
                     assert!(result["active_job"].is_null());
                     assert_eq!(result["queued_jobs"], json!([]));
                 }
-                ["job", "get", _] => assert_eq!(result["job"]["id"], 42),
-                ["job", "cancel"] => assert_eq!(result["job_id"], 7),
-                ["job", "cancel", _] => assert_eq!(result["job_id"], 42),
+                ["job", "result", _] => assert_eq!(result["response"]["status"], "success"),
+                ["job", "get", _] => assert_eq!(result["job"]["id"], JOB_ID),
+                ["job", "cancel"] => assert_eq!(result["job_id"], ACTIVE_JOB_ID),
+                ["job", "cancel", _] => assert_eq!(result["job_id"], JOB_ID),
                 _ => unreachable!(),
             }
             let requests = bridge.requests.lock().unwrap();
@@ -92,9 +192,10 @@ fn management_targets_use_config_or_explicit_project_at_each_command_level() {
         vec!["bridge", "status"],
         vec!["bridge", "ping"],
         vec!["job", "list"],
-        vec!["job", "get", "0x2a"],
+        vec!["job", "get", JOB_ID],
+        vec!["job", "result", JOB_ID],
         vec!["job", "cancel"],
-        vec!["job", "cancel", "0042"],
+        vec!["job", "cancel", JOB_ID],
     ] {
         for position in [None, Some(0), Some(1), Some(args.len())] {
             configured.requests.lock().unwrap().clear();
@@ -199,9 +300,12 @@ fn pending_save_recovery_preserves_selection_and_bypasses_edit_capabilities() {
             expected.push(json!({"command": "open_program", "args": {"program": program}}));
         }
         expected.push(json!({"command": "program_save"}));
+        let requests = bridge.requests.lock().unwrap();
+        for (expected, actual) in expected.iter_mut().zip(requests.iter()) {
+            expected["job_id"] = actual["job_id"].clone();
+        }
         assert_eq!(
-            *bridge.requests.lock().unwrap(),
-            expected,
+            *requests, expected,
             "Recovery must save the selected program without capability checks, restart, or replay"
         );
     }
@@ -216,9 +320,10 @@ fn explicit_save_failure_preserves_recovery_details_and_running_bridge() {
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(error["message"], "Save failed");
     assert_eq!(error["detail"], json!({"save_failed": true}));
+    let requests = bridge.requests.lock().unwrap().clone();
     assert_eq!(
-        *bridge.requests.lock().unwrap(),
-        vec![json!({"command": "program_save"})],
+        requests,
+        vec![json!({"command": "program_save", "job_id": requests[0]["job_id"]})],
         "A failed save must return to the caller without an implicit retry or restart"
     );
     assert_eq!(

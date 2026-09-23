@@ -10,7 +10,7 @@ ghidra-cli program info target.bin --project target
 ghidra-cli program list-relocations --filter 'status=FAILURE' --project target
 ghidra-cli bridge status --project target
 ghidra-cli job list --project target
-ghidra-cli job get 42 --project target
+ghidra-cli job get 2c7a3b91-f960-4b85-87d7-e90cf7bf0625 --project target
 ghidra-cli job cancel --project target
 ghidra-cli bridge restart --project target --program target.bin
 ghidra-cli program save target.bin --project target

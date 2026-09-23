@@ -22,7 +22,8 @@ and target checks in `src/cli/tests.rs`.
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
 | `result.rs` | Declare command result shapes, retain context/page metadata, and apply queries to produce the common result value |
 | `output.rs` | Render common results for standalone/batch/management output and route C-only decompiler diagnostics to stderr |
-| `management.rs` | `bridge start/stop/restart/status/ping`, `job list/get/cancel`, and explicit save without auto-start |
+| `management.rs` | Bridge lifecycle, `job list/get/result/cancel`, and explicit save without auto-start |
+| `recovery.rs` | Unknown-outcome job recovery with resolved project paths and shared shell quoting |
 | `installation.rs` | Doctor command |
 | `local.rs` | Configuration and project commands |
 | `project.rs` | Configuration override and project path resolution; disk layout comes from `src/ghidra/project.rs` |
@@ -103,6 +104,10 @@ restart command requires a confirmed rollback, no later attempts or nested
 failure, a known failed-request program, and a remaining range using one project.
 Use the program identity from the error response, never a later control snapshot.
 Other cases direct the caller to inspect state or review attempted results.
+Unknown program outcomes carry the sent operation's UUID and direct callers to
+`job result`; nested batch recovery keeps the failed line's own project and ID.
+IDs are per bridge operation, so recovery must not equate a preparatory operation's
+completion with completion of the entire CLI command or batch line.
 Recovery command arguments are authoritative in JSON; displayed commands use
 POSIX quoting on Unix and PowerShell quoting on Windows and name the required
 working directory.
@@ -140,5 +145,11 @@ A closed stdout pipe is normal. `main.rs` structures JSON-mode errors; bridge
 wait timeouts exit 75, doctor failures exit 1. Human-readable
 errors state when changes were rolled back or partial changes were saved without
 requiring verbose mode; JSON errors retain the structured detail flags.
+Normal results and confirmed errors do not display job IDs. Unknown program
+outcomes add `detail.job_id`, the actual wire command, and `recovery.argv` to
+diagnostics. `job result` prints the retained record even for failed jobs; exit 0
+means retrieval. Pending results use status `pending` and exit 75 without claiming
+a new timeout or unknown mutation; unavailable results exit 1. It never starts a
+bridge, selects a program, or reruns the original CLI output/query transformations.
 
 Unit tests stay with their owning helpers; see [validation commands](../../tests/README.md).

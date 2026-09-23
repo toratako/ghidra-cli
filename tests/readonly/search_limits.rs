@@ -312,8 +312,8 @@ public class AddDenseSearchBlock extends GhidraScript {
             while !search.is_finished() && std::time::Instant::now() < deadline {
                 let status = client.status().unwrap();
                 if status["active_job"]["command"] == wire {
-                    let id = status["active_job"]["id"].as_u64().unwrap();
-                    client.cancel_job(Some(id)).unwrap();
+                    let id = status["active_job"]["id"].as_str().unwrap().to_owned();
+                    client.cancel_job(Some(&id)).unwrap();
                     cancelled_id = Some(id);
                     break;
                 }
@@ -326,7 +326,7 @@ public class AddDenseSearchBlock extends GhidraScript {
                 "cancelled search returned a successful partial result"
             );
             assert_eq!(
-                client.job_status(Some(id)).unwrap()["job"]["state"],
+                client.job_status(Some(&id)).unwrap()["job"]["state"],
                 "cancelled"
             );
             assert_eq!(

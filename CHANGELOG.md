@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `job result ID` to recover completed bridge responses after a disconnect
+  or timeout, including structured failures and cancellation results. Bounded
+  in-memory retention ends with the bridge; unknown outcomes include a recovery
+  command without adding identifiers to normal command output.
 - Add `memory read-vtable TARGET --entries N --abi itanium|msvc` for explicit table
   slots and ABI metadata, including LLVM relative32 encoding, and
   `find address-tables` for Ghidra's native table candidates.
@@ -25,6 +29,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Use client-generated UUIDs as job IDs, available before the response arrives.
 - Extend current-memory pointer output with decoded targets, normalized code
   entries, qualified symbols/functions, and direct/final thunk destinations.
 - Use `initialized` consistently in memory map, info, and block edit receipts.

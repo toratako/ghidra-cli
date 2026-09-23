@@ -64,6 +64,7 @@ csv = "1.4.0"
 
 # String similarity (for fuzzy matching)
 strsim = "0.11.1"
+uuid = { version = "1.26.1", features = ["v4"] }
 
 # Cross-platform support
 dunce = "1.0.5" # Windows path handling
@@ -78,7 +79,6 @@ assert_cmd = "2.2.2"
 predicates = "3.1.4"
 tempfile = "3.27.0"
 serial_test = "4.0.1"
-uuid = { version = "1.26.1", features = ["v4"] }
 # Snapshot testing - captures full output and detects regressions
 insta = { version = "1.48.0", features = ["json", "redactions"] }
 # Property-based testing - exhaustive edge case coverage

@@ -40,6 +40,9 @@ values before Ghidra's signed-int seconds-to-milliseconds conversion can overflo
 EOF, I/O failures after sending begins, malformed replies, and invalid response
 statuses have a typed unknown outcome and must stop batches without replay.
 Read timeouts exit 75 without cancelling the job; other unknown outcomes exit 1.
+Sent program requests retain their client-generated UUID on either failure path;
+the CLI's diagnostics and batch rows use it to retrieve the result. Controls do
+not create jobs or advertise a new recovery ID. No operation is automatically replayed.
 Shutdown uses the caller's remaining total deadline for connect, write, and read;
 it must not fall back to an independent generic socket timeout. The lifecycle
 caller also budgets lock acquisition and process exit, preserves the typed
@@ -51,16 +54,35 @@ reopens the queue for recovery.
 
 ## Wire format
 
+`bridge_info` and `status` advertise protocol version 3.
+
 ```json
-{"command":"list_functions","args":{"limit":100}}
-{"status":"success","data":{"functions":[]},"message":null}
+{"command":"list_functions","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","args":{"limit":100}}
+{"status":"success","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","data":{"functions":[]},"message":null}
 ```
 
 Request `command` is required; optional `args` is omitted when `None`.
+Program requests require `job_id` as a canonical hyphenated UUID (case-insensitive).
+The client creates a new UUID per bridge operation, including preparatory program
+selection. Controls omit it. Accepted jobs echo it on terminal responses; admission
+errors may omit it. The client rejects mismatched IDs and program success without
+an ID as unknown outcomes. Ordinary CLI output unwraps the response without the ID.
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON. `success`
 unwraps to `data` or `{}`; `error` retains message and structured detail;
 `shutdown` becomes `{"status":"shutdown"}`. Other statuses are protocol errors.
+
+`job_status`, `job_cancel`, and `job_result` select a job with `args.job_id`.
+Status records include `result.state`: `pending`, `available`, `expired`, `evicted`,
+or `too_large`; completed records include `result.expires_at_ms` as the time limit,
+not a guarantee against earlier capacity eviction. `job_result` is a control
+request returning the job record with its original envelope nested in `response`.
+Retrieving a failed/cancelled response succeeds (CLI exit 0); callers inspect
+`response.status` and `response.detail`. The outer response fails if unavailable:
+`detail.result_state` is `pending` (CLI exit 75), `unknown`, or the unavailable
+reason (exit 1). A known job is included as `detail.job`. Missing results never
+establish that a request was not executed. Retention and restart boundaries are
+documented in [runtime recovery](../../docs/runtime.md#job-result-recovery).
 
 The [paged list adapters](../query/README.md#conservative-list-queries) accept
 literal `filter`, `offset`, and `limit`; the filter DSL stays in Rust. Offset

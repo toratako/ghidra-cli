@@ -139,24 +139,55 @@ ghidra-cli bridge start --project P --program bin
 ghidra-cli bridge status --project P
 ghidra-cli bridge ping --project P
 ghidra-cli job list --project P
-ghidra-cli job get 42 --project P
-ghidra-cli job cancel 42 --project P
+ghidra-cli job get 2c7a3b91-f960-4b85-87d7-e90cf7bf0625 --project P
+ghidra-cli job cancel 2c7a3b91-f960-4b85-87d7-e90cf7bf0625 --project P
 ghidra-cli bridge restart --project P --program otherbin
 ghidra-cli bridge stop --project P
 ```
 
 Commands needing the bridge start a per-project JVM on demand. Program jobs use
-a FIFO of 256, with 100 recent jobs retained. `job cancel` defaults to the active
+a FIFO of 256, with 1,000 completed job records retained. `job cancel` defaults to the active
 job; queued cancellation is immediate, active cancellation cooperative. Socket
 read timeouts return `Timeout:` with exit 75 while work stays running or queued;
-inspect `job list` before retrying a mutation. Shutdown rejects new work and
+use the reported recovery command before retrying a mutation. Shutdown rejects new work and
 drains accepted jobs, including a full queue.
 The shutdown timeout reports an error (exit 75) and preserves discovery files and
 the live process; it does not force termination. Inspect the process and retry
-stop after accepted work finishes. Cancellation state is isolated per job, and
-history retains metadata rather than completed response payloads.
+stop after accepted work finishes. Cancellation state is isolated per job.
 If the final save fails, stop/restart/project deletion return an error and keep
 the same JVM and program open. Resolve the cause, retry `program save`, then stop.
+
+### Job result recovery
+
+The CLI generates a UUID for each bridge program operation before sending it.
+Successful output and confirmed errors keep their usual shape. A timeout or
+lost/malformed response adds the job ID, actual operation name, resolved project,
+and `recovery.argv` to diagnostics; human output shows the same retrieval command:
+
+```bash
+ghidra-cli job result 2c7a3b91-f960-4b85-87d7-e90cf7bf0625 --project P
+```
+
+`job result` reads a saved response without rerunning the operation. Exit 0 means
+retrieval succeeded, including when the original job failed or was cancelled;
+inspect `state` and `response.status`, then `response.detail` for rollback,
+partial-save, and save-failure information. Pending jobs report exit 75 and may
+be queried again; unavailable results report exit 1. `job get` shows availability.
+The response is the bridge envelope before CLI filtering/formatting; generated
+files and the enclosing CLI/batch workflow are not snapshots of that envelope.
+A preparatory `open_program` job completing does not mean the later edit ran.
+
+Bodies are retained in memory for at most 30 minutes, with a 64 MiB combined
+limit and 16 MiB per result. Capacity removes oldest bodies early; oversized
+responses are delivered normally but not retained. `expired`, `evicted`, and
+`too_large` distinguish unavailable bodies while their job metadata remains.
+The 1,000-record history limit removes the whole record. Retrieval does not
+extend retention. A bridge stop/restart loses the history; job commands never
+auto-start a bridge. Missing results do not prove an operation was not executed.
+CLI termination before it can report the generated ID has no guaranteed recovery
+lookup; `job list` still provides the bridge's recent metadata.
+
+### Program persistence
 
 Program commands, including analysis, scripts, and each batch operation, save
 before reporting success. Switching/closing also saves first; failure keeps the

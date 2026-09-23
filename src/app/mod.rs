@@ -7,6 +7,7 @@ mod management;
 mod options;
 mod output;
 mod project;
+mod recovery;
 mod result;
 
 use crate::cli::{self, Cli, Commands};
@@ -180,6 +181,7 @@ fn execute_bridge_command(
                 page: None,
             })
             .map_err(|error| {
+                let error = recovery::job_result(error, &project_path, cli.projects_dir.as_deref());
                 if batch_line {
                     batch::in_project(error, &project_path)
                 } else {
@@ -286,6 +288,7 @@ fn execute_bridge_command(
         }
     })()
     .map_err(|error| {
+        let error = recovery::job_result(error, &project_path, cli.projects_dir.as_deref());
         if batch_line {
             batch::in_project(error, &project_path)
         } else {

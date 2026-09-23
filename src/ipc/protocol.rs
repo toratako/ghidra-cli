@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 pub struct BridgeRequest {
     pub command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
 }
 
@@ -17,6 +19,8 @@ pub struct BridgeRequest {
 #[derive(Debug, Deserialize)]
 pub struct BridgeResponse<T = serde_json::Value> {
     pub status: String,
+    #[serde(default)]
+    pub job_id: Option<String>,
     pub data: Option<T>,
     #[serde(default)]
     pub message: Option<String>,
@@ -47,6 +51,22 @@ impl std::fmt::Display for BridgeCommandError {
 
 impl std::error::Error for BridgeCommandError {}
 
+/// Identity of a sent program request whose final response was not received.
+/// Kept out of normal results and confirmed command errors.
+#[derive(Debug)]
+pub struct BridgeJob {
+    pub id: String,
+    pub command: String,
+}
+
+impl std::fmt::Display for BridgeJob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Job {} ({})", self.id, self.command)
+    }
+}
+
+impl std::error::Error for BridgeJob {}
+
 /// The client gave up waiting for a response within the configured read
 /// timeout, distinct from the bridge actually reporting a failure: the
 /// program job this request queued may still be running server-side and can
@@ -65,8 +85,8 @@ impl std::fmt::Display for BridgeTimeoutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Bridge did not respond within {}s while running '{}' — the program job is \
-             still queued or running. Inspect `ghidra-cli job list`, raise the wait via \
+            "Bridge did not respond within {}s while running '{}' — the operation's \
+             outcome is unknown. Inspect the job result, raise the wait via \
              GHIDRA_CLI_READ_TIMEOUT (seconds; 0 = wait indefinitely), or use \
              GHIDRA_CLI_OP_TIMEOUT for long analyze/import operations.",
             self.timeout_secs, self.command
@@ -85,7 +105,7 @@ pub struct BridgeOutcomeUnknownError {
 
 impl std::fmt::Display for BridgeOutcomeUnknownError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "The command outcome is unknown for '{}'; changes may already have been applied and saved. Check `ghidra-cli bridge status`, `ghidra-cli job list`, and the program state before repeating it.", self.command)
+        write!(f, "The command outcome is unknown for '{}'; changes may already have been applied and saved. Inspect the result and program state before repeating it.", self.command)
     }
 }
 
@@ -99,6 +119,7 @@ mod tests {
     fn test_request_serialization() {
         let request = BridgeRequest {
             command: "ping".to_string(),
+            job_id: None,
             args: None,
         };
         let json = serde_json::to_string(&request).unwrap();
@@ -110,6 +131,7 @@ mod tests {
     fn test_request_with_args() {
         let request = BridgeRequest {
             command: "list_functions".to_string(),
+            job_id: Some(uuid::Uuid::new_v4().to_string()),
             args: Some(serde_json::json!({"limit": 100})),
         };
         let json = serde_json::to_string(&request).unwrap();

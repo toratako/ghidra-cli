@@ -65,13 +65,19 @@ impl BridgeClient {
     }
 
     /// Get one job, or the full bridge job status when no ID is supplied.
-    pub fn job_status(&self, job_id: Option<u64>) -> Result<serde_json::Value> {
+    pub fn job_status(&self, job_id: Option<&str>) -> Result<serde_json::Value> {
         self.send_command("job_status", Some(json!({"job_id": job_id})))
     }
 
     /// Request cooperative cancellation of a job. With no ID, cancel the active job.
-    pub fn cancel_job(&self, job_id: Option<u64>) -> Result<serde_json::Value> {
+    pub fn cancel_job(&self, job_id: Option<&str>) -> Result<serde_json::Value> {
         self.send_command("job_cancel", Some(json!({"job_id": job_id})))
+    }
+
+    /// Retrieve a retained response, including the original command's structured errors.
+    /// Success describes retrieval; inspect the returned job state and response status.
+    pub fn job_result(&self, job_id: &str) -> Result<serde_json::Value> {
+        self.send_command("job_result", Some(json!({"job_id": job_id})))
     }
 
     /// Get bridge info (current program, project name, program count, uptime).

@@ -110,6 +110,10 @@ pub(crate) fn diagnostic_detail(error: &anyhow::Error) -> serde_json::Value {
     {
         detail["outcome_unknown"] = serde_json::json!(true);
     }
+    if let Some(job) = error.downcast_ref::<crate::ipc::protocol::BridgeJob>() {
+        detail["job_id"] = serde_json::json!(job.id);
+        detail["command"] = serde_json::json!(job.command);
+    }
     for cause in error.chain() {
         if let Some(GhidraError::Installation(error)) = cause.downcast_ref::<GhidraError>() {
             detail["installation"] = serde_json::json!(error);

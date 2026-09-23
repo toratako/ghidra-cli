@@ -201,7 +201,8 @@ ghidra-cli
 └── job
     ├── list
     ├── get
+    ├── result
     └── cancel
 ```
 
-192 command nodes (excluding the root), 0 aliases.
+193 command nodes (excluding the root), 0 aliases.

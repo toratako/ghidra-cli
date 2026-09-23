@@ -51,20 +51,38 @@ pub enum JobCommands {
     },
     /// Show one job by ID
     Get {
-        /// Job ID
-        #[arg(value_parser = super::numeric::parse::<u64>)]
-        job_id: u64,
+        /// Job UUID
+        #[arg(value_parser = parse_job_id)]
+        job_id: String,
+        /// Project path
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Retrieve a completed job's response; exit 0 means retrieval, even if the job failed
+    Result {
+        /// Job UUID
+        #[arg(value_parser = parse_job_id)]
+        job_id: String,
         /// Project path
         #[arg(long)]
         project: Option<String>,
     },
     /// Request cooperative cancellation (defaults to the active job)
     Cancel {
-        /// Job ID; omit to cancel the currently active job
-        #[arg(value_parser = super::numeric::parse::<u64>)]
-        job_id: Option<u64>,
+        /// Job UUID; omit to cancel the currently active job
+        #[arg(value_parser = parse_job_id)]
+        job_id: Option<String>,
         /// Project path
         #[arg(long)]
         project: Option<String>,
     },
+}
+
+fn parse_job_id(value: &str) -> Result<String, String> {
+    let id = uuid::Uuid::parse_str(value).map_err(|_| "job ID must be a UUID".to_owned())?;
+    let canonical = id.to_string();
+    if !canonical.eq_ignore_ascii_case(value) {
+        return Err("job ID must be a UUID".to_owned());
+    }
+    Ok(canonical)
 }

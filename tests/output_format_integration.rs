@@ -116,14 +116,16 @@ fn local_results_obey_json_modes() {
 #[test]
 fn failures_have_nonzero_status_and_json_diagnostics() {
     let temp = tempfile::tempdir().unwrap();
+    let job_id = "2c7a3b91-f960-4b85-87d7-e90cf7bf0625";
     for flags in [vec![], vec!["--json"], vec!["--pretty"]] {
         for (args, code) in [
             (vec!["config", "get", "unknown_key"], 1),
             (vec!["bridge", "ping", "--project", "missing"], 1),
             (vec!["job", "list", "--project", "missing"], 1),
-            (vec!["job", "get", "42", "--project", "missing"], 1),
+            (vec!["job", "get", job_id, "--project", "missing"], 1),
+            (vec!["job", "result", job_id, "--project", "missing"], 1),
             (vec!["job", "cancel", "--project", "missing"], 1),
-            (vec!["job", "cancel", "42", "--project", "missing"], 1),
+            (vec!["job", "cancel", job_id, "--project", "missing"], 1),
             (vec!["--unknown-option"], 2),
             (vec!["config", "get"], 2),
             (vec!["function", "list", "--filter", "bad"], 1),

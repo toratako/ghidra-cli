@@ -304,7 +304,7 @@ fn eof_after_send_reports_unknown_outcome_without_replay() {
     assert!(error
         .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
         .is_some());
-    let message = error.to_string();
+    let message = format!("{error:#}");
     assert!(message.contains("outcome is unknown"), "{message}");
     assert!(message.contains("applied and saved"), "{message}");
     assert!(message.contains("program state"), "{message}");
@@ -366,7 +366,7 @@ fn mutation_read_timeout_retains_its_type_without_replay() {
     let (listener, _pending_job, request) = server.join().unwrap();
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&request).unwrap(),
-        serde_json::json!({"command": "comment_set", "args": args})
+        serde_json::json!({"command": "comment_set", "args": args, "job_id": error.downcast_ref::<crate::ipc::protocol::BridgeJob>().unwrap().id})
     );
     let timeout = error
         .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
@@ -374,6 +374,55 @@ fn mutation_read_timeout_retains_its_type_without_replay() {
     assert_eq!(timeout.command, "comment_set");
     listener.set_nonblocking(true).unwrap();
     assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+}
+
+#[test]
+fn program_response_identity_is_checked_without_exposing_it_in_normal_data() {
+    for identity in ["matching", "different", "missing"] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let id = request["job_id"].as_str().unwrap().to_owned();
+            uuid::Uuid::parse_str(&id).unwrap();
+            let mut response = serde_json::json!({"status": "success", "data": {"changed": true}});
+            match identity {
+                "matching" => response["job_id"] = serde_json::json!(id),
+                "different" => {
+                    response["job_id"] = serde_json::json!(uuid::Uuid::new_v4().to_string())
+                }
+                _ => {}
+            }
+            writeln!(stream, "{response}").unwrap();
+            (listener, id)
+        });
+        let result =
+            client.send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)));
+        let (listener, sent_id) = server.join().unwrap();
+        if identity == "matching" {
+            assert_eq!(result.unwrap(), serde_json::json!({"changed": true}));
+        } else {
+            let error = result.unwrap_err();
+            assert!(error
+                .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+                .is_some());
+            assert_eq!(
+                error
+                    .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                    .unwrap()
+                    .id,
+                sent_id
+            );
+        }
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    }
 }
 
 #[test]

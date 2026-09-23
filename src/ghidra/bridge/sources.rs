@@ -237,6 +237,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/query/NameSuggestions.java"),
     ),
     (
+        "ghidracli/runtime/BridgeReply.java",
+        include_str!("../scripts/ghidracli/runtime/BridgeReply.java"),
+    ),
+    (
         "ghidracli/runtime/BridgeRuntime.java",
         include_str!("../scripts/ghidracli/runtime/BridgeRuntime.java"),
     ),
@@ -247,6 +251,10 @@ const SOURCES: &[(&str, &str)] = &[
     (
         "ghidracli/runtime/CommandDispatcher.java",
         include_str!("../scripts/ghidracli/runtime/CommandDispatcher.java"),
+    ),
+    (
+        "ghidracli/runtime/JobResultStore.java",
+        include_str!("../scripts/ghidracli/runtime/JobResultStore.java"),
     ),
     (
         "ghidracli/runtime/JobScheduler.java",

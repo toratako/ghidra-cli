@@ -51,6 +51,9 @@ pub(crate) fn handle_management_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Job(JobCommands::Cancel { job_id, project }) => {
             return handle_job_cancel(project.or(global_project), &projects_dir, job_id, output)
         }
+        Commands::Job(JobCommands::Result { job_id, project }) => {
+            return handle_job_result(project.or(global_project), &projects_dir, &job_id, output)
+        }
         _ => unreachable!(),
     }?;
     output.result(&result, result["message"].as_str().unwrap_or_default())
@@ -145,9 +148,13 @@ pub(super) fn program_save_result(cli: &Cli) -> anyhow::Result<(Value, String)> 
     // Never restart or replay an edit merely to retry a pending save.
     let client = BridgeClient::new(port);
     if let Some(program) = program {
-        client.open_program(&program)?;
+        client.open_program(&program).map_err(|error| {
+            super::recovery::job_result(error, &project_path, cli.projects_dir.as_deref())
+        })?;
     }
-    let mut result = client.program_save()?;
+    let mut result = client.program_save().map_err(|error| {
+        super::recovery::job_result(error, &project_path, cli.projects_dir.as_deref())
+    })?;
     result["project"] = json!(project_path);
     let message = if result["saved"] == true {
         "Saved."
@@ -232,7 +239,7 @@ fn handle_bridge_ping(
 fn handle_job_query(
     project: Option<String>,
     projects_dir: &Option<PathBuf>,
-    job_id: Option<u64>,
+    job_id: Option<String>,
     output: Output,
 ) -> anyhow::Result<()> {
     let config = load_config(projects_dir)?;
@@ -242,7 +249,7 @@ fn handle_job_query(
     })?;
     let client = BridgeClient::new(port);
     let jobs = if job_id.is_some() {
-        client.job_status(job_id)?
+        client.job_status(job_id.as_deref())?
     } else {
         client.status()?
     };
@@ -283,7 +290,7 @@ fn handle_job_query(
 }
 
 fn format_bridge_job(label: &str, job: &serde_json::Value) -> String {
-    let id = job.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+    let id = job.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
     let command = job
         .get("command")
         .and_then(|v| v.as_str())
@@ -311,13 +318,16 @@ fn format_bridge_job(label: &str, job: &serde_json::Value) -> String {
         details.push_str(": ");
         details.push_str(error);
     }
+    if let Some(state) = job["result"]["state"].as_str() {
+        details.push_str(&format!(" [result: {state}]"));
+    }
     details
 }
 
 fn handle_job_cancel(
     project: Option<String>,
     projects_dir: &Option<PathBuf>,
-    job_id: Option<u64>,
+    job_id: Option<String>,
     output: Output,
 ) -> anyhow::Result<()> {
     let config = load_config(projects_dir)?;
@@ -325,13 +335,13 @@ fn handle_job_cancel(
     let port = bridge::is_bridge_running(&project_path).ok_or_else(|| {
         anyhow::anyhow!("No bridge running for project: {}", project_path.display())
     })?;
-    let result = BridgeClient::new(port).cancel_job(job_id)?;
+    let result = BridgeClient::new(port).cancel_job(job_id.as_deref())?;
     if output.json {
         output.result(&result, "")?;
     } else {
         let id = result
             .get("job_id")
-            .and_then(|v| v.as_u64())
+            .and_then(|v| v.as_str())
             .unwrap_or_default();
         let state = result
             .get("state")
@@ -342,6 +352,30 @@ fn handle_job_cancel(
             .and_then(|v| v.as_str())
             .unwrap_or("Cancellation request handled");
         write_stdout(&format!("Job {id}: {state} - {message}"))?;
+    }
+    Ok(())
+}
+
+fn handle_job_result(
+    project: Option<String>,
+    projects_dir: &Option<PathBuf>,
+    job_id: &str,
+    output: Output,
+) -> anyhow::Result<()> {
+    let config = load_config(projects_dir)?;
+    let project_path = resolve_project_path(&project, &config)?;
+    let port = bridge::is_bridge_running(&project_path).ok_or_else(|| {
+        anyhow::anyhow!("No bridge running for project: {}. Job results are retained only while that bridge is running.", project_path.display())
+    })?;
+    let result = BridgeClient::new(port).job_result(job_id)?;
+    if output.json {
+        output.result(&result, "")?;
+    } else {
+        write_stdout(&format!(
+            "{}\n{}",
+            format_bridge_job("Job", &result),
+            serde_json::to_string_pretty(&result["response"])?
+        ))?;
     }
     Ok(())
 }

@@ -32,7 +32,7 @@ fn test_bridge_job_status_is_available_when_idle() {
     assert_eq!(status.get("queue_depth").and_then(|v| v.as_u64()), Some(0));
     assert!(status.get("active_job").is_some_and(|v| v.is_null()));
 
-    let missing = job_command(&["get", &u64::MAX.to_string()]);
+    let missing = job_command(&["get", &uuid::Uuid::new_v4().to_string()]);
     assert_eq!(missing.get("found").and_then(|v| v.as_bool()), Some(false));
 }
 
@@ -58,8 +58,9 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
             if active.get("command").and_then(|v| v.as_str()) == Some("analysis_run") {
                 break active
                     .get("id")
-                    .and_then(|v| v.as_u64())
-                    .expect("active job id");
+                    .and_then(|v| v.as_str())
+                    .expect("active job id")
+                    .to_owned();
             }
         }
         assert!(
@@ -81,7 +82,7 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
     );
 
     let active = control
-        .job_status(Some(active_job_id))
+        .job_status(Some(&active_job_id))
         .expect("active job status");
     assert_eq!(active.get("found").and_then(|v| v.as_bool()), Some(true));
     assert_eq!(
@@ -107,13 +108,13 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
     let queued_deadline = std::time::Instant::now() + Duration::from_secs(10);
     let queued_job_ids = loop {
         let status = control.status().expect("status with queued job");
-        let ids: Vec<u64> = status
+        let ids: Vec<String> = status
             .get("queued_jobs")
             .and_then(|v| v.as_array())
             .into_iter()
             .flatten()
             .filter(|job| job.get("command").and_then(|v| v.as_str()) == Some("stats"))
-            .filter_map(|job| job.get("id").and_then(|v| v.as_u64()))
+            .filter_map(|job| job.get("id").and_then(|v| v.as_str()).map(str::to_owned))
             .collect();
         if ids.len() == queued.len() {
             break ids;
@@ -138,7 +139,7 @@ fn test_control_plane_stays_responsive_while_program_job_runs() {
 
     for queued_job_id in queued_job_ids {
         let cancelled = control
-            .cancel_job(Some(queued_job_id))
+            .cancel_job(Some(&queued_job_id))
             .expect("cancel queued job");
         assert_eq!(
             cancelled.get("state").and_then(|v| v.as_str()),
@@ -200,7 +201,7 @@ public class WaitForBridgeCancel extends GhidraScript {
         let status = client.status().unwrap();
         let active = &status["active_job"];
         if active["progress_message"] == "waiting-for-bridge-cancel" {
-            break active["id"].as_u64().unwrap();
+            break active["id"].as_str().unwrap().to_owned();
         }
         assert!(!script.is_finished(), "script exited before cancellation");
         assert!(
@@ -219,6 +220,10 @@ public class WaitForBridgeCancel extends GhidraScript {
         .detail;
     assert_eq!(detail["partial_changes_saved"], true);
     assert!(detail.get("rolled_back").is_none());
+    assert_eq!(
+        &client.job_result(&id).unwrap()["response"]["detail"],
+        detail
+    );
     assert_eq!(
         job_command(&["get", &id.to_string()])["job"]["state"],
         "cancelled"
@@ -248,10 +253,10 @@ public class CheckFreshBridgeMonitor extends GhidraScript {
     assert!(status["active_job"].is_null(), "{status}");
     let finished = &status["recent_jobs"][0];
     assert_eq!(finished["state"], "complete");
-    let finished_id = finished["id"].as_u64().unwrap();
+    let finished_id = finished["id"].as_str().unwrap().to_owned();
     let cancelled = job_command(&["cancel", &finished_id.to_string()]);
     assert_eq!(cancelled["state"], "complete");
-    let unchanged = client.job_status(Some(finished_id)).unwrap();
+    let unchanged = client.job_status(Some(&finished_id)).unwrap();
     assert_eq!(unchanged["job"]["state"], "complete");
     assert_eq!(unchanged["job"]["cancel_requested"], false);
     drop(harness);
@@ -323,7 +328,12 @@ public class HoldQueueForShutdown extends GhidraScript {
         socket
             .set_read_timeout(Some(Duration::from_secs(30)))
             .unwrap();
-        writeln!(socket, "{{\"command\":\"stats\"}}").unwrap();
+        writeln!(
+            socket,
+            "{}",
+            serde_json::json!({"command": "stats", "job_id": uuid::Uuid::new_v4().to_string()})
+        )
+        .unwrap();
         pending.push(socket);
         loop {
             let status = control.status().unwrap();

@@ -309,18 +309,40 @@ fn batch_reports_results_on_stdout_and_stops_on_save_failure_or_timeout() {
         assert!(diagnostic["detail"].get("results").is_none());
         assert_eq!(diagnostic["exit_code"], code);
         let recovery = &report["recovery"];
-        assert_eq!(recovery["action"], "inspect_state");
+        assert_eq!(
+            recovery["action"],
+            if code == 75 {
+                "retrieve_result"
+            } else {
+                "inspect_state"
+            }
+        );
         assert_eq!(recovery["file"], "nested.txt");
         assert_eq!(recovery["line"], 1);
         let argv: Vec<String> = serde_json::from_value(recovery["argv"].clone()).unwrap();
         assert_eq!(
             &argv[1..3],
             if code == 75 {
-                ["job", "list"]
+                ["job", "result"]
             } else {
                 ["program", "save"]
             }
         );
+        if code == 75 {
+            let request = bridge
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|request| request["args"]["text"] == "test-timeout")
+                .unwrap()
+                .clone();
+            assert_eq!(argv[3], request["job_id"].as_str().unwrap());
+            assert_eq!(
+                report["results"][1]["detail"]["results"][0]["detail"]["job_id"],
+                request["job_id"]
+            );
+        }
         assert!(!argv.iter().any(|arg| arg == "--from-line"));
         assert!(!bridge
             .requests

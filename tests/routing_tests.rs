@@ -143,6 +143,9 @@ fn api_list_fixture(command: &str) -> (&'static str, Vec<Value>) {
     }
 }
 
+const JOB_ID: &str = "2c7a3b91-f960-4b85-87d7-e90cf7bf0625";
+const ACTIVE_JOB_ID: &str = "73d7a267-ed73-4548-b8ee-24c7af918720";
+
 struct RecordedBridge {
     root: tempfile::TempDir,
     project: PathBuf,
@@ -201,7 +204,7 @@ impl RecordedBridge {
                     || (request["command"] == "program_save"
                         && bridge_info["test_save_failure"] == true)
                 {
-                    writeln!(connection, "{}", json!({"status": "error", "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
+                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "message": "Save failed", "detail": {"save_failed": true}})).unwrap();
                     continue;
                 }
                 if args["text"] == "test-timeout" {
@@ -211,8 +214,13 @@ impl RecordedBridge {
                 if args["text"] == "test-lost-response" {
                     continue;
                 }
+                if request["command"] == "open_program" && args["program"] == "test-lost-selection"
+                {
+                    program = "test-lost-selection".to_owned();
+                    continue;
+                }
                 if args["text"] == "test-rollback" {
-                    writeln!(connection, "{}", json!({"status": "error", "message": "Edit rejected", "detail": {"rolled_back": true, "program": program}})).unwrap();
+                    writeln!(connection, "{}", json!({"status": "error", "job_id": request["job_id"], "message": "Edit rejected", "detail": {"rolled_back": true, "program": program}})).unwrap();
                     continue;
                 }
                 let data = match request["command"].as_str().unwrap() {
@@ -225,8 +233,12 @@ impl RecordedBridge {
                         "found": true,
                         "job": {"id": args["job_id"], "command": "analysis_run", "state": "complete"},
                     }),
+                    "job_result" => json!({
+                        "id": args["job_id"], "command": "analysis_run", "state": "complete",
+                        "response": {"status": "success", "data": {"saved": true}},
+                    }),
                     "job_cancel" => json!({
-                        "job_id": args["job_id"].as_u64().unwrap_or(7),
+                        "job_id": args["job_id"].as_str().unwrap_or(ACTIVE_JOB_ID),
                         "state": "cancel_requested",
                     }),
                     "open_program" => {
@@ -641,7 +653,12 @@ impl RecordedBridge {
                     }
                     _ => json!({"observed_program": program}),
                 };
-                writeln!(connection, "{}", json!({"status": "success", "data": data})).unwrap();
+                writeln!(
+                    connection,
+                    "{}",
+                    json!({"status": "success", "job_id": request["job_id"], "data": data})
+                )
+                .unwrap();
             }
         });
         Self {

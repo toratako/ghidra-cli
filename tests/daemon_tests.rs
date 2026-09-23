@@ -18,6 +18,8 @@ mod context;
 mod decompiler;
 #[path = "daemon/deletion.rs"]
 mod deletion;
+#[path = "daemon/job_results.rs"]
+mod job_results;
 #[path = "daemon/jobs.rs"]
 mod jobs;
 #[path = "daemon/lifecycle.rs"]

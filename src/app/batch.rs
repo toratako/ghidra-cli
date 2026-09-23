@@ -288,6 +288,10 @@ pub(super) fn execute_batch(
                         row["detail"] = json!({});
                     }
                     row["detail"]["outcome_unknown"] = json!(true);
+                    if let Some(job) = error.downcast_ref::<crate::ipc::protocol::BridgeJob>() {
+                        row["detail"]["job_id"] = json!(job.id);
+                        row["detail"]["command"] = json!(job.command);
+                    }
                 }
                 row["exit_code"] = json!(if timeout { 75 } else { 1 });
                 last_error = Some(error);

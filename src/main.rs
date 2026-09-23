@@ -146,8 +146,9 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
     let timeout = error
         .downcast_ref::<ipc::protocol::BridgeTimeoutError>()
         .is_some();
-    let code = if timeout { 75 } else { 1 };
     let detail = error::diagnostic_detail(error);
+    let pending = detail["result_state"] == "pending";
+    let code = if timeout || pending { 75 } else { 1 };
     let detail = detail.as_object().filter(|map| !map.is_empty());
     let message = if error
         .downcast_ref::<ipc::protocol::BridgeCommandError>()
@@ -159,7 +160,7 @@ fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32
     };
     if output.json {
         let mut value = serde_json::json!({
-            "status": if timeout { "timeout" } else { "error" },
+            "status": if timeout { "timeout" } else if pending { "pending" } else { "error" },
             "message": message,
             "exit_code": code,
         });

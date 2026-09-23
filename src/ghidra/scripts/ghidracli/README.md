@@ -84,13 +84,25 @@ GhidraCliBridge -> BridgeRuntime
 ```
 
 `BridgeServer` owns networking and request/shutdown callbacks. `JobScheduler`
-owns the FIFO (256 jobs), history (100 jobs), cancellation, and status snapshots.
-Completed history retains metadata only, releasing response futures/payloads.
+owns the FIFO (256 jobs), history (1,000 jobs), cancellation, and status snapshots.
+Program requests supply a UUID before submission; duplicate retained IDs are
+rejected before enqueueing. `JobResultStore` retains immutable UTF-8 JSON snapshots
+after transaction/save completion and before response delivery. It limits each
+body to 16 MiB, total bodies to 64 MiB, and availability to 30 minutes; capacity
+evicts oldest bodies. Metadata preserves the unavailable reason until history
+eviction. History never retains request arguments, futures, or live JSON objects.
+Encoding occurs outside the scheduler lock (except the small fixed queued-cancel
+receipt). Status, completion, and snapshot publication share that lock; result
+decoding occurs after releasing it. An in-flight reader may finish from its
+immutable snapshot after eviction. Expiry is applied on controls and completion.
 Per-job cancellation must not cancel the parent script monitor or later jobs.
 Queued cancellation removes jobs immediately; active jobs cancel cooperatively
 via per-job monitors. Connection handlers enqueue without waiting on program
 futures; completed futures use a separate bounded response pool. Neither waiting
-clients nor socket writes may block controls or the program thread. Shutdown
+clients nor socket writes may block controls or the program thread. `BridgeReply`
+keeps small controls on connection threads and always sends program completions
+and `job_result` work through the bounded response pool, even when already ready.
+Shutdown
 rejects new program jobs and drains accepted work, keeping controls available.
 `shutdown_wait` completes only after the program thread saves and releases the
 session. On save failure it returns structured error detail and restores request

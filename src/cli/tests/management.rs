@@ -1,5 +1,7 @@
 use super::*;
 
+const JOB_ID: &str = "2c7a3b91-f960-4b85-87d7-e90cf7bf0625";
+
 #[test]
 fn program_export_requires_output_for_every_format() {
     for format in ["xml", "c", "binary", "gzf", "asm", "hex", "html"] {
@@ -68,9 +70,10 @@ fn management_commands_accept_global_options_at_each_command_level() {
         vec!["bridge", "status"],
         vec!["bridge", "ping"],
         vec!["job", "list"],
-        vec!["job", "get", "42"],
+        vec!["job", "get", JOB_ID],
         vec!["job", "cancel"],
-        vec!["job", "cancel", "42"],
+        vec!["job", "cancel", JOB_ID],
+        vec!["job", "result", JOB_ID],
     ] {
         for position in 0..=command.len() {
             for output_flag in ["--json", "--pretty"] {
@@ -111,13 +114,16 @@ fn management_commands_accept_global_options_at_each_command_level() {
                     Commands::Job(JobCommands::Get { job_id, project }) => {
                         ("job", "get", Some(job_id), project, None)
                     }
+                    Commands::Job(JobCommands::Result { job_id, project }) => {
+                        ("job", "result", Some(job_id), project, None)
+                    }
                     Commands::Job(JobCommands::Cancel { job_id, project }) => {
                         ("job", "cancel", job_id, project, None)
                     }
                     _ => panic!("unexpected command: {args:?}"),
                 };
                 assert_eq!((family, action), (command[0], command[1]), "{args:?}");
-                assert_eq!(job_id, command.get(2).map(|_| 42), "{args:?}");
+                assert_eq!(job_id.as_deref(), command.get(2).copied(), "{args:?}");
                 assert_eq!(
                     project.as_deref().or(cli.project.as_deref()),
                     Some("test-project"),

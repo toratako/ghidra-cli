@@ -422,6 +422,11 @@ public class PreventAutoSave extends GhidraScript {
     assert_eq!(detail["save_failed"], true);
     assert_eq!(detail["saved"], false);
     assert_eq!(detail["command_response"]["status"], "success");
+    let status = client.status().unwrap();
+    let job_id = status["recent_jobs"][0]["id"].as_str().unwrap();
+    let recovered = client.job_result(job_id).unwrap();
+    assert_eq!(recovered["state"], "failed");
+    assert_eq!(&recovered["response"]["detail"], detail);
     let transaction = detail["command_response"]["data"]["stdout"]
         .as_str()
         .unwrap()
