@@ -10,9 +10,7 @@ use std::sync::OnceLock;
 #[macro_use]
 mod common;
 use common::helpers::ghidra;
-use common::{
-    ensure_test_project, get_function_address, get_function_addresses, DaemonTestHarness,
-};
+use common::{ensure_test_project, get_function_address, DaemonTestHarness};
 
 use common::test_project;
 const TEST_PROGRAM: &str = common::FIXTURE_PROGRAM;
@@ -100,8 +98,7 @@ fn test_symbol_rename() {
     require_ghidra!();
     let harness = harness();
 
-    let addrs = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
-    let addr = &addrs[1];
+    let addr = get_function_address(harness, test_project(), TEST_PROGRAM, "main");
 
     // Use unique names to avoid collisions with cached project state
     let old_name = format!("old_sym_{}", std::process::id());
@@ -110,7 +107,7 @@ fn test_symbol_rename() {
     assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("symbol")
         .arg("create-label")
-        .arg(addr)
+        .arg(&addr)
         .arg(&old_name)
         .arg("--project")
         .arg(test_project())
