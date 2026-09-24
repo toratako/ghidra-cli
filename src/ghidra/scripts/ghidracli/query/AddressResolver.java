@@ -29,18 +29,28 @@ public final class AddressResolver {
     public LinkedHashSet<Address> namedAddresses(String target) {
         LinkedHashSet<Address> candidates = new LinkedHashSet<>();
         SymbolTable st = session.program().getSymbolTable();
-        SymbolIterator syms = st.getSymbols(target);
+        int separator = target.lastIndexOf("::");
+        boolean qualified = separator >= 0;
+        String simpleName = qualified ? target.substring(separator + 2) : target;
+        SymbolIterator syms = st.getSymbols(simpleName);
         while (syms.hasNext()) {
-            Address address = syms.next().getAddress();
-            if (address != null) candidates.add(address);
+            Symbol symbol = syms.next();
+            Address address = symbol.getAddress();
+            if (address != null && (!qualified || symbol.getName(true).equals(target))) {
+                candidates.add(address);
+            }
         }
-        for (Symbol sym : st.getGlobalSymbols(target)) {
-            if (sym.getAddress() != null) candidates.add(sym.getAddress());
+        if (!qualified) {
+            for (Symbol sym : st.getGlobalSymbols(target)) {
+                if (sym.getAddress() != null) candidates.add(sym.getAddress());
+            }
         }
         FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
         while (iter.hasNext()) {
             Function func = iter.next();
-            if (func.getName().equals(target)) candidates.add(func.getEntryPoint());
+            if (qualified ? func.getSymbol().getName(true).equals(target) : func.getName().equals(target)) {
+                candidates.add(func.getEntryPoint());
+            }
         }
         return candidates;
     }

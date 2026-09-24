@@ -205,6 +205,25 @@ fn check_name_and_address_reads(client: &BridgeClient) {
         client.function_disasm("FUN_00001400", None).unwrap()["instructions"][0]["address"],
         "0x00001400"
     );
+    for (target, address) in [
+        ("scope0::ambiguous", "0x00001300"),
+        ("scope1::ambiguous", "0x00001310"),
+    ] {
+        assert_eq!(get_function(client, target)["address"], address);
+        client
+            .send_command(
+                "function_set_noreturn",
+                Some(json!({"target":target,"value":true})),
+            )
+            .unwrap();
+        assert_eq!(get_function(client, target)["no_return"], true);
+        client
+            .send_command(
+                "function_set_noreturn",
+                Some(json!({"target":target,"value":false})),
+            )
+            .unwrap();
+    }
 }
 
 fn target_requests(target: &str) -> Vec<(&'static str, Value)> {
