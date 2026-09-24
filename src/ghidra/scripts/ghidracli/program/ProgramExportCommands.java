@@ -8,8 +8,11 @@ import ghidracli.session.ProgramSession;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -77,28 +80,37 @@ public final class ProgramExportCommands {
             Object exported;
             if ("gzf".equalsIgnoreCase(exportFormat)) {
                 session.save();
-                Path destination = new File(outputPath).toPath().toAbsolutePath();
-                // GzfExporter deletes its output before writing it. Keep that
-                // file in a private directory beside the destination, and only
-                // replace the destination once packing has fully succeeded.
-                Path staging = Files.createTempDirectory(destination.getParent(), ".ghidra-cli-gzf-");
-                Path packed = staging.resolve("program.gzf");
-                try {
-                    exported = exportMethod.invoke(exporter, packed.toFile(), session.program(), null, mon);
-                    if (Boolean.TRUE.equals(exported)) {
-                        mon.checkCancelled();
-                        Files.move(packed, destination, StandardCopyOption.ATOMIC_MOVE,
-                            StandardCopyOption.REPLACE_EXISTING);
+            }
+            Path destination = new File(outputPath).toPath().toAbsolutePath();
+            List<Path> destinations = artifactPaths(exportFormat, destination);
+            // Native exporters may truncate their output before rejecting the
+            // program, or leave incomplete files on cancellation. Keep every
+            // artifact private until the exporter has succeeded.
+            Path staging = Files.createTempDirectory(destination.getParent(), ".ghidra-cli-export-");
+            boolean preserveStaging = false;
+            try {
+                Path staged = staging.resolve(destination.getFileName());
+                exported = exportMethod.invoke(exporter, staged.toFile(), session.program(), null, mon);
+                if (Boolean.TRUE.equals(exported)) {
+                    for (Path target : destinations) {
+                        exportArtifact(staging.resolve(target.getFileName()));
                     }
-                } finally {
+                    mon.checkCancelled();
                     try {
-                        Files.deleteIfExists(packed);
-                    } finally {
-                        Files.deleteIfExists(staging);
+                        publishArtifacts(staging, destinations);
+                    } catch (IOException failure) {
+                        preserveStaging = failure.getSuppressed().length != 0;
+                        throw failure;
                     }
                 }
-            } else {
-                exported = exportMethod.invoke(exporter, new File(outputPath), session.program(), null, mon);
+            } finally {
+                // A failed rollback retains backups and reports their directory.
+                if (!preserveStaging) {
+                    try (var entries = Files.list(staging)) {
+                        for (Path entry : entries.toList()) Files.deleteIfExists(entry);
+                    }
+                    Files.deleteIfExists(staging);
+                }
             }
             if (!Boolean.TRUE.equals(exported)) {
                 Object log = exporterClass.getMethod("getMessageLog").invoke(exporter);
@@ -130,15 +142,68 @@ public final class ProgramExportCommands {
     private static JsonArray exportArtifacts(String format, String outputPath) throws IOException {
         JsonArray artifacts = new JsonArray();
         Path output = new File(outputPath).toPath().toAbsolutePath();
-        artifacts.add(exportArtifact(output));
+        for (Path path : artifactPaths(format, output)) artifacts.add(exportArtifact(path));
+        return artifacts;
+    }
+
+    private static List<Path> artifactPaths(String format, Path output) {
+        List<Path> paths = new ArrayList<>();
+        paths.add(output);
         if ("xml".equalsIgnoreCase(format)) {
             // XmlExporter defaults to memory contents. MemoryMapXmlMgr creates
             // this file on every export, even when no initialized bytes exist.
             String name = output.getFileName().toString();
             if (name.endsWith(".xml")) name = name.substring(0, name.length() - 4);
-            artifacts.add(exportArtifact(output.resolveSibling(name + ".bytes")));
+            paths.add(output.resolveSibling(name + ".bytes"));
         }
-        return artifacts;
+        return paths;
+    }
+
+    private static void publishArtifacts(Path staging, List<Path> destinations) throws IOException {
+        List<Path> backups = new ArrayList<>();
+        // Check all destinations before replacing any of an XML export's files.
+        for (int i = 0; i < destinations.size(); i++) {
+            Path target = destinations.get(i);
+            Path backup = null;
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                if (!Files.isRegularFile(target)) {
+                    throw new IOException("Export destination is not a regular file: " + target);
+                }
+                if (destinations.size() > 1) {
+                    backup = Files.createTempFile(staging, ".backup-", ".tmp");
+                    Files.copy(target, backup, LinkOption.NOFOLLOW_LINKS,
+                        StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            backups.add(backup);
+        }
+        int published = 0;
+        try {
+            for (Path target : destinations) {
+                Files.move(staging.resolve(target.getFileName()), target,
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                published++;
+            }
+        } catch (IOException failure) {
+            IOException result = new IOException("Could not publish export: " + failure.getMessage(), failure);
+            for (int i = published - 1; i >= 0; i--) {
+                try {
+                    Path backup = backups.get(i);
+                    if (backup == null) Files.deleteIfExists(destinations.get(i));
+                    else Files.move(backup, destinations.get(i),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException rollback) {
+                    result.addSuppressed(rollback);
+                }
+            }
+            if (result.getSuppressed().length != 0) {
+                IOException recovery = new IOException(result.getMessage()
+                    + "; rollback failed; export backups retained at " + staging, result);
+                for (Throwable rollback : result.getSuppressed()) recovery.addSuppressed(rollback);
+                throw recovery;
+            }
+            throw result;
+        }
     }
 
     private static JsonObject exportArtifact(Path path) throws IOException {

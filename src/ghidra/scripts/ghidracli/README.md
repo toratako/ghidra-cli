@@ -206,7 +206,7 @@ another consumer or terminate its checkout.
 | [`ProgramCommands`](program/ProgramCommands.java), [`ProgramSession`](session/ProgramSession.java) | Program metadata, import/analysis, selection and release |
 | [`ProgramContextCommands`](program/ProgramContextCommands.java) | Processor-context registers, interval values/masks, and context edits |
 | [`ProgramRebaseCommands`](program/ProgramRebaseCommands.java) | Image-base preflight and block movement receipts |
-| [`ProgramExportCommands`](program/ProgramExportCommands.java) | Native exporters, artifact receipts, and GZF publication |
+| [`ProgramExportCommands`](program/ProgramExportCommands.java) | Native exporters, artifact receipts, and staged publication |
 | [`ImportSupport`](project/ImportSupport.java) | Name/loader selection and saving of detached imported programs; shared with bootstrap |
 | [`ProjectDeletion`](project/ProjectDeletion.java) | Bootstrap-only project removal under Ghidra's project lock |
 | [`FunctionCommands`](function/FunctionCommands.java), [`FunctionSignatureCommands`](function/FunctionSignatureCommands.java), [`DecompileCommands`](analysis/DecompileCommands.java) | Function CRUD, whole-function signature changes, decompilation |
@@ -490,9 +490,12 @@ package even though concrete exporter names are selected dynamically.
 Success receipts include actual artifact sizes (including XML's sidecar), native
 exporter messages and format limitations, without inferring complete coverage.
 GZF packing first ends the non-atomic request transaction and saves through
-`ProgramSession.save()`. It writes to private sibling staging and
-atomically replaces the destination after successful packing and a cancellation
-check; never let GzfExporter delete the user's previous destination directly.
+`ProgramSession.save()`. All exporters write to private sibling staging and
+replace destinations with atomic moves only after success and a cancellation
+check; filesystems without atomic moves fail without replacing existing output.
+XML's two artifacts are published sequentially, with backups restored on a
+publication failure. If restoration fails, the error reports the retained backup
+directory. The pair is not atomic to outside readers.
 
 `TypeResolver` uses fixed-width primitives for fallback stdint/short aliases;
 ordinary C aliases remain ABI-dependent. Validate type sizes, field definitions,

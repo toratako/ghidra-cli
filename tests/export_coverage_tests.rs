@@ -107,6 +107,7 @@ public class DefineExportCoverageFixture extends GhidraScript {
         .contains("does not verify complete function coverage")));
 
     let raw_path = directory.path().join("memory.bin");
+    std::fs::write(&raw_path, "previous binary export").unwrap();
     const SET_LOCALE: &str = r#"
 import ghidra.app.script.GhidraScript;
 import java.util.Locale;
@@ -172,6 +173,78 @@ public class ExportTestLocale extends GhidraScript {
         );
         assert!(xml_source.contains("unreferenced_value"), "{xml_source}");
     }
+
+    // An unusable companion path must not replace the existing XML file.
+    let blocked_xml = directory.path().join("blocked.xml");
+    let blocked_sidecar = directory.path().join("blocked.bytes");
+    std::fs::write(&blocked_xml, "previous XML export").unwrap();
+    std::fs::create_dir(&blocked_sidecar).unwrap();
+    let error = client
+        .program_export("xml", Some(blocked_xml.to_str().unwrap()))
+        .expect_err("a directory cannot be replaced with an export artifact");
+    assert!(error.to_string().contains("not a regular file"), "{error}");
+    assert_eq!(
+        std::fs::read_to_string(&blocked_xml).unwrap(),
+        "previous XML export"
+    );
+    assert!(blocked_sidecar.is_dir());
+    assert_no_export_staging(directory.path());
+}
+
+#[test]
+fn failed_export_preserves_existing_output() {
+    require_ghidra!();
+    let directory = tempfile::Builder::new()
+        .prefix("ghidra export failure ")
+        .tempdir()
+        .unwrap();
+    let project = directory.path().join("project");
+    let binary = directory.path().join("raw.bin");
+    std::fs::write(&binary, [0xc3u8]).unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let program = import_oneshot(
+        &project,
+        &binary,
+        &installation,
+        &OneShotImportOptions {
+            language: Some("x86:LE:64:default".to_owned()),
+            loader: Some("BinaryLoader".to_owned()),
+            loader_options: vec![("baseAddr".to_owned(), "0x1000".to_owned())],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    let client = harness.client().unwrap();
+    let output_dir = directory.path().join("export 'artifacts'");
+    std::fs::create_dir(&output_dir).unwrap();
+    let output = output_dir.join("existing.hex");
+    let previous = b"previous export data";
+    std::fs::write(&output, previous).unwrap();
+    // Native IntelHexExporter truncates its file before rejecting 64-bit spaces.
+    let error = client
+        .program_export("hex", Some(output.to_str().unwrap()))
+        .expect_err("Intel HEX does not support this address space");
+    assert!(error.to_string().contains("Failed to export"), "{error}");
+    assert_eq!(std::fs::read(&output).unwrap(), previous);
+    std::fs::remove_file(&output).unwrap();
+    client
+        .program_export("hex", Some(output.to_str().unwrap()))
+        .expect_err("failed exports do not publish incomplete new files");
+    assert!(!output.exists());
+    client.program_info().expect("bridge remains usable");
+    assert_no_export_staging(&output_dir);
+}
+
+fn assert_no_export_staging(directory: &Path) {
+    assert!(std::fs::read_dir(directory).unwrap().all(|entry| !entry
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .starts_with(".ghidra-cli-export-")));
 }
 
 fn assert_receipt(result: &Value, program: &str, format: &str, paths: &[&Path]) {
