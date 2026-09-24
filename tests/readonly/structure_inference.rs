@@ -203,7 +203,7 @@ fn structure_inference_preserves_existing_types_and_this_namespaces_and_rejects_
             .iter()
             .find(|row| row["name"] == "ctx")
             .unwrap();
-        let stale = json!({"program":before["program"],"function_address":before["address"],"modification":"stale","variable":row});
+        let stale = json!({"project":before["project"],"program":before["program"],"function_address":before["address"],"modification":"stale","variable":row});
         let error = client
             .function_var_infer_struct("typed_root", "ctx", Some(&stale), false, None)
             .unwrap_err();

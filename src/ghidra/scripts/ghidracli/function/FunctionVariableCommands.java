@@ -48,6 +48,7 @@ public final class FunctionVariableCommands {
             JsonArray rows = new JsonArray();
             for (HighSymbol symbol : symbols) rows.add(describe(symbol));
             JsonObject result = context(function);
+            result.add("project", variables.project());
             result.addProperty("program", session.programPath());
             result.addProperty("modification", variables.modification());
             result.add("variables", rows);

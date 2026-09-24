@@ -4,6 +4,108 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn variable_selection_rejects_identical_program_in_another_project() {
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-variable-project-")
+        .tempdir()
+        .unwrap();
+    let source = root.path().join("source/project");
+    let destination = root.path().join("destination/project");
+    let program = "matching-variables";
+    let binary = root.path().join("starter.bin");
+    std::fs::write(&binary, [0xc3]).unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let starter = ghidra_cli::ghidra::bridge::import_oneshot(
+        &source,
+        &binary,
+        &installation,
+        &ghidra_cli::ghidra::bridge::OneShotImportOptions {
+            language: Some("x86:LE:32:default".into()),
+            loader: Some("BinaryLoader".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    {
+        let harness =
+            super::common::DaemonTestHarness::new(source.to_str().unwrap(), &starter).unwrap();
+        let client = harness.client().unwrap();
+        client
+            .script_run_source(
+                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                &[program.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+    }
+    super::common::fixture::copy_project(&source, &destination).unwrap();
+    let source_harness =
+        super::common::DaemonTestHarness::new(source.to_str().unwrap(), program).unwrap();
+    let destination_harness =
+        super::common::DaemonTestHarness::new(destination.to_str().unwrap(), program).unwrap();
+    let source_client = source_harness.client().unwrap();
+    let destination_client = destination_harness.client().unwrap();
+    let list = |client: &ghidra_cli::ipc::client::BridgeClient| {
+        client
+            .send_command("function_var_list", Some(json!({"target":"edit_target"})))
+            .unwrap()
+    };
+    let source_snapshot = list(&source_client);
+    let destination_snapshot = list(&destination_client);
+    for field in ["program", "address", "modification", "variables"] {
+        assert_eq!(
+            source_snapshot[field], destination_snapshot[field],
+            "{field}"
+        );
+    }
+    assert_ne!(source_snapshot["project"], destination_snapshot["project"]);
+    let row = source_snapshot["variables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "input")
+        .unwrap();
+    let selection = json!({
+        "project": source_snapshot["project"],
+        "program": source_snapshot["program"],
+        "function_address": source_snapshot["address"],
+        "modification": source_snapshot["modification"],
+        "variable": row,
+    });
+    let error = destination_client
+        .send_command(
+            "function_var_set",
+            Some(json!({"target":"edit_target", "var_name":"input",
+                "selection":selection, "new_name":"wrong_target"})),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("stale"), "{error}");
+    let after = list(&destination_client);
+    assert_eq!(after["variables"], destination_snapshot["variables"]);
+    let selected = destination_client
+        .send_command(
+            "function_var_get",
+            Some(
+                json!({"target":"edit_target", "var_name":"input", "selection":{
+                    "project": after["project"],
+                    "program": after["program"],
+                    "function_address": after["address"],
+                    "modification": after["modification"],
+                    "variable": row,
+                }}),
+            ),
+        )
+        .unwrap();
+    assert_eq!(selected["decompiler"], *row);
+}
+
+#[test]
+#[serial]
 fn function_variables_read_inferred_definitions_and_persist_selected_edits() {
     require_ghidra!();
     let harness = harness();
@@ -179,7 +281,7 @@ fn function_variables_read_inferred_definitions_and_persist_selected_edits() {
         .iter()
         .find(|row| row["name"] == "buffer")
         .unwrap();
-    let selection = json!({"program":snapshot["program"], "function_address":snapshot["address"],
+    let selection = json!({"project":snapshot["project"], "program":snapshot["program"], "function_address":snapshot["address"],
         "modification":snapshot["modification"], "variable":variable});
     // Even a structurally identical variable must not accept a selection made
     // before an intervening program edit.
@@ -209,9 +311,13 @@ public class ChangeVariableSelectionRevision extends GhidraScript {
         .unwrap_err();
     assert!(stale.to_string().contains("stale"), "{stale}");
     let current = list();
-    let valid = json!({"program":current["program"], "function_address":current["address"],
+    let valid = json!({"project":current["project"], "program":current["program"], "function_address":current["address"],
         "modification":current["modification"], "variable":variable});
     for (field, value) in [
+        (
+            "project",
+            json!({"location":"/another-project", "name":"project"}),
+        ),
         ("program", json!("/another-program")),
         ("function_address", json!("0x00001100")),
         ("modification", json!(0)),
@@ -229,7 +335,7 @@ public class ChangeVariableSelectionRevision extends GhidraScript {
     }
     // Reads share the same snapshot validation, and an intact snapshot works.
     let refreshed = list();
-    let valid = json!({"program":refreshed["program"], "function_address":refreshed["address"],
+    let valid = json!({"project":refreshed["project"], "program":refreshed["program"], "function_address":refreshed["address"],
         "modification":refreshed["modification"], "variable":variable});
     let selected = client
         .send_command(

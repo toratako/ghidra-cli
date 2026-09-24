@@ -227,6 +227,8 @@ fn resolve_variable(
             .with_context(|| format!("Missing variable selection context: {key}"))
     };
     Ok(Some(json!({
+        "project": response["project"].as_object()
+            .context("Missing variable selection context: project")?,
         "program": context("program")?,
         "function_address": context("address")?,
         "modification": context("modification")?,

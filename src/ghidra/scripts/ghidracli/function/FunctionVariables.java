@@ -79,12 +79,14 @@ public final class FunctionVariables {
             JsonElement value = args.get("selection");
             if (!value.isJsonObject()) return Selection.error(errorResult("selection must be a variable snapshot"));
             JsonObject selection = value.getAsJsonObject();
-            if (!selection.keySet().equals(Set.of("program", "function_address", "modification", "variable"))
+            if (!selection.keySet().equals(Set.of("project", "program", "function_address", "modification", "variable"))
+                    || !selection.get("project").isJsonObject()
                     || !isString(selection.get("program")) || !isString(selection.get("function_address"))
                     || !isString(selection.get("modification")) || !selection.get("variable").isJsonObject()) {
-                return Selection.error(errorResult("selection must contain program, function_address, modification and a complete variable row"));
+                return Selection.error(errorResult("selection must contain project, program, function_address, modification and a complete variable row"));
             }
-            if (!session.programPath().equals(selection.get("program").getAsString())
+            if (!project().equals(selection.getAsJsonObject("project"))
+                    || !session.programPath().equals(selection.get("program").getAsString())
                     || !AddressCodec.format(function.getEntryPoint()).equals(selection.get("function_address").getAsString())
                     || !modification().equals(selection.get("modification").getAsString())) {
                 return stale();
@@ -123,6 +125,14 @@ public final class FunctionVariables {
 
     public String modification() {
         return Long.toString(session.program().getModificationNumber());
+    }
+
+    public JsonObject project() {
+        var locator = session.state().getProject().getProjectLocator();
+        JsonObject result = new JsonObject();
+        result.addProperty("location", locator.getLocation());
+        result.addProperty("name", locator.getName());
+        return result;
     }
 
     public static JsonObject context(Function function) {

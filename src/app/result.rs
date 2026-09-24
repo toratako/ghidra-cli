@@ -25,7 +25,7 @@ impl ResultShape {
             Commands::Function(FunctionCommands::Var(FunctionVarCommands::List(_))) => {
                 Self::context(
                     "variables",
-                    &["function", "address", "program", "modification"],
+                    &["function", "address", "project", "program", "modification"],
                 )
             }
             Commands::Program(ProgramCommands::ListCallingConventions(_)) => {

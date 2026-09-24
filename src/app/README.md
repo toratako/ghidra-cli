@@ -64,7 +64,7 @@ never filter mutation receipts. Display limits and field projection do not
 select mutation targets.
 `function var list` applies ordinary list queries to decompiler rows. Get/set/infer-struct
 use `--where` only to narrow the exact `--var` name to one candidate, then send
-its program/function/modification/row guard for bridge revalidation. Their
+its project/program/function/modification/row guard for bridge revalidation. Their
 projection-only output controls never change target selection or filter receipts.
 Decompilation diagnostics are result fields in JSON and human formats. C-only
 output sends API diagnostics absent from its warning comments to stderr; field

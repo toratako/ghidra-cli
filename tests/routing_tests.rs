@@ -352,6 +352,7 @@ impl RecordedBridge {
                     }
                     "function_var_list" => json!({
                         "function": args["target"], "address": "0x1000", "program": program,
+                        "project": {"location": "/projects", "name": "project"},
                         "modification": "42", "variables": [
                             {"name": "value", "kind": "param", "type": "int", "storage": "EDI:4", "ordinal": 0, "first_use": null},
                             {"name": "value", "kind": "local", "type": "int", "storage": "Stack[-0x8]:4", "ordinal": null, "first_use": "0x1010"},

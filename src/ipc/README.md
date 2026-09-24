@@ -306,7 +306,8 @@ an explicit complete `function_set_signature` is the recovery path when the
 parameter definition cannot be inferred safely.
 
 `function_var_list` takes `target` and returns
-`{function, address, program, modification, variables}`. Rows describe the fresh
+`{function, address, project, program, modification, variables}`. The project
+identity is `{location, name}`. Rows describe the fresh
 decompiler view: `name`, `type`, `type_path`, `size`, `storage`, `kind`, plus
 parameter `ordinal` or local `first_use` (an absolute address or null).
 `function_var_get/set` take `target` and exact `var_name`; set also takes
@@ -317,8 +318,8 @@ with a nullable matching saved definition. Set returns `status: "updated"`,
 `auto_parameter`. These reads do not commit inferred variables.
 
 CLI get/set filters select from `function_var_list`, then pass a `selection`
-guard containing `program`, `function_address`, `modification`, and the complete
-selected `variable` row. The bridge verifies the current program/function and
+guard containing `project`, `program`, `function_address`, `modification`, and the complete
+selected `variable` row. The bridge verifies the current project/program/function and
 modification number, decompiles again, and requires the same unique row before
 reading or mutating. Without a guard, the exact name must itself be unique.
 No Rust filter is sent to Java; a filter is never applied to the edit receipt.

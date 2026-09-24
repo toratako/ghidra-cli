@@ -693,6 +693,10 @@ fn variable_list_queries_preserve_context_and_filter_before_paging() {
     );
     assert_eq!(result["meta"]["function"], "main");
     assert_eq!(result["meta"]["address"], "0x1000");
+    assert_eq!(
+        result["meta"]["project"],
+        json!({"location":"/projects","name":"project"})
+    );
     assert_eq!(result["meta"]["program"], "A");
     assert_eq!(result["meta"]["modification"], "42");
     assert_eq!(result["meta"]["returned"], 1);
@@ -781,6 +785,7 @@ fn variable_selection_sends_full_snapshot_and_keeps_selector_out_of_result_queri
             assert_eq!(
                 operations[1]["args"]["selection"],
                 json!({
+                    "project": {"location": "/projects", "name": "project"},
                     "program": "B", "function_address": "0x1000", "modification": "42",
                     "variable": {"name": "value", "kind": "local", "type": "int", "storage": "Stack[-0x8]:4", "ordinal": null, "first_use": "0x1010"},
                 })
