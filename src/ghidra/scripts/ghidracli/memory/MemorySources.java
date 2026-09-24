@@ -17,6 +17,8 @@ import java.util.Map;
 final class MemorySources {
     private MemorySources() {}
 
+    record OriginalRead(String hex, JsonArray mappings) {}
+
     static JsonObject describe(ProgramSession session, Address address) throws Exception {
         Snapshot sources = new Snapshot(session);
         return sources.at(address).description(sources, address);
@@ -69,14 +71,16 @@ final class MemorySources {
         return result;
     }
 
-    static JsonArray readOriginal(ProgramSession session, Address address, byte[] bytes) throws Exception {
+    static OriginalRead readOriginal(ProgramSession session, Address address, int size) throws Exception {
         JsonArray mappings = new JsonArray();
-        if (bytes.length == 0) return mappings;
+        if (size == 0) return new OriginalRead("", mappings);
         // Reject address wrapping before reading any bytes.
-        address.addNoWrap(bytes.length - 1);
+        address.addNoWrap((long) size - 1);
         Snapshot sources = new Snapshot(session);
+        byte[] bytes = new byte[16 * 1024];
+        StringBuilder hex = new StringBuilder();
         int offset = 0;
-        while (offset < bytes.length) {
+        while (offset < size) {
             session.monitor().checkCancelled();
             Address current = address.addNoWrap(offset);
             Mapping mapping = sources.at(current);
@@ -84,17 +88,25 @@ final class MemorySources {
                 throw new IllegalArgumentException("Original bytes unavailable at "
                     + AddressCodec.format(current) + ": " + mapping.reason);
             }
-            int length = (int) Math.min(bytes.length - offset,
+            int length = (int) Math.min(size - offset,
                 mapping.end.subtract(current) + 1);
             long fileBytesOffset = mapping.offsetAt(current);
-            int read = mapping.fileBytes.getOriginalBytes(fileBytesOffset, bytes, offset, length);
-            if (read != length) throw new IllegalStateException("Incomplete preserved file read at "
-                + AddressCodec.format(current));
+            int consumed = 0;
+            while (consumed < length) {
+                session.monitor().checkCancelled();
+                int requested = Math.min(bytes.length, length - consumed);
+                int read = mapping.fileBytes.getOriginalBytes(
+                    Math.addExact(fileBytesOffset, consumed), bytes, 0, requested);
+                if (read != requested) throw new IllegalStateException("Incomplete preserved file read at "
+                    + AddressCodec.format(current.addNoWrap(consumed)));
+                MemoryCommands.appendHex(hex, bytes, read);
+                consumed += read;
+            }
             mappings.add(mapping.range(sources, current, length));
             offset += length;
         }
         session.monitor().checkCancelled();
-        return mappings;
+        return new OriginalRead(hex.toString(), mappings);
     }
 
     /** Request-local: edits, moves and reopened programs must get fresh source anchors. */

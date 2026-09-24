@@ -3,6 +3,7 @@ package ghidracli.memory;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidracli.protocol.JsonProtocol;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
@@ -13,6 +14,9 @@ import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
 
 public final class MemoryCommands {
+    private static final int READ_CHUNK_SIZE = 16 * 1024;
+    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
+
     private final ProgramSession session;
     private final AddressResolver addressResolver;
 
@@ -77,16 +81,54 @@ public final class MemoryCommands {
                 return errorResult("Invalid address: " + addrStr);
             }
 
-            // Read bytes
-            byte[] bytes = new byte[size];
-            JsonArray mappings = source.equals("original")
-                ? MemorySources.readOriginal(session, baseAddr, bytes) : null;
-            int bytesRead = mappings == null ? mem.getBytes(baseAddr, bytes) : size;
+            if (source.equals("original")) {
+                MemorySources.OriginalRead original = MemorySources.readOriginal(session, baseAddr, size);
+                JsonObject result = new JsonObject();
+                result.addProperty("address", AddressCodec.format(baseAddr));
+                result.addProperty("source", source);
+                result.addProperty("size", size);
+                result.addProperty("hex", original.hex());
+                result.add("mappings", original.mappings());
+                return result;
+            }
 
-            // Build hex string
+            int pointerSize = session.program().getDefaultPointerSize();
+            int chunkSize = Math.max(pointerSize,
+                READ_CHUNK_SIZE / pointerSize * pointerSize);
+            byte[] bytes = new byte[chunkSize];
             StringBuilder hexStr = new StringBuilder();
-            for (int i = 0; i < bytesRead; i++) {
-                hexStr.append(String.format("%02x", bytes[i] & 0xFF));
+            PointerValues pointerValues = new PointerValues(session);
+            JsonArray pointers = new JsonArray();
+            int bytesRead = 0;
+            while (bytesRead < size) {
+                session.monitor().checkCancelled();
+                Address current;
+                try {
+                    current = baseAddr.addNoWrap(bytesRead);
+                } catch (ghidra.program.model.address.AddressOverflowException e) {
+                    // A read that reaches the end of an address space is a partial read.
+                    if (bytesRead == 0) throw e;
+                    break;
+                }
+                // Native getBytes stops at a missing or uninitialized block after
+                // a readable prefix. A fresh chunk at that boundary would throw.
+                if (bytesRead > 0) {
+                    MemoryBlock block = mem.getBlock(current);
+                    if (block == null || (!block.isInitialized() && !block.isMapped())) break;
+                }
+                int requested = Math.min(bytes.length, size - bytesRead);
+                int read = mem.getBytes(current, bytes, 0, requested);
+                appendHex(hexStr, bytes, read);
+                for (int i = 0; i <= read - pointerSize; i += pointerSize) {
+                    session.monitor().checkCancelled();
+                    Address pointerAddr = current.addNoWrap(i);
+                    JsonObject ptrObj = pointerValues.read(pointerAddr,
+                        Arrays.copyOfRange(bytes, i, i + pointerSize));
+                    ptrObj.addProperty("offset", bytesRead + i);
+                    pointers.add(ptrObj);
+                }
+                bytesRead += read;
+                if (read < requested) break;
             }
 
             JsonObject result = new JsonObject();
@@ -94,29 +136,22 @@ public final class MemoryCommands {
             result.addProperty("source", source);
             result.addProperty("size", bytesRead);
             result.addProperty("hex", hexStr.toString());
-            if (mappings != null) {
-                result.add("mappings", mappings);
-                return result;
-            }
-
-            int pointerSize = session.program().getDefaultPointerSize();
             result.addProperty("pointer_size", pointerSize);
             result.addProperty("endian", mem.isBigEndian() ? "big" : "little");
-            PointerValues pointerValues = new PointerValues(session);
-            JsonArray pointers = new JsonArray();
-            for (int i = 0; i <= bytesRead - pointerSize; i += pointerSize) {
-                session.monitor().checkCancelled();
-                Address pointerAddr = baseAddr.addNoWrap(i);
-                JsonObject ptrObj = pointerValues.read(pointerAddr,
-                    Arrays.copyOfRange(bytes, i, i + pointerSize));
-                ptrObj.addProperty("offset", i);
-                pointers.add(ptrObj);
-            }
-
             result.add("pointers", pointers);
             return result;
         } catch (Exception e) {
             return errorResult("Failed to read memory: " + e.getMessage());
+        }
+    }
+
+    static void appendHex(StringBuilder hex, byte[] bytes, int length) {
+        if ((long) hex.length() + (long) length * 2 > Integer.MAX_VALUE - 8) {
+            throw new IllegalArgumentException("Requested memory range is too large for a hex result");
+        }
+        for (int i = 0; i < length; i++) {
+            int value = bytes[i] & 0xff;
+            hex.append(HEX_DIGITS[value >>> 4]).append(HEX_DIGITS[value & 0xf]);
         }
     }
 }

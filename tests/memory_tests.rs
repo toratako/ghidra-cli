@@ -460,6 +460,48 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     check_memory_sources(&client);
     check_file_mappings(&client);
     check_file_mapping_cli(&harness, &client);
+    // A huge requested range with only a short readable prefix must not allocate
+    // the requested size or take down the persistent bridge.
+    let huge = i32::MAX as usize;
+    assert_eq!(
+        read_memory(&client, "0x1000", huge),
+        read_memory(&client, "0x1000", 8)
+    );
+    let error = client
+        .send_command(
+            "read_memory",
+            Some(json!({"address": "0x1000", "size": huge, "source": "original"})),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("Original bytes unavailable at 0x00001008"),
+        "{error}"
+    );
+    assert_eq!(
+        read_original(&client, "0x1000", 8)["hex"],
+        "1011121314151617"
+    );
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CreateReadChunkBoundary extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.getMemory().createInitializedBlock("read_chunk_boundary",
+            toAddr(0xa000), 16 * 1024, (byte) 0x42, monitor, false);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .expect("create block ending at the read chunk boundary");
+    let boundary = read_memory(&client, "0xa000", 16 * 1024 + 1);
+    assert_eq!(boundary["size"], 16 * 1024);
+    assert_eq!(boundary["hex"].as_str().unwrap().len(), 32 * 1024);
+    assert_eq!(boundary["pointers"].as_array().unwrap().len(), 4 * 1024);
     client
         .script_run_source(
             include_str!("memory_mappings/CheckFileMappingCancellation.java"),
