@@ -178,6 +178,24 @@ fn x86_value_evidence_matches_all_target_slots_and_excludes_other_tables() {
 
 #[test]
 #[serial]
+fn unknown_ram_vptr_does_not_match_overlay_table_at_same_offset() {
+    with_fixture(false, |client, _| {
+        let found = search(
+            client,
+            json!({
+                "function": "overlay_virtual_target",
+                "vtable": "overlay_virtual:0x3020",
+                "entries": 1,
+                "within": "unknown_zero"
+            }),
+        );
+        assert!(calls(&found).is_empty(), "{found}");
+        assert_eq!(found["scan"]["complete"], true, "{found}");
+    });
+}
+
+#[test]
+#[serial]
 fn aarch64_value_evidence_follows_loads_to_the_blr_instruction() {
     check_value_calls(true);
 }
@@ -267,7 +285,7 @@ fn omitted_scope_scans_all_internal_bodies_and_reports_native_failures() {
         let found = search(client, json!({}));
         assert!(found["scope"].is_null(), "{found}");
         assert_eq!(
-            found["scan"]["total_functions"], 21,
+            found["scan"]["total_functions"], 22,
             "External functions are not scanned: {found}"
         );
         assert_eq!(found["scan"]["complete"], false, "{found}");

@@ -173,6 +173,23 @@ public class CreateVirtualCallersFixture extends GhidraScript {
                 program.getListing().createData(address(0x3060), table);
                 program.getSymbolTable().createLabel(address(0x3020), "virtual_address_point", SourceType.USER_DEFINED);
                 program.getSymbolTable().createLabel(address(0x3060), "other_address_point", SourceType.USER_DEFINED);
+                if (!arm) {
+                    // Matching offsets in an overlay are a distinct table and code space.
+                    var overlay = memory.createInitializedBlock("overlay_virtual", address(0x1000),
+                        0x2100, (byte) 0, monitor, true);
+                    overlay.setExecute(true);
+                    overlay.setWrite(true);
+                    Address overlayTarget = overlay.getStart();
+                    memory.setBytes(overlayTarget, new byte[] {(byte) 0xb8, 42, 0, 0, 0, (byte) 0xc3});
+                    if (!new DisassembleCommand(overlayTarget,
+                            new AddressSet(overlayTarget, overlayTarget.add(5)), false)
+                            .applyTo(program, monitor)) {
+                        throw new IllegalStateException("Cannot disassemble overlay virtual target");
+                    }
+                    program.getFunctionManager().createFunction("overlay_virtual_target", overlayTarget,
+                        new AddressSet(overlayTarget, overlayTarget.add(5)), SourceType.USER_DEFINED);
+                    memory.setLong(overlayTarget.add(0x2020), 0x1000);
+                }
                 // An internal body without mapped instructions must make an all-functions scan incomplete.
                 program.getFunctionManager().createFunction("unmapped", address(0x5000),
                     new AddressSet(address(0x5000)), SourceType.USER_DEFINED);

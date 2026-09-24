@@ -200,6 +200,9 @@ final class VirtualCallTrace {
         private void pointer(Value value, AddressSpace space, long offset, boolean typed,
                 Address loadSite, int depth)
                 throws CancelledException {
+            // LOAD's space identifies the memory being read even when its pointer
+            // base is unknown. Matching offsets in another overlay are unrelated.
+            if (!space.equals(addressPoint.getAddressSpace())) return;
             if (!enter(value, depth)) return;
             try {
                 typed |= tablePointer(value.node());
