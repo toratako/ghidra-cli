@@ -114,10 +114,16 @@ final class CallReferences {
     }
 
     private boolean isPointerReference(Reference ref) {
-        Data data = session.program().getListing().getDataAt(ref.getFromAddress());
         RefType type = ref.getReferenceType();
-        return data != null && data.isPointer()
-            && (type == RefType.DATA || type == RefType.INDIRECTION || ref.isExternalReference());
+        if (type != RefType.DATA && type != RefType.INDIRECTION && !ref.isExternalReference()) {
+            return false;
+        }
+        Data data = session.program().getListing().getDefinedDataContaining(ref.getFromAddress());
+        if (data == null) return false;
+        long offset = ref.getFromAddress().subtract(data.getMinAddress());
+        if (offset > Integer.MAX_VALUE) return false;
+        Data primitive = data.getPrimitiveAt((int) offset);
+        return primitive != null && primitive.isPointer();
     }
 
     /** Keep distinct landing addresses, even within one callee, but deduplicate slot/flow evidence. */

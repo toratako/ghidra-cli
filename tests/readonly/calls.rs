@@ -15,6 +15,9 @@ import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.SourceType;
@@ -73,6 +76,24 @@ public class CreateCallSearchFixture extends GhidraScript {
                     throw new IllegalStateException("Could not disassemble local indirect call");
                 }
                 refs.addMemoryReference(localIndirect, localSlot, RefType.READ, source, 0);
+                // References from pointer leaves inside aggregates must be followed too.
+                var record = new StructureDataType("CallRecord", 0);
+                record.add(IntegerDataType.dataType, "tag", null);
+                record.add(PointerDataType.dataType, "target", null);
+                var recordSlot = space.getAddress(0x3050);
+                program.getListing().createData(recordSlot, record);
+                refs.addMemoryReference(recordSlot.add(4), space.getAddress(0x1100), RefType.DATA, source, 0);
+                var arraySlot = space.getAddress(0x3070);
+                program.getListing().createData(arraySlot, new ArrayDataType(PointerDataType.dataType, 2, 8));
+                refs.addMemoryReference(arraySlot.add(8), space.getAddress(0x1200), RefType.DATA, source, 0);
+                for (int[] edge : new int[][] {{0x10e0, 0x3054}, {0x10e8, 0x3078}}) {
+                    var site = space.getAddress(edge[0]);
+                    program.getMemory().setBytes(site, new byte[] {(byte)0xff, (byte)0xd0});
+                    if (!new DisassembleCommand(site, new AddressSet(site, site.add(1)), false).applyTo(program, monitor)) {
+                        throw new IllegalStateException("Could not disassemble aggregate indirect call");
+                    }
+                    refs.addMemoryReference(site, space.getAddress(edge[1]), RefType.READ, source, 0);
+                }
                 program.getSymbolTable().createLabel(slot, "__imp_CreateProcessA", source);
                 // Interior and undefined destinations, an unowned call site, and a disjoint body.
                 refs.addMemoryReference(space.getAddress(0x1090), space.getAddress(0x1204), RefType.UNCONDITIONAL_CALL, source, 0);
@@ -171,6 +192,8 @@ public class CreateCallSearchFixture extends GhidraScript {
                 (0x10b8, None),
                 (0x10c0, Some("search_leaf")),
                 (0x10d8, Some("CreateProcessA")),
+                (0x10e0, Some("search_helper")),
+                (0x10e8, Some("search_leaf")),
                 (0x2500, Some("search_leaf")),
             ],
             "{outgoing}"
@@ -208,7 +231,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             .collect();
         assert_eq!(landings, [0x1200, 0x1204]);
         let local = client.graph_callers("search_helper", None, None).unwrap();
-        assert_eq!(local["count"], 4, "{local}");
+        assert_eq!(local["count"], 5, "{local}");
         let orphan = local["calls"]
             .as_array()
             .unwrap()
@@ -264,7 +287,7 @@ public class CreateCallSearchFixture extends GhidraScript {
         let deep = client
             .graph_callees("search_caller", Some(0), None)
             .unwrap();
-        assert_eq!(deep["count"], 17, "{deep}");
+        assert_eq!(deep["count"], 19, "{deep}");
         let second = deep["calls"]
             .as_array()
             .unwrap()
@@ -277,7 +300,7 @@ public class CreateCallSearchFixture extends GhidraScript {
         // Whole-program function graphs use the same edges, including undefined destinations.
         let graph = client.graph_calls(None).unwrap();
         let edges = graph["edges"].as_array().unwrap();
-        assert_eq!(edges.len(), 17, "{graph}");
+        assert_eq!(edges.len(), 19, "{graph}");
         for node in graph["nodes"].as_array().unwrap() {
             let outgoing = client
                 .graph_callees(node["address"].as_str().unwrap(), None, None)
@@ -336,7 +359,7 @@ public class CreateCallSearchFixture extends GhidraScript {
             .json_format()
             .run();
         count.assert_success();
-        assert_eq!(count.data::<Value>(), json!(16));
+        assert_eq!(count.data::<Value>(), json!(18));
         let dir = tempfile::tempdir().unwrap();
         let batch_file = dir.path().join("calls.txt");
         std::fs::write(&batch_file,
