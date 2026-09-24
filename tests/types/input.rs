@@ -47,6 +47,42 @@ fn type_import_file_and_stdin_create_saved_definitions() {
 
 #[test]
 #[serial]
+fn import_into_functions_category_reports_declared_structure() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let result = type_command(
+        &program,
+        &[
+            "import-c",
+            "--category",
+            "/functions",
+            "--code",
+            "struct Reported { int value; };",
+        ],
+    );
+    result.assert_success();
+    let receipt: serde_json::Value = result.data();
+    assert!(
+        receipt["types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["name"] == "Reported" && row["path"] == "/functions/Reported"),
+        "{receipt}"
+    );
+    assert_eq!(
+        type_command(&program, &["get", "/functions/Reported"]).data::<serde_json::Value>()["kind"],
+        "struct"
+    );
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_parse_failure_restores_types_and_applied_data_after_reopen() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

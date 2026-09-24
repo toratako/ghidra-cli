@@ -80,7 +80,7 @@ public final class TypeImportCommands {
             Map<String, CategoryPath> definitionPaths = new HashMap<>();
             Set<String> visiblePaths = new HashSet<>();
             for (DataType dt : parsedTypes) {
-                if (isUserFacingDataType(dt)) visiblePaths.add(dt.getPathName());
+                if (isUserFacingDataType(dt, parser)) visiblePaths.add(dt.getPathName());
                 for (DataType contained : DataTypeUtilities.getContainedDataTypes(dt)) {
                     if (!isDefinition(contained)) continue;
                     boolean declared = parsedTypes.contains(contained)
@@ -90,7 +90,7 @@ public final class TypeImportCommands {
                     if (!declared) continue;
                     CategoryPath destination = contained.getCategoryPath();
                     if (categoryPath != null) {
-                        destination = isUserFacingDataType(contained)
+                        destination = isUserFacingDataType(contained, parser)
                             ? lookupPath : new CategoryPath(lookupPath, "functions");
                     }
                     definitionPaths.put(contained.getPathName(), destination);
@@ -216,16 +216,16 @@ public final class TypeImportCommands {
             || dt instanceof TypeDef || dt instanceof FunctionDefinition;
     }
 
-    private boolean isUserFacingDataType(DataType dt) {
+    private boolean isUserFacingDataType(DataType dt, CParser parser) {
         if (dt == null) return false;
-        return !dt.getCategoryPath().toString().equals("/functions");
+        return !(dt instanceof FunctionDefinition
+            && parser.getFunctions().containsValue(dt));
     }
 
     private DataType findBestParsedDataType(String name, Set<DataType> parsed,
             CategoryPath preferred) {
         DataType best = null;
         for (DataType dt : parsed) {
-            if (!isUserFacingDataType(dt)) continue;
             if (!dt.getName().equals(name)) continue;
             if (dt.getCategoryPath().equals(preferred)) {
                 return dt;
