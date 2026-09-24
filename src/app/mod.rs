@@ -54,7 +54,7 @@ pub(super) fn run_command(cli: Cli) -> anyhow::Result<()> {
 fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
     let result = (|| {
         let prepared = if let Commands::Batch(args) = &cli.command {
-            Some(batch::prepare(
+            let prepared = batch::prepare(
                 std::path::Path::new(&args.script_file),
                 args.from_line.map(|line| line.get()),
                 |sub_cli| {
@@ -71,7 +71,14 @@ fn run_with_bridge(cli: Cli) -> anyhow::Result<()> {
                         .plan(&sub_cli.command, None)
                         .map(|_| ())
                 },
-            )?)
+            )?;
+            let config = load_config(&cli.projects_dir)?;
+            batch::validate_prepared(&prepared, |sub_cli| {
+                parse_command_query(&sub_cli.command)?
+                    .plan(&sub_cli.command, config.default_limit)
+                    .map(|_| ())
+            })?;
+            Some(prepared)
         } else {
             None
         };

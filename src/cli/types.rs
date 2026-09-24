@@ -1,5 +1,5 @@
 use super::numeric;
-use super::options::{ObjectOptions, QueryOptions};
+use super::options::{parse_page_size, ObjectOptions, QueryOptions};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
@@ -94,10 +94,10 @@ pub struct TypeArchiveQueryOptions {
     #[arg(long, value_enum, ignore_case = true)]
     pub format: Option<super::OutputFormat>,
     /// Maximum number of results (0 = unlimited; default 1000)
-    #[arg(long, value_parser = numeric::parse::<usize>)]
+    #[arg(long, value_parser = parse_page_size)]
     pub limit: Option<usize>,
     /// Skip first N results
-    #[arg(long, value_parser = numeric::parse::<usize>)]
+    #[arg(long, value_parser = parse_page_size)]
     pub skip: Option<usize>,
     /// Sort by field(s) (comma-separated, prefix with - for descending)
     #[arg(long, allow_hyphen_values = true)]

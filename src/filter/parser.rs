@@ -188,6 +188,9 @@ fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<FilterExpr> {
                 ))
             }
         };
+        if str_op == StringOp::Regex {
+            super::evaluator::validate_regex(&val_str)?;
+        }
         return Ok(FilterExpr::StringOp {
             field,
             op: str_op,
@@ -286,6 +289,14 @@ mod tests {
     fn test_parse_and() {
         let filter = parse_filter("name=test AND size>100").unwrap();
         assert!(matches!(filter.expr, FilterExpr::Logical { .. }));
+    }
+
+    #[test]
+    fn invalid_regex_is_rejected_before_rows_are_evaluated() {
+        for input in ["name=~'['", "name=valid OR name=~'['", "NOT (name=~'[')"] {
+            let error = parse_filter(input).err().expect(input);
+            assert!(error.to_string().contains("Invalid regex"), "{error}");
+        }
     }
 
     #[test]

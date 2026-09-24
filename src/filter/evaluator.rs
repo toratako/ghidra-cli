@@ -304,6 +304,10 @@ fn compiled_regex(pattern: &str) -> Result<std::rc::Rc<regex::Regex>> {
     })
 }
 
+pub(super) fn validate_regex(pattern: &str) -> Result<()> {
+    compiled_regex(pattern).map(|_| ())
+}
+
 fn evaluate_logical(op: LogicalOp, exprs: &[FilterExpr], data: &JsonValue) -> Result<bool> {
     match op {
         LogicalOp::And => {

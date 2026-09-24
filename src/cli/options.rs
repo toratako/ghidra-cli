@@ -78,11 +78,11 @@ pub struct QueryOptions {
     pub format: Option<OutputFormat>,
 
     /// Maximum number of results (0 = unlimited; default 1000)
-    #[arg(long, value_parser = super::numeric::parse::<usize>)]
+    #[arg(long, value_parser = parse_page_size)]
     pub limit: Option<usize>,
 
     /// Skip first N results
-    #[arg(long, value_parser = super::numeric::parse::<usize>)]
+    #[arg(long, value_parser = parse_page_size)]
     pub skip: Option<usize>,
 
     /// Sort by field(s) (comma-separated, prefix with - for descending)
@@ -96,4 +96,8 @@ pub struct QueryOptions {
     /// Output compact JSON (shorthand for --format=json-compact)
     #[arg(long)]
     pub json: bool,
+}
+
+pub(super) fn parse_page_size(value: &str) -> Result<usize, String> {
+    super::numeric::ranged(value, 0, i64::MAX as i128)
 }

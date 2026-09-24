@@ -58,6 +58,39 @@ fn bounded_queries_reject_oversized_limits_before_bridge_work() {
 }
 
 #[test]
+fn page_operands_reject_values_above_java_signed_long() {
+    let bridge = RecordedBridge::new();
+    for option in ["--limit", "--skip"] {
+        let output = bridge
+            .command()
+            .args(["function", "list", option, "9223372036854775808"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(error["message"]
+            .as_str()
+            .unwrap()
+            .contains("must be between 0 and 9223372036854775807"));
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+    let output = bridge
+        .command()
+        .args([
+            "type",
+            "archive",
+            "inspect",
+            "sdk.gdt",
+            "--skip",
+            "9223372036854775808",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
 fn bounded_query_defaults_respect_count_and_explicit_unlimited() {
     let bridge = RecordedBridge::new();
     std::fs::write(

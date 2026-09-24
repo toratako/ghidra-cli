@@ -115,6 +115,55 @@ fn batch_reports_all_malformed_quoting_before_executing_any_lines() {
 }
 
 #[test]
+fn batch_rejects_invalid_regex_before_a_preceding_edit() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "comment set 0x1000 --text before\nfunction list --filter 'name=~\"[\"'\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 0);
+    assert_eq!(report["validation_errors"][0]["line"], 2);
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn batch_checks_configured_limit_before_a_preceding_edit() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("config.yaml"),
+        "default_limit: 2147483648\n",
+    )
+    .unwrap();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "comment set 0x1000 --text before\ngraph calls\n",
+    )
+    .unwrap();
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 0);
+    assert_eq!(report["validation_errors"][0]["line"], 2);
+    assert!(report["validation_errors"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("--limit must be between 0 and 2147483647"));
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
 fn batch_preflight_collects_nested_syntax_queries_read_errors_and_cycles() {
     for policy in ["continue", "stop"] {
         let bridge = RecordedBridge::new();

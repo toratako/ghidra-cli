@@ -44,8 +44,46 @@ pub(super) fn prepare(
         &mut errors,
         &validate,
     );
+    report_validation_errors(file, from_line, batch.as_ref(), errors)?;
+    Ok(batch.expect("a missing batch has a validation error"))
+}
+
+/// Check configuration-dependent bounds on the already frozen command tree.
+pub(super) fn validate_prepared(
+    batch: &PreparedBatch,
+    validate: impl Fn(&Cli) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    fn visit(
+        batch: &PreparedBatch,
+        errors: &mut Vec<serde_json::Value>,
+        validate: &impl Fn(&Cli) -> anyhow::Result<()>,
+    ) {
+        for line in &batch.lines {
+            if let Err(error) = validate(&line.cli) {
+                errors.push(json!({
+                    "file": batch.file, "line": line.number,
+                    "command": line.text.trim(), "error": error.to_string(),
+                }));
+            }
+            if let Some(nested) = &line.nested {
+                visit(nested, errors, validate);
+            }
+        }
+    }
+
+    let mut errors = Vec::new();
+    visit(batch, &mut errors, &validate);
+    report_validation_errors(&batch.file, Some(batch.from_line), Some(batch), errors)
+}
+
+fn report_validation_errors(
+    file: &Path,
+    from_line: Option<usize>,
+    batch: Option<&PreparedBatch>,
+    errors: Vec<serde_json::Value>,
+) -> anyhow::Result<()> {
     if !errors.is_empty() {
-        let count = batch.as_ref().map_or(0, |batch| batch.commands_parsed);
+        let count = batch.map_or(0, |batch| batch.commands_parsed);
         let diagnostics = errors
             .iter()
             .map(|error| {
@@ -86,7 +124,7 @@ pub(super) fn prepare(
         }
         .into());
     }
-    Ok(batch.expect("a missing batch has a validation error"))
+    Ok(())
 }
 
 fn read_batch(

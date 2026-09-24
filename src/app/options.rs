@@ -690,6 +690,18 @@ pub(super) fn validate_query_bounds(
             i32::MAX
         );
     }
+    anyhow::ensure!(
+        plan.page
+            .limit
+            .is_none_or(|limit| limit <= i64::MAX as usize),
+        "--limit must be between 0 and {} (0 means unlimited)",
+        i64::MAX
+    );
+    anyhow::ensure!(
+        plan.page.offset <= i64::MAX as usize,
+        "--skip must be between 0 and {}",
+        i64::MAX
+    );
     if let Commands::Graph(cli::GraphCommands::Callers(args) | cli::GraphCommands::Callees(args)) =
         command
     {
