@@ -95,36 +95,7 @@ fn parse_cli() -> Cli {
             // A failed parse has no Cli. Recover only presentation options, stopping
             // at `--` so script arguments and operands never select our output mode.
             use std::io::{IsTerminal, Write};
-            let mut output =
-                app::Output::diagnostic(!std::io::stdout().is_terminal(), false, false);
-            let mut format = None;
-            let mut args = args.iter().skip(1).take_while(|arg| *arg != "--");
-            while let Some(arg) = args.next() {
-                if arg == "--json" {
-                    output.json = true;
-                } else if arg == "--pretty" {
-                    output.json = true;
-                    output.pretty = true;
-                } else if arg == "--format" {
-                    format = args
-                        .next()
-                        .and_then(|arg| arg.to_str())
-                        .and_then(|f| f.parse::<format::OutputFormat>().ok());
-                } else if let Some(value) =
-                    arg.to_str().and_then(|arg| arg.strip_prefix("--format="))
-                {
-                    format = value.parse::<format::OutputFormat>().ok();
-                }
-            }
-            if let Some(format) = format {
-                output.json = matches!(
-                    format,
-                    format::OutputFormat::Json
-                        | format::OutputFormat::JsonCompact
-                        | format::OutputFormat::JsonStream
-                );
-                output.pretty = matches!(format, format::OutputFormat::Json);
-            }
+            let output = parser_diagnostic_output(&args, std::io::stdout().is_terminal());
             if output.json {
                 let value = serde_json::json!({"status": "error", "message": error.to_string(), "exit_code": error.exit_code()});
                 let _ = writeln!(
@@ -139,6 +110,47 @@ fn parse_cli() -> Cli {
             error.exit();
         }
     }
+}
+
+fn parser_diagnostic_output(args: &[std::ffi::OsString], stdout_terminal: bool) -> app::Output {
+    let mut output = app::Output::diagnostic(!stdout_terminal, false, false);
+    let mut format = None;
+    let mut args = args
+        .iter()
+        .skip(1)
+        .take_while(|arg| *arg != "--")
+        .peekable();
+    while let Some(arg) = args.next() {
+        if arg == "--json" {
+            output.json = true;
+        } else if arg == "--pretty" {
+            output.json = true;
+            output.pretty = true;
+        } else if arg == "--format" {
+            // A missing value must leave the following switch visible to this
+            // diagnostic scanner, just as clap leaves it as a separate token.
+            if let Some(value) = args
+                .peek()
+                .and_then(|arg| arg.to_str())
+                .filter(|value| !value.starts_with('-'))
+            {
+                format = value.parse::<format::OutputFormat>().ok();
+                args.next();
+            }
+        } else if let Some(value) = arg.to_str().and_then(|arg| arg.strip_prefix("--format=")) {
+            format = value.parse::<format::OutputFormat>().ok();
+        }
+    }
+    if let Some(format) = format {
+        output.json = matches!(
+            format,
+            format::OutputFormat::Json
+                | format::OutputFormat::JsonCompact
+                | format::OutputFormat::JsonStream
+        );
+        output.pretty = matches!(format, format::OutputFormat::Json);
+    }
+    output
 }
 
 fn format_error(error: &anyhow::Error, output: app::Output, verbose: u8) -> (i32, String) {
@@ -252,6 +264,17 @@ mod tests {
         let output = app::Output::new(&cli);
         let (_, text) = format_error(&anyhow::anyhow!("failed operation"), output, 0);
         assert_eq!(text, "Error: failed operation");
+    }
+
+    #[test]
+    fn missing_format_value_does_not_consume_explicit_json_switch() {
+        for (switch, pretty) in [("--json", false), ("--pretty", true)] {
+            let args = ["ghidra-cli", "function", "list", "--format", switch]
+                .map(std::ffi::OsString::from);
+            let output = parser_diagnostic_output(&args, true);
+            assert!(output.json, "{switch}");
+            assert_eq!(output.pretty, pretty, "{switch}");
+        }
     }
 
     #[test]
