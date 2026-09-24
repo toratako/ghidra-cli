@@ -161,6 +161,13 @@ public final class SymbolCommands {
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             SymbolTable symbolTable = session.program().getSymbolTable();
+            for (Symbol symbol : symbolTable.getSymbols(addr)) {
+                if (symbol.getSymbolType() == SymbolType.FUNCTION
+                        && symbol.getSource() == SourceType.DEFAULT) {
+                    return errorResult("A default-named function exists at this address; "
+                        + "use function rename to name it before creating a label");
+                }
+            }
             symbolTable.createLabel(addr, name, SourceType.USER_DEFINED);
 
             JsonObject result = new JsonObject();
@@ -350,6 +357,13 @@ public final class SymbolCommands {
             SymbolTable symbolTable = session.program().getSymbolTable();
             List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, args);
             rejectNamespaceEdits(toDelete);
+            for (Symbol symbol : toDelete) {
+                if (symbol.getSymbolType() == SymbolType.LIBRARY
+                        && symbolTable.getChildren(symbol).hasNext()) {
+                    throw new IllegalArgumentException(
+                        "Library contains external imports; delete them before deleting the library");
+                }
+            }
             List<JsonObject> selected = new ArrayList<>();
             JsonArray deleted = new JsonArray();
             JsonArray failed = new JsonArray();
@@ -453,7 +467,7 @@ public final class SymbolCommands {
         }
     }
 
-    public JsonObject handleSymbolExternals(JsonObject args) {
+    public JsonObject handleSymbolExternals(JsonObject args) throws CancelledException {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -467,6 +481,7 @@ public final class SymbolCommands {
         int count = 0;
         while (extSymbols.hasNext()) {
             if (limit > 0 && count >= limit) break;
+            session.monitor().checkCancelled();
             Symbol symbol = extSymbols.next();
             ExternalLocation extLoc = extMgr.getExternalLocation(symbol);
             if (extLoc != null) {
@@ -485,7 +500,7 @@ public final class SymbolCommands {
         return result;
     }
 
-    public JsonObject handleSymbolEntryPoints(JsonObject args) {
+    public JsonObject handleSymbolEntryPoints(JsonObject args) throws CancelledException {
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -498,6 +513,7 @@ public final class SymbolCommands {
         int count = 0;
         while (symIter.hasNext()) {
             if (limit > 0 && count >= limit) break;
+            session.monitor().checkCancelled();
             Symbol symbol = symIter.next();
             if (symbol.isExternalEntryPoint()) {
                 JsonObject exportData = new JsonObject();

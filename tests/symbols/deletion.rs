@@ -41,6 +41,152 @@ public class CreateSymbolDeletionProgram extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_create_label_does_not_rename_default_function() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let client = harness().client().unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class CreateDefaultFunctionForLabel extends GhidraScript {
+    public void run() throws Exception {
+        var entry = toAddr(0x1020);
+        currentProgram.getFunctionManager().createFunction(null, entry,
+            new AddressSet(entry, entry), SourceType.DEFAULT);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
+        assert_eq!(before["type"], "Function");
+        assert_eq!(before["source"], "DEFAULT");
+        let error = client
+            .symbol_create_label("0x1020", "must_be_a_label")
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("default-named function"),
+            "{error:#}"
+        );
+        assert_eq!(client.symbol_get("0x1020").unwrap()["symbols"][0], before);
+        assert!(client.symbol_get_by_name("must_be_a_label").is_err());
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(client.symbol_get("0x1020").unwrap()["symbols"][0], before);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
+fn test_symbol_delete_rejects_library_before_deleting_selected_label_or_imports() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let client = harness().client().unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.SourceType;
+public class CreateLibraryDeletionFixture extends GhidraScript {
+    public void run() throws Exception {
+        var table = currentProgram.getSymbolTable();
+        var name = getScriptArgs()[0];
+        table.createLabel(toAddr(0x1010), name, SourceType.USER_DEFINED);
+        currentProgram.getExternalManager().addExtLocation(name, "owned_import_one",
+            null, SourceType.USER_DEFINED);
+        currentProgram.getExternalManager().addExtLocation(name, "owned_import_two",
+            null, SourceType.USER_DEFINED);
+        currentProgram.getExternalManager().addExternalLibraryName("empty_library",
+            SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &["guarded_library".to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = client.symbol_get_by_name("guarded_library").unwrap();
+        let symbols = before["symbols"].as_array().unwrap();
+        let label = symbols
+            .iter()
+            .find(|symbol| symbol["type"] == "Label")
+            .unwrap();
+        let library = symbols
+            .iter()
+            .find(|symbol| symbol["type"] == "Library")
+            .unwrap();
+        let import_one = client.symbol_get_by_name("owned_import_one").unwrap();
+        let import_two = client.symbol_get_by_name("owned_import_two").unwrap();
+        for targets in [vec![library.clone()], vec![label.clone(), library.clone()]] {
+            let error = client
+                .symbol_delete_targets("guarded_library", &targets)
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Library contains external imports"),
+                "{error:#}"
+            );
+            assert_eq!(
+                client.symbol_get_by_name("guarded_library").unwrap(),
+                before
+            );
+            assert_eq!(
+                client.symbol_get_by_name("owned_import_one").unwrap(),
+                import_one
+            );
+            assert_eq!(
+                client.symbol_get_by_name("owned_import_two").unwrap(),
+                import_two
+            );
+        }
+        let empty = client.symbol_get_by_name("empty_library").unwrap()["symbols"][0].clone();
+        assert_eq!(empty["type"], "Library");
+        let deleted = client
+            .symbol_delete_targets("empty_library", std::slice::from_ref(&empty))
+            .unwrap();
+        assert_eq!(deleted["count"], 1);
+        assert_eq!(deleted["deleted"], serde_json::json!([empty]));
+        assert!(client.symbol_get_by_name("empty_library").is_err());
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert!(client.symbol_get_by_name("empty_library").is_err());
+        assert_eq!(
+            client.symbol_get_by_name("guarded_library").unwrap(),
+            before
+        );
+        assert_eq!(
+            client.symbol_get_by_name("owned_import_one").unwrap(),
+            import_one
+        );
+        assert_eq!(
+            client.symbol_get_by_name("owned_import_two").unwrap(),
+            import_two
+        );
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_default_thunk_names_round_trip_and_keep_mutations_scoped() {
     require_ghidra!();
     let program = create_symbol_fixture_program();

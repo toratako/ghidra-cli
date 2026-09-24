@@ -133,6 +133,7 @@ public final class CommentCommands {
         if (commentTypeStr == null) commentTypeStr = "EOL";
 
         if (addressStr == null) return errorResult("Address required");
+        if (text == null) return errorResult("Comment text required");
 
         try {
             Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);

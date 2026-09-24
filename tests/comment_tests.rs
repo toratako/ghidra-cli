@@ -224,6 +224,16 @@ fn comment_wire_rejects_invalid_scope_and_type_without_mutation() {
             serde_json::json!({"address": addr, "comment_type": "invalid", "text": "must not replace EOL"}),
             "Invalid comment type",
         ),
+        (
+            "comment_set",
+            serde_json::json!({"address": addr}),
+            "Comment text required",
+        ),
+        (
+            "comment_set",
+            serde_json::json!({"address": addr, "text": null}),
+            "Comment text required",
+        ),
     ] {
         let error = client.send_command(command, Some(args)).unwrap_err();
         assert!(error.to_string().contains(message), "{command}: {error}");
