@@ -9,6 +9,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `internal_program_name` to `program info` so Ghidra's internal Program
+  name remains visible when it differs from the selected project file name.
 - Add `namespace rename`, `namespace move`, and `namespace delete` for local
   namespaces and classes. Deletion requires an empty namespace unless
   `--recursive` is explicit, and reports every removed symbol, including
