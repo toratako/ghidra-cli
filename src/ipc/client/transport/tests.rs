@@ -163,6 +163,18 @@ fn request_deadline_bounds_connection_retries() {
 }
 
 #[test]
+fn ping_deadline_bounds_connection_retries() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port());
+    drop(listener);
+    let started = std::time::Instant::now();
+    assert!(!client
+        .ping_with_deadline(started + Duration::from_millis(100))
+        .unwrap());
+    assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
 fn shutdown_preserves_save_failure_without_resending() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let client = BridgeClient::new(listener.local_addr().unwrap().port());

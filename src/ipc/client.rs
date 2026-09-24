@@ -74,10 +74,14 @@ impl BridgeClient {
 
     /// Check if bridge is responding.
     ///
-    /// Uses a short read timeout so readiness polling stays snappy (a missing
-    /// or unbound socket fails fast rather than blocking).
+    /// Bounds connection retries, request writing, and response reading by
+    /// one short deadline so readiness polling stays responsive.
     pub fn ping(&self) -> Result<bool> {
-        match self.send_command_with_timeout("ping", None, Some(Duration::from_secs(5))) {
+        self.ping_with_deadline(Instant::now() + Duration::from_secs(5))
+    }
+
+    fn ping_with_deadline(&self, deadline: Instant) -> Result<bool> {
+        match self.send_command_with_deadline("ping", None, Some(deadline)) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
