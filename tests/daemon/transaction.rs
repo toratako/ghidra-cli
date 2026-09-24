@@ -155,6 +155,10 @@ public class RequestTransactionProbe extends GhidraScript {
                         fault = null;
                         throw new IllegalStateException("injected failure after comment edit");
                     }
+                    if ("late-assertion".equals(fault)) {
+                        fault = null;
+                        throw new AssertionError("injected assertion after comment edit");
+                    }
                     if ("cancel".equals(fault)) {
                         fault = null;
                         requestMonitor.cancel();
@@ -520,7 +524,7 @@ public class RequestTransactionProbe extends GhidraScript {
             success(command("comment_set", comment(prior, "EOL")));
             savedComment(CodeUnit.EOL_COMMENT, prior);
             switch (mode) {
-                case "late-error": case "cancel": case "native-false": testLateFailure(mode); break;
+                case "late-error": case "late-assertion": case "cancel": case "native-false": testLateFailure(mode); break;
                 case "stats-cancel": testStatsCancellation(); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": testSaveRecovery(); break;
@@ -603,6 +607,12 @@ fn run_transaction_probe(mode: &str) {
 #[serial]
 fn test_late_error_rolls_back_only_the_failed_request() {
     run_transaction_probe("late-error");
+}
+
+#[test]
+#[serial]
+fn test_late_assertion_rolls_back_only_the_failed_request() {
+    run_transaction_probe("late-assertion");
 }
 
 #[test]

@@ -59,6 +59,11 @@ public final class JsonProtocol {
         return cause instanceof CommandException ? ((CommandException) cause).detail() : null;
     }
 
+    /** VM failures and forced thread termination cannot be safely returned as job errors. */
+    public static boolean isFatalError(Error error) {
+        return error instanceof VirtualMachineError || error instanceof ThreadDeath;
+    }
+
     public static String getArgString(JsonObject args, String key) {
         if (args == null || !args.has(key) || args.get(key).isJsonNull()) return null;
         return args.get(key).getAsString();

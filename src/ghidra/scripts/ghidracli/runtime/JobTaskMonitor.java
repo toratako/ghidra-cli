@@ -8,9 +8,25 @@ final class JobTaskMonitor extends TaskMonitorAdapter {
     private volatile long progress;
     private volatile long maximum;
     private volatile boolean indeterminate;
+    private volatile boolean cancelRequested;
 
     JobTaskMonitor() {
         super(true);
+    }
+
+    boolean wasCancelRequested() {
+        return cancelRequested;
+    }
+
+    void requestCancellation() {
+        cancelRequested = true;
+        super.cancel();
+    }
+
+    @Override
+    public void setCancelEnabled(boolean enabled) {
+        super.setCancelEnabled(enabled);
+        if (enabled && cancelRequested) super.cancel();
     }
 
     @Override

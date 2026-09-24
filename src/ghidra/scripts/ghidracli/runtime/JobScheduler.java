@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import ghidra.framework.model.Project;
 import ghidra.util.task.TaskMonitor;
+import ghidracli.protocol.JsonProtocol;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayDeque;
 import java.util.Iterator;
@@ -140,6 +141,12 @@ final class JobScheduler {
             responseStatus = "error";
             result = errorResponse(failure);
             result.addProperty("job_id", record.id);
+        } catch (Error e) {
+            if (JsonProtocol.isFatalError(e)) throw e;
+            failure = e.getMessage() == null ? e.toString() : e.getMessage();
+            responseStatus = "error";
+            result = errorResponse(failure);
+            result.addProperty("job_id", record.id);
         } finally {
             session.setMonitor(bridgeMonitor);
             refreshBridgeSnapshot();
@@ -151,7 +158,7 @@ final class JobScheduler {
         byte[] snapshot = results.snapshot(result);
         synchronized (lifecycleLock) {
             boolean failed = "error".equals(responseStatus);
-            record.state = record.monitor.isCancelled()
+            record.state = (record.monitor.wasCancelRequested() || record.monitor.isCancelled())
                 ? (failed ? "cancelled" : "completed_after_cancel")
                 : (failed ? "failed" : "complete");
             record.error = failure;
@@ -433,7 +440,7 @@ final class JobScheduler {
         JobRecord active = activeJob;
         if (active != null && active.id.equals(target.id)) {
             target.state = "cancel_requested";
-            target.monitor.cancel();
+            target.monitor.requestCancellation();
             JsonObject result = new JsonObject();
             result.addProperty("job_id", target.id);
             result.addProperty("state", target.state);
@@ -443,7 +450,7 @@ final class JobScheduler {
 
         ProgramJob queued = findQueuedJob(target.id);
         if (queued != null && programQueue.remove(queued)) {
-            target.monitor.cancel();
+            target.monitor.requestCancellation();
             target.state = "cancelled";
             target.finishedAt = System.currentTimeMillis();
             target.error = "Cancelled before execution";
@@ -535,7 +542,8 @@ final class JobScheduler {
         long start = record.startedAt > 0 ? record.startedAt : record.enqueuedAt;
         result.addProperty("elapsed_ms", Math.max(0, end - start));
         if (queuePosition >= 0) result.addProperty("queue_position", queuePosition);
-        result.addProperty("cancel_requested", record.monitor.isCancelled());
+        result.addProperty("cancel_requested", record.monitor.wasCancelRequested()
+            || record.monitor.isCancelled());
         result.addProperty("cancel_enabled", record.monitor.isCancelEnabled());
         result.addProperty("progress", record.monitor.getProgress());
         result.addProperty("maximum", record.monitor.getMaximum());

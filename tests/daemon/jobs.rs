@@ -180,6 +180,7 @@ import ghidra.app.script.GhidraScript;
 public class WaitForBridgeCancel extends GhidraScript {
     public void run() throws Exception {
         setEOLComment(toAddr(getScriptArgs()[0]), getScriptArgs()[1]);
+        println(getScriptArgs()[1]);
         monitor.setMessage("waiting-for-bridge-cancel");
         long deadline = System.currentTimeMillis() + 30000;
         while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) {
@@ -219,6 +220,7 @@ public class WaitForBridgeCancel extends GhidraScript {
         .unwrap()
         .detail;
     assert_eq!(detail["partial_changes_saved"], true);
+    assert!(detail["stdout"].as_str().unwrap().contains(&marker));
     assert!(detail.get("rolled_back").is_none());
     assert_eq!(
         &client.job_result(&id).unwrap()["response"]["detail"],
@@ -377,4 +379,70 @@ public class HoldQueueForShutdown extends GhidraScript {
     receipt.read_line(&mut response).unwrap();
     let response: serde_json::Value = serde_json::from_str(&response).unwrap();
     assert_eq!(response["status"], "shutdown", "{response}");
+}
+
+#[test]
+#[serial]
+fn test_cancel_requested_while_temporarily_disabled_is_delivered_when_reenabled() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let worker = harness.client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let release = directory.path().join("release");
+    let script_args = vec![release.to_str().unwrap().to_owned()];
+    let script = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class DeferBridgeCancellation extends GhidraScript {
+    public void run() throws Exception {
+        monitor.setCancelEnabled(false);
+        monitor.setMessage("waiting-with-cancel-disabled");
+        long deadline = System.currentTimeMillis() + 30000;
+        while (!Files.exists(Path.of(getScriptArgs()[0])) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        monitor.setCancelEnabled(true);
+        monitor.checkCancelled();
+        throw new IllegalStateException("Cancellation was discarded");
+    }
+}
+"#,
+            &script_args,
+            &[],
+            false,
+        )
+    });
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(25);
+    let id = loop {
+        let status = client.status().unwrap();
+        let active = &status["active_job"];
+        if active["progress_message"] == "waiting-with-cancel-disabled" {
+            assert_eq!(active["cancel_enabled"], false);
+            break active["id"].as_str().unwrap().to_owned();
+        }
+        assert!(!script.is_finished(), "script exited before cancellation");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "script did not start: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let cancel = client.cancel_job(Some(&id)).unwrap();
+    assert_eq!(cancel["state"], "cancel_requested");
+    let during = client.job_status(Some(&id)).unwrap();
+    assert_eq!(during["job"]["cancel_requested"], true);
+    assert_eq!(during["job"]["cancel_enabled"], false);
+    std::fs::write(&release, "release").unwrap();
+    let error = script.join().unwrap().unwrap_err();
+    assert!(error.to_string().contains("Script cancelled"), "{error}");
+    assert_eq!(
+        client.job_status(Some(&id)).unwrap()["job"]["state"],
+        "cancelled"
+    );
 }

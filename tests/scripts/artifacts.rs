@@ -274,3 +274,118 @@ public class WriteOneArtifactRow extends GhidraScript {
         "{error}"
     );
 }
+
+#[test]
+#[serial]
+fn test_script_assertion_reports_saved_edit_and_bridge_remains_usable() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let marker = format!("assertion-{}", uuid::Uuid::new_v4());
+    let error = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class FailWithAssertion extends GhidraScript {
+    public void run() {
+        currentProgram.getOptions("DiagnosticTest").setString("assertion_marker", getScriptArgs()[0]);
+        println("before assertion");
+        throw new AssertionError("intentional script assertion");
+    }
+}
+"#,
+            &[marker.clone()],
+            &[],
+            false,
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("intentional script assertion"),
+        "{error}"
+    );
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert!(detail["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("before assertion"));
+    assert_eq!(detail["partial_changes_saved"], true);
+    assert!(client.ping().unwrap());
+    client.program_close().unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    let result = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class ReadAssertionMarker extends GhidraScript {
+    public void run() {
+        println(currentProgram.getOptions("DiagnosticTest").getString("assertion_marker", "missing"));
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert!(
+        result["stdout"].as_str().unwrap().contains(&marker),
+        "{result}"
+    );
+}
+
+#[test]
+#[serial]
+fn test_malformed_artifact_expectations_fail_before_script_execution() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let artifact = work.path().join("unexpected.txt");
+    let source = r#"
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class WriteOnRun extends GhidraScript {
+    public void run() throws Exception {
+        Files.writeString(Path.of(getScriptArgs()[0]), "ran");
+    }
+}
+"#;
+    for (expect, message) in [
+        (serde_json::json!(null), "expect must be an array"),
+        (
+            serde_json::json!({"path": artifact}),
+            "expect must be an array",
+        ),
+        (serde_json::json!([null]), "expect[0] must be an object"),
+        (
+            serde_json::json!([{}]),
+            "expect[0].path must be a nonempty string",
+        ),
+        (
+            serde_json::json!([{"path": 42}]),
+            "expect[0].path must be a nonempty string",
+        ),
+        (
+            serde_json::json!([{"path": artifact, "schema": 42}]),
+            "expect[0].schema must be a string",
+        ),
+    ] {
+        let error = client
+            .send_command(
+                "script_run",
+                Some(serde_json::json!({
+                    "source": source,
+                    "args": [artifact.to_str().unwrap()],
+                    "expect": expect,
+                })),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains(message), "{error}");
+        assert!(
+            !artifact.exists(),
+            "script ran with malformed expect: {expect}"
+        );
+    }
+}

@@ -9,6 +9,7 @@ import ghidra.app.script.GhidraScriptProvider;
 import ghidra.app.script.GhidraScriptUtil;
 import ghidra.app.script.GhidraState;
 import ghidra.util.exception.CancelledException;
+import ghidracli.protocol.JsonProtocol;
 import ghidracli.session.ProgramSession;
 import java.io.File;
 import java.io.FileWriter;
@@ -230,11 +231,21 @@ public final class ScriptCommands {
         } catch (GhidraScriptLoadException e) {
             return errorResult("Script failed to compile: " + e.getMessage());
         } catch (CancelledException e) {
-            return errorResult("Script cancelled");
+            out.flush();
+            JsonObject err = errorResult("Script cancelled");
+            err.addProperty("stdout", buffer.toString());
+            return err;
         } catch (Exception e) {
             // Preserve any output the script produced before it threw.
             out.flush();
             JsonObject err = errorResult("Script threw: " + e.getMessage());
+            err.addProperty("stdout", buffer.toString());
+            return err;
+        } catch (Error e) {
+            if (JsonProtocol.isFatalError(e)) throw e;
+            out.flush();
+            JsonObject err = errorResult("Script threw: "
+                + (e.getMessage() == null ? e.toString() : e.getMessage()));
             err.addProperty("stdout", buffer.toString());
             return err;
         } finally {
