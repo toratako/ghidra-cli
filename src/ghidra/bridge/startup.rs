@@ -8,6 +8,7 @@ use super::{sources, BridgeStartMode};
 use crate::ghidra::installation::Installation;
 use crate::ipc::client::BridgeClient;
 use anyhow::Result;
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Stdio;
@@ -100,17 +101,9 @@ pub fn start_bridge(
     // before the ready signal (Java overwrites this once it binds the ServerSocket)
     write_pid_file(project_path, child.id()).ok();
 
-    // Spawn a thread to capture stderr
+    // Drain stderr continuously while retaining only diagnostic output.
     let stderr = child.stderr.take().expect("stderr should be piped");
-    let stderr_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        let mut stderr_output = Vec::new();
-        for line in reader.lines().map_while(Result::ok) {
-            info!("[Ghidra stderr] {}", line);
-            stderr_output.push(line);
-        }
-        stderr_output
-    });
+    let stderr_handle = std::thread::spawn(move || capture_stderr(stderr));
 
     // Wait for bridge to become ready.
     //
@@ -125,33 +118,36 @@ pub fn start_bridge(
     let stdout_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut last_error = String::new();
-        let mut stdout_lines = Vec::new();
+        let mut captured = CapturedOutput::default();
         for line in reader.lines() {
             let line = match line {
                 Ok(l) => l,
                 Err(_) => break,
             };
             info!("[Ghidra stdout] {}", line);
-            stdout_lines.push(line.clone());
 
             if line.contains("ERROR") || line.contains("Exception") || line.contains("SEVERE") {
                 last_error = line.clone();
             }
 
-            if line.contains("---GHIDRA_CLI_START---") {
+            let start_marker = line.contains("---GHIDRA_CLI_START---");
+            let ready = line.contains("\"status\"") && line.contains("\"ready\"");
+            let end_marker = line.contains("---GHIDRA_CLI_END---");
+            captured.push(line);
+            if start_marker {
                 continue;
             }
-            if line.contains("\"status\"") && line.contains("\"ready\"") {
+            if ready {
                 info!("Bridge is ready (stdout signal)");
                 let _ = stdout_tx.send(true);
-                return (true, last_error, stdout_lines);
+                return (true, last_error, captured);
             }
-            if line.contains("---GHIDRA_CLI_END---") {
+            if end_marker {
                 break;
             }
         }
         let _ = stdout_tx.send(false);
-        (false, last_error, stdout_lines)
+        (false, last_error, captured)
     });
 
     // Wait for the bridge to become ready.
@@ -217,8 +213,20 @@ pub fn start_bridge(
             kill_process_tree(&mut child);
             cleanup_stale_files_locked(project_path).ok();
 
-            let (_, last_error, stdout_lines) = stdout_handle.join().unwrap_or_default();
+            let (_, last_error, stdout_output) = stdout_handle.join().unwrap_or_default();
             let stderr_output = stderr_handle.join().unwrap_or_default();
+            let CapturedOutput {
+                tail: stdout_tail,
+                startup_error: stdout_error,
+                hint_markers: stdout_markers,
+            } = stdout_output;
+            let CapturedOutput {
+                tail: stderr_tail,
+                startup_error: stderr_error,
+                hint_markers: stderr_markers,
+            } = stderr_output;
+            let stdout_lines: Vec<_> = stdout_tail.into_iter().collect();
+            let stderr_output: Vec<_> = stderr_tail.into_iter().collect();
             let detail = if !last_error.is_empty() {
                 format!(": {}", last_error)
             } else if !stderr_output.is_empty() {
@@ -232,11 +240,15 @@ pub fn start_bridge(
             };
             // Surface an actionable hint when the failure is the (otherwise
             // opaque) OSGi script compile/load failure.
-            let combined = format!("{}\n{}", stdout_lines.join("\n"), stderr_output.join("\n"));
-            for line in combined.lines() {
-                if let Some(error) = startup_diagnostic(line) {
-                    return Err(error.into());
-                }
+            let combined = format!(
+                "{}\n{}\n{}\n{}",
+                stdout_lines.join("\n"),
+                stderr_output.join("\n"),
+                stdout_markers.join("\n"),
+                stderr_markers.join("\n")
+            );
+            if let Some(error) = stdout_error.or(stderr_error) {
+                return Err(error.into());
             }
             let hint = bridge_failure_hint(&combined);
 
@@ -264,6 +276,47 @@ pub fn start_bridge(
             .into())
         }
     }
+}
+
+#[derive(Default)]
+struct CapturedOutput {
+    tail: VecDeque<String>,
+    startup_error: Option<crate::ipc::protocol::BridgeCommandError>,
+    hint_markers: Vec<&'static str>,
+}
+
+impl CapturedOutput {
+    const TAIL_LINES: usize = 30;
+    const HINT_MARKERS: [&str; 4] = [
+        "Failed to get OSGi bundle",
+        "GhidraScriptLoadException",
+        "ClassNotFoundException",
+        "GhidraCliBridge",
+    ];
+
+    fn push(&mut self, line: String) {
+        if self.startup_error.is_none() {
+            self.startup_error = startup_diagnostic(&line);
+        }
+        for marker in Self::HINT_MARKERS {
+            if line.contains(marker) && !self.hint_markers.contains(&marker) {
+                self.hint_markers.push(marker);
+            }
+        }
+        if self.tail.len() == Self::TAIL_LINES {
+            self.tail.pop_front();
+        }
+        self.tail.push_back(line);
+    }
+}
+
+fn capture_stderr(stream: impl std::io::Read) -> CapturedOutput {
+    let mut captured = CapturedOutput::default();
+    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+        info!("[Ghidra stderr] {}", line);
+        captured.push(line);
+    }
+    captured
 }
 
 fn startup_diagnostic(line: &str) -> Option<crate::ipc::protocol::BridgeCommandError> {

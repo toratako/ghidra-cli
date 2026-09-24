@@ -19,6 +19,26 @@ fn startup_diagnostics_accept_ghidra_log_decoration() {
     assert!(startup_diagnostic("GHIDRA_CLI_STARTUP_ERROR {invalid").is_none());
     assert!(startup_diagnostic("unrelated error").is_none());
 }
+
+#[test]
+fn stderr_capture_bounds_history_and_preserves_early_diagnostics() {
+    let error = serde_json::json!({
+        "message": "Program not found",
+        "detail": {"stage": "bridge.program_open"}
+    });
+    let mut output = format!("GHIDRA_CLI_STARTUP_ERROR {error}\nFailed to get OSGi bundle\n");
+    for index in 0..100 {
+        output.push_str(&format!("ordinary line {index}\n"));
+    }
+
+    let captured = capture_stderr(output.as_bytes());
+    assert_eq!(captured.tail.len(), 30);
+    assert_eq!(captured.tail.front().unwrap(), "ordinary line 70");
+    assert_eq!(captured.tail.back().unwrap(), "ordinary line 99");
+    assert_eq!(captured.startup_error.unwrap().message, "Program not found");
+    assert!(captured.hint_markers.contains(&"Failed to get OSGi bundle"));
+}
+
 #[test]
 fn ready_when_socket_binds_while_alive() {
     // Becomes ready on the 3rd poll; process stays alive throughout.
