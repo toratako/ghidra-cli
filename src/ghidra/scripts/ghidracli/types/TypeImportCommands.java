@@ -80,7 +80,7 @@ public final class TypeImportCommands {
             Map<String, CategoryPath> definitionPaths = new HashMap<>();
             Set<String> visiblePaths = new HashSet<>();
             for (DataType dt : parsedTypes) {
-                if (isUserFacingDataType(dt, parser)) visiblePaths.add(dt.getPathName());
+                if (isUserFacingDataType(dt)) visiblePaths.add(dt.getPathName());
                 for (DataType contained : DataTypeUtilities.getContainedDataTypes(dt)) {
                     if (!isDefinition(contained)) continue;
                     boolean declared = parsedTypes.contains(contained)
@@ -90,7 +90,7 @@ public final class TypeImportCommands {
                     if (!declared) continue;
                     CategoryPath destination = contained.getCategoryPath();
                     if (categoryPath != null) {
-                        destination = isUserFacingDataType(contained, parser)
+                        destination = isUserFacingDataType(contained)
                             ? lookupPath : new CategoryPath(lookupPath, "functions");
                     }
                     definitionPaths.put(contained.getPathName(), destination);
@@ -216,10 +216,12 @@ public final class TypeImportCommands {
             || dt instanceof TypeDef || dt instanceof FunctionDefinition;
     }
 
-    private boolean isUserFacingDataType(DataType dt, CParser parser) {
+    private boolean isUserFacingDataType(DataType dt) {
         if (dt == null) return false;
-        return !(dt instanceof FunctionDefinition
-            && parser.getFunctions().containsValue(dt));
+        // CParser also exposes the function definitions backing typedefs. They
+        // belong under functions even when reached through a contained type
+        // rather than the parser's function map.
+        return !(dt instanceof FunctionDefinition);
     }
 
     private DataType findBestParsedDataType(String name, Set<DataType> parsed,

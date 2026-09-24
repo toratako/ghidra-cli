@@ -43,7 +43,8 @@ public class CheckImportCategory extends GhidraScript {
             var callback = (TypeDef) dtm.getDataType(path + "/Callback");
             var function = (FunctionDefinition) ((Pointer) callback.getDataType()).getDataType();
             var parameter = (Pointer) function.getArguments()[0].getDataType();
-            if (!parameter.getDataType().equals(item))
+            if (!function.getPathName().equals(path + "/functions/Callback")
+                    || !parameter.getDataType().equals(item))
                 throw new IllegalStateException("Callback parameter resolved outside " + path);
         }
         var link = (Structure) dtm.getDataType(category + "/Link");
