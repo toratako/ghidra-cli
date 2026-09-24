@@ -390,8 +390,20 @@ fn stop_bridge_then<T>(
 
 /// Stop and delete under the CLI lifecycle lock and Ghidra's own project lock.
 pub fn delete_project(project_path: &Path, installation: &Installation) -> Result<bool> {
-    stop_bridge_then(project_path, shutdown_timeout(), || {
-        let Some(paths) = super::project::ProjectPaths::new(project_path) else {
+    let absolute = std::path::absolute(project_path)?;
+    // Resolve the parent through the filesystem before selecting the lifecycle
+    // lock. Lexically removing `..` can select a different project after a
+    // symlink, while Ghidra rejects `..` in a ProjectLocator location.
+    let project = match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(name)) => match dunce::canonicalize(parent) {
+            Ok(parent) => parent.join(name),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => absolute,
+            Err(error) => return Err(error.into()),
+        },
+        _ => absolute,
+    };
+    stop_bridge_then(&project, shutdown_timeout(), || {
+        let Some(paths) = super::project::ProjectPaths::new(&project) else {
             return Ok(false);
         };
         if !paths.exists() {
@@ -405,7 +417,7 @@ pub fn delete_project(project_path: &Path, installation: &Installation) -> Resul
         let result = import::run_bootstrap(
             &work.path().join("deletion"),
             installation,
-            &serde_json::json!({"delete_project": std::path::absolute(project_path)?}),
+            &serde_json::json!({"delete_project": project}),
             None,
         )?;
         result["deleted"]

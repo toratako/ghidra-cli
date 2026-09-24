@@ -212,9 +212,9 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
     let port_file = bridge::port_file_path(&project)?;
     let pid_file = bridge::pid_file_path(&project)?;
     let alias = root.path().join(if cfg!(windows) {
-        "nested/./PROJECT"
+        "nested/../nested/PROJECT"
     } else {
-        "nested/./project"
+        "nested/../nested/project"
     });
     assert_eq!(bridge::is_bridge_running(&alias), Some(harness.port()));
 
@@ -238,6 +238,43 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
     assert!(!port_file.exists());
     assert!(!pid_file.exists());
     drop(harness);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_project_delete_resolves_symlink_parent_before_dotdot() -> anyhow::Result<()> {
+    use std::os::unix::fs::symlink;
+
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-delete-symlink-parent-")
+        .tempdir()?;
+    let real = root.path().join("real");
+    std::fs::create_dir_all(real.join("child"))?;
+    let target = real.join("project");
+    let lexical_target = root.path().join("project");
+    common::fixture::copy_analyzed_project(&target)?;
+    common::fixture::copy_analyzed_project(&lexical_target)?;
+    symlink(real.join("child"), root.path().join("alias"))?;
+    let alias = root.path().join("alias/../project");
+
+    let output = common::run_command_with_output(
+        std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+            .args(["--json", "project", "delete"])
+            .arg(&alias),
+        std::time::Duration::from_secs(60),
+    )?;
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout)?["deleted"],
+        true
+    );
+    assert!(!target.with_added_extension("gpr").exists());
+    assert!(!target.with_added_extension("rep").exists());
+    assert!(lexical_target.with_added_extension("gpr").is_file());
+    assert!(lexical_target.with_added_extension("rep").is_dir());
     Ok(())
 }
 
