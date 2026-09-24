@@ -10,6 +10,7 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.Union;
 import ghidra.program.model.symbol.SymbolUtilities;
+import ghidracli.session.ProgramSession;
 import java.util.Objects;
 
 import static ghidracli.types.StructureFields.describe;
@@ -58,18 +59,22 @@ final class UnionFields {
                 + " for field type " + field.getDataType().getName());
     }
 
-    static JsonObject append(Union union, String name, DataType type, Integer size) throws Exception {
+    static JsonObject append(ProgramSession session, Union union, String name,
+            DataType type, Integer size) throws Exception {
         validateName(union, name, -1);
         type = fieldType(union, type, size);
         Union staged = (Union) union.copy(union.getDataTypeManager());
         DataTypeComponent field = staged.add(type, size == null ? type.getLength() : size, name, null);
         verifyField(field, name, size);
         int beforeSize = length(union);
+        TypeResizeCommands.PropagationSnapshot propagation = length(staged) > beforeSize
+            ? new TypeResizeCommands.PropagationSnapshot(session, union) : null;
         DataTypeComponent added = union.add(type, field.getLength(), name, null);
+        if (propagation != null) propagation.verify();
         return TypeFields.result(union, beforeSize, length(union), null, describe(added), "appended");
     }
 
-    static JsonObject set(Union union, int ordinal, String name, DataType type,
+    static JsonObject set(ProgramSession session, Union union, int ordinal, String name, DataType type,
             String comment, Integer size) throws Exception {
         DataTypeComponent old = target(union, ordinal);
         if (old.isBitFieldComponent()) {
@@ -100,6 +105,9 @@ final class UnionFields {
         if (before.equals(describe(staged.getComponent(ordinal))) && beforeSize == length(staged))
             return TypeFields.result(union, beforeSize, length(union), before, before, "unchanged");
 
+        TypeResizeCommands.PropagationSnapshot propagation = length(staged) > beforeSize
+            ? new TypeResizeCommands.PropagationSnapshot(session, union) : null;
+
         if (type == null) {
             union.getComponent(ordinal).setFieldName(effectiveName);
             union.getComponent(ordinal).setComment(effectiveComment);
@@ -120,6 +128,7 @@ final class UnionFields {
                 }
             }
         }
+        if (propagation != null) propagation.verify();
         return TypeFields.result(union, beforeSize, length(union), before, describe(union.getComponent(ordinal)), "updated");
     }
 

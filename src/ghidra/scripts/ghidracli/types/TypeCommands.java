@@ -397,7 +397,7 @@ public final class TypeCommands {
             DataType fieldDataType = typeResolver.resolveDataType(fieldTypeName);
             if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
             if (structType instanceof Union)
-                return UnionFields.append((Union) structType, fieldName, fieldDataType, StructureFields.size(args));
+                return UnionFields.append(session, (Union) structType, fieldName, fieldDataType, StructureFields.size(args));
 
             Structure struct = (Structure) structType;
             DataTypeUtilities.checkAncestry(struct, fieldDataType);
@@ -414,8 +414,11 @@ public final class TypeCommands {
             }
             // Preserve existing components and their per-field default settings.
             int sizeBefore = StructureFields.length(struct);
+            TypeResizeCommands.PropagationSnapshot propagation =
+                new TypeResizeCommands.PropagationSnapshot(session, struct);
             DataTypeComponent added = size != null ? struct.add(fieldDataType, size, fieldName, null)
                 : struct.add(fieldDataType, fieldName, null);
+            propagation.verify();
             return TypeFields.result(struct, sizeBefore, StructureFields.length(struct),
                 null, StructureFields.describe(added), "appended");
         } catch (Exception e) {
@@ -450,7 +453,7 @@ public final class TypeCommands {
             if (target instanceof Union) {
                 if (bitSize != null)
                     return errorResult("Bit-field layout edits require a structure with packing disabled");
-                return UnionFields.set((Union) target, TypeFields.unionOrdinal((Union) target, args),
+                return UnionFields.set(session, (Union) target, TypeFields.unionOrdinal((Union) target, args),
                     getArgString(args, "field_name"), type, comment, StructureFields.size(args));
             }
             Structure struct = (Structure) target;
@@ -459,9 +462,14 @@ public final class TypeCommands {
                 return BitFields.set(struct, selected.field, getArgString(args, "field_name"),
                     type, comment, StructureFields.size(args), bitSize);
             if (bitSize != null) return errorResult("--bit-size requires an existing bit-field");
-            return StructureFields.set(struct, selected,
+            StructureFields.Plan plan = StructureFields.set(struct, selected,
                 getArgString(args, "field_name"), type, comment, comment != null,
-                StructureFields.size(args)).apply(struct);
+                StructureFields.size(args));
+            TypeResizeCommands.PropagationSnapshot propagation = plan.changesSize()
+                ? new TypeResizeCommands.PropagationSnapshot(session, struct) : null;
+            JsonObject result = plan.apply(struct);
+            if (propagation != null) propagation.verify();
+            return result;
         } catch (Exception e) {
             return errorResult("Failed to set field: " + e.getMessage(), e);
         }

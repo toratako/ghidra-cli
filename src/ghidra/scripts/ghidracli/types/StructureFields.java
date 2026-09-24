@@ -213,6 +213,7 @@ public final class StructureFields {
         private final boolean metadataOnly;
         private final JsonObject result;
         private final boolean changed;
+        private final boolean sizeChanged;
 
         Plan(Structure original, Structure staged, int offset,
                 DataTypeComponent before, DataTypeComponent after, boolean metadataOnly, String action) {
@@ -223,8 +224,13 @@ public final class StructureFields {
             this.metadataOnly = metadataOnly;
             JsonObject previous = describe(before);
             JsonObject next = describe(after);
-            changed = !Objects.equals(previous, next) || length(original) != length(staged);
+            sizeChanged = length(original) != length(staged);
+            changed = !Objects.equals(previous, next) || sizeChanged;
             result = TypeFields.result(original, length(original), length(staged), previous, next, action);
+        }
+
+        boolean changesSize() {
+            return sizeChanged;
         }
 
         JsonObject apply(Structure original) throws Exception {

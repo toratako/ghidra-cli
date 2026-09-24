@@ -32,9 +32,16 @@ final class TypeFields {
         if (name.isBlank()) throw new IllegalArgumentException("Field name must not be empty");
         DataTypeComponent[] fields = type instanceof Structure
             ? ((Structure) type).getDefinedComponents() : type.getComponents();
+        DataTypeComponent found = null;
         for (DataTypeComponent field : fields) {
-            if (name.equals(field.getFieldName())) return field;
+            if (!name.equals(field.getFieldName())) continue;
+            if (found != null)
+                throw new IllegalArgumentException("Ambiguous field name '" + name
+                    + "' in " + type.getPathName() + "; use --ordinal"
+                    + (type instanceof Structure ? " or --offset" : ""));
+            found = field;
         }
+        if (found != null) return found;
         throw new IllegalArgumentException("Field not found: " + name + " in " + type.getPathName());
     }
 

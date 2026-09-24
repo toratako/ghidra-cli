@@ -339,6 +339,7 @@ public class CreateResizeConflicts extends GhidraScript {
         }
     }
 }
+
 "#, &[], &[], false).unwrap();
     let before = success(type_command(&program, &["list", "--limit", "0"]));
     let holder = definition(&program, "ConstrainedHolder");
@@ -385,5 +386,63 @@ public class CheckResizeConflictRollback extends GhidraScript {
 }
 "#, &[], &[], false).unwrap();
     }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn field_growth_rejects_truncated_parent_embedding() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateFieldGrowthConflict extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var child = dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "GrowingChild", 4, dtm), null);
+        var parent = new StructureDataType(CategoryPath.ROOT, "ConstrainedParent", 8, dtm);
+        parent.replaceAtOffset(0, child, 4, "child", null);
+        parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", null);
+        dtm.addDataType(parent, null);
+    }
+}
+"#, &[], &[], false).unwrap();
+    let child = definition(&program, "GrowingChild");
+    let parent = definition(&program, "ConstrainedParent");
+    for args in [
+        vec![
+            "field",
+            "append",
+            "GrowingChild",
+            "--name",
+            "extra",
+            "--type",
+            "dword",
+        ],
+        vec![
+            "field",
+            "set",
+            "GrowingChild",
+            "--offset",
+            "4",
+            "--name",
+            "extra",
+            "--type",
+            "dword",
+        ],
+    ] {
+        let failed = type_command(&program, &args);
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        assert_eq!(definition(&program, "GrowingChild"), child);
+        assert_eq!(definition(&program, "ConstrainedParent"), parent);
+    }
+    client.program_close().unwrap();
+    assert_eq!(definition(&program, "GrowingChild"), child);
+    assert_eq!(definition(&program, "ConstrainedParent"), parent);
     client.open_program(TEST_PROGRAM).unwrap();
 }

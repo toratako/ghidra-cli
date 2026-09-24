@@ -686,6 +686,51 @@ fn field_selectors_reject_missing_ambiguous_and_interior_targets_without_mutatio
 
 #[test]
 #[serial]
+fn duplicate_field_names_require_an_ordinal_or_offset() {
+    require_ghidra!();
+    let prefix = format!("DuplicateFields_{}", unique_suffix());
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateDuplicateFields extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        String prefix = getScriptArgs()[0];
+        var structure = new StructureDataType(CategoryPath.ROOT, prefix + "Struct", 0, dtm);
+        structure.add(ByteDataType.dataType, "same", null);
+        structure.add(ByteDataType.dataType, "same", null);
+        dtm.addDataType(structure, null);
+        var union = new UnionDataType(CategoryPath.ROOT, prefix + "Union", dtm);
+        union.add(ByteDataType.dataType, "same", null);
+        union.add(WordDataType.dataType, "same", null);
+        dtm.addDataType(union, null);
+    }
+}
+"#,
+            std::slice::from_ref(&prefix),
+            &[],
+            false,
+        )
+        .unwrap();
+    for name in [format!("{prefix}Struct"), format!("{prefix}Union")] {
+        let before = definition(&name);
+        for action in ["set", "delete"] {
+            let mut args = vec!["field", action, &name, "--field", "same"];
+            if action == "set" {
+                args.extend(["--comment", "wrong target"]);
+            }
+            rejected_unchanged(&name, &before, command(&args), "Ambiguous field name");
+        }
+        assert_eq!(definition(&name), before);
+    }
+}
+
+#[test]
+#[serial]
 fn packed_layout_and_bitfield_or_zero_length_targets_are_guarded() {
     require_ghidra!();
     let prefix = format!("SpecialFields_{}", unique_suffix());

@@ -62,8 +62,8 @@ public final class TypeResizeCommands {
                     throw new IllegalArgumentException("Resize would remove or truncate field at offset "
                         + field.getOffset() + " in " + structure.getPathName());
             }
-            Map<DataType, Definition> affected = captureDefinitions(structure);
-            List<Application> applications = captureApplications(affected);
+            Map<DataType, Definition> affected = captureDefinitions(session, structure);
+            List<Application> applications = captureApplications(session, affected);
             structure.setLength(size);
             if (StructureFields.length(structure) != size)
                 throw new IllegalArgumentException("Ghidra did not retain the requested structure size");
@@ -86,7 +86,36 @@ public final class TypeResizeCommands {
         return result;
     }
 
-    private Map<DataType, Definition> captureDefinitions(Structure target) throws Exception {
+    /** Check native parent and listing propagation after a field changes a type's size. */
+    static final class PropagationSnapshot {
+        private final ProgramSession session;
+        private final DataType target;
+        private final Map<DataType, Definition> affected;
+        private final List<Application> applications;
+
+        PropagationSnapshot(ProgramSession session, DataType target) throws Exception {
+            this.session = session;
+            this.target = target;
+            affected = captureDefinitions(session, target);
+            applications = captureApplications(session, affected);
+        }
+
+        void verify() throws Exception {
+            for (Definition definition : affected.values()) {
+                session.monitor().checkCancelled();
+                if (definition.type != target)
+                    definition.verify(affected, false, session.monitor());
+            }
+            for (Application application : applications) {
+                session.monitor().checkCancelled();
+                application.verify(session.program().getListing(), session.monitor());
+            }
+            if (target instanceof Structure) TypeFields.verifyComponentCount((Structure) target);
+        }
+    }
+
+    private static Map<DataType, Definition> captureDefinitions(
+            ProgramSession session, DataType target) throws Exception {
         Map<DataType, Definition> affected = new LinkedHashMap<>();
         ArrayDeque<DataType> pending = new ArrayDeque<>();
         pending.add(target);
@@ -106,7 +135,8 @@ public final class TypeResizeCommands {
         return affected;
     }
 
-    private List<Application> captureApplications(Map<DataType, Definition> affected) throws Exception {
+    private static List<Application> captureApplications(
+            ProgramSession session, Map<DataType, Definition> affected) throws Exception {
         Listing listing = session.program().getListing();
         List<Application> applications = new ArrayList<>();
         // Scan every defined root, including typedef and nested array applications.

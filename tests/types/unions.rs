@@ -136,6 +136,71 @@ fn union_creation_member_edits_and_deletions_persist() {
 
 #[test]
 #[serial]
+fn union_growth_rejects_truncated_parent_embedding() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateUnionGrowthConflict extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var member = new UnionDataType(CategoryPath.ROOT, "GrowingUnion", dtm);
+        member.add(DWordDataType.dataType, "value", null);
+        var saved = dtm.addDataType(member, null);
+        var parent = new StructureDataType(CategoryPath.ROOT, "UnionParent", 8, dtm);
+        parent.replaceAtOffset(0, saved, 4, "member", null);
+        parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", null);
+        dtm.addDataType(parent, null);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let member = definition(&program, "GrowingUnion");
+    let parent = definition(&program, "UnionParent");
+    for args in [
+        vec![
+            "field",
+            "append",
+            "GrowingUnion",
+            "--name",
+            "wide",
+            "--type",
+            "qword",
+        ],
+        vec![
+            "field",
+            "set",
+            "GrowingUnion",
+            "--ordinal",
+            "0",
+            "--type",
+            "qword",
+        ],
+    ] {
+        let failed = type_command(&program, &args);
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        assert_eq!(definition(&program, "GrowingUnion"), member);
+        assert_eq!(definition(&program, "UnionParent"), parent);
+    }
+    client.program_close().unwrap();
+    assert_eq!(definition(&program, "GrowingUnion"), member);
+    assert_eq!(definition(&program, "UnionParent"), parent);
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn union_edits_validate_targets_names_ancestry_and_sizes_before_mutation() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:32:default");
