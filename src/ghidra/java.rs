@@ -281,8 +281,8 @@ pub fn resolve_for_ghidra(
             home.display()
         )),
         JavaStatus::NotFound if explicit.is_some() => Err(format!(
-            "Selected Java home {:?} does not contain a usable JDK {min}+.",
-            explicit.unwrap()
+            "Selected Java home {} does not contain a usable JDK {min}+.",
+            explicit.unwrap().display()
         )),
         JavaStatus::NotFound => Err(format!(
             "No Java found. Ghidra requires a full JDK {min}+.\n\

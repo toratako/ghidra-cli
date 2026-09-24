@@ -71,9 +71,12 @@ fn directory_launch_rejects_an_invalid_explicit_jdk() {
         root.path().join("distribution"),
         InstallationKind::Directory,
     );
-    let missing = root.path().join("missing-jdk");
+    let missing = root.path().join(r"missing\jdk");
     let error = resolve_launch_jdk(&install, Some(missing.clone())).unwrap_err();
-    assert!(error.to_string().contains(&missing.display().to_string()));
+    assert!(
+        error.to_string().contains(&missing.display().to_string()),
+        "{error}"
+    );
 }
 
 #[test]
