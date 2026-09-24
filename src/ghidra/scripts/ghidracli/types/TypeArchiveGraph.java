@@ -313,6 +313,8 @@ final class TypeArchiveGraph {
         result.addProperty("kind", kind(type));
         result.addProperty("alignment", type.getAlignment());
         result.addProperty("zero_length", type.isZeroLength());
+        if (type instanceof Composite || type instanceof ghidra.program.model.data.Enum)
+            result.addProperty("description", type.getDescription());
         if (type instanceof AbstractIntegerDataType)
             result.addProperty("signed", ((AbstractIntegerDataType) type).isSigned());
         if (type instanceof Pointer)
@@ -353,6 +355,7 @@ final class TypeArchiveGraph {
         } else if (type instanceof FunctionDefinition) {
             FunctionDefinition function = (FunctionDefinition) type;
             result.add("return", reference(function.getReturnType()));
+            result.addProperty("comment", function.getComment());
             result.addProperty("calling_convention", function.getCallingConventionName());
             result.addProperty("varargs", function.hasVarArgs());
             result.addProperty("noreturn", function.hasNoReturn());
@@ -360,6 +363,7 @@ final class TypeArchiveGraph {
             for (ParameterDefinition argument : function.getArguments()) {
                 JsonObject row = reference(argument.getDataType());
                 row.addProperty("name", argument.getName());
+                row.addProperty("comment", argument.getComment());
                 arguments.add(row);
             }
             result.add("arguments", arguments);

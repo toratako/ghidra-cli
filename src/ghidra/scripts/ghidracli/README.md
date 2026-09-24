@@ -286,7 +286,8 @@ JVM; no process-wide cache setting is changed.
 `TypeArchiveGraph` collects roots and dependencies through defined components,
 without expanding sparse undefined filler. It preflights both paths and source
 IDs, resolves roots together with one conflict policy, and checks the resulting
-graph, native layout, signedness, calling conventions, settings and FILE identities.
+graph, native layout, descriptions/comments, signedness, calling conventions,
+settings and FILE identities.
 Ghidra equivalence alone omits some ABI/layout differences and uses a recursive
 cache during resolve; conflict callbacks must not use it as an independent check.
 Equivalent local definitions can adopt the incoming FILE identity. Different FILE

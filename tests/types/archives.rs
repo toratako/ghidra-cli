@@ -156,6 +156,38 @@ fn archive_inspect_queries_a_read_only_file_without_a_loaded_program() {
     restore_program();
 }
 
+#[cfg(unix)]
+#[test]
+#[serial]
+fn archive_input_symlink_may_point_to_a_file_without_gdt_suffix() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.gdt");
+    let target = directory.path().join("actual.bin");
+    let alias = directory.path().join("alias.gdt");
+    fixture(&program, "create", &source);
+    std::fs::rename(&source, &target).unwrap();
+    std::os::unix::fs::symlink("actual.bin", &alias).unwrap();
+
+    let inspection = ghidra(harness())
+        .args(["type", "archive", "inspect"])
+        .arg(alias.to_string_lossy())
+        .args(["--limit", "0", "--json"])
+        .run();
+    inspection.assert_success();
+    assert_eq!(
+        inspection.data::<Value>().as_array().unwrap().len(),
+        NAMES.len() + 1
+    );
+    command(
+        &program,
+        &["archive", "import", alias.to_str().unwrap(), "--all"],
+    );
+    fixture(&program, "check-import", &alias);
+    restore_program();
+}
+
 #[test]
 #[serial]
 fn selected_import_roundtrips_shared_recursive_dependencies_and_reuses_them() {
@@ -342,6 +374,79 @@ fn dependency_conflict_and_divergent_same_origin_fail_without_saved_changes() {
     reopen(&target);
     assert_eq!(list(&target), before);
     assert_eq!(definitions(&target), before_definitions);
+    restore_program();
+}
+
+#[test]
+#[serial]
+fn reimport_rejects_stale_descriptions_and_parameter_comments() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("source.gdt");
+    fixture(&program, "create", &file);
+    command(
+        &program,
+        &["archive", "import", file.to_str().unwrap(), "--all"],
+    );
+    let node_before = command(&program, &["get", "/Gdt/Node"]);
+    let callback_before = command(&program, &["get", "/Gdt/Callback"]);
+
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+import java.io.File;
+
+public class ChangeArchiveMetadata extends GhidraScript {
+    @Override
+    public void run() throws Exception {
+        var archive = FileDataTypeManager.openFileArchive(new File(getScriptArgs()[0]), true);
+        try {
+            int transaction = archive.startTransaction("Update archive metadata");
+            try {
+                var node = (Structure) archive.getDataType("/Gdt/Node");
+                node.setDescription("updated node description");
+                var callback = (FunctionDefinition) archive.getDataType("/Gdt/Callback");
+                var parameter = callback.getArguments()[0];
+                callback.setArguments(new ParameterDefinitionImpl(parameter.getName(),
+                    parameter.getDataType(), "updated parameter comment"));
+            } finally { archive.endTransaction(transaction, true); }
+            archive.save();
+        } finally { archive.close(); }
+    }
+}
+"#,
+            &[file.to_string_lossy().into_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+
+    for path in ["/Gdt/Node", "/Gdt/Callback"] {
+        type_command(
+            &program,
+            &[
+                "archive",
+                "import",
+                file.to_str().unwrap(),
+                "--where",
+                &format!(r#"path="{path}""#),
+            ],
+        )
+        .assert_failure()
+        .assert_stderr_contains("conflict")
+        .assert_stderr_contains(path);
+    }
+    reopen(&program);
+    assert_eq!(command(&program, &["get", "/Gdt/Node"]), node_before);
+    assert_eq!(
+        command(&program, &["get", "/Gdt/Callback"]),
+        callback_before
+    );
     restore_program();
 }
 

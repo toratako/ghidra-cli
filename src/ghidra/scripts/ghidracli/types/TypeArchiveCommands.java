@@ -316,7 +316,11 @@ public final class TypeArchiveCommands {
         Path workspace = Files.createTempDirectory("ghidra-cli-gdt-read-");
         StandAloneDataTypeManager archive = null;
         try {
-            Path copy = workspace.resolve(file.getFileName());
+            // Rust validates the supplied .gdt name before resolving symlinks.
+            // The target may have another suffix, while ArchiveManager requires
+            // its private snapshot to end in .gdt for the displayed name.
+            String filename = file.getFileName().toString();
+            Path copy = workspace.resolve(filename.endsWith(".gdt") ? filename : filename + ".gdt");
             byte[] buffer = new byte[64 * 1024];
             // PackedDatabase caches source paths by mtime. A unique copy binds
             // the parsed graph to these exact bytes even after an archive was
@@ -392,8 +396,6 @@ public final class TypeArchiveCommands {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Archive file required");
         Path path = Path.of(value);
         if (!path.isAbsolute()) throw new IllegalArgumentException("Archive file must be an absolute path");
-        if (!path.getFileName().toString().endsWith(".gdt"))
-            throw new IllegalArgumentException("Archive file must have a .gdt suffix");
         return path;
     }
 
@@ -405,6 +407,8 @@ public final class TypeArchiveCommands {
 
     private static Path output(JsonObject args) throws IOException {
         Path path = suppliedPath(args);
+        if (!path.getFileName().toString().endsWith(".gdt"))
+            throw new IllegalArgumentException("Archive file must have a .gdt suffix");
         Path resolved = path.getParent().toRealPath().resolve(path.getFileName());
         if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS))
             throw new FileAlreadyExistsException("Output archive already exists: " + resolved);

@@ -548,7 +548,7 @@ offset is not relative to the entire base type or structure.
 does not describe an open archive connection. Struct and union sizes report
 logical zero for empty definitions.
 
-`type_archive_list` takes an absolute `.gdt` `file` and returns `types` rows
+`type_archive_list` takes an absolute GDT `file` path and returns `types` rows
 (`name`, `path`, `category`, `kind`, `size`, and the same identity fields), with
 `archive` context. It has no Program target. Named composites, enums, typedefs,
 and function definitions are selectable roots; generated wrappers are reached
