@@ -230,9 +230,7 @@ impl Config {
     /// Explicit JDK home override: `GHIDRA_CLI_JAVA_HOME` env (set from the
     /// `--java-home` flag in main) takes precedence over the config value.
     pub fn get_java_home(&self) -> Option<PathBuf> {
-        std::env::var("GHIDRA_CLI_JAVA_HOME")
-            .ok()
-            .filter(|s| !s.is_empty())
+        std::env::var_os("GHIDRA_CLI_JAVA_HOME")
             .map(PathBuf::from)
             .or_else(|| self.java_home.clone())
     }

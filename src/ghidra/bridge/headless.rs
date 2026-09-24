@@ -5,7 +5,7 @@ use crate::ghidra::installation::{Installation, InstallationKind};
 use crate::ghidra::java::{self, JdkInfo};
 use anyhow::Result;
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{info, warn};
 
@@ -13,32 +13,14 @@ use tracing::{info, warn};
 mod windows_jar;
 
 /// Both persistent and one-shot workflows use the selected installation.
-/// Directory launches retain Ghidra's own Java discovery as a last resort;
+/// Directory launches retain Ghidra's own Java discovery when no JDK was selected;
 /// a standalone JAR has no LaunchSupport wrapper and needs a resolved full JDK.
 pub(super) fn headless_command(
     installation: &Installation,
     arguments: &[OsString],
 ) -> Result<Command> {
     let explicit_java = crate::config::Config::load()?.get_java_home();
-    let jdk = match java::resolve_for_ghidra(installation, explicit_java) {
-        Ok(jdk) => {
-            info!(
-                "Using JDK {} at {} ({})",
-                jdk.major,
-                jdk.home.display(),
-                jdk.source
-            );
-            Some(jdk)
-        }
-        Err(e) if installation.kind == InstallationKind::Directory => {
-            warn!(
-                "No suitable JDK auto-selected; letting Ghidra choose. {}",
-                e
-            );
-            None
-        }
-        Err(e) => anyhow::bail!(e),
-    };
+    let jdk = resolve_launch_jdk(installation, explicit_java)?;
     let mut command = command_with_jdk(
         installation,
         jdk.as_ref(),
@@ -57,6 +39,33 @@ pub(super) fn headless_command(
         }
     }
     Ok(command)
+}
+
+fn resolve_launch_jdk(
+    installation: &Installation,
+    explicit_java: Option<PathBuf>,
+) -> Result<Option<JdkInfo>> {
+    let allow_wrapper_fallback = explicit_java.is_none();
+    let jdk = match java::resolve_for_ghidra(installation, explicit_java) {
+        Ok(jdk) => {
+            info!(
+                "Using JDK {} at {} ({})",
+                jdk.major,
+                jdk.home.display(),
+                jdk.source
+            );
+            Some(jdk)
+        }
+        Err(e) if installation.kind == InstallationKind::Directory && allow_wrapper_fallback => {
+            warn!(
+                "No suitable JDK auto-selected; letting Ghidra choose. {}",
+                e
+            );
+            None
+        }
+        Err(e) => anyhow::bail!(e),
+    };
+    Ok(jdk)
 }
 
 fn command_with_jdk(

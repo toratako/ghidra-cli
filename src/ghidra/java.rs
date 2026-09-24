@@ -101,6 +101,9 @@ fn has_jdk_compiler_module(java_exe: &Path) -> bool {
 
 /// Inspect a single Java home and classify it.
 pub fn inspect_home(home: &Path, min: u32, source: &str) -> JavaStatus {
+    if home.as_os_str().is_empty() {
+        return JavaStatus::NotFound;
+    }
     let java_exe = bin(home, "java");
     if !java_exe.exists() {
         return JavaStatus::NotFound;
@@ -142,26 +145,28 @@ fn candidate_homes(explicit: Option<&Path>) -> Vec<(PathBuf, String)> {
         }
     };
 
-    // 1. Explicit (flag / env / config), already folded into `explicit` by caller.
+    // An explicit selection is a requirement, not a preference. Never fall
+    // back to another JDK when the selected home cannot run Ghidra.
     if let Some(p) = explicit {
         push(
             p.to_path_buf(),
             "explicit (--java-home / GHIDRA_CLI_JAVA_HOME / config)",
         );
+        return out;
     }
-    // 2. JAVA_HOME environment variable.
+    // 1. JAVA_HOME environment variable.
     if let Ok(jh) = std::env::var("JAVA_HOME") {
         if !jh.is_empty() {
             push(PathBuf::from(jh), "JAVA_HOME");
         }
     }
-    // 3. The `java` on PATH -> its home.
+    // 2. The `java` on PATH -> its home.
     if let Ok(java_exe) = which::which("java") {
         if let Some(home) = home_from_java_exe(&java_exe) {
             push(home, "PATH java");
         }
     }
-    // 4. Per-OS scan of common JDK install roots (prefer higher versions).
+    // 3. Per-OS scan of common JDK install roots (prefer higher versions).
     for (home, src) in scan_install_roots() {
         push(home, &src);
     }
@@ -275,6 +280,10 @@ pub fn resolve_for_ghidra(
              Install a newer JDK or select one with --java-home / GHIDRA_CLI_JAVA_HOME / config `java_home`.",
             home.display()
         )),
+        JavaStatus::NotFound if explicit.is_some() => Err(format!(
+            "Selected Java home {:?} does not contain a usable JDK {min}+.",
+            explicit.unwrap()
+        )),
         JavaStatus::NotFound => Err(format!(
             "No Java found. Ghidra requires a full JDK {min}+.\n\
              Install a JDK and ensure it is on PATH, or set --java-home / GHIDRA_CLI_JAVA_HOME / config `java_home`."
@@ -327,5 +336,21 @@ mod tests {
             home_from_java_exe(&link).unwrap(),
             home.canonicalize().unwrap()
         );
+    }
+
+    #[test]
+    fn explicit_missing_jdk_does_not_fall_back_to_another_candidate() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing-jdk");
+        assert!(matches!(
+            resolve_jdk(Some(&missing), 21),
+            JavaStatus::NotFound
+        ));
+        assert_eq!(candidate_homes(Some(&missing)).len(), 1);
+        assert_eq!(candidate_homes(Some(&missing))[0].0, missing);
+        assert!(matches!(
+            resolve_jdk(Some(Path::new("")), 21),
+            JavaStatus::NotFound
+        ));
     }
 }

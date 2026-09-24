@@ -73,6 +73,22 @@ fn doctor_reports_path_selection_without_persisting_it() {
 }
 
 #[test]
+fn doctor_rejects_an_empty_explicit_java_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("Ghidra");
+    installation_fixture::write(&install);
+    let output = isolated_command(&temp)
+        .env("GHIDRA_INSTALL_DIR", &install)
+        .env("GHIDRA_CLI_JAVA_HOME", "")
+        .args(["--json", "doctor"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let result: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert!(result["report"].as_str().unwrap().contains("No Java found"));
+}
+
+#[test]
 fn empty_installation_override_is_an_error_even_with_valid_config() {
     let temp = tempfile::tempdir().unwrap();
     let install = temp.path().join("installed");

@@ -65,6 +65,18 @@ fn directory_launch_keeps_the_official_wrapper_and_its_java_fallback() {
 }
 
 #[test]
+fn directory_launch_rejects_an_invalid_explicit_jdk() {
+    let root = tempfile::tempdir().unwrap();
+    let install = installation(
+        root.path().join("distribution"),
+        InstallationKind::Directory,
+    );
+    let missing = root.path().join("missing-jdk");
+    let error = resolve_launch_jdk(&install, Some(missing.clone())).unwrap_err();
+    assert!(error.to_string().contains(&missing.display().to_string()));
+}
+
+#[test]
 fn jar_compilation_cannot_pick_up_libraries_from_its_parent_directory() {
     let root = tempfile::tempdir().unwrap();
     let jar = root.path().join("selected.jar");
