@@ -80,6 +80,13 @@ public final class TypeResolver {
         String trimmed = name.trim();
         DataTypeManager dtm = session.program().getDataTypeManager();
 
+        // An absolute name can itself contain expression characters. Stored
+        // paths take precedence over interpreting pointer or array syntax.
+        if (trimmed.startsWith("/")) {
+            DataType registered = resolveDataTypePath(trimmed);
+            if (registered != null) return registered;
+        }
+
         // Handle pointer syntax: "int *" or "char **" -- peel one level and
         // resolve the pointee with the same path/ambiguity rules. The target
         // manager supplies pointer width before a caller measures the type.

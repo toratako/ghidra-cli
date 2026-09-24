@@ -233,6 +233,7 @@ public class CreateAmbiguousTypes extends GhidraScript {
             dtm.addDataType(new StructureDataType(new CategoryPath(paths[i]), "Shared", i + 1, dtm), null);
     }
 }
+
 "#,
             &[],
             &[],
@@ -610,4 +611,50 @@ public class CheckAnchorFormat extends GhidraScript {
         .unwrap()
         .open_program(TEST_PROGRAM)
         .unwrap();
+}
+
+#[test]
+#[serial]
+fn exact_registered_path_wins_over_pointer_expression() {
+    require_ghidra!();
+    let program = create_program(64);
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateExpressionNamedType extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase", 1, dtm), null);
+        dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase *", 3, dtm), null);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let exact = get_type(&program, "/ExprBase *");
+    assert_eq!(exact["kind"], "struct");
+    assert_eq!(exact["size"], 3);
+    assert_eq!(get_type(&program, "ExprBase *")["kind"], "pointer");
+    type_command(
+        &program,
+        &[
+            "field",
+            "append",
+            "Holder",
+            "--name",
+            "exact",
+            "--type",
+            "/ExprBase *",
+        ],
+    )
+    .assert_success();
+    assert_eq!(get_type(&program, "Holder")["components"][0]["size"], 3);
+    client.open_program(TEST_PROGRAM).unwrap();
 }
