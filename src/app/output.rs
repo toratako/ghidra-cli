@@ -100,12 +100,11 @@ fn c_decompile_diagnostics(
     value: &serde_json::Value,
     query: Option<&Query>,
 ) -> crate::error::Result<String> {
-    let rows = vec![value.clone()];
     if let Some(query) = query {
         if let Some(fields) = &query.fields {
             // A projection without code produces JSON even with --format c.
             if query
-                .select_fields(&rows, fields)?
+                .select_fields(std::slice::from_ref(value), fields)?
                 .iter()
                 .any(|row| row.get("code").is_none())
             {
@@ -114,23 +113,21 @@ fn c_decompile_diagnostics(
         }
     }
     let mut diagnostics = String::new();
-    for row in rows {
-        if let Some(warnings) = row.get("warnings").and_then(serde_json::Value::as_array) {
-            for warning in warnings {
-                if warning["source"] != "decompiler" {
-                    continue;
-                }
-                let in_code = warnings.iter().any(|other| {
-                    other["source"] == "c_comment"
-                        && other["message"]
-                            .as_str()
-                            .zip(warning["message"].as_str())
-                            .is_some_and(|(a, b)| a.split_whitespace().eq(b.split_whitespace()))
-                });
-                if !in_code {
-                    if let Some(text) = crate::format::format_decompile_warning(warning) {
-                        diagnostics.push_str(&format!("Warning: {text}\n"));
-                    }
+    if let Some(warnings) = value.get("warnings").and_then(serde_json::Value::as_array) {
+        for warning in warnings {
+            if warning["source"] != "decompiler" {
+                continue;
+            }
+            let in_code = warnings.iter().any(|other| {
+                other["source"] == "c_comment"
+                    && other["message"]
+                        .as_str()
+                        .zip(warning["message"].as_str())
+                        .is_some_and(|(a, b)| a.split_whitespace().eq(b.split_whitespace()))
+            });
+            if !in_code {
+                if let Some(text) = crate::format::format_decompile_warning(warning) {
+                    diagnostics.push_str(&format!("Warning: {text}\n"));
                 }
             }
         }
@@ -184,43 +181,8 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
         OutputFormat::JsonCompact => Ok(serde_json::to_string(result)?),
         _ if result.is_count => Ok(serde_json::to_string(&result.data)?),
         OutputFormat::Compact | OutputFormat::Full => {
-            let mut text = DefaultFormatter.format(result.rows(), format)?;
-            if result.meta.get("scope").and_then(serde_json::Value::as_str)
-                == Some("candidate-starts")
-            {
-                if let Some(ranges) = result
-                    .meta
-                    .get("ranges")
-                    .and_then(serde_json::Value::as_array)
-                {
-                    let ranges = ranges
-                        .iter()
-                        .filter_map(|range| {
-                            Some(format!(
-                                "{} .. {}",
-                                range["start"].as_str()?,
-                                range["end"].as_str()?
-                            ))
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let ranges = if ranges.is_empty() { "none" } else { &ranges };
-                    text = format!("Candidate start ranges: {ranges}\n{text}");
-                }
-                if !text.ends_with('\n') {
-                    text.push('\n');
-                }
-                match result
-                    .meta
-                    .get("scan")
-                    .and_then(|scan| scan.get("complete"))
-                    .and_then(serde_json::Value::as_bool)
-                {
-                    Some(true) => text.push_str("Scan complete for these candidate start ranges.\n"),
-                    Some(false) => text.push_str("Scan stopped at the result limit; use --limit 0 to scan all candidate starts in these ranges.\n"),
-                    None => {}
-                }
-            }
+            let text = DefaultFormatter.format(result.rows(), format)?;
+            let mut text = render_candidate_start_ranges(result, text);
             if let Some(path) = result
                 .meta
                 .get("target_type_path")
@@ -231,24 +193,71 @@ fn render(result: &CommandOutput, format: OutputFormat) -> anyhow::Result<String
             if result.meta.contains_key("vtable") {
                 text = render_virtual_callers(result, text, format)?;
             }
-            if let Some(excluded) = result
-                .meta
-                .get("unsupported_mappings")
-                .and_then(serde_json::Value::as_array)
-                .filter(|rows| !rows.is_empty())
-            {
-                if result.rows().is_empty() {
-                    text = "No direct file mappings\n".to_string();
-                } else if !text.ends_with('\n') {
-                    text.push('\n');
-                }
-                text.push_str("\nUnsupported file mappings (excluded):\n");
-                text.push_str(&DefaultFormatter.format(excluded, format)?);
-            }
-            Ok(text)
+            render_file_mapping_exclusions(result, text, format)
         }
         _ => Ok(DefaultFormatter.format(result.rows(), format)?),
     }
+}
+
+fn render_candidate_start_ranges(result: &CommandOutput, mut text: String) -> String {
+    if result.meta.get("scope").and_then(serde_json::Value::as_str) != Some("candidate-starts") {
+        return text;
+    }
+    if let Some(ranges) = result
+        .meta
+        .get("ranges")
+        .and_then(serde_json::Value::as_array)
+    {
+        let ranges = ranges
+            .iter()
+            .filter_map(|range| {
+                Some(format!(
+                    "{} .. {}",
+                    range["start"].as_str()?,
+                    range["end"].as_str()?
+                ))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let ranges = if ranges.is_empty() { "none" } else { &ranges };
+        text = format!("Candidate start ranges: {ranges}\n{text}");
+    }
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    match result
+        .meta
+        .get("scan")
+        .and_then(|scan| scan.get("complete"))
+        .and_then(serde_json::Value::as_bool)
+    {
+        Some(true) => text.push_str("Scan complete for these candidate start ranges.\n"),
+        Some(false) => text.push_str("Scan stopped at the result limit; use --limit 0 to scan all candidate starts in these ranges.\n"),
+        None => {}
+    }
+    text
+}
+
+fn render_file_mapping_exclusions(
+    result: &CommandOutput,
+    mut text: String,
+    format: OutputFormat,
+) -> anyhow::Result<String> {
+    if let Some(excluded) = result
+        .meta
+        .get("unsupported_mappings")
+        .and_then(serde_json::Value::as_array)
+        .filter(|rows| !rows.is_empty())
+    {
+        if result.rows().is_empty() {
+            text = "No direct file mappings\n".to_string();
+        } else if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str("\nUnsupported file mappings (excluded):\n");
+        text.push_str(&DefaultFormatter.format(excluded, format)?);
+    }
+    Ok(text)
 }
 
 fn render_type_uses(
