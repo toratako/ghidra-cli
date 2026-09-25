@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::error::{path_io, GhidraError, Result};
 use crate::ghidra::java::DEFAULT_MIN_JAVA;
 use serde::Serialize;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -264,6 +264,12 @@ struct Inputs {
     roots: Vec<SearchRoot>,
 }
 
+struct ExplicitSelection {
+    path: PathBuf,
+    kind: InstallationKind,
+    source: &'static str,
+}
+
 pub fn resolve(config: &Config) -> Result<Installation> {
     let platform = Platform::native();
     resolve_inputs(Inputs {
@@ -286,110 +292,58 @@ fn resolve_inputs(inputs: Inputs) -> Result<Installation> {
     // An environment selection replaces the entire configured selection layer.
     let selections = if inputs.environment.is_some() || inputs.environment_jar.is_some() {
         [
-            inputs.environment.map(|p| {
-                (
-                    PathBuf::from(p),
-                    InstallationKind::Directory,
-                    "GHIDRA_INSTALL_DIR",
-                )
+            inputs.environment.map(|path| ExplicitSelection {
+                path: PathBuf::from(path),
+                kind: InstallationKind::Directory,
+                source: "GHIDRA_INSTALL_DIR",
             }),
-            inputs
-                .environment_jar
-                .map(|p| (PathBuf::from(p), InstallationKind::Jar, "GHIDRA_JAR")),
+            inputs.environment_jar.map(|path| ExplicitSelection {
+                path: PathBuf::from(path),
+                kind: InstallationKind::Jar,
+                source: "GHIDRA_JAR",
+            }),
         ]
     } else {
         [
-            inputs
-                .configured
-                .map(|p| (p, InstallationKind::Directory, "config ghidra_install_dir")),
-            inputs
-                .configured_jar
-                .map(|p| (p, InstallationKind::Jar, "config ghidra_jar")),
+            inputs.configured.map(|path| ExplicitSelection {
+                path,
+                kind: InstallationKind::Directory,
+                source: "config ghidra_install_dir",
+            }),
+            inputs.configured_jar.map(|path| ExplicitSelection {
+                path,
+                kind: InstallationKind::Jar,
+                source: "config ghidra_jar",
+            }),
         ]
     };
     if let [Some(directory), Some(jar)] = &selections {
         let cause = GhidraError::ConfigError(format!(
             "{} and {} both select Ghidra; set only one in this selection layer",
-            directory.2, jar.2,
+            directory.source, jar.source,
         ));
-        for (path, _, source) in selections.iter().flatten() {
-            search.reject(path, source, &cause);
+        for selection in selections.iter().flatten() {
+            search.reject(&selection.path, selection.source, &cause);
         }
         return Err(search.error("invalid", Some(cause)));
     }
-    if let Some((path, kind, source)) = selections.into_iter().flatten().next() {
-        return inspect_for(&path, kind, source, inputs.platform).map_err(|cause| {
-            search.reject(&path, source, &cause);
+    if let Some(selection) = selections.into_iter().flatten().next() {
+        return inspect_for(
+            &selection.path,
+            selection.kind,
+            selection.source,
+            inputs.platform,
+        )
+        .map_err(|cause| {
+            search.reject(&selection.path, selection.source, &cause);
             search.error("invalid", Some(cause))
         });
     }
 
-    for directory in std::env::split_paths(&inputs.path).filter(|p| p.is_absolute()) {
-        let source = format!("PATH {}", directory.display());
-        for name in inputs.platform.commands() {
-            let command = directory.join(name);
-            match fs::symlink_metadata(&command) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(e) => {
-                    search.reject(&command, &source, &e);
-                    continue;
-                }
-                Ok(_) => {}
-            }
-            match dunce::canonicalize(&command) {
-                Ok(real) => match require_file(&real) {
-                    Ok(()) => {
-                        if let Some(root) = command_root(&real) {
-                            search.probe(&root, &source, inputs.platform);
-                        }
-                    }
-                    Err(e) => search.reject(&command, &source, &e),
-                },
-                Err(e) => search.reject(&command, &source, &e),
-            }
-        }
-        if !search.candidates.is_empty() {
-            return search.select();
-        }
+    if search.probe_path(&inputs.path, inputs.platform) {
+        return search.select();
     }
-
-    for root in inputs.roots {
-        if root.inspect_root {
-            search.probe(&root.path, root.source, inputs.platform);
-        }
-        if let Some(prefix) = root.child_prefix {
-            match fs::read_dir(&root.path) {
-                Ok(entries) => {
-                    // Sorting only stabilizes diagnostics. It never selects a version.
-                    let mut children = Vec::new();
-                    for entry in entries {
-                        match entry {
-                            Ok(entry)
-                                if entry.file_name().to_string_lossy().starts_with(prefix) =>
-                            {
-                                children.push(entry.path())
-                            }
-                            Ok(_) => {}
-                            Err(e) => search.reject(&root.path, root.source, &e),
-                        }
-                    }
-                    children.sort();
-                    if children.is_empty() && !root.inspect_root {
-                        search.reject(
-                            &root.path,
-                            root.source,
-                            &"No Ghidra package directories found",
-                        );
-                    }
-                    for path in children {
-                        search.probe(&path, root.source, inputs.platform);
-                    }
-                }
-                Err(e) if !root.inspect_root => search.reject(&root.path, root.source, &e),
-                Err(_) => {} // The direct probe already records this root's failure.
-            }
-        }
-    }
+    search.probe_roots(inputs.roots, inputs.platform);
     search.select()
 }
 
@@ -432,6 +386,80 @@ impl Search {
             Err(e) => {
                 self.incomplete |= fs::symlink_metadata(path).is_ok();
                 self.reject(path, source, &e);
+            }
+        }
+    }
+
+    fn probe_path(&mut self, path: &OsStr, platform: Platform) -> bool {
+        for directory in std::env::split_paths(path).filter(|p| p.is_absolute()) {
+            let source = format!("PATH {}", directory.display());
+            for name in platform.commands() {
+                let command = directory.join(name);
+                match fs::symlink_metadata(&command) {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(e) => {
+                        self.reject(&command, &source, &e);
+                        continue;
+                    }
+                    Ok(_) => {}
+                }
+                match dunce::canonicalize(&command) {
+                    Ok(real) => match require_file(&real) {
+                        Ok(()) => {
+                            if let Some(root) = command_root(&real) {
+                                self.probe(&root, &source, platform);
+                            }
+                        }
+                        Err(e) => self.reject(&command, &source, &e),
+                    },
+                    Err(e) => self.reject(&command, &source, &e),
+                }
+            }
+            // A PATH directory is one selection layer: inspect all its
+            // commands before deciding whether its candidates are ambiguous.
+            if !self.candidates.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn probe_roots(&mut self, roots: Vec<SearchRoot>, platform: Platform) {
+        for root in roots {
+            if root.inspect_root {
+                self.probe(&root.path, root.source, platform);
+            }
+            if let Some(prefix) = root.child_prefix {
+                match fs::read_dir(&root.path) {
+                    Ok(entries) => {
+                        // Sorting only stabilizes diagnostics. It never selects a version.
+                        let mut children = Vec::new();
+                        for entry in entries {
+                            match entry {
+                                Ok(entry)
+                                    if entry.file_name().to_string_lossy().starts_with(prefix) =>
+                                {
+                                    children.push(entry.path())
+                                }
+                                Ok(_) => {}
+                                Err(e) => self.reject(&root.path, root.source, &e),
+                            }
+                        }
+                        children.sort();
+                        if children.is_empty() && !root.inspect_root {
+                            self.reject(
+                                &root.path,
+                                root.source,
+                                &"No Ghidra package directories found",
+                            );
+                        }
+                        for path in children {
+                            self.probe(&path, root.source, platform);
+                        }
+                    }
+                    Err(e) if !root.inspect_root => self.reject(&root.path, root.source, &e),
+                    Err(_) => {} // The direct probe already records this root's failure.
+                }
             }
         }
     }
