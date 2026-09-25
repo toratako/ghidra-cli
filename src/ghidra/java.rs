@@ -69,6 +69,9 @@ fn home_from_java_exe(java_exe: &Path) -> Option<PathBuf> {
 /// Parse the major version from `java -version` output (goes to stderr).
 fn detect_major(java_exe: &Path) -> Option<u32> {
     let out = Command::new(java_exe).arg("-version").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stderr),
@@ -90,12 +93,12 @@ fn detect_major(java_exe: &Path) -> Option<u32> {
 /// implementation that backs `getSystemJavaCompiler()`)?
 fn has_jdk_compiler_module(java_exe: &Path) -> bool {
     match Command::new(java_exe).arg("--list-modules").output() {
-        Ok(out) => {
+        Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);
             text.lines()
                 .any(|l| l.starts_with("jdk.compiler@") || l == "jdk.compiler")
         }
-        Err(_) => false,
+        _ => false,
     }
 }
 
@@ -351,6 +354,40 @@ mod tests {
         assert!(matches!(
             resolve_jdk(Some(Path::new("")), 21),
             JavaStatus::NotFound
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_java_probes_do_not_validate_a_broken_jdk() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("broken-jdk");
+        let java = bin(&home, "java");
+        let javac = bin(&home, "javac");
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(&javac, "").unwrap();
+
+        std::fs::write(
+            &java,
+            "#!/bin/sh\necho 'openjdk version \"27\"' >&2\necho 'jdk.compiler@27'\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(
+            inspect_home(&home, 21, "test"),
+            JavaStatus::NotFound
+        ));
+
+        std::fs::write(
+            &java,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then\n  echo 'openjdk version \"27\"' >&2\n  exit 0\nfi\necho 'jdk.compiler@27'\nexit 1\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            inspect_home(&home, 21, "test"),
+            JavaStatus::JreNoCompiler { .. }
         ));
     }
 }
