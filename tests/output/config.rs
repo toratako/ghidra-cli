@@ -42,6 +42,25 @@ fn numeric_config_values_persist_as_numbers_and_invalid_updates_preserve_the_fil
 }
 
 #[test]
+fn default_limit_rejects_values_above_the_cli_page_range() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_path = temp.path().join("config.yaml");
+    let original = "default_limit: 37\n";
+    std::fs::write(&config_path, original).unwrap();
+
+    let output = isolated_command(&temp)
+        .args(["config", "set", "default_limit", "9223372036854775808"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Invalid limit value"),
+        "{output:?}"
+    );
+    assert_eq!(std::fs::read_to_string(config_path).unwrap(), original);
+}
+
+#[test]
 fn config_set_preserves_persisted_values_despite_invocation_overrides() {
     let temp = tempfile::tempdir().unwrap();
     let config_path = temp.path().join("config.yaml");

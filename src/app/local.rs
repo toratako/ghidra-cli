@@ -60,9 +60,10 @@ pub(super) fn handle_config_command(
                         config.launch_timeout_secs = Some(timeout);
                     }
                     "default_limit" => {
-                        let limit = cli::numeric::parse::<usize>(&value).map_err(|reason| {
-                            GhidraError::ConfigError(format!("Invalid limit value: {reason}"))
-                        })?;
+                        let limit = cli::numeric::ranged::<usize>(&value, 0, i64::MAX as i128)
+                            .map_err(|reason| {
+                                GhidraError::ConfigError(format!("Invalid limit value: {reason}"))
+                            })?;
                         config.default_limit = Some(limit);
                     }
                     _ => {
