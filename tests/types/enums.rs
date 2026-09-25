@@ -1,13 +1,40 @@
 //! Enum values use decimal/hex integers; deletion selects one name among aliases.
 
 use super::{create_type_edit_program, harness, type_command, TEST_PROGRAM};
-use serde_json::Value;
+use serde_json::{json, Value};
 use serial_test::serial;
 
 fn definition(program: &str, name: &str) -> Value {
     let result = type_command(program, &["get", name]);
     result.assert_success();
     result.data::<Value>()
+}
+
+#[test]
+#[serial]
+fn enum_size_rejects_fractional_and_overflowing_bridge_values() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    for size in [json!(4.5), json!(4294967300_u64)] {
+        let error = client
+            .send_command(
+                "type_create_enum",
+                Some(json!({
+                    "name": "InvalidEnum",
+                    "size": size,
+                    "members": [{"name": "Value", "value": "1"}]
+                })),
+            )
+            .expect_err("invalid enum size was accepted");
+        assert!(
+            error.to_string().contains("size must be an integer"),
+            "{error:#}"
+        );
+        type_command(&program, &["get", "InvalidEnum"]).assert_failure();
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
 }
 
 #[test]

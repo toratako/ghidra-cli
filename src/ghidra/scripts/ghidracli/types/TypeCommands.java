@@ -27,8 +27,8 @@ import java.util.Iterator;
 import java.util.Locale;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
-import static ghidracli.protocol.JsonProtocol.getArgInt;
 import static ghidracli.protocol.JsonProtocol.getArgString;
+import static ghidracli.protocol.JsonProtocol.getNonnegativeIntArg;
 
 public final class TypeCommands {
     private final ProgramSession session;
@@ -294,7 +294,7 @@ public final class TypeCommands {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
         JsonElement members = args.get("members");
-        int size = getArgInt(args, "size", 4);
+        int size = getNonnegativeIntArg(args, "size", 4);
         if (name == null || members == null || !members.isJsonArray()
                 || members.getAsJsonArray().size() == 0)
             return errorResult("name and nonempty members array required");
