@@ -112,7 +112,7 @@ fn completion(value: &Value, output: &mut String, full: bool) {
     }
     for warning in rows(&value["warnings"]) {
         let detail =
-            super::human::format_decompile_warning(warning).unwrap_or_else(|| text(warning));
+            super::decompile::format_decompile_warning(warning).unwrap_or_else(|| text(warning));
         output.push_str(&format!("Warning: {detail}\n"));
     }
 }

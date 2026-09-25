@@ -57,7 +57,7 @@ pub(super) fn format_result(value: &Value, output: &mut String, full: bool) -> b
     }
     if let Some(warnings) = value.get("warnings").and_then(Value::as_array) {
         for warning in warnings {
-            if let Some(text) = super::human::format_decompile_warning(warning) {
+            if let Some(text) = super::decompile::format_decompile_warning(warning) {
                 output.push_str(&format!("Warning: {text}\n"));
             }
         }

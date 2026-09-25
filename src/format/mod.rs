@@ -14,7 +14,7 @@ mod tabular;
 mod vtable;
 
 use code::format_code;
-pub(crate) use human::format_decompile_warning;
+pub(crate) use decompile::format_decompile_warning;
 use human::{format_compact, format_full, format_minimal};
 use tabular::{format_csv, format_table};
 
