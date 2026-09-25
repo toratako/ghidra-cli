@@ -72,34 +72,27 @@ impl Query {
 
     /// Select rows before projection so structured responses can retain their relationships.
     pub(crate) fn select_rows(&self, data: Vec<JsonValue>) -> Result<Vec<JsonValue>> {
-        // Apply filter
-        let filtered = if let Some(filter) = &self.filter {
-            self.apply_filter(&data, filter)?
+        let mut rows = if let Some(filter) = &self.filter {
+            Self::apply_filter(data, filter)?
         } else {
             data
         };
 
         // Sort original rows: projection must not erase sort keys.
-        let sorted = if let Some(sort) = &self.sort {
-            self.apply_sort(&filtered, sort)?
-        } else {
-            filtered
-        };
-
-        // Apply pagination
-        Ok(self.apply_pagination(&sorted))
-    }
-
-    fn apply_filter(&self, data: &[JsonValue], filter: &Filter) -> Result<Vec<JsonValue>> {
-        let mut result = Vec::new();
-
-        for item in data {
-            if filter.evaluate(item)? {
-                result.push(item.clone());
-            }
+        if let Some(sort) = &self.sort {
+            Self::apply_sort(&mut rows, sort);
         }
 
-        Ok(result)
+        Ok(self.apply_pagination(rows))
+    }
+
+    fn apply_filter(data: Vec<JsonValue>, filter: &Filter) -> Result<Vec<JsonValue>> {
+        data.into_iter().try_fold(Vec::new(), |mut rows, row| {
+            if filter.evaluate(&row)? {
+                rows.push(row);
+            }
+            Ok(rows)
+        })
     }
 
     pub(crate) fn select_fields(
@@ -138,15 +131,13 @@ impl Query {
         Ok(result)
     }
 
-    fn apply_sort(&self, data: &[JsonValue], sort_keys: &[SortKey]) -> Result<Vec<JsonValue>> {
-        let mut result = data.to_vec();
-
-        result.sort_by(|a, b| {
+    fn apply_sort(rows: &mut [JsonValue], sort_keys: &[SortKey]) {
+        rows.sort_by(|a, b| {
             for sort_key in sort_keys {
-                let a_val = self.get_field_for_sort(a, &sort_key.field);
-                let b_val = self.get_field_for_sort(b, &sort_key.field);
+                let a_val = a.get(sort_key.field.as_str());
+                let b_val = b.get(sort_key.field.as_str());
 
-                let cmp = match (&a_val, &b_val) {
+                let cmp = match (a_val, b_val) {
                     (Some(JsonValue::Number(a)), Some(JsonValue::Number(b))) => {
                         compare_numbers(a, b)
                     }
@@ -168,19 +159,9 @@ impl Query {
 
             std::cmp::Ordering::Equal
         });
-
-        Ok(result)
     }
 
-    fn get_field_for_sort(&self, value: &JsonValue, field: &str) -> Option<JsonValue> {
-        if let JsonValue::Object(map) = value {
-            map.get(field).cloned()
-        } else {
-            None
-        }
-    }
-
-    fn apply_pagination(&self, data: &[JsonValue]) -> Vec<JsonValue> {
+    fn apply_pagination(&self, data: Vec<JsonValue>) -> Vec<JsonValue> {
         let offset = self.offset.unwrap_or(0);
         // `--limit 0` means "no limit", matching the bridge's convention
         // (its list handlers only cap when limit > 0).
@@ -189,7 +170,7 @@ impl Query {
             Some(n) => n,
         };
 
-        data.iter().skip(offset).take(limit).cloned().collect()
+        data.into_iter().skip(offset).take(limit).collect()
     }
 }
 
@@ -364,13 +345,13 @@ mod tests {
         // Regression: `--limit 0` used to produce take(0) => empty output
         let mut query = query();
         query.limit = Some(0);
-        assert_eq!(query.apply_pagination(&rows(5)).len(), 5);
+        assert_eq!(query.apply_pagination(rows(5)).len(), 5);
     }
 
     #[test]
     fn test_limit_none_means_all_rows() {
         let query = query();
-        assert_eq!(query.apply_pagination(&rows(5)).len(), 5);
+        assert_eq!(query.apply_pagination(rows(5)).len(), 5);
     }
 
     #[test]
@@ -378,7 +359,7 @@ mod tests {
         let mut query = query();
         query.limit = Some(2);
         query.offset = Some(1);
-        let page = query.apply_pagination(&rows(5));
+        let page = query.apply_pagination(rows(5));
         assert_eq!(page.len(), 2);
         assert_eq!(page[0]["id"], 1);
     }
@@ -388,7 +369,7 @@ mod tests {
         let mut query = query();
         query.limit = Some(0);
         query.offset = Some(2);
-        assert_eq!(query.apply_pagination(&rows(5)).len(), 3);
+        assert_eq!(query.apply_pagination(rows(5)).len(), 3);
     }
 
     #[test]
