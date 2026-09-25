@@ -29,12 +29,11 @@ or download a prebuilt binary from [releases](https://github.com/toratako/ghidra
 Windows/Linux/macOS binaries are available.
 
 Ghidra is detected from PATH and known installation locations.  
-If it is not found, set `GHIDRA_INSTALL_DIR` or  
-run `ghidra-cli config set ghidra_install_dir /path/to/ghidra`, then rerun `doctor`.
+If it is not found, set `GHIDRA_INSTALL_DIR` or run `ghidra-cli config set ghidra_install_dir /path/to/ghidra`, then rerun `doctor`.
 
-To use a standalone `ghidra.jar` built by Ghidra's official `buildGhidraJar`, set
-`GHIDRA_JAR` or run `ghidra-cli config set ghidra_jar /path/to/ghidra.jar`.  
-See [standalone JAR setup](docs/runtime.md#standalone-ghidra-jar) for build requirements.
+To use a standalone `ghidra.jar` built by Ghidra's official `buildGhidraJar`,
+set `GHIDRA_JAR` or run `ghidra-cli config set ghidra_jar /path/to/ghidra.jar`.  
+See [standalone JAR setup](docs/runtime.md#standalone-ghidra-jar) for build requirements.  
 Use `ghidra-cli doctor --runtime` to also verify bridge startup.
 
 ### Skills
@@ -54,7 +53,7 @@ Since ChatGPT supports file uploads of up to 512 MB per file ([source](https://h
 
 Upload the zipped skills, the `ghidra-cli` executable, and `ghidra.jar` to the web chat.
 
-To build `ghidra.jar`, download the [official Ghidra release](https://github.com/NationalSecurityAgency/ghidra/releases/) and run `./support/buildGhidraJar` from the Ghidra directory.
+To build `ghidra.jar`, download the [official Ghidra release](https://github.com/NationalSecurityAgency/ghidra/releases/) and run `./support/buildGhidraJar`.
 
 Prompt:
 
@@ -84,8 +83,6 @@ rm -rf ~/.config/ghidra-cli/
 rm -rf ~/.local/share/ghidra-cli/
 ```
 
----
-
 ## Documentation
 
 - [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md): commands and operational semantics for RE agents.
@@ -93,8 +90,6 @@ rm -rf ~/.local/share/ghidra-cli/
 
 Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),
 [documentation map](docs/README.md), and [release history](CHANGELOG.md).
-
----
 
 ## License
 
