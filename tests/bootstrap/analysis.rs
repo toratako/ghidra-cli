@@ -2,6 +2,7 @@ use super::Project;
 use serde_json::Value;
 
 #[test]
+#[serial_test::serial]
 fn analysis_run_reanalyzes_with_changed_settings() {
     require_ghidra!();
     let project = Project::new();
@@ -82,6 +83,7 @@ fn analysis_run_reanalyzes_with_changed_settings() {
 }
 
 #[test]
+#[serial_test::serial]
 fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     require_ghidra!();
     let project = Project::new();
