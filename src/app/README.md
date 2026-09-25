@@ -13,7 +13,7 @@ and target checks in `src/cli/tests.rs`.
 | File | Responsibility |
 |------|----------------|
 | `mod.rs` | Command routing, early filter validation, and bridge/program selection |
-| `options.rs` | Extract project, program, and query options from command variants; classify bridge requirements |
+| `options.rs`, `options/target.rs`, `options/query.rs` | Classify bridge requirements; extract project/program targets and query options from command variants |
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/functions.rs` | Function dispatch and guarded selection of one decompiler variable |
 | `execute/symbols.rs` | Resolve and guard symbol mutation targets |
