@@ -144,14 +144,29 @@ fn parse_permissions(value: &str) -> Result<String, String> {
     if value == "none" {
         return Ok(value.to_owned());
     }
-    let mut permissions = String::new();
-    for flag in ['r', 'w', 'x'] {
-        if value.contains(flag) {
+    const ERROR: &str = "use a combination of r, w, x (each at most once), or none";
+    let mut seen = 0_u8;
+    for flag in value.bytes() {
+        let bit = match flag {
+            b'r' => 0b001,
+            b'w' => 0b010,
+            b'x' => 0b100,
+            _ => return Err(ERROR.into()),
+        };
+        if seen & bit != 0 {
+            return Err(ERROR.into());
+        }
+        seen |= bit;
+    }
+
+    if seen == 0 {
+        return Err(ERROR.into());
+    }
+    let mut permissions = String::with_capacity(3);
+    for (flag, bit) in [('r', 0b001), ('w', 0b010), ('x', 0b100)] {
+        if seen & bit != 0 {
             permissions.push(flag);
         }
-    }
-    if permissions.is_empty() || permissions.len() != value.len() {
-        return Err("use a combination of r, w, x (each at most once), or none".into());
     }
     Ok(permissions)
 }
