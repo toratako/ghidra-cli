@@ -4,6 +4,7 @@ mod json_output;
 
 use ghidra_cli::ghidra::bridge;
 use serde_json::Value;
+use serial_test::serial;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
@@ -11,6 +12,8 @@ use std::time::Duration;
 #[macro_use]
 mod common;
 
+// Ghidra processes for these tests share the user's OSGi/Felix cache even
+// when their projects differ. Serialize tests that launch Ghidra.
 #[path = "bootstrap/analysis.rs"]
 mod analysis;
 #[path = "bootstrap/compilation.rs"]
@@ -86,6 +89,7 @@ impl Drop for Project {
 }
 
 #[test]
+#[serial]
 fn configured_startup_targets_apply_to_all_entry_points() {
     require_ghidra!();
     let project = Project::new();
@@ -145,6 +149,7 @@ fn configured_startup_targets_apply_to_all_entry_points() {
 }
 
 #[test]
+#[serial]
 fn doctor_runtime_resolves_installation_and_removes_disposable_project() {
     require_ghidra!();
     let root = tempfile::Builder::new()

@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 #[test]
+#[serial_test::serial]
 fn import_names_are_saved_and_selected_across_all_routes() {
     require_ghidra!();
     let project = Project::new();
@@ -162,6 +163,7 @@ public class CheckProgramIdentity extends GhidraScript {
 }
 
 #[test]
+#[serial_test::serial]
 fn import_symlinks_preserve_input_names_and_collision_rules() {
     require_ghidra!();
     let project = Project::new();
@@ -219,6 +221,7 @@ fn import_symlinks_preserve_input_names_and_collision_rules() {
 
 #[cfg(target_os = "linux")]
 #[test]
+#[serial_test::serial]
 fn saved_import_survives_bridge_state_directory_failure() {
     require_ghidra!();
     let project = Project::new();
@@ -270,6 +273,7 @@ fn saved_import_survives_bridge_state_directory_failure() {
 }
 
 #[test]
+#[serial_test::serial]
 fn unsupported_loader_options_never_save_a_program() {
     require_ghidra!();
     let project = Project::new();
