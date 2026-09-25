@@ -25,10 +25,13 @@ fn project_directory_override_is_never_persisted() {
 #[test]
 fn config_symlink_is_preserved_by_save_and_concurrent_updates() {
     let temp = tempfile::tempdir().unwrap();
-    let target = temp.path().join("dotfiles.yaml");
-    let link = temp.path().join("config.yaml");
+    let target_dir = temp.path().join("target");
+    let link_dir = temp.path().join("link");
+    fs::create_dir(&link_dir).unwrap();
+    let target = target_dir.join("dotfiles.yaml");
+    let link = link_dir.join("config.yaml");
     Config::default().save_at(&target).unwrap();
-    std::os::unix::fs::symlink("dotfiles.yaml", &link).unwrap();
+    std::os::unix::fs::symlink("../target/dotfiles.yaml", &link).unwrap();
     let config = Config {
         default_limit: Some(0),
         ..Config::default()
@@ -39,10 +42,9 @@ fn config_symlink_is_preserved_by_save_and_concurrent_updates() {
         .file_type()
         .is_symlink());
     assert_eq!(Config::load_from(&target).unwrap().default_limit, Some(0));
-    assert_eq!(
-        Config::write_path(&target).unwrap(),
-        Config::write_path(&link).unwrap()
-    );
+    let target_path = Config::locked_write_path(&target).unwrap().0;
+    let link_path = Config::locked_write_path(&link).unwrap().0;
+    assert_eq!(target_path, link_path);
     std::thread::scope(|scope| {
         for index in 0..8 {
             let path = if index % 2 == 0 {
@@ -67,10 +69,11 @@ fn config_symlink_is_preserved_by_save_and_concurrent_updates() {
         .is_symlink());
     assert_eq!(
         fs::read_link(&link).unwrap(),
-        PathBuf::from("dotfiles.yaml")
+        PathBuf::from("../target/dotfiles.yaml")
     );
     assert_eq!(Config::load_from(&target).unwrap().default_limit, Some(40));
-    assert!(!temp.path().join("config.yaml.lock").exists());
+    assert!(target_dir.join(".ghidra-cli-config.lock").exists());
+    assert!(!link_dir.join(".ghidra-cli-config.lock").exists());
 }
 
 #[cfg(unix)]
@@ -82,6 +85,17 @@ fn dangling_config_symlink_is_not_replaced() {
     assert!(Config::default().save_at(&link).is_err());
     assert!(Config::update_at(&link, |_| Ok(())).is_err());
     assert_eq!(fs::read_link(&link).unwrap(), PathBuf::from("missing.yaml"));
+}
+
+#[test]
+fn lock_file_cannot_be_replaced_by_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join(CONFIG_LOCK_FILE);
+    assert!(matches!(
+        Config::default().save_at(&path),
+        Err(GhidraError::ConfigError(_))
+    ));
+    assert!(!path.exists());
 }
 
 #[test]

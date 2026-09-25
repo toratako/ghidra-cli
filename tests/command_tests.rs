@@ -191,18 +191,24 @@ fn config_updates_from_multiple_processes_preserve_independent_values() {
     ];
     let mut children = Vec::new();
     for (key, value) in changes {
-        children.push(
+        children.push((
+            key,
             std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
                 .env("GHIDRA_CLI_CONFIG", &path)
                 .env("XDG_DATA_HOME", temp.path())
                 .args(["config", "set", key, value])
                 .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
                 .spawn()
                 .unwrap(),
-        );
+        ));
     }
-    for mut child in children {
-        assert!(child.wait().unwrap().success());
+    let results: Vec<_> = children
+        .into_iter()
+        .map(|(key, child)| (key, child.wait_with_output().unwrap()))
+        .collect();
+    for (key, output) in results {
+        assert!(output.status.success(), "{key}: {output:?}");
     }
     let config: ghidra_cli::config::Config =
         serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();

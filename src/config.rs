@@ -1,8 +1,11 @@
 use crate::error::{path_io, GhidraError, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+
+const CONFIG_LOCK_FILE: &str = ".ghidra-cli-config.lock";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -66,8 +69,7 @@ impl Config {
     }
 
     fn save_at(&self, path: &Path) -> Result<()> {
-        let path = Self::write_path(path)?;
-        let _lock = Self::lock(&path)?;
+        let (path, _lock) = Self::locked_write_path(path)?;
         self.save_to(&path)
     }
 
@@ -78,48 +80,92 @@ impl Config {
     }
 
     fn update_at(path: &Path, change: impl FnOnce(&mut Self) -> Result<()>) -> Result<Self> {
-        let path = Self::write_path(path)?;
-        let _lock = Self::lock(&path)?;
+        let (path, _lock) = Self::locked_write_path(path)?;
         let mut config = Self::load_from(&path)?;
         change(&mut config)?;
         config.save_to(&path)?;
         Ok(config)
     }
 
-    fn write_path(path: &Path) -> Result<PathBuf> {
-        // Resolve dotfiles symlinks before choosing the sidecar lock or replacing
-        // the file. Direct and symlink callers must update the same target and
-        // synchronize on the same lock, while retaining the original link.
-        match fs::symlink_metadata(path) {
-            Ok(_) => Ok(dunce::canonicalize(path).map_err(|e| path_io("config.resolve", path, e))?),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = path
-                    .parent()
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .unwrap_or(Path::new("."));
+    fn locked_write_path(path: &Path) -> Result<(PathBuf, fs::File)> {
+        // Lock the stable parent before canonicalizing the replaceable file. A
+        // file-specific lock chosen after canonicalizing the file races with
+        // another process replacing it on Windows.
+        let mut path = path.to_path_buf();
+        let mut followed_link = false;
+        let mut seen = HashSet::new();
+        loop {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            if !followed_link {
                 fs::create_dir_all(parent).map_err(|e| path_io("config.directory", parent, e))?;
-                let name = path.file_name().ok_or_else(|| {
-                    GhidraError::ConfigError("Configuration path must name a file".into())
-                })?;
-                Ok(dunce::canonicalize(parent)
-                    .map_err(|e| path_io("config.resolve", parent, e))?
-                    .join(name))
             }
-            Err(error) => Err(path_io("config.resolve", path, error)),
+            let parent =
+                dunce::canonicalize(parent).map_err(|e| path_io("config.resolve", parent, e))?;
+            let name = path.file_name().ok_or_else(|| {
+                GhidraError::ConfigError("Configuration path must name a file".into())
+            })?;
+            let candidate = parent.join(name);
+            let lock_path = parent.join(CONFIG_LOCK_FILE);
+            if candidate == lock_path {
+                return Err(GhidraError::ConfigError(
+                    "Configuration path conflicts with its lock file".into(),
+                ));
+            }
+            if !seen.insert(candidate.clone()) {
+                return Err(path_io(
+                    "config.resolve",
+                    &candidate,
+                    std::io::Error::other("Configuration symlink loop"),
+                ));
+            }
+            // CLI updates replace the target, never the link. Follow a link
+            // without creating a lock file in its directory; the target's
+            // parent lock coordinates direct and symlink callers.
+            if fs::symlink_metadata(&candidate).is_ok_and(|m| m.file_type().is_symlink()) {
+                path = Self::link_target(&candidate, &parent)?;
+                followed_link = true;
+                continue;
+            }
+            let lock = Self::lock(&parent)?;
+            match fs::symlink_metadata(&candidate) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    path = Self::link_target(&candidate, &parent)?;
+                    followed_link = true;
+                }
+                Ok(_) => {
+                    let resolved = dunce::canonicalize(&candidate)
+                        .map_err(|e| path_io("config.resolve", &candidate, e))?;
+                    if resolved == lock_path {
+                        return Err(GhidraError::ConfigError(
+                            "Configuration path conflicts with its lock file".into(),
+                        ));
+                    }
+                    return Ok((resolved, lock));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound && !followed_link => {
+                    return Ok((candidate, lock));
+                }
+                Err(error) => return Err(path_io("config.resolve", &candidate, error)),
+            }
         }
     }
 
-    fn lock(path: &Path) -> Result<fs::File> {
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        fs::create_dir_all(parent).map_err(|e| path_io("config.directory", parent, e))?;
-        let mut lock_name = path.as_os_str().to_os_string();
-        lock_name.push(".lock");
+    fn link_target(path: &Path, parent: &Path) -> Result<PathBuf> {
+        let target = fs::read_link(path).map_err(|e| path_io("config.resolve", path, e))?;
+        Ok(if target.is_absolute() {
+            target
+        } else {
+            parent.join(target)
+        })
+    }
+
+    fn lock(parent: &Path) -> Result<fs::File> {
         // Keep the lock file: unlinking it could let another process lock a
         // different inode. Closing the handle releases the OS-backed lock.
-        let lock_path = PathBuf::from(lock_name);
+        let lock_path = parent.join(CONFIG_LOCK_FILE);
         let lock = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -154,7 +200,7 @@ impl Config {
             .sync_all()
             .map_err(|e| path_io("config.sync", path, e))?;
         // tempfile::persist uses MoveFileExW on Windows, which cannot replace
-        // a destination held open by a reader or write_path's canonicalize.
+        // a destination held open by a reader.
         // std::fs::rename also supports POSIX replacement semantics there.
         // Clear tempfile's temporary attribute and retain cleanup on failure.
         let (file, staged_path) = staged
