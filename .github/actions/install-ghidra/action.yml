@@ -22,7 +22,7 @@ runs:
 
     - name: Cache Ghidra installation
       id: cache
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.release.outputs.path }}
         key: ghidra-${{ runner.os }}-${{ runner.arch }}-${{ steps.release.outputs.version }}-${{ hashFiles('.github/actions/install-ghidra/action.yml', '.github/actions/install-ghidra/release.json', '.github/actions/install-ghidra/install.py', '.github/scripts/build-ghidra-natives.py') }}
