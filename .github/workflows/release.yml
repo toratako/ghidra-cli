@@ -47,6 +47,9 @@ jobs:
       - name: Test CI archive extraction
         run: python -m unittest discover -s .github/actions/install-ghidra -v
 
+      - name: Test release publication guards
+        run: python -m unittest discover -s .github/scripts -v
+
       - name: Install Ghidra
         uses: ./.github/actions/install-ghidra
         timeout-minutes: 20
@@ -116,6 +119,9 @@ jobs:
 
   release:
     name: Create GitHub Release
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -156,15 +162,29 @@ jobs:
               raise SystemExit(f"Missing release notes for {version} in CHANGELOG.md")
           Path("release-notes.md").write_text(section[1].strip() + "\n")
 
-      - name: Create release
+      - name: Check release is unpublished
+        run: python .github/scripts/release.py check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create draft and upload assets
+        id: draft
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           body_path: release-notes.md
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: artifacts/**/*
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publishing is the irreversible asset-lock boundary when immutability is enabled.
+      - name: Verify assets and publish release
+        run: python .github/scripts/release.py publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
 
   publish:
     name: Publish to crates.io
