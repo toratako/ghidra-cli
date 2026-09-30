@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -69,17 +72,25 @@ jobs:
     # GitHub release and crates.io publish whenever any test job fails.
     needs: test
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            archive: tar.gz
             os: ubuntu-latest
           - target: x86_64-apple-darwin
+            archive: tar.gz
             os: macos-26
           - target: aarch64-apple-darwin
+            archive: tar.gz
             os: macos-26
           - target: x86_64-pc-windows-msvc
+            archive: zip
             os: windows-latest
 
     steps:
@@ -108,11 +119,18 @@ jobs:
           7z a ../../../ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.zip ghidra-cli.exe
           cd ../../..
 
+      # Attest the final archive bytes, before upload-artifact wraps them for transport.
+      - name: Attest release archive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ghidra-cli-${{ matrix.target }}
-          path: ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.*
+          path: ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -120,6 +138,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -141,6 +161,11 @@ jobs:
               skill = manifest.parent
               archive = output / f"{skill.name}-{os.environ['GITHUB_REF_NAME']}-skill"
               shutil.make_archive(str(archive), "zip", root_dir=skill.parent, base_dir=skill.name)
+
+      - name: Attest skill archives
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: artifacts/skills/*-${{ github.ref_name }}-skill.zip
 
       - name: Extract release notes
         shell: python
