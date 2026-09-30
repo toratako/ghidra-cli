@@ -5,10 +5,16 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  audit:
+    uses: ./.github/workflows/audit.yml
+
   test:
     name: Test ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -36,13 +42,13 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Run xtask tests
-        run: cargo test -p xtask --verbose
+        run: cargo test --locked -p xtask --verbose
 
       - name: Check generated command tree
-        run: cargo xtask gen-tree --check
+        run: cargo run --locked --quiet --package xtask -- gen-tree --check
 
       - name: Test CI archive extraction
         run: python -m unittest discover -s .github/actions/install-ghidra -v
@@ -53,21 +59,21 @@ jobs:
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
-        run: cargo run -- doctor --runtime
+        run: cargo run --locked -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run all tests
-        run: cargo xtask test --no-fail-fast --verbose -- --nocapture
+        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
 
   build:
     name: Build ${{ matrix.target }}
-    # Gate all release artifacts on the full test suite passing. Because
+    # Gate all release artifacts on tests and a fresh dependency audit. Because
     # `release` and `publish` both `needs: build`, this transitively blocks the
-    # GitHub release and crates.io publish whenever any test job fails.
-    needs: test
+    # GitHub release and crates.io publish if either gate fails.
+    needs: [test, audit]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -92,7 +98,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Create archive (Unix)
         if: matrix.os != 'windows-latest'
@@ -178,6 +184,6 @@ jobs:
         with:
           toolchain: stable
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

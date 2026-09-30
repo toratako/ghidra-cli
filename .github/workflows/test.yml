@@ -58,22 +58,22 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Run unit tests
-        run: cargo test --lib --bin ghidra-cli --verbose
+        run: cargo test --locked --lib --bin ghidra-cli --verbose
 
       - name: Run xtask tests
-        run: cargo test -p xtask --verbose
+        run: cargo test --locked -p xtask --verbose
 
       - name: Check generated command tree
-        run: cargo xtask gen-tree --check
+        run: cargo run --locked --quiet --package xtask -- gen-tree --check
 
       - name: Test CI archive extraction
         run: python -m unittest discover -s .github/actions/install-ghidra -v
 
       - name: Run CLI tests
-        run: cargo test --no-fail-fast --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
+        run: cargo test --locked --no-fail-fast --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
 
   # Ghidra setup - installs Ghidra to seed installation caches.
   # This runs once per OS, then test jobs use the cached artifacts.
@@ -136,7 +136,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Install Ghidra
         uses: ./.github/actions/install-ghidra
@@ -144,11 +144,11 @@ jobs:
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
-        run: cargo run -- doctor --runtime
+        run: cargo run --locked -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run read-only integration tests
-        run: cargo xtask test --no-fail-fast --test readonly_tests --test memory_tests --test vtable_tests --test virtual_callers_tests --test address_table_tests --test function_candidates_tests --test data_tests --test export_coverage_tests --test command_tests --verbose -- --nocapture
+        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast --test readonly_tests --test memory_tests --test vtable_tests --test virtual_callers_tests --test address_table_tests --test function_candidates_tests --test data_tests --test export_coverage_tests --test command_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -185,7 +185,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Install Ghidra
         uses: ./.github/actions/install-ghidra
@@ -193,11 +193,11 @@ jobs:
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
-        run: cargo run -- doctor --runtime
+        run: cargo run --locked -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run mutation integration tests
-        run: cargo xtask test --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --test stack_purge_tests --test thunk_tests --test xref_tests --test equate_tests --test bookmark_tests --test namespace_tests --test memory_block_tests --test function_body_tests --test call_signature_tests --test listing_flow_tests --verbose -- --nocapture
+        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --test stack_purge_tests --test thunk_tests --test xref_tests --test equate_tests --test bookmark_tests --test namespace_tests --test memory_block_tests --test function_body_tests --test call_signature_tests --test listing_flow_tests --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -240,7 +240,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Install Ghidra
         uses: ./.github/actions/install-ghidra
@@ -248,11 +248,11 @@ jobs:
 
       # Initialize the runner-local Ghidra cache before parallel JVM startup.
       - name: Initialize and verify Ghidra runtime
-        run: cargo run -- doctor --runtime
+        run: cargo run --locked -- doctor --runtime
         timeout-minutes: 5
 
       - name: Run infrastructure tests
-        run: cargo xtask test --no-fail-fast ${{ matrix.tests }} --verbose -- --nocapture
+        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast ${{ matrix.tests }} --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
@@ -293,7 +293,7 @@ jobs:
         timeout-minutes: 20
 
       - name: Test detached official standalone JAR
-        run: cargo test --test standalone_jar_tests --verbose -- --nocapture
+        run: cargo test --locked --test standalone_jar_tests --verbose -- --nocapture
         timeout-minutes: 20
         env:
           RUST_LOG: info

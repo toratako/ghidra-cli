@@ -1,0 +1,43 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.cargo/**'
+      - '.github/workflows/audit.yml'
+      - '.github/workflows/release.yml'
+  # Always report a PR check, including for documentation-only changes, so a
+  # required audit check cannot be left pending by workflow-level path filters.
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: Cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+      # Use the CLI's exit status: vulnerabilities and audit errors fail the job;
+      # informational warnings remain visible without being silently ignored.
+      - name: Audit committed dependencies
+        run: cargo audit --file Cargo.lock
