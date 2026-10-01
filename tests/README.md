@@ -50,6 +50,18 @@ CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
 tests, and the generated command tree check on Linux, Windows, and macOS 26 ARM64.
 See [the test workflow](../.github/workflows/test.yml) for suite groupings.
 
+CI builds, tests, lint, and publishing use `--locked` so Cargo cannot silently
+resolve a different dependency set. For `xtask test`, CI locks both Cargo
+processes with `cargo run --locked --quiet --package xtask -- test --locked ...`;
+the local `cargo xtask` alias remains unchanged.
+
+[Dependabot](../.github/dependabot.yml) proposes Cargo updates weekly.
+[Dependency audits](../.github/workflows/audit.yml) run on every PR, dependency
+and audit/release-workflow pushes to `main`/`master`, and daily against the default
+branch. Tagged releases call the same audit before building or publishing
+artifacts. Known vulnerabilities and audit errors fail the job; informational
+warnings remain in the logs for review. No advisories are ignored.
+
 CI installs a pinned official distribution through the shared
 [install action](../.github/actions/install-ghidra/action.yml), selects it with
 `GHIDRA_INSTALL_DIR`, and caches only that installation (including macOS native
