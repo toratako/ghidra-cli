@@ -27,7 +27,7 @@ ghidra-cli doctor
 
 or download a prebuilt binary from [releases](https://github.com/toratako/ghidra-cli/releases).  
 Windows/Linux/macOS binaries are available.
-[Verify the downloaded archive](docs/verification.md) before extracting or running it.
+You can [verify the downloaded archive](docs/verification.md) using GitHub Artifact Attestations.
 
 Ghidra is detected from PATH and known installation locations.  
 If it is not found, set `GHIDRA_INSTALL_DIR` or run `ghidra-cli config set ghidra_install_dir /path/to/ghidra`, then rerun `doctor`.
@@ -42,7 +42,7 @@ Use `ghidra-cli doctor --runtime` to also verify bridge startup.
 There is already an optimized [ghidra-cli skill](docs/skills/ghidra-cli/SKILL.md) for strong agents.  
 This skill is thin and does not include RE workflow, just usage and examples of the CLI commands.
 
-[Verify the skill ZIP](docs/verification.md) before installing it.
+You can also [verify the skill ZIP](docs/verification.md) using GitHub Artifact Attestations.
 
 Install [ghidra-cli skill](docs/skills/ghidra-cli/) (If you download from [releases](https://github.com/toratako/ghidra-cli/releases), use `ghidra-cli-<version>-skill.zip`) to your agents:  
 [Claude Code](https://code.claude.com/docs/en/skills#where-skills-live), [Codex](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills), [Cursor](https://prod.cursor.com/docs/skills#skill-directories), [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/using-agent-skills.md#discovery-tiers), [OpenCode](https://opencode.ai/docs/skills#place-files)
