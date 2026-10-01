@@ -1,0 +1,25 @@
+name: Release workflow checks
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/release*.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/release*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  release-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Test release publication guards (no network or credentials)
+        run: python -m unittest discover -s .github/scripts -v
