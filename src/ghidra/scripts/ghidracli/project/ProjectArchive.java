@@ -177,9 +177,11 @@ public final class ProjectArchive {
 
     private JsonObject inspect(Path project) throws Exception {
         stage("validate");
-        // Validate and inspect the private copy only. Opening never mutates the
-        // source and never connects its shared-repository configuration.
-        DefaultProjectData data = new DefaultProjectData(locator(project), true, true);
+        // Writable opens start asynchronous database cleanup that can outlive
+        // close() and race GAR traversal or restore publication. Inspect the
+        // private copy read-only, without resetting its owner or connecting to
+        // the source's shared repository.
+        DefaultProjectData data = new DefaultProjectData(locator(project), false, false);
         JsonObject result = new JsonObject();
         JsonArray links = new JsonArray();
         int[] counts = new int[2];

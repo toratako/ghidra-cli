@@ -23,7 +23,7 @@ pub(super) fn properties(path: &Path) -> Result<String> {
         GhidraError::ConfigError(format!("Invalid Ghidra JAR {}: {message}", path.display()))
     };
     let mut archive = ZipArchive::new(file).map_err(|e| invalid(e.to_string()))?;
-    let manifest = read_entry(&mut archive, "META-INF/MANIFEST.MF").map_err(&invalid)?;
+    let manifest = read_entry(&mut archive, "META-INF/MANIFEST.MF").map_err(invalid)?;
     if main_class(&manifest).as_deref() != Some("ghidra.JarRun") {
         return Err(invalid("manifest Main-Class must be ghidra.JarRun".into()));
     }

@@ -99,9 +99,10 @@ Loader option names are checked against the selected loader's default option
 arguments before import; unknown names fail with `import_status: not_started`.
 Ghidra's importer alone only logs and ignores those names.
 
-Rust writes the child PID immediately after spawn (best effort), enabling orphan
-cleanup even if Java fails before binding. Java binds `ServerSocket(0)` on
-localhost, writes the port/PID files authoritatively, and signals
+Rust publishes the child PID immediately after spawn (best effort), enabling orphan
+cleanup even if Java fails before binding. This no-clobber publication cannot
+overwrite the JVM's PID if Java starts before the parent resumes. Java binds
+`ServerSocket(0)` on localhost, writes the port/PID files authoritatively, and signals
 `{"status":"ready"}`. On failure/timeout, kill and reap the whole process group
 before joining output-reader threads: a surviving JVM grandchild can keep pipes
 open indefinitely. Preserve stdout/stderr diagnostics and remove stale files.

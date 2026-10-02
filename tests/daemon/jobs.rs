@@ -280,6 +280,9 @@ fn test_shutdown_wait_drains_full_queue_before_reply() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
     let harness = start_daemon();
+    let pid = ghidra_cli::ghidra::bridge::read_pid_file(std::path::Path::new(test_project()))
+        .unwrap()
+        .unwrap();
     let control = harness.client().unwrap();
     let worker = harness.client().unwrap();
     let directory = tempfile::tempdir().unwrap();
@@ -379,6 +382,17 @@ public class HoldQueueForShutdown extends GhidraScript {
     receipt.read_line(&mut response).unwrap();
     let response: serde_json::Value = serde_json::from_str(&response).unwrap();
     assert_eq!(response["status"], "shutdown", "{response}");
+    // The acknowledgement precedes listener/JVM teardown. Wait for this owned
+    // process to exit before harness Drop can send a second shutdown request to
+    // the closing listener and spend the connection retry budget there.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while ghidra_cli::ghidra::bridge::is_pid_alive(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Bridge did not exit after acknowledging shutdown"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[test]
