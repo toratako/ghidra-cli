@@ -1,5 +1,5 @@
 import ghidra.app.script.GhidraScript;
-import ghidra.base.project.GhidraProject;
+import generic.util.LockFactory;
 import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectLocator;
 import ghidra.formats.gfilesystem.*;
@@ -17,14 +17,27 @@ public class NativeGar extends GhidraScript {
         File archive = new File(args[2]);
         ClassLoader loader = GhidraScript.class.getClassLoader();
         if (args[0].equals("archive")) {
-            var project = GhidraProject.openProject(path.getParent().toString(), path.getFileName().toString(), false);
+            // ArchiveTask only needs project identity before doing real disk
+            // I/O. Keep Ghidra's source lock without opening writable databases,
+            // which would launch cleanup racing the native writer itself.
+            var locator = new ProjectLocator(path.getParent().toString(), path.getFileName().toString());
+            var lock = LockFactory.createFileLocker(locator.getProjectLockFile());
+            if (!lock.lock()) throw new AssertionError("Native archive source is locked");
             try {
+                Project project = (Project) Proxy.newProxyInstance(Project.class.getClassLoader(),
+                    new Class<?>[] {Project.class}, (proxy, method, values) -> {
+                        switch (method.getName()) {
+                            case "getName": return locator.getName();
+                            case "getProjectLocator": return locator;
+                            default: throw new AssertionError("Unexpected native project access: " + method);
+                        }
+                    });
                 Class<?> api = Class.forName("ghidra.app.plugin.core.archive.ArchiveTask", true, loader);
                 Constructor<?> ctor = api.getDeclaredConstructor(Project.class, File.class);
                 ctor.setAccessible(true);
-                ((Task) ctor.newInstance(project.getProject(), archive)).run(monitor);
+                ((Task) ctor.newInstance(project, archive)).run(monitor);
                 if (!archive.isFile()) throw new AssertionError("Native archive failed");
-            } finally { project.close(); }
+            } finally { lock.release(); }
         } else {
             // Run the native validator/extractor/marker creation; omit only the
             // final FrontEndTool GUI activation. Actual databases are opened by

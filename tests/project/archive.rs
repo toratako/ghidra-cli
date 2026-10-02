@@ -77,6 +77,11 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let mut zip = zip::ZipArchive::new(std::fs::File::open(&gar)?)?;
     let marker = format!("{}.gpr", alias.file_name().unwrap().to_string_lossy());
     assert!(zip.by_name(&marker).is_ok());
+    assert!(!zip.file_names().any(|name| {
+        name.rsplit('/')
+            .next()
+            .is_some_and(|name| name.starts_with("tmp") && name.ends_with(".tmp"))
+    }));
     drop(zip);
     drop(harness);
     let restored = dunce::canonicalize(root.path())?.join("restored.v2");
@@ -106,13 +111,25 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let worker = root.path().join("worker/project");
     common::fixture::copy_analyzed_project(&worker)?;
     let worker = common::DaemonTestHarness::new(worker.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    worker.client()?.script_run_source(
+        include_str!("CheckGarSnapshot.java"),
+        &[
+            root.path().to_string_lossy().into_owned(),
+            project.to_string_lossy().into_owned(),
+        ],
+        &[],
+        false,
+    )?;
     let native_restored = root.path().join("native-restored");
     worker.client()?.script_run_source(
         include_str!("NativeGar.java"),
         &[
             "restore".into(),
             native_restored.to_string_lossy().into_owned(),
-            gar.to_string_lossy().into_owned(),
+            root.path()
+                .join("snapshot-probe/snapshot.gar")
+                .to_string_lossy()
+                .into_owned(),
         ],
         &[],
         false,
@@ -442,16 +459,19 @@ fn gar_reports_unavailable_external_link_targets_without_following_them() -> any
         common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     harness.client()?.script_run_source(r#"
 import ghidra.app.script.GhidraScript;
-import ghidra.base.project.GhidraProject;
+import ghidra.framework.data.DefaultProjectData;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
+import ghidra.framework.model.ProjectLocator;
 import java.nio.file.Path;
 public class CreateExternalGarLink extends GhidraScript {
     public void run() throws Exception {
         Path path = Path.of(getScriptArgs()[0]);
-        var external = GhidraProject.openProject(path.getParent().toString(), path.getFileName().toString(), false);
+        // Only read the link source; writable open would race the removal below
+        // with Ghidra's asynchronous database cleanup after close().
+        var external = new DefaultProjectData(new ProjectLocator(path.getParent().toString(), path.getFileName().toString()), false, false);
         try {
-            var file = external.getProject().getProjectData().getRootFolder().getFile(getScriptArgs()[1]);
+            var file = external.getRootFolder().getFile(getScriptArgs()[1]);
             var destination = state.getProject().getProjectData().getRootFolder().createFolder("external");
             try { DomainFile.class.getMethod("copyToAsLink", DomainFolder.class, boolean.class).invoke(file, destination, false); }
             catch (NoSuchMethodException olderGhidra) { DomainFile.class.getMethod("copyToAsLink", DomainFolder.class).invoke(file, destination); }

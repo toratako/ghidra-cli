@@ -52,9 +52,11 @@ requests decompilation.
 `ProjectArchive` owns one-shot GAR creation/restoration and Ghidra's target lock.
 `GarFile` implements the standard `ArchiveTask`/`RestoreTask` layout: `JAR_FORMAT`,
 a `.gpr` marker, and `.rep` subdirectory contents at the ZIP root. It excludes
-root project properties/state and database locks. A private copy is opened for
-project validation and link inspection, never the source. Repository identity
-is read without connecting to the server; external resources are not followed.
+root project properties/state and database locks. A private copy is opened
+read-only for project validation and link inspection, never the source. Writable
+opens start database cleanup threads that can outlive project close and race
+archive traversal or restore publication. Repository identity is read without
+connecting to the server; external resources are not followed.
 Filesystem links at or inside `.rep` are rejected: linking only the database
 directory does not alias Ghidra's sibling project lock. Use the real project base
 path; aliases of the containing directory still work.

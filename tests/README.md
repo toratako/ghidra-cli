@@ -98,7 +98,7 @@ Filter a domain with, for example,
 |---|---|
 | `daemon_tests` | Lifecycle/jobs, program sessions/persistence, deletion, and output contracts |
 | `reliability_tests`, `project_tests` | Restart/stale-state recovery and project management |
-| `project/archive.rs` | GAR content/persistence, native Ghidra interoperability, collision and save-failure protection, and invalid archive cleanup |
+| `project/archive.rs` | GAR content/persistence, native Ghidra interoperability, read-only snapshot inspection, collision and save-failure protection, and invalid archive cleanup |
 | `readonly_tests` | Functions/instructions, program metadata, relationships, search, batch queries, and response schemas |
 | `memory_tests` | Pointer decoding, original file bytes versus edits, mapping intervals/reverse lookup, source identity, cancellation and reopen persistence |
 | `vtable_tests` | Explicit Itanium/MSVC and LLVM relative32 layouts, compiler-produced C++ tables, null/unreadable slots, thunk targets, endian/Thumb, cancellation and DB invariance |
@@ -174,6 +174,13 @@ Java fault probes locate the bridge classloader through `ghidracli.script.Script
 When reflecting into other bridge packages, preserve runtime construction of
 qualified class names: constant reflective names can make bnd infer an OSGi import
 of the bridge's private bundle. Update these probes alongside package moves.
+
+The GAR snapshot probe models the native cleanup scratch file's lifetime with
+latches when inspection acquires a write lock, holding it through traversal.
+It shares the native interoperability test's JVM and checks real missing-data
+errors separately. The native archive helper holds Ghidra's source lock without
+opening databases; the external-link helper reads its source project read-only.
+Both avoid launching cleanup in test setup.
 
 Batch restart coverage lives in `tests/routing/batch.rs` (selected ranges,
 target preservation, nested/continued execution, and lost replies) and

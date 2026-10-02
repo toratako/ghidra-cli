@@ -7,9 +7,9 @@ use super::{cleanup_stale_files_locked, pid_file_path, port_file_path, read_port
 use super::{sources, BridgeStartMode};
 use crate::ghidra::installation::Installation;
 use crate::ipc::client::BridgeClient;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -26,8 +26,9 @@ pub fn start_bridge(
 
     let scripts_dir = sources::install()?;
 
-    // Compute port file path
+    // Resolve discovery paths before spawning the child.
     let port_file = port_file_path(project_path)?;
+    let pid_file = pid_file_path(project_path)?;
 
     // analyzeHeadless expects: <parent_directory> <project_name>
     let ghidra_project_dir = std::path::absolute(project_path.parent().unwrap_or(project_path))?;
@@ -97,9 +98,9 @@ pub fn start_bridge(
         .map_err(|e| crate::error::path_io("bridge.launch", &executable, e))?;
     info!("Ghidra process started with PID: {:?}", child.id());
 
-    // Write PID file immediately so orphan cleanup is possible if Java crashes
-    // before the ready signal (Java overwrites this once it binds the ServerSocket)
-    write_pid_file(project_path, child.id()).ok();
+    // Publish the launcher PID only if Java has not already published its own.
+    // This preserves discovery if Java fails before binding its ServerSocket.
+    write_pid_file(&pid_file, child.id()).ok();
 
     // Drain stderr continuously while retaining only diagnostic output.
     let stderr = child.stderr.take().expect("stderr should be piped");
@@ -412,13 +413,19 @@ pub(super) fn kill_process_tree(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
-/// Write PID to the PID file for a project.
-/// Enables orphan cleanup when Java crashes before writing its own PID file.
-/// Java overwrites this value once it binds the ServerSocket.
-fn write_pid_file(project_path: &Path, pid: u32) -> Result<()> {
-    let path = pid_file_path(project_path)?;
-    std::fs::write(&path, pid.to_string())?;
-    debug!("Wrote PID {} to {}", pid, path.display());
+/// Publish a provisional launcher PID without overwriting Java's authoritative
+/// PID, even when Java starts before the parent resumes after spawn().
+fn write_pid_file(path: &Path, pid: u32) -> Result<()> {
+    let mut staged =
+        tempfile::NamedTempFile::new_in(path.parent().context("PID file has no parent")?)?;
+    write!(staged, "{pid}")?;
+    // Stage the complete value before no-clobber publication: create_new then
+    // write would still let a delayed parent overwrite Java through its handle.
+    match staged.into_temp_path().persist_noclobber(path) {
+        Ok(_) => debug!("Wrote provisional PID {} to {}", pid, path.display()),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.into()),
+    }
     Ok(())
 }
 

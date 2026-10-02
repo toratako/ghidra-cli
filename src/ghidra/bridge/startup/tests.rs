@@ -2,6 +2,31 @@ use super::*;
 use std::cell::Cell;
 
 #[test]
+fn launcher_pid_never_overwrites_java_publication() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("bridge.pid");
+    // Java may have finished publication or only created/truncated the file
+    // while the parent was descheduled immediately after spawning the child.
+    for java_contents in ["67890", ""] {
+        std::fs::write(&path, java_contents).unwrap();
+        write_pid_file(&path, 12345).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), java_contents);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn java_pid_replaces_the_provisional_launcher_pid() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("bridge.pid");
+    write_pid_file(&path, 12345).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "12345");
+    std::fs::write(&path, "678").unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "678");
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[test]
 fn startup_diagnostics_accept_ghidra_log_decoration() {
     let payload = serde_json::json!({
         "status": "error", "message": "Program not found",
