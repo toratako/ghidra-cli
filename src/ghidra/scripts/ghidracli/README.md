@@ -605,8 +605,10 @@ ordinary decompilation.
 
 `ProgramSession` owns one lazy `DecompilerSession`, shared by decompilation,
 high p-code and variable reads/edits on the program thread. Each call reads the current
-Program and request monitor. Reuse requires the same Program object and modification
-number; any change, including saved edits or rollback, causes reopening on next use.
+Program and request monitor. Reuse requires the same Program object, modification
+number, and effective predicate-simplification setting. `decompile` can override
+that setting for one request; other callers use fresh native defaults. A setting
+change, saved edit, or rollback causes reopening on next use.
 Results are not retained. Ghidra flushes native function/symbol data after each
 decompilation; reopening also refreshes language and address-space initialization.
 Failure or cancellation closes the interface. Switching/closing saves first,

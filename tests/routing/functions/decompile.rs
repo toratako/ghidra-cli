@@ -2,6 +2,41 @@ use super::super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
 #[test]
+fn decompile_forwards_optional_predicate_setting_in_standalone_and_batch_requests() {
+    let bridge = RecordedBridge::new();
+    for setting in [None, Some("true"), Some("false")] {
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let mut args = vec!["decompile", "main", "--program", "B"];
+            if let Some(setting) = setting {
+                args.extend(["--predicate-simplification", setting]);
+            }
+            if batch {
+                std::fs::write(
+                    bridge.root.path().join("predicate.txt"),
+                    batch_arguments(&args),
+                )
+                .unwrap();
+                bridge.run(&["batch", "predicate.txt"]);
+            } else {
+                bridge.run(&args);
+            }
+            let requests = bridge.requests.lock().unwrap();
+            let operations: Vec<_> = requests
+                .iter()
+                .filter(|request| request["command"] == "decompile")
+                .collect();
+            assert_eq!(operations.len(), 1);
+            assert_eq!(operations[0]["program"], "B");
+            assert_eq!(
+                operations[0]["args"].get("predicate_simplification"),
+                setting.map(|setting| json!(setting == "true")).as_ref()
+            );
+        }
+    }
+}
+
+#[test]
 fn decompiler_commands_share_native_timeout_configuration() {
     let bridge = RecordedBridge::new();
     for (args, wire) in [

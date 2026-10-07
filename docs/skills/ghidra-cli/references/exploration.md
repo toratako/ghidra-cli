@@ -24,6 +24,11 @@ only recovered destinations; an empty result does not rule out an indirect branc
 `--with-addresses` maps displayed operations, not every contributing instruction:
 a condition may identify the branch but omit the compare.
 
+When conditional instructions appear to have been merged incorrectly, compare
+the default output with `decompile TARGET --predicate-simplification false`.
+This disables grouping conditional execution into `if/else`; other decompiler
+optimizations still apply, and the alternate output needs checking against instructions.
+
 Decompilation has no native time limit by default; use
 [job control](../SKILL.md#results-edits-and-jobs) to inspect or cancel long work.
 

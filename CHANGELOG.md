@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add `decompile --predicate-simplification true|false` to control Ghidra's
+  grouping of conditional execution into `if/else` for one request. Results
+  report the effective setting, and other decompiler requests use native defaults.
+
 ## [0.9.0] - 2026-09-24
 
 ### Added

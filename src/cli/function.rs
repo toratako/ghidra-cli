@@ -435,6 +435,9 @@ pub struct DecompileArgs {
     /// Include related instruction addresses for each decompiled C line
     #[arg(long)]
     pub with_addresses: bool,
+    /// Combine predicated instructions into if/else; omitted uses Ghidra's default
+    #[arg(long, action = clap::ArgAction::Set)]
+    pub predicate_simplification: Option<bool>,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

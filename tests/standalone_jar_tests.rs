@@ -160,7 +160,7 @@ fn official_jar_runs_detached_with_native_tools_and_durable_project_operations()
     let client = runtime.client(project);
     let function = common::helpers::get_fixture_function(&client, "add_numbers");
     let decompiled = client
-        .decompile(function.address.clone(), false, false, false, false)
+        .decompile(function.address.clone(), false, false, false, false, None)
         .unwrap();
     assert!(
         !decompiled["code"].as_str().unwrap().is_empty(),

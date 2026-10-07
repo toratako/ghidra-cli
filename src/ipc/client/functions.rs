@@ -74,17 +74,19 @@ impl BridgeClient {
         with_params: bool,
         with_jump_tables: bool,
         with_addresses: bool,
+        predicate_simplification: Option<bool>,
     ) -> Result<serde_json::Value> {
-        self.send_decompile_command(
-            "decompile",
-            json!({
-                "address": address,
-                "with_vars": with_vars,
-                "with_params": with_params,
-                "with_jump_tables": with_jump_tables,
-                "with_addresses": with_addresses,
-            }),
-        )
+        let mut args = json!({
+            "address": address,
+            "with_vars": with_vars,
+            "with_params": with_params,
+            "with_jump_tables": with_jump_tables,
+            "with_addresses": with_addresses,
+        });
+        if let Some(predicate_simplification) = predicate_simplification {
+            args["predicate_simplification"] = json!(predicate_simplification);
+        }
+        self.send_decompile_command("decompile", args)
     }
 
     pub(crate) fn send_decompile_command(

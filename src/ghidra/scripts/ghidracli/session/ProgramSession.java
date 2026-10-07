@@ -1,6 +1,7 @@
 package ghidracli.session;
 
 import com.google.gson.JsonObject;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
 import ghidra.app.script.GhidraState;
@@ -63,7 +64,11 @@ public final class ProgramSession {
     public TaskMonitor monitor() { return script.monitor(); }
     public void setMonitor(TaskMonitor monitor) { script.setMonitor(monitor); }
     public DecompileResults decompile(Function function, int timeoutSecs) throws CancelledException {
-        return decompiler.decompile(program(), function, timeoutSecs, monitor());
+        return decompile(function, timeoutSecs, new DecompileOptions());
+    }
+    public DecompileResults decompile(Function function, int timeoutSecs, DecompileOptions options)
+            throws CancelledException {
+        return decompiler.decompile(program(), function, timeoutSecs, monitor(), options);
     }
     private ProgramTransaction transaction(String description) {
         return new ProgramTransaction(program(), description);

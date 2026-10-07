@@ -403,6 +403,35 @@ fn parses_decompile_positional_target() {
 }
 
 #[test]
+fn decompile_predicate_simplification_requires_an_explicit_boolean() {
+    for (value, expected) in [
+        (None, None),
+        (Some("true"), Some(true)),
+        (Some("false"), Some(false)),
+    ] {
+        let mut argv = vec!["ghidra-cli", "decompile", "main"];
+        if let Some(value) = value {
+            argv.extend(["--predicate-simplification", value]);
+        }
+        let Commands::Decompile(args) = Cli::try_parse_from(argv).unwrap().command else {
+            panic!("expected decompile command");
+        };
+        assert_eq!(args.predicate_simplification, expected);
+    }
+    for suffix in [
+        vec!["--predicate-simplification"],
+        vec!["--predicate-simplification", "1"],
+    ] {
+        assert!(Cli::try_parse_from(
+            ["ghidra-cli", "decompile", "main"]
+                .into_iter()
+                .chain(suffix)
+        )
+        .is_err());
+    }
+}
+
+#[test]
 fn parses_function_get_positional_target() {
     for with_signature in [false, true] {
         let mut argv = vec!["ghidra-cli", "function", "get", "main"];

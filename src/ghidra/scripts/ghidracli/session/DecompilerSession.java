@@ -14,17 +14,20 @@ final class DecompilerSession {
     private long modification;
 
     DecompileResults decompile(Program program, Function function, int timeoutSecs,
-            TaskMonitor monitor) throws CancelledException {
+            TaskMonitor monitor, DecompileOptions options) throws CancelledException {
         boolean completed = false;
         try {
             monitor.checkCancelled();
             if (decompiler != null && (decompiler.getProgram() != program
-                    || modification != program.getModificationNumber())) {
+                    || modification != program.getModificationNumber()
+                    || decompiler.getOptions().isPredicate() != options.isPredicate())) {
                 close();
             }
             if (decompiler == null) {
                 decompiler = new DecompInterface();
-                decompiler.setOptions(new DecompileOptions());
+                // Predicate is the only request override; all other options are
+                // fresh native defaults. Effective values define session reuse.
+                decompiler.setOptions(options);
                 if (!decompiler.openProgram(program)) {
                     throw new IllegalStateException("Could not open program in decompiler: "
                         + decompiler.getLastMessage());

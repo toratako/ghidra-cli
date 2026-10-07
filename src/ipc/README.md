@@ -44,6 +44,13 @@ in the shared decompiler adapter because it is a Ghidra parameter, not a socket 
 Their `timeout_secs` argument defaults to zero (unbounded); numeric integers
 through 2,147,483 seconds are accepted. Reject larger
 values before Ghidra's signed-int seconds-to-milliseconds conversion can overflow.
+
+`decompile` accepts optional boolean `predicate_simplification`; omission uses
+Ghidra's native default. Results and native decompilation failure detail report
+the effective boolean. This controls combining conditional execution into
+`if/else`, and is part of native session reuse. High p-code, variable operations,
+and decompiler scans use native defaults for their requests.
+
 EOF, I/O failures after sending begins, malformed replies, and invalid response
 statuses have a typed unknown outcome and must stop batches without replay.
 Read timeouts exit 75 without cancelling the job; other unknown outcomes exit 1.

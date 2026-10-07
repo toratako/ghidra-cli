@@ -1,8 +1,10 @@
 package ghidracli.analysis;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
@@ -30,6 +32,14 @@ public final class DecompileCommands {
     }
 
     public JsonObject handleDecompile(JsonObject args) throws Exception {
+        DecompileOptions options = new DecompileOptions();
+        if (args != null && args.has("predicate_simplification")) {
+            JsonElement value = args.get("predicate_simplification");
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+                throw new IllegalArgumentException("predicate_simplification must be a boolean");
+            }
+            options.setPredicate(value.getAsBoolean());
+        }
         if (session.program() == null) {
             return errorResult("No program loaded");
         }
@@ -45,11 +55,12 @@ public final class DecompileCommands {
         }
         int timeoutSecs = getDecompileTimeoutArg(args);
 
-        DecompileResults results = session.decompile(func, timeoutSecs);
+        DecompileResults results = session.decompile(func, timeoutSecs, options);
 
         if (results.decompileCompleted()) {
             String code = results.getDecompiledFunction().getC();
             JsonObject result = functionQueries.functionContext(func);
+            result.addProperty("predicate_simplification", options.isPredicate());
             String sig = null;
             try {
                 sig = func.getPrototypeString(false, false);
@@ -137,7 +148,9 @@ public final class DecompileCommands {
             }
             JsonObject error = errorResult(prefix + " for " + func.getName() + " at " +
                 AddressCodec.format(func.getEntryPoint()) + ": " + detail.trim());
-            error.add("detail", functionQueries.functionContext(func));
+            JsonObject context = functionQueries.functionContext(func);
+            context.addProperty("predicate_simplification", options.isPredicate());
+            error.add("detail", context);
             return error;
         }
     }

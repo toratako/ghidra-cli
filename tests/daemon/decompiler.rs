@@ -8,9 +8,11 @@ use serial_test::serial;
 const DECOMPILER_PROBE: &str = r#"
 import com.google.gson.JsonObject;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileProcess;
 import ghidra.app.script.GhidraScript;
 import ghidra.framework.model.DomainFile;
+import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
@@ -35,6 +37,8 @@ public class DecompilerSessionProbe extends GhidraScript {
     private String cancelMethod;
     private boolean cancelledInPhase;
     private boolean failSave;
+    private boolean failInitialization;
+    private DecompInterface failedEngine;
     private String address;
     private String otherAddress;
     private String originalName;
@@ -97,8 +101,13 @@ public class DecompilerSessionProbe extends GhidraScript {
     }
 
     private JsonObject decompile() throws Exception {
+        return decompile(null);
+    }
+
+    private JsonObject decompile(Boolean predicate) throws Exception {
         JsonObject args = args("address", address);
         args.addProperty("with_params", true);
+        if (predicate != null) args.addProperty("predicate_simplification", predicate);
         return success(command("decompile", args));
     }
 
@@ -127,6 +136,7 @@ public class DecompilerSessionProbe extends GhidraScript {
         Listing listing = (Listing) Proxy.newProxyInstance(Listing.class.getClassLoader(),
             new Class<?>[] { Listing.class }, (proxy, method, args) -> {
                 if (method.getName().equals("getInstructionAt") && fault != null) {
+                    failedEngine = engine();
                     String mode = fault;
                     fault = null;
                     if (mode.equals("cancel")) requestMonitor.cancel();
@@ -146,6 +156,17 @@ public class DecompilerSessionProbe extends GhidraScript {
         selected = (Program) Proxy.newProxyInstance(Program.class.getClassLoader(),
             new Class<?>[] { Program.class }, (proxy, method, args) -> {
                 if (method.getName().equals("getListing")) return listing;
+                if (method.getName().equals("getCompilerSpec") && failInitialization
+                        && StackWalker.getInstance().walk(frames -> frames.anyMatch(frame ->
+                            frame.getClassName().equals(DecompInterface.class.getName())
+                                && frame.getMethodName().equals("openProgram")))) {
+                    failInitialization = false;
+                    failedEngine = engine();
+                    // An unsupported compiler spec makes native openProgram fail.
+                    return Proxy.newProxyInstance(CompilerSpec.class.getClassLoader(),
+                        new Class<?>[] { CompilerSpec.class }, (spec, call, values) ->
+                            invoke(call, real.getCompilerSpec(), values));
+                }
                 if (method.getName().equals("save") && failSave) {
                     failSave = false;
                     throw new IOException("injected save failure");
@@ -223,11 +244,13 @@ public class DecompilerSessionProbe extends GhidraScript {
         try {
             var function = real.getFunctionManager().getFunctionAt(real.getAddressFactory().getAddress(address));
             function.setName("transient_name", SourceType.USER_DEFINED);
-            sessionCall("decompile", new Class<?>[] { ghidra.program.model.listing.Function.class, int.class },
-                function, 0);
+            DecompileOptions options = new DecompileOptions();
+            options.setPredicate(false);
+            sessionCall("decompile", new Class<?>[] { ghidra.program.model.listing.Function.class,
+                int.class, DecompileOptions.class }, function, 0, options);
             transientEngine = engine();
         } finally { sessionCall("finishRequest", new Class<?>[] { boolean.class }, false); }
-        check(decompile().get("name").getAsString().equals(originalName), "Rolled-back name leaked");
+        check(decompile(false).get("name").getAsString().equals(originalName), "Rolled-back name leaked");
         check(engine() != transientEngine && transientEngine.getProgram() == null,
             "Rollback retained the transient decompiler");
     }
@@ -266,6 +289,57 @@ public class DecompilerSessionProbe extends GhidraScript {
             "Cancelled flow read retained a monitor listener across requests");
     }
 
+    private void predicateOptions() throws Exception {
+        boolean nativeDefault = new DecompileOptions().isPredicate();
+        long modification = real.getModificationNumber();
+        for (Boolean setting : new Boolean[] { false, null, false, true, null, true }) {
+            DecompInterface previous = engine();
+            DecompileProcess previousProcess = process(previous);
+            boolean previousSetting = previous.getOptions().isPredicate();
+            boolean effective = setting == null ? nativeDefault : setting;
+            JsonObject result = decompile(setting);
+            check(result.get("predicate_simplification").getAsBoolean() == effective,
+                "Result did not report the effective native predicate option: " + result);
+            check(engine().getOptions().isPredicate() == effective,
+                "Request did not apply the native predicate option");
+            check(result.equals(decompile(setting)), "Repeated configured decompile changed output");
+            if (effective == previousSetting) {
+                check(engine() == previous && process(engine()) == previousProcess,
+                    "Equal effective options restarted the native session");
+            } else {
+                check(engine() != previous && previous.getProgram() == null,
+                    "Changed predicate option retained the native session");
+                check(previousProcess.getDisposeState() != DecompileProcess.DisposeState.NOT_DISPOSED,
+                    "Changed predicate option left the old native process running");
+            }
+        }
+        decompile(!nativeDefault);
+        DecompInterface configured = engine();
+        complete(success(command("pcode_function", highArgs())));
+        check(engine().getOptions().isPredicate() == nativeDefault && engine() != configured
+            && configured.getProgram() == null, "High P-code inherited the explicit predicate setting");
+        DecompInterface defaultEngine = engine();
+        DecompileProcess defaultProcess = process(defaultEngine);
+        check(decompile(nativeDefault).get("predicate_simplification").getAsBoolean() == nativeDefault,
+            "Explicit native default did not report its setting");
+        check(defaultEngine == engine() && defaultProcess == process(engine()),
+            "Explicit default did not reuse High P-code's native session");
+        success(command("function_var_list", args("target", address)));
+        check(defaultEngine == engine(), "Variable listing did not reuse native defaults");
+        check(real.getModificationNumber() == modification && !real.isChanged(),
+            "Predicate selection changed the Program");
+
+        for (String invalid : new String[] { "null", "\"false\"", "0", "{}", "[]" }) {
+            JsonObject arguments = args("address", address);
+            arguments.add("predicate_simplification", com.google.gson.JsonParser.parseString(invalid));
+            JsonObject response = command("decompile", arguments);
+            check("error".equals(response.get("status").getAsString())
+                && response.get("message").getAsString().contains("predicate_simplification must be a boolean"),
+                "Invalid direct predicate setting was accepted: " + response);
+            check(defaultEngine == engine(), "Invalid predicate setting reached native initialization");
+        }
+    }
+
     private void flowCancellationAndRecovery() throws Exception {
         // These monitors cancel after native decompilation has completed, first
         // while building def/use, then while serializing an operation's slots.
@@ -282,6 +356,7 @@ public class DecompilerSessionProbe extends GhidraScript {
             fault = mode;
             JsonObject args = args("address", address);
             args.addProperty("timeout_secs", 1);
+            args.addProperty("predicate_simplification", false);
             JsonObject response = command("decompile", args);
             check(fault == null, "Fault did not reach the native callback");
             check("error".equals(response.get("status").getAsString()), response.toString());
@@ -289,15 +364,35 @@ public class DecompilerSessionProbe extends GhidraScript {
                 check(response.getAsJsonObject("detail").get("cancelled").getAsBoolean(), response.toString());
             } else {
                 check(response.get("message").getAsString().contains("timed out"), response.toString());
+                check(!response.getAsJsonObject("detail").get("predicate_simplification").getAsBoolean(),
+                    "Timeout lost the effective predicate setting");
             }
-            check(engine() == null && previous.getProgram() == null, "Failed decompiler was retained");
+            check(engine() == null && previous.getProgram() == null && failedEngine.getProgram() == null,
+                "Failed decompiler was retained");
             TaskMonitorAdapter oldMonitor = requestMonitor;
-            decompile();
+            check(decompile().get("predicate_simplification").getAsBoolean()
+                == new DecompileOptions().isPredicate(), "Recovery inherited failed predicate options");
             DecompInterface recovered = engine();
             oldMonitor.cancel();
             decompile();
             check(recovered == engine(), "Old monitor cancelled a later request");
         }
+
+        DecompInterface previousInitialization = engine();
+        failInitialization = true;
+        JsonObject initializationArgs = args("address", address);
+        initializationArgs.addProperty("predicate_simplification", !new DecompileOptions().isPredicate());
+        JsonObject initializationFailure = command("decompile", initializationArgs);
+        check(!failInitialization && "error".equals(initializationFailure.get("status").getAsString())
+            && initializationFailure.get("message").getAsString().contains("Could not open program in decompiler"),
+            "Native initialization failure was not reported: " + initializationFailure);
+        check(engine() == null && previousInitialization.getProgram() == null
+            && failedEngine.getProgram() == null, "Initialization failure retained native state");
+        decompile(false);
+        DecompInterface recoveredInitialization = engine();
+        decompile(false);
+        check(recoveredInitialization == engine() && !engine().getOptions().isPredicate(),
+            "Initialization failure did not recover a reusable configured session");
 
         // A failed durable save must keep the selected Program and its live
         // decompiler available. Only a successful close may release them.
@@ -329,6 +424,7 @@ public class DecompilerSessionProbe extends GhidraScript {
                 .getFunctionAt(real.getAddressFactory().getAddress(address)).getName();
             configure();
             reuseAndChanges();
+            predicateOptions();
             flowCancellationAndRecovery();
             failures();
             DecompInterface previous = engine();
@@ -350,6 +446,7 @@ public class DecompilerSessionProbe extends GhidraScript {
             fault = null;
             cancelClass = null;
             failSave = false;
+            failInitialization = false;
             requestMonitor.clearCancelled();
             try {
                 if (session != null) sessionCall("closeProgram", new Class<?>[0]);
