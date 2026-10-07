@@ -94,6 +94,13 @@ rm -rf ~/.local/share/ghidra-cli/
 Development: [AGENTS.md](AGENTS.md), [tests](tests/README.md),
 [documentation map](docs/README.md), and [release history](CHANGELOG.md).
 
+## Related Projects (not affiliated)
+
+- [bethington/ghidra-mcp](https://github.com/bethington/ghidra-mcp)
+- [cellebrite-labs/ghidra-rpc](https://github.com/cellebrite-labs/ghidra-rpc)
+- [mrphrazer/ghidra-headless-mcp](https://github.com/mrphrazer/ghidra-headless-mcp)
+- [ghidra-user-jp/mecha_ghidra](https://github.com/ghidra-user-jp/mecha_ghidra)
+
 ## License
 
 Licensed under [GPL-3.0](LICENSE).  
