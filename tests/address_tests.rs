@@ -32,7 +32,8 @@ fn explicit_addresses_and_exact_names_preserve_targets() {
             ..Default::default()
         },
     )
-    .expect("import address fixture");
+    .expect("import address fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program)
         .expect("start address fixture bridge");
     let client = harness.client().unwrap();

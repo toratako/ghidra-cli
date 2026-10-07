@@ -115,7 +115,8 @@ fn applied_data_values_and_bounded_traversal() {
             ..Default::default()
         },
     )
-    .expect("import raw data fixture");
+    .expect("import raw data fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program)
         .expect("start data fixture bridge");
     let client = harness.client().unwrap();

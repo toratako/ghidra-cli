@@ -70,7 +70,8 @@ fn stack_purge_changes_caller_interpretation_and_persists_without_convention_edi
             ..Default::default()
         },
     )
-    .expect("import raw stack-purge fixture");
+    .expect("import raw stack-purge fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
     client

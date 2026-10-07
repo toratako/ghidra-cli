@@ -31,7 +31,8 @@ fn fixture(language: &str, bytes: &[u8], check: impl FnOnce(&common::DaemonTestH
             ..Default::default()
         },
     )
-    .expect("import raw flow fixture");
+    .expect("import raw flow fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     harness
         .client()

@@ -26,6 +26,8 @@ fn import_names_are_saved_and_selected_across_all_routes() {
         ]);
         assert_eq!(result["command"], "program import");
         assert_eq!(result["program"], name);
+        assert_eq!(result["data"]["import"]["import_status"], "saved");
+        assert!(result["data"]["import"]["loader_diagnostics"]["text"].is_string());
         project.assert_program_identity(name);
         let programs = project.ok(&["program", "list"]);
         assert!(
@@ -249,6 +251,9 @@ fn saved_import_survives_bridge_state_directory_failure() {
     assert_eq!(detail["path"], blocked.join("ghidra-cli").to_str().unwrap());
     assert_eq!(detail["import_status"], "saved");
     assert_eq!(detail["analysis_status"], "skipped");
+    assert_eq!(detail["loader_diagnostics"]["text"], "");
+    assert_eq!(detail["loader_diagnostics"]["truncated"], false);
+    assert_eq!(detail["loader_diagnostics"]["original_characters"], 0);
     assert_eq!(detail["program"], "saved-name");
     assert_eq!(detail["recovery"][1], "bridge");
     assert_eq!(detail["recovery"][2], "start");
@@ -326,4 +331,156 @@ fn unsupported_loader_options_never_save_a_program() {
             "0x00009000"
         );
     }
+}
+
+#[test]
+#[serial_test::serial]
+fn native_loader_diagnostics_survive_success_and_failure_in_both_pipelines() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    // BinaryLoader logs clipping before creating the memory block. A start near
+    // the end of this 16-bit space then fails after that real loader diagnostic.
+    std::fs::write(&raw, vec![0u8; 65_537]).unwrap();
+    let flags = [
+        "program",
+        "import",
+        raw.to_str().unwrap(),
+        "--language",
+        "6502:LE:16:default",
+        "--length",
+        "0",
+        "--no-analyze",
+    ];
+    let mut success = flags.to_vec();
+    success.extend(["--name", "clipped", "--base-address", "0x0"]);
+    let result = project.ok(&success);
+    let diagnostics = &result["data"]["import"]["loader_diagnostics"];
+    assert!(
+        diagnostics["text"]
+            .as_str()
+            .unwrap()
+            .contains("Clipped file to fit into memory space"),
+        "{result}"
+    );
+    assert_eq!(diagnostics["truncated"], false);
+    assert_eq!(
+        diagnostics["original_characters"],
+        diagnostics["retained_characters"]
+    );
+
+    let client = project.client();
+    let args = serde_json::json!({
+        "binary_path": raw, "program": "bridge-clipped", "loader": "BinaryLoader",
+        "language": "6502:LE:16:default", "loader_options": [["length", "0"], ["baseAddr", "0x0"]]
+    });
+    let bridge_result = client.send_command("import", Some(args.clone())).unwrap();
+    assert_eq!(bridge_result["loader_diagnostics"], *diagnostics);
+    assert_eq!(bridge_result["import_status"], "saved");
+    assert_eq!(bridge_result["analysis_status"], "skipped");
+    let mut failed_args = args;
+    failed_args["program"] = serde_json::json!("bridge-failed");
+    failed_args["loader_options"][1][1] = serde_json::json!("0xffff");
+    let error = client
+        .send_command("import", Some(failed_args))
+        .unwrap_err();
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert!(
+        detail["loader_diagnostics"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Clipped file to fit into memory space"),
+        "{detail}"
+    );
+    assert_eq!(detail["loader_diagnostics"]["truncated"], false);
+    assert_eq!(detail["stage"], "import.load");
+    assert_eq!(detail["analysis_status"], "skipped");
+    let mut failure = flags.to_vec();
+    failure.extend(["--name", "bootstrap-failed", "--base-address", "0xffff"]);
+    let output = project.run(&failure);
+    assert!(!output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(
+        error["detail"]["loader_diagnostics"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Clipped file to fit into memory space"),
+        "{error}"
+    );
+    assert_eq!(error["detail"]["loader_diagnostics"]["truncated"], false);
+    assert_eq!(error["detail"]["stage"], "import.load");
+    let programs = project.ok(&["program", "list"]);
+    assert_eq!(programs.as_array().unwrap().len(), 2, "{programs}");
+}
+
+#[test]
+#[serial_test::serial]
+fn loader_log_snapshot_bounds_empty_and_unicode_text() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    project.ok(&[
+        "program",
+        "import",
+        raw.to_str().unwrap(),
+        "--name",
+        "snapshot-fixture",
+        "--language",
+        "x86:LE:32:default",
+        "--no-analyze",
+    ]);
+    let artifact = project.root.path().join("diagnostics.json");
+    let source = r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.util.importer.MessageLog;
+import com.google.gson.JsonArray;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class LoaderLogSnapshotProbe extends GhidraScript {
+    public void run() throws Exception {
+        Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+            .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
+                .filter(type -> type.getSimpleName().equals("ScriptCommands")
+                    && type.getPackageName().equals("ghidracli.script"))
+                .findFirst().orElseThrow());
+        String bridgePackage = caller.getPackageName()
+            .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
+        Class<?> support = caller.getClassLoader().loadClass(bridgePackage + "project.ImportSupport");
+        var snapshot = support.getDeclaredMethod("diagnostics", MessageLog.class);
+        snapshot.setAccessible(true);
+        var results = new JsonArray();
+        MessageLog log = new MessageLog();
+        results.add((com.google.gson.JsonObject) snapshot.invoke(null, log));
+        log.appendMsg("x".repeat(16_383) + "\ud83d\ude80" + "z".repeat(100_000));
+        results.add((com.google.gson.JsonObject) snapshot.invoke(null, log));
+        log.clear();
+        log.appendMsg("x".repeat(16_382) + "\ud83d\ude80" + "z");
+        results.add((com.google.gson.JsonObject) snapshot.invoke(null, log));
+        Files.writeString(Path.of(getScriptArgs()[0]), results.toString());
+    }
+}
+"#;
+    project
+        .client()
+        .script_run_source(source, &[artifact.to_str().unwrap().to_owned()], &[], false)
+        .unwrap();
+    let result: Value = serde_json::from_slice(&std::fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(result[0]["text"], "");
+    assert_eq!(result[0]["truncated"], false);
+    assert_eq!(result[0]["retained_characters"], 0);
+    assert_eq!(result[0]["original_characters"], 0);
+    for (index, retained, original) in [(1, 16_383, 116_386), (2, 16_384, 16_386)] {
+        assert_eq!(result[index]["truncated"], true);
+        assert_eq!(result[index]["maximum_characters"], 16_384);
+        assert_eq!(result[index]["retained_characters"], retained);
+        assert_eq!(result[index]["original_characters"], original);
+        let text = result[index]["text"].as_str().unwrap();
+        assert_eq!(text.encode_utf16().count(), retained);
+        assert!(!text.contains('\u{fffd}'));
+    }
+    assert!(result[2]["text"].as_str().unwrap().ends_with('🚀'));
 }

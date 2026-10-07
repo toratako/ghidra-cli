@@ -21,7 +21,10 @@ mod import;
 mod sources;
 mod startup;
 pub use headless::compile_check;
-pub use import::{import_oneshot, OneShotImportOptions};
+// This type is part of the library's import receipt API; the CLI reads it through the receipt.
+#[allow(unused_imports)]
+pub use import::LoaderDiagnostics;
+pub use import::{import_oneshot, OneShotImportOptions, OneShotImportReceipt};
 
 /// Which program, if any, the bridge opens before reporting readiness.
 pub enum BridgeStartMode {

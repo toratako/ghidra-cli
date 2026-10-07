@@ -29,7 +29,8 @@ fn variable_selection_rejects_identical_program_in_another_project() {
             ..Default::default()
         },
     )
-    .unwrap();
+    .unwrap()
+    .program;
     {
         let harness =
             super::common::DaemonTestHarness::new(source.to_str().unwrap(), &starter).unwrap();

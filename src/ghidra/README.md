@@ -95,6 +95,10 @@ name collisions fail before loading; omitted names can use Ghidra's collision
 suffix. Import input paths are absolute without resolving symlinks, preserving
 the supplied file name as the default saved name in both routes.
 Always return the saved DomainFile name.
+One-shot imports return `OneShotImportReceipt`, retaining the name, save/analysis
+states, and bounded loader diagnostics from the Java completion receipt. The CLI
+preserves the receipt under `data.import` on both routes and carries diagnostics
+into later workflow failure detail.
 Loader option names are checked against the selected loader's default option
 arguments before import; unknown names fail with `import_status: not_started`.
 Ghidra's importer alone only logs and ignores those names.

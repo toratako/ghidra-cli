@@ -89,7 +89,7 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     let project = Project::new();
     let raw = project.raw();
     // No entry point or function is needed to record a completed analysis.
-    project.ok(&[
+    let imported = project.ok(&[
         "program",
         "import",
         raw.to_str().unwrap(),
@@ -100,6 +100,9 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
         "--base-address",
         "0x8000",
     ]);
+    assert_eq!(imported["data"]["import"]["import_status"], "saved");
+    assert_eq!(imported["data"]["import"]["analysis_status"], "completed");
+    assert_eq!(imported["data"]["import"]["loader_diagnostics"]["text"], "");
     let client = project.client();
     let assert_flag = |name: &str, expected: Value| {
         let listing = project.client().list_programs().unwrap();

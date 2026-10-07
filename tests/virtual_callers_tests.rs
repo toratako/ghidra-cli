@@ -31,7 +31,8 @@ fn harness() -> &'static common::DaemonTestHarness {
                 ..Default::default()
             },
         )
-        .expect("import minimal bootstrap for native fixture scripts");
+        .expect("import minimal bootstrap for native fixture scripts")
+        .program;
         assert_eq!(program, BOOTSTRAP_PROGRAM);
         common::DaemonTestHarness::new(common::test_project(), &program).unwrap()
     })

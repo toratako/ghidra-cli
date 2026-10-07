@@ -11,6 +11,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   grouping of conditional execution into `if/else` for one request. Results
   report the effective setting, and other decompiler requests use native defaults.
 
+### Changed
+
+- Retain bounded loader diagnostics in `program import` success results and
+  error details across both import routes, including failures after the program
+  was saved. One-shot library imports return a structured completion receipt.
+
 ## [0.9.0] - 2026-09-24
 
 ### Added

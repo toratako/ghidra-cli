@@ -93,7 +93,8 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
             ..Default::default()
         },
     )
-    .expect("import raw pointer fixture");
+    .expect("import raw pointer fixture")
+    .program;
     // The harness stops the JVM before the temporary project directory is removed.
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program)
         .expect("start fixture bridge");
@@ -431,7 +432,8 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
             ..Default::default()
         },
     )
-    .unwrap();
+    .unwrap()
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
     client

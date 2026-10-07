@@ -78,6 +78,15 @@ fn program_import_keeps_saved_names_and_selection_separate_in_standalone_and_bat
                 assert_eq!(receipt["program"], "imported");
                 assert_eq!(receipt["status"], "success");
                 assert_eq!(receipt["data"]["analyze"].is_null(), no_analyze);
+                assert_eq!(receipt["data"]["import"]["import_status"], "saved");
+                assert_eq!(
+                    receipt["data"]["import"]["loader_diagnostics"]["text"],
+                    "loader evidence\n"
+                );
+                assert_eq!(
+                    receipt["data"]["import"]["loader_diagnostics"]["truncated"],
+                    false
+                );
                 if !no_analyze {
                     assert_eq!(receipt["data"]["analyze"]["program"], "imported");
                 }

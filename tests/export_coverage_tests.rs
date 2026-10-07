@@ -38,7 +38,8 @@ fn export_reports_artifacts_and_format_limits() {
             ..Default::default()
         },
     )
-    .expect("import raw export fixture");
+    .expect("import raw export fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program)
         .expect("start export fixture bridge");
     let client = harness.client().unwrap();
@@ -216,7 +217,8 @@ fn failed_export_preserves_existing_output() {
             ..Default::default()
         },
     )
-    .unwrap();
+    .unwrap()
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
     let output_dir = directory.path().join("export 'artifacts'");

@@ -273,7 +273,15 @@ impl RecordedBridge {
                         "has_current_program": has_current_program,
                         "current_program_name": has_current_program.then_some(&program),
                     }),
-                    "import" => json!({"program": "imported"}),
+                    "import" => json!({
+                        "status": "success", "program": "imported", "program_path": "/imported",
+                        "import_status": "saved", "analysis_status": "skipped",
+                        "loader_diagnostics": {
+                            "text": "loader evidence\n", "truncated": false,
+                            "retained_characters": 16, "original_characters": 16,
+                            "maximum_characters": 16384,
+                        },
+                    }),
                     "analysis_run" => {
                         let mode = if args["pending"] == true {
                             "pending"

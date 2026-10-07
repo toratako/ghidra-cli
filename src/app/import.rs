@@ -13,6 +13,7 @@ struct ImportProgress {
     imported: &'static str,
     analysis: &'static str,
     program: Option<String>,
+    receipt: Option<serde_json::Value>,
 }
 
 pub(super) fn run_import(
@@ -31,6 +32,7 @@ pub(super) fn run_import(
             "not_started"
         },
         program: None,
+        receipt: None,
     };
     run_import_steps(
         cli,
@@ -59,6 +61,15 @@ fn import_failure(
         .entry("analysis_status")
         .or_insert(json!(progress.analysis));
     fields.insert("project".into(), json!(project));
+    if let Some(diagnostics) = progress
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.get("loader_diagnostics"))
+    {
+        fields
+            .entry("loader_diagnostics")
+            .or_insert(diagnostics.clone());
+    }
     if let Some(program) = &progress.program {
         // Selecting the imported program can fail while saving the previous
         // selection. Recovery must retain that actual save target.
@@ -152,7 +163,10 @@ fn run_import_steps(
         } else {
             "unknown"
         };
-        let name = bridge::import_oneshot(project_path, &binary_path, installation, &options)?;
+        let receipt: bridge::OneShotImportReceipt =
+            bridge::import_oneshot(project_path, &binary_path, installation, &options)?;
+        let name = receipt.program.clone();
+        progress.receipt = Some(serde_json::to_value(receipt)?);
         progress.imported = "saved";
         progress.analysis = if args.no_analyze {
             "skipped"
@@ -195,6 +209,7 @@ fn run_import_steps(
             .to_owned();
         progress.imported = "saved";
         progress.program = Some(name.clone());
+        progress.receipt = Some(result);
         (client, name)
     };
     let analyze = if args.no_analyze {
@@ -214,7 +229,7 @@ fn run_import_steps(
         json!({"status": "success", "program": name, "function_count": info.get("function_count"), "durable": true})
     };
     Ok(
-        json!({"command": "program import", "program": name, "status": "success", "data": {"analyze": analyze}}),
+        json!({"command": "program import", "program": name, "status": "success", "data": {"import": progress.receipt, "analyze": analyze}}),
     )
 }
 
@@ -374,6 +389,7 @@ mod tests {
             imported: "saved",
             analysis: "completed",
             program: Some("saved-name".into()),
+            receipt: Some(json!({"loader_diagnostics": {"text": "loader evidence"}})),
         };
         let error = import_failure(
             crate::error::path_io(
@@ -390,6 +406,7 @@ mod tests {
         assert_eq!(detail["workflow_stage"], "bridge.start");
         assert_eq!(detail["path"], json!(path));
         assert_eq!(detail["import_status"], "saved");
+        assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence");
         assert_eq!(
             detail["recovery"],
             json!([
@@ -412,6 +429,7 @@ mod tests {
             imported: "saved",
             analysis: "unknown",
             program: Some("saved-name".into()),
+            receipt: Some(json!({"loader_diagnostics": {"text": "loader evidence"}})),
         };
         let timeout = import_failure(
             BridgeTimeoutError {
@@ -423,6 +441,10 @@ mod tests {
             &progress,
         );
         assert!(timeout.downcast_ref::<BridgeTimeoutError>().is_some());
+        assert_eq!(
+            crate::error::diagnostic_detail(&timeout)["loader_diagnostics"]["text"],
+            "loader evidence"
+        );
         assert_eq!(
             crate::error::diagnostic_detail(&timeout)["recovery"],
             json!(["ghidra-cli", "job", "list", "--project", "project"])
@@ -453,6 +475,7 @@ mod tests {
             imported: "saved",
             analysis: "unknown",
             program: Some("new-import".into()),
+            receipt: Some(json!({"loader_diagnostics": {"text": "loader evidence"}})),
         };
         let error = import_failure(
             crate::ipc::protocol::BridgeCommandError {
@@ -465,6 +488,7 @@ mod tests {
         );
         let detail = crate::error::diagnostic_detail(&error);
         assert_eq!(detail["program"], "/previous");
+        assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence");
         assert_eq!(
             detail["recovery"],
             json!([
@@ -477,5 +501,44 @@ mod tests {
                 "/previous"
             ])
         );
+    }
+
+    #[test]
+    fn loader_diagnostics_survive_later_workflow_failures() {
+        let diagnostics = json!({
+            "text": "loader evidence\n", "truncated": false,
+            "retained_characters": 16, "original_characters": 16,
+            "maximum_characters": 16384
+        });
+        for stage in [
+            "bridge.start",
+            "program.open",
+            "program.info",
+            "import.analysis",
+        ] {
+            let progress = ImportProgress {
+                stage,
+                imported: "saved",
+                analysis: "skipped",
+                program: Some("saved-name".into()),
+                receipt: Some(json!({"loader_diagnostics": diagnostics})),
+            };
+            let error = import_failure(
+                BridgeCommandError {
+                    message: "later stage failed".into(),
+                    detail: json!({"stage": "native.failure", "evidence": "keep"}),
+                }
+                .into(),
+                Path::new("project"),
+                &progress,
+            );
+            let detail = crate::error::diagnostic_detail(&error);
+            assert_eq!(detail["loader_diagnostics"], diagnostics);
+            assert_eq!(detail["stage"], "native.failure");
+            assert_eq!(detail["workflow_stage"], stage);
+            assert_eq!(detail["evidence"], "keep");
+            assert_eq!(detail["import_status"], "saved");
+            assert_eq!(detail["analysis_status"], "skipped");
+        }
     }
 }

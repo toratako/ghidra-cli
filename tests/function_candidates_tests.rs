@@ -31,7 +31,8 @@ fn fixture(language: &str, check: impl FnOnce(&common::DaemonTestHarness, &str))
             ..Default::default()
         },
     )
-    .expect("import isolated raw function-candidate fixture");
+    .expect("import isolated raw function-candidate fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     harness
         .client()

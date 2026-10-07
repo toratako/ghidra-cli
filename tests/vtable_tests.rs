@@ -56,7 +56,8 @@ fn check_raw_layout(language: &str, pointer_size: usize, big_endian: bool) {
             ..Default::default()
         },
     )
-    .expect("import raw vtable fixture");
+    .expect("import raw vtable fixture")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
     client
@@ -360,7 +361,8 @@ fn with_compiled_layout(
         &installation,
         &OneShotImportOptions::default(),
     )
-    .expect("import compiler-produced C++ object");
+    .expect("import compiler-produced C++ object")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
     client

@@ -635,6 +635,12 @@ imports do not analyze detached programs: the caller opens the saved file and
 uses the usual session analysis/save boundary. Do not rename an already saved
 input-name file to implement `--name`; supply the name to the importer.
 
+The same `MessageLog` is retained for loading and for success/error diagnostics.
+`loader_diagnostics` contains bounded text and explicit truncation, retaining at
+most 16,384 UTF-16 code units without splitting surrogate pairs. Counts describe
+the log's rendered text; Ghidra may already have discarded messages. The Rust
+workflow carries this receipt through later startup, open, and analysis failures.
+
 `ProgramSession.analyzeAll()` explicitly initializes saved analyzer options for
 all supported Ghidra versions. The native `analyzeAll()` entry point schedules
 full reanalysis; `analysis_run` must not separately call `reAnalyzeAll(null)`.

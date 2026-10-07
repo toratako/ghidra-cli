@@ -40,6 +40,41 @@ public final class ImportSupport {
 
     public static JsonObject run(Project project, JsonObject args, Object consumer,
             TaskMonitor monitor, Analysis analysis) throws Exception {
+        MessageLog log = new MessageLog();
+        try {
+            JsonObject result = run(project, args, consumer, monitor, analysis, log);
+            result.add("loader_diagnostics", diagnostics(log));
+            return result;
+        } catch (Exception error) {
+            JsonObject detail = errorDetail(error);
+            if (detail == null) detail = new JsonObject();
+            detail.add("loader_diagnostics", diagnostics(log));
+            JsonProtocol.CommandException failure = new JsonProtocol.CommandException(error.getMessage(), detail);
+            failure.initCause(error);
+            throw failure;
+        }
+    }
+
+    /** Lengths describe MessageLog's rendered text in UTF-16 code units, not the
+     * loader's total output: MessageLog can itself discard messages. */
+    private static JsonObject diagnostics(MessageLog log) {
+        final int maximumCharacters = 16_384;
+        String text = log.toString();
+        int end = Math.min(maximumCharacters, text.length());
+        if (end > 0 && end < text.length()
+                && Character.isHighSurrogate(text.charAt(end - 1))
+                && Character.isLowSurrogate(text.charAt(end))) end--;
+        JsonObject result = new JsonObject();
+        result.addProperty("text", text.substring(0, end));
+        result.addProperty("truncated", end < text.length());
+        result.addProperty("retained_characters", end);
+        result.addProperty("original_characters", text.length());
+        result.addProperty("maximum_characters", maximumCharacters);
+        return result;
+    }
+
+    private static JsonObject run(Project project, JsonObject args, Object consumer,
+            TaskMonitor monitor, Analysis analysis, MessageLog log) throws Exception {
         File binary = new File(getArgString(args, "binary_path"));
         String requested = getArgString(args, "program");
         String name = requested == null ? binary.getName() : requested;
@@ -82,10 +117,20 @@ public final class ImportSupport {
             || candidate.getClass().getSimpleName().equals(loader)
             || candidate.getClass().getName().equals(loader);
         validateLoaderOptions(binary, filter, chooser, options, monitor);
-        LoadResults<Program> loaded = AutoImporter.importFresh(binary, project, "/", consumer,
-            new MessageLog(), monitor, filter,
-            chooser, name, new LoaderArgsOptionChooser(options));
-        if (loaded == null) throw new IllegalStateException("No loader accepted the binary");
+        LoadResults<Program> loaded;
+        try {
+            loaded = AutoImporter.importFresh(binary, project, "/", consumer,
+                log, monitor, filter, chooser, name, new LoaderArgsOptionChooser(options));
+            if (loaded == null) throw new IllegalStateException("No loader accepted the binary");
+        } catch (Exception error) {
+            JsonObject detail = new JsonObject();
+            detail.addProperty("stage", "import.load");
+            detail.addProperty("import_status", "unknown");
+            detail.addProperty("analysis_status", analysis == null ? "skipped" : "not_started");
+            JsonProtocol.CommandException failure = new JsonProtocol.CommandException(error.getMessage(), detail);
+            failure.initCause(error);
+            throw failure;
+        }
         String analysisState = analysis == null ? "skipped" : "not_started";
         String stage = "import.analysis";
         try {

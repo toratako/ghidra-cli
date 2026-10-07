@@ -4,7 +4,7 @@ use super::headless::headless_command;
 use super::{sources, startup};
 use crate::ghidra::installation::Installation;
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -22,22 +22,40 @@ pub struct OneShotImportOptions {
     pub loader_options: Vec<(String, String)>,
 }
 
+/// Bounded rendering of the loader's MessageLog. Character counts are UTF-16
+/// code units and describe the rendered log, which Ghidra may already clip.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct LoaderDiagnostics {
+    pub text: String,
+    pub truncated: bool,
+    pub retained_characters: usize,
+    pub original_characters: usize,
+    pub maximum_characters: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OneShotImportReceipt {
+    pub status: String,
+    pub program: String,
+    pub program_path: String,
+    pub import_status: String,
+    pub analysis_status: String,
+    pub loader_diagnostics: LoaderDiagnostics,
+}
+
 /// Load with the requested name/options, analyze, save, release, and exit before
-/// returning the actual saved name. A private JSON receipt confirms script success;
+/// returning the saved program and loader diagnostics. A private JSON receipt confirms script success;
 /// a zero headless exit status alone does not establish that the script succeeded.
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
     installation: &Installation,
     options: &OneShotImportOptions,
-) -> Result<String> {
+) -> Result<OneShotImportReceipt> {
     let mut args = serde_json::to_value(options)?;
     args["binary_path"] = json!(binary_path);
     let result = run_bootstrap(project_path, installation, &args, None)?;
-    result["program"]
-        .as_str()
-        .map(str::to_owned)
-        .context("Import receipt did not contain the saved program name")
+    serde_json::from_value(result).context("Invalid import completion receipt")
 }
 
 pub(super) fn run_bootstrap(
@@ -145,6 +163,10 @@ pub(super) fn run_bootstrap(
         })?;
     let result: Value = serde_json::from_slice(&receipt_bytes)
         .with_context(|| format!("Invalid bootstrap receipt at {}", receipt.display()))?;
+    bootstrap_result(result)
+}
+
+fn bootstrap_result(result: Value) -> Result<Value> {
     if result["status"] != "success" {
         return Err(crate::ipc::protocol::BridgeCommandError {
             message: result["message"]
@@ -156,4 +178,38 @@ pub(super) fn run_bootstrap(
         .into());
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrap_receipts_keep_loader_diagnostics_on_success_and_failure() {
+        let diagnostics = json!({
+            "text": "loader 🚀\n", "truncated": false, "retained_characters": 10,
+            "original_characters": 10, "maximum_characters": 16384
+        });
+        let success = json!({
+            "status": "success", "program": "saved-name", "program_path": "/saved-name",
+            "import_status": "saved", "analysis_status": "completed",
+            "loader_diagnostics": diagnostics
+        });
+        let receipt: OneShotImportReceipt =
+            serde_json::from_value(bootstrap_result(success.clone()).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(receipt).unwrap(), success);
+        let detail = json!({
+            "stage": "import.save", "import_status": "unknown", "analysis_status": "completed",
+            "loader_diagnostics": diagnostics
+        });
+        let error = bootstrap_result(
+            json!({"status": "error", "message": "save failed", "detail": detail}),
+        )
+        .unwrap_err();
+        let failure = error
+            .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert_eq!(failure.message, "save failed");
+        assert_eq!(failure.detail, detail);
+    }
 }

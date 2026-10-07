@@ -537,6 +537,14 @@ deduplication includes the operand so distinct references stay selectable.
 `stats` returns a `stats` object whose `memory_blocks` counts all Program memory
 blocks, including overlays, mapped blocks, and uninitialized blocks.
 
+`import` returns the saved name/path, import/analysis states, and
+`loader_diagnostics`. The CLI retains this receipt under `data.import` and keeps
+diagnostics in failure `detail`, including failures in later workflow stages.
+Diagnostics contain `text`, `truncated`, `retained_characters`,
+`original_characters`, and `maximum_characters`. Lengths count UTF-16 code units
+in MessageLog's rendered text, with a 16,384-unit bound that preserves surrogate
+pairs. They do not count messages discarded internally by Ghidra or imply severity.
+
 `program_info` adds nullable `executable_md5` and `executable_sha256` from
 imported-file metadata, not from current memory bytes.
 Its `name` and `path` identify the selected DomainFile; `internal_program_name`

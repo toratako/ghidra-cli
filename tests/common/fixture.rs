@@ -124,7 +124,8 @@ pub fn copy_analyzed_project(destination: &Path) -> Result<()> {
                 analyze: true,
                 ..Default::default()
             },
-        )?;
+        )?
+        .program;
         ensure!(
             program == super::FIXTURE_PROGRAM,
             "Unexpected fixture program: {program}"

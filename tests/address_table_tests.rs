@@ -57,7 +57,8 @@ fn fixture(
             ..Default::default()
         },
     )
-    .expect("import raw address tables");
+    .expect("import raw address tables")
+    .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     if width == 4 || width == 8 {
         harness
