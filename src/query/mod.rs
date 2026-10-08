@@ -143,7 +143,7 @@ impl Query {
                     }
                     (Some(JsonValue::Bool(a)), Some(JsonValue::Bool(b))) => a.cmp(b),
                     (Some(JsonValue::String(a)), Some(JsonValue::String(b))) => a.cmp(b),
-                    _ => std::cmp::Ordering::Equal,
+                    _ => sort_value_kind(a_val).cmp(&sort_value_kind(b_val)),
                 };
 
                 let final_cmp = if sort_key.descending {
@@ -171,6 +171,20 @@ impl Query {
         };
 
         data.into_iter().skip(offset).take(limit).collect()
+    }
+}
+
+// Missing/null values form one group. Distinct JSON types must not compare
+// equal: doing so would make equality non-transitive and leave known scalar
+// values unsorted when a null or another type separates them.
+fn sort_value_kind(value: Option<&JsonValue>) -> u8 {
+    match value {
+        None | Some(JsonValue::Null) => 0,
+        Some(JsonValue::Bool(_)) => 1,
+        Some(JsonValue::Number(_)) => 2,
+        Some(JsonValue::String(_)) => 3,
+        Some(JsonValue::Array(_)) => 4,
+        Some(JsonValue::Object(_)) => 5,
     }
 }
 
@@ -307,6 +321,58 @@ mod tests {
             ])
             .unwrap();
         assert_eq!(result, serde_json::json!([{"name": "abort"}]));
+    }
+
+    #[test]
+    fn nullable_sort_keys_do_not_interrupt_known_values_or_secondary_keys() {
+        let input = vec![
+            serde_json::json!({"callee": "z", "call_site": "0x1003"}),
+            serde_json::json!({"callee": null, "call_site": "0x1002"}),
+            serde_json::json!({"call_site": "0x1001"}),
+            serde_json::json!({"callee": "a", "call_site": "0x1000"}),
+        ];
+        for (sort, order) in [
+            ("callee,call_site", [2, 1, 3, 0]),
+            ("-callee,call_site", [0, 3, 2, 1]),
+        ] {
+            let query = Query {
+                sort: Some(SortKey::parse(sort)),
+                ..Query::default()
+            };
+            let expected: Vec<_> = order
+                .into_iter()
+                .map(|index| input[index].clone())
+                .collect();
+            assert_eq!(
+                query.apply(input.clone()).unwrap(),
+                serde_json::json!(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_scalar_types_keep_each_group_in_order() {
+        let input = vec![
+            serde_json::json!({"value": 9007199254740993_u64}),
+            serde_json::json!({"value": "z"}),
+            serde_json::json!({"value": true}),
+            serde_json::json!({"value": 9007199254740992_u64}),
+            serde_json::json!({"value": "a"}),
+            serde_json::json!({"value": false}),
+        ];
+        let expected = vec![
+            input[5].clone(),
+            input[2].clone(),
+            input[3].clone(),
+            input[0].clone(),
+            input[4].clone(),
+            input[1].clone(),
+        ];
+        let query = Query {
+            sort: Some(SortKey::parse("value")),
+            ..Query::default()
+        };
+        assert_eq!(query.apply(input).unwrap(), serde_json::json!(expected));
     }
 
     #[test]

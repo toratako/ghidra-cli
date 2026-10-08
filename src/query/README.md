@@ -45,6 +45,9 @@ The remaining pipeline is filter -> sort -> offset/limit -> count or fields.
 The application renders the resulting JSON value. A pushed filter is checked
 again in Rust; a pushed offset is removed
 from the residual query. Projection never erases keys needed for sorting.
+Sort groups missing/null values together, followed in ascending order by
+booleans, numbers, strings, arrays, and objects. Arrays and objects retain their
+input order within their group unless a later sort key distinguishes them.
 
 When omitted, the limit defaults to `default_limit`, including with no query
 options, with projection only, or after filtering, sorting or offset.
