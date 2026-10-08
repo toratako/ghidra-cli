@@ -1,6 +1,8 @@
 //! Closed-project GAR workflows. The bootstrap owns Ghidra's lock through publication.
 
-use super::{acquire_lifecycle_lock, import, shutdown_timeout, stop_bridge_then};
+use super::{
+    acquire_lifecycle_lock, import, shutdown_deadline, shutdown_timeout, stop_bridge_then,
+};
 use crate::ghidra::installation::Installation;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -48,6 +50,7 @@ pub fn restore_project(
     let mut project = std::path::absolute(project)?;
     let mut archive = std::path::absolute(archive)?;
     let result = (|| {
+        let deadline = shutdown_deadline(std::time::Instant::now(), shutdown_timeout())?;
         anyhow::ensure!(
             archive.is_file(),
             "Archive is not a file: {}",
@@ -62,7 +65,6 @@ pub fn restore_project(
             .context("Project must have a name")?;
         require_absent(&paths.descriptor)?;
         require_absent(&paths.data)?;
-        let deadline = shutdown_timeout().map(|duration| std::time::Instant::now() + duration);
         let _lock = acquire_lifecycle_lock(&project, deadline)?;
         // Ghidra's own lock in the bootstrap also protects the destination as
         // its .rep identity changes from an absent path to a real directory.

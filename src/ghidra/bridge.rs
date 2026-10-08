@@ -49,6 +49,19 @@ fn shutdown_timeout() -> Option<Duration> {
     parse_shutdown_timeout(std::env::var("GHIDRA_CLI_SHUTDOWN_TIMEOUT").ok().as_deref())
 }
 
+fn shutdown_deadline(
+    started: std::time::Instant,
+    timeout: Option<Duration>,
+) -> Result<Option<std::time::Instant>> {
+    timeout
+        .map(|timeout| {
+            started.checked_add(timeout).context(
+                "GHIDRA_CLI_SHUTDOWN_TIMEOUT is too large for this platform; use 0 to wait indefinitely",
+            )
+        })
+        .transpose()
+}
+
 /// Get the data directory for bridge port/PID files.
 pub fn get_data_dir() -> Result<PathBuf> {
     let dir = data_dir_path()?;
@@ -440,7 +453,7 @@ fn stop_bridge_with<T>(
     mut sleep: impl FnMut(Duration),
     after_stop: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
-    let deadline = timeout.map(|timeout| now() + timeout);
+    let deadline = shutdown_deadline(now(), timeout)?;
     let timeout_error = || {
         anyhow::Error::new(crate::ipc::protocol::BridgeTimeoutError {
             command: "shutdown".to_string(),

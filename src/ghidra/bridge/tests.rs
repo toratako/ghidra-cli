@@ -323,3 +323,20 @@ fn shutdown_timeout_defaults_and_supports_unbounded_wait() {
         Some(Duration::from_secs(DEFAULT_SHUTDOWN_TIMEOUT_SECS))
     );
 }
+
+#[test]
+fn unrepresentable_shutdown_deadline_fails_before_lifecycle_work() {
+    let root = tempfile::tempdir().unwrap();
+    let error = stop_bridge_with(
+        &root.path().join("project"),
+        parse_shutdown_timeout(Some("18446744073709551615")),
+        |_| panic!("invalid timeout must not inspect a process"),
+        |_, _| panic!("invalid timeout must not send shutdown"),
+        std::time::Instant::now,
+        |_| panic!("invalid timeout must not wait"),
+        || -> Result<()> { panic!("invalid timeout must not run project operations") },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("GHIDRA_CLI_SHUTDOWN_TIMEOUT"));
+    assert!(error.to_string().contains("too large"));
+}
