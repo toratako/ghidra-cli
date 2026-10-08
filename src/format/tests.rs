@@ -385,6 +385,18 @@ fn compact_preserves_typed_option_values_beside_their_names() {
 }
 
 #[test]
+fn compact_keeps_dynamic_type_sizes_and_full_width_unsigned_sizes() {
+    let data = [
+        json!({"name": "string", "size": -1}),
+        json!({"name": "large", "size": u64::MAX}),
+    ];
+    let output = DefaultFormatter
+        .format(&data, OutputFormat::Compact)
+        .unwrap();
+    assert_eq!(output, "string  (-1)\nlarge  (18446744073709551615)\n");
+}
+
+#[test]
 fn compact_truncation_preserves_utf8_and_existing_byte_budget() {
     for (value, displayed) in [
         ("x".repeat(80), "x".repeat(80)),

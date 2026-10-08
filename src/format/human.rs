@@ -64,7 +64,7 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                 }
                 let address = map.get("address").and_then(|v| v.as_str());
                 let name = map.get("name").and_then(|v| v.as_str());
-                let size = map.get("size").and_then(|v| v.as_u64());
+                let size = map.get("size").and_then(JsonValue::as_number);
                 let value_str = map.get("value").and_then(|v| v.as_str());
 
                 // Build compact line from available fields
