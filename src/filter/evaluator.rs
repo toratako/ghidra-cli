@@ -2,6 +2,7 @@ use super::{CompareOp, ExistenceCheck, FilterExpr, LogicalOp, StringOp, Value};
 use crate::error::{GhidraError, Result};
 use regex::RegexBuilder;
 use serde_json::Value as JsonValue;
+use std::borrow::Cow;
 
 pub fn evaluate(expr: &FilterExpr, data: &JsonValue) -> Result<bool> {
     match expr {
@@ -240,9 +241,9 @@ fn evaluate_string_op(field: &str, op: StringOp, value: &str, data: &JsonValue) 
     let value_lower = value.to_lowercase();
     let matches_str = |field_str: &str| -> Result<bool> {
         Ok(match op {
-            StringOp::Contains => field_str.contains(&value_lower),
-            StringOp::StartsWith => field_str.starts_with(&value_lower),
-            StringOp::EndsWith => field_str.ends_with(&value_lower),
+            StringOp::Contains => field_str.to_lowercase().contains(&value_lower),
+            StringOp::StartsWith => field_str.to_lowercase().starts_with(&value_lower),
+            StringOp::EndsWith => field_str.to_lowercase().ends_with(&value_lower),
             StringOp::Regex => compiled_regex(value)?.is_match(field_str),
         })
     };
@@ -252,7 +253,7 @@ fn evaluate_string_op(field: &str, op: StringOp, value: &str, data: &JsonValue) 
         // element satisfies the predicate.
         JsonValue::Array(elems) => {
             for elem in elems {
-                if let Some(s) = scalar_to_lower_string(elem) {
+                if let Some(s) = scalar_to_string(elem) {
                     if matches_str(&s)? {
                         return Ok(true);
                     }
@@ -260,26 +261,26 @@ fn evaluate_string_op(field: &str, op: StringOp, value: &str, data: &JsonValue) 
             }
             Ok(false)
         }
-        other => match scalar_to_lower_string(other) {
+        other => match scalar_to_string(other) {
             Some(s) => matches_str(&s),
             None => Ok(false),
         },
     }
 }
 
-fn scalar_to_lower_string(v: &JsonValue) -> Option<String> {
+fn scalar_to_string(v: &JsonValue) -> Option<Cow<'_, str>> {
     match v {
-        JsonValue::String(s) => Some(s.to_lowercase()),
-        JsonValue::Number(n) => Some(n.to_string()),
-        JsonValue::Bool(b) => Some(b.to_string()),
+        JsonValue::String(s) => Some(Cow::Borrowed(s)),
+        JsonValue::Number(n) => Some(Cow::Owned(n.to_string())),
+        JsonValue::Bool(b) => Some(Cow::Owned(b.to_string())),
         _ => None,
     }
 }
 
 /// Compile a filter regex once per pattern; `evaluate` runs per row, and
 /// recompiling on every row dominates runtime on large datasets.
-/// Case-insensitive because field values are lowercased before matching —
-/// an uppercase pattern like `^PK_` could otherwise never match.
+/// Match the original text with case-insensitive regex defaults, preserving
+/// Unicode characters and any case flags specified by the pattern.
 fn compiled_regex(pattern: &str) -> Result<std::rc::Rc<regex::Regex>> {
     use std::cell::RefCell;
     use std::collections::HashMap;

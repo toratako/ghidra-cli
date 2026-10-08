@@ -206,8 +206,7 @@ fn address_membership_uses_equality_rules_for_spaces_segments_and_padding() {
 
 #[test]
 fn test_evaluate_regex_is_case_insensitive() {
-    // Regression: fields are lowercased before matching, so an uppercase
-    // pattern like ^PK_ silently matched nothing.
+    // Uppercase patterns retain the regex filter's case-insensitive default.
     let data = json!({ "name": "PK_APPITEM_ask" });
 
     let expr = FilterExpr::StringOp {
@@ -217,6 +216,26 @@ fn test_evaluate_regex_is_case_insensitive() {
     };
 
     assert!(evaluate(&expr, &data).unwrap());
+}
+
+#[test]
+fn regex_preserves_unicode_characters_and_explicit_case_flags() {
+    for (pattern, text, expected) in [
+        ("^.$", "İ", true),
+        ("^İ$", "İ", true),
+        ("^PK_", "pk_function", true),
+        ("(?-i:^PK_)", "PK_function", true),
+        ("(?-i:^PK_)", "pk_function", false),
+    ] {
+        let filter = crate::filter::Filter::parse(&format!("name=~'{pattern}'")).unwrap();
+        for value in [json!(text), json!([text])] {
+            assert_eq!(
+                filter.evaluate(&json!({"name": value})).unwrap(),
+                expected,
+                "{pattern:?} on {text:?}"
+            );
+        }
+    }
 }
 
 #[test]
