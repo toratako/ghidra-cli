@@ -204,15 +204,16 @@ fn execute_bridge_command(
     let result = (|| -> anyhow::Result<serde_json::Value> {
         if let Commands::Batch(args) = &cli.command {
             // A batch records target intent without selecting it in a separate
-            // request. Each line binds its effective target to its own operation.
-            if let Some(program) =
-                extract_program_from_command(&cli.command).or_else(|| cli.program.clone())
-            {
-                programs.insert(project_key.clone(), program);
-            }
+            // request. Apply intent when its first selected line executes so an
+            // empty nested batch cannot change the target of later edits.
+            let mut program_intent =
+                extract_program_from_command(&cli.command).or_else(|| cli.program.clone());
             let on_error = args.on_error.unwrap_or(cli::BatchErrorPolicy::Continue);
             let prepared = prepared_batch.expect("batch input was validated before execution");
             return batch::execute_batch(prepared, on_error, |line| {
+                if let Some(program) = program_intent.take() {
+                    programs.insert(project_key.clone(), program);
+                }
                 let mut sub_cli = line.cli.clone();
                 if sub_cli.project.is_none() {
                     sub_cli.project = Some(project_path.to_string_lossy().into_owned());

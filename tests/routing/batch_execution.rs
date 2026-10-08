@@ -141,6 +141,46 @@ fn batch_routes_each_target_and_keeps_explicit_program_switches() {
 }
 
 #[test]
+fn empty_nested_batches_preserve_the_program_for_later_edits() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(bridge.root.path().join("empty.txt"), "# no commands\n").unwrap();
+    std::fs::write(
+        bridge.root.path().join("selected.txt"),
+        "program info --program must-not-select\n# selected empty range\n",
+    )
+    .unwrap();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        concat!(
+            "program info\n",
+            "batch empty.txt --program B\n",
+            "comment set 0x1000 --text after-empty\n",
+            "batch selected.txt --from-line 2 --program C\n",
+            "comment set 0x1001 --text after-empty-range\n",
+        ),
+    )
+    .unwrap();
+
+    let report = bridge.run(&["batch", "batch.txt", "--program", "A"]);
+    assert_eq!(report["commands_executed"], 5);
+    for index in [1, 3] {
+        assert_eq!(
+            report["results"][index]["result"]["data"]["commands_executed"],
+            0
+        );
+    }
+    let requests = bridge.requests.lock().unwrap();
+    let operations: Vec<_> = requests
+        .iter()
+        .filter(|request| request["command"] != "bridge_info")
+        .collect();
+    assert_eq!(operations.len(), 3);
+    for request in operations {
+        assert_eq!(request["program"], "A", "{request}");
+    }
+}
+
+#[test]
 fn batch_inherits_a_relative_project_directory_without_joining_it_twice() {
     let bridge = RecordedBridge::new();
     std::fs::write(bridge.root.path().join("batch.txt"), "program info\n").unwrap();
