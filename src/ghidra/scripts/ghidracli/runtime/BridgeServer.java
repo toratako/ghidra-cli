@@ -12,6 +12,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -141,7 +142,7 @@ final class BridgeServer {
             // for serialized Ghidra work to finish.
             client.setSoTimeout(30000);
             BufferedReader in = new BufferedReader(
-                new InputStreamReader(client.getInputStream()));
+                new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
             String line = in.readLine();
             if (line == null || line.trim().isEmpty()) {
                 client.close();
@@ -190,7 +191,7 @@ final class BridgeServer {
         try (
             Socket closeableClient = client;
             PrintWriter out = new PrintWriter(
-                new OutputStreamWriter(closeableClient.getOutputStream()), true)
+                new OutputStreamWriter(closeableClient.getOutputStream(), StandardCharsets.UTF_8), true)
         ) {
             out.println(gson.toJson(result));
             out.flush();
@@ -205,7 +206,7 @@ final class BridgeServer {
         try (
             Socket closeableClient = client;
             PrintWriter out = new PrintWriter(
-                new OutputStreamWriter(closeableClient.getOutputStream()), true)
+                new OutputStreamWriter(closeableClient.getOutputStream(), StandardCharsets.UTF_8), true)
         ) {
             out.println(gson.toJson(errorResponse(message)));
         } catch (IOException ignored) {

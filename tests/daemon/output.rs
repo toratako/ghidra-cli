@@ -5,6 +5,97 @@ use std::time::Duration;
 
 #[test]
 #[serial]
+fn unicode_requests_responses_and_saved_edits_ignore_jvm_default_charset() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let address =
+        common::helpers::get_fixture_function(&harness.client().unwrap(), "add_numbers").address;
+    let prior = harness.client().unwrap().comment_get(&address).unwrap()["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["type"] == "PLATE")
+        .map(|row| row["text"].as_str().unwrap().to_owned());
+
+    // _JAVA_OPTIONS applies after the launcher's UTF-8 default. Keep the suite's
+    // own environment unchanged and let the harness own the restarted process.
+    let output = common::run_command_with_output(
+        std::process::Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"))
+            .args([
+                "--json",
+                "bridge",
+                "restart",
+                "--project",
+                test_project(),
+                "--program",
+                TEST_PROGRAM,
+            ])
+            .env("_JAVA_OPTIONS", "-Dfile.encoding=US-ASCII"),
+        Duration::from_secs(300),
+    )
+    .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let project_path = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_project_dir()
+        .unwrap()
+        .join(test_project());
+    let port = ghidra_cli::ghidra::bridge::read_port_file(&project_path)
+        .unwrap()
+        .unwrap();
+    let client = ghidra_cli::ipc::client::BridgeClient::new(port);
+    let charset = client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CheckBridgeCharset extends GhidraScript {
+    public void run() {
+        println(java.nio.charset.Charset.defaultCharset().name());
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert!(charset["stdout"].as_str().unwrap().contains("US-ASCII"));
+
+    let text = "日本語 🛠️ café";
+    client.comment_set(&address, text, Some("PLATE")).unwrap();
+    let comments = client.comment_get(&address).unwrap();
+    assert!(
+        comments["comments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["type"] == "PLATE" && row["text"] == text),
+        "Unicode was altered at the bridge socket boundary: {comments}"
+    );
+    drop(harness);
+
+    let reopened = start_daemon();
+    let client = reopened.client().unwrap();
+    let comments = client.comment_get(&address).unwrap();
+    assert!(
+        comments["comments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["type"] == "PLATE" && row["text"] == text),
+        "Saved Unicode edit was altered: {comments}"
+    );
+    match prior {
+        Some(text) => client.comment_set(&address, &text, Some("PLATE")).unwrap(),
+        None => client
+            .comment_delete(&address, Some("PLATE"), false)
+            .unwrap(),
+    };
+}
+
+#[test]
+#[serial]
 fn management_results_are_single_json_documents() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
