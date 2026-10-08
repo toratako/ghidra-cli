@@ -83,10 +83,7 @@ fn import_failure(
     );
     if detail["import_status"] == "saved" {
         if let Some(program) = detail["program"].as_str() {
-            let command = if error
-                .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
-                .is_some()
-            {
+            let command = if detail["outcome_unknown"] == true {
                 vec![
                     "ghidra-cli".to_owned(),
                     "job".into(),
@@ -466,6 +463,34 @@ mod tests {
             crate::error::diagnostic_detail(&save)["recovery"][2],
             "save"
         );
+    }
+
+    #[test]
+    fn lost_analysis_response_never_recommends_replaying_analysis() {
+        let progress = ImportProgress {
+            stage: "import.analysis",
+            imported: "saved",
+            analysis: "unknown",
+            program: Some("saved-name".into()),
+            receipt: None,
+        };
+        let error = import_failure(
+            crate::ipc::protocol::BridgeOutcomeUnknownError {
+                command: "analysis_run".into(),
+            }
+            .into(),
+            Path::new("project"),
+            &progress,
+        );
+        let detail = crate::error::diagnostic_detail(&error);
+        assert_eq!(detail["import_status"], "saved");
+        assert_eq!(detail["analysis_status"], "unknown");
+        assert_eq!(detail["outcome_unknown"], true);
+        assert_eq!(
+            detail["recovery"],
+            json!(["ghidra-cli", "job", "list", "--project", "project"])
+        );
+        assert!(!error.to_string().contains("\"analysis\",\"run\""));
     }
 
     #[test]
