@@ -48,40 +48,29 @@ is shown when inspecting a thunk.
 
 ## Explicit parameter and return locations
 
-When a calling convention cannot express the observed ABI, inspect the saved
-signature and available registers before assigning locations:
+When a calling convention cannot express the observed ABI:
 
 ```bash
 ghidra-cli function get decode --with-signature --project target
 ghidra-cli program list-registers --filter 'name=EAX' --project target
 ghidra-cli function set-storage decode --param-register input EAX --param-stack length 4 --project target
-ghidra-cli function set-signature decode --signature 'int decode(char *input, int length)' \
-  --param-register input EAX --param-stack length 4 --return-register EAX --project target
+ghidra-cli function set-signature decode --signature 'long long decode(char *input, int length)' \
+  --param-register input EAX --param-stack length 4 \
+  --return-register-piece 0 EAX 4 --return-register-piece 4 EDX 4 --project target
 ```
 
-`set-storage` addresses saved parameter names, not decompiler guesses; it freezes
-the entire saved ABI into custom storage, preserving omitted locations and types.
-When defining a signature with storage options, specify every parameter and the
-non-void return. Without storage options, `set-signature` uses convention-derived
-locations. Stack offsets are signed bytes relative to function-entry SP.
+`set-storage` uses saved parameter names and freezes the entire ABI, preserving
+omitted locations and making automatic `this` explicit. `set-signature` with
+storage options requires every parameter and non-void return location; without
+them it uses convention-derived locations.
 
-For a split value, specify byte offsets in its memory representation. This x86
-little-endian return places low bytes in EAX and high bytes in EDX:
+Piece offsets follow the value's memory byte order; the x86 little-endian example
+places the return's low bytes in EAX and high bytes in EDX. Name a subregister to
+select high register bytes; extended floats can use a wider piece such as
+`--return-register-piece 0 ST0 10`.
 
-```bash
-ghidra-cli function set-storage decode --return-register-piece 0 EAX 4 --return-register-piece 4 EDX 4 --project target
-```
-
-Pieces replace that value's entire location and must cover consecutive bytes.
-Simple register locations use the type width; name a subregister when selecting
-other than the register's low bytes. An extended float register can use an
-explicit wider piece (for example `--return-register-piece 0 ST0 10`).
-
-Freezing a dynamic method makes its automatic `this` an explicit parameter.
 Forced-indirect values require a full physical signature with pointer types and
-hidden inputs spelled out. For a thunk, inspect its effective owner and edit that
-function directly. Inspect the resulting signature and decompile callers after
-an ABI change; call-site overrides remain separate.
+hidden inputs spelled out. For thunks, edit the effective owner directly.
 
 ## Thunk relationships
 
