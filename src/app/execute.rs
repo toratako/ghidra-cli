@@ -349,6 +349,10 @@ pub(super) fn execute_via_bridge(
                     "type_rename",
                     Some(json!({"old_name": args.old_name, "new_name": args.new_name})),
                 ),
+                TypeCommands::SetDescription(args) => client.send_command(
+                    "type_set_description",
+                    Some(json!({"type_name": args.type_name, "text": args.text})),
+                ),
                 TypeCommands::Clone(args) => client.send_command(
                     "type_clone",
                     Some(json!({"type_name": args.type_name, "new_name": args.new_name,

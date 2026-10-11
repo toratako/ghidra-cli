@@ -126,6 +126,7 @@ pub(in crate::app) fn extract_project_from_command(command: &Commands) -> Option
             }
             cli::TypeCommands::Delete(args) => args.project.clone(),
             cli::TypeCommands::Rename(args) => args.project.clone(),
+            cli::TypeCommands::SetDescription(args) => args.options.project.clone(),
             cli::TypeCommands::Clone(args) => args.options.project.clone(),
             cli::TypeCommands::Resize(args) => args.options.project.clone(),
             cli::TypeCommands::Move(args) => args.options.project.clone(),
@@ -331,6 +332,7 @@ pub(in crate::app) fn extract_program_from_command(command: &Commands) -> Option
             cli::TypeCommands::Archive(cli::TypeArchiveCommands::Inspect(_)) => None,
             cli::TypeCommands::Delete(args) => args.program.clone(),
             cli::TypeCommands::Rename(args) => args.program.clone(),
+            cli::TypeCommands::SetDescription(args) => args.options.program.clone(),
             cli::TypeCommands::Clone(args) => args.options.program.clone(),
             cli::TypeCommands::Resize(args) => args.options.program.clone(),
             cli::TypeCommands::Move(args) => args.options.program.clone(),

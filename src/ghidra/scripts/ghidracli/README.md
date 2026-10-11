@@ -275,6 +275,11 @@ definitions and their anonymous dependencies before resolving into the Program.
 References to existing types retain their source identity; explicitly declared
 types resolve within the requested category instead of replacing a same-named root.
 
+`TypeDefinitionCommands.handleSetDescription` resolves a registered struct, union,
+or enum, updates only its description, and verifies the native setter's result.
+Equal text avoids the setter. Definition identity, layout, and dependencies stay
+in place; transaction completion and saving belong to `ProgramSession`.
+
 `TypeArchiveCommands` copies GDT input to a unique private path, hashes the copy,
 and checks it against the source before reading and before completion. Opening
 the original path is insufficient: Ghidra's packed-database cache can retain an

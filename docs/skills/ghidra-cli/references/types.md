@@ -25,6 +25,7 @@ than the machine load or store.
 ```bash
 ghidra-cli type get Header --project target
 ghidra-cli type create struct Header --project target
+ghidra-cli type set-description Header --text 'Packet header; tail layout is still provisional' --project target
 ghidra-cli type field append Header --name magic --type uint --project target
 ghidra-cli type field delete Header --field magic --project target
 ghidra-cli type create enum Mode --member Unknown 0 --member Read 1 --member Write 2 --project target

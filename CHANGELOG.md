@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `type set-description TYPE --text TEXT` for registered structs, unions,
+  and enums. Empty text clears the description; unchanged values leave the type
+  untouched. Receipts include the type path, old/new text, and change status.
 - Add `decompile --predicate-simplification true|false` to control Ghidra's
   grouping of conditional execution into `if/else` for one request. Results
   report the effective setting, and other decompiler requests use native defaults.

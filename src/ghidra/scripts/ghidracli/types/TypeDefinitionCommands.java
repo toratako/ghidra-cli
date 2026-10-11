@@ -75,6 +75,34 @@ public final class TypeDefinitionCommands {
         }
     }
 
+    public JsonObject handleSetDescription(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            DataType type = editableType(getArgString(args, "type_name"));
+            if (!(type instanceof Composite) && !(type instanceof ghidra.program.model.data.Enum))
+                throw new IllegalArgumentException("Description editing requires a struct, union, or enum: "
+                    + type.getPathName());
+            if (!args.has("text") || !args.get("text").isJsonPrimitive()
+                    || !args.getAsJsonPrimitive("text").isString())
+                throw new IllegalArgumentException("Description text must be a string");
+            String text = getArgString(args, "text");
+            String before = type.getDescription();
+            boolean changed = !Objects.equals(before, text);
+            if (changed) {
+                type.setDescription(text);
+                if (!Objects.equals(type.getDescription(), text))
+                    throw new IllegalArgumentException("Ghidra could not set the type description: "
+                        + type.getPathName());
+            }
+            JsonObject result = typeResult(type, changed ? "updated" : "unchanged", changed);
+            result.addProperty("before", before);
+            result.addProperty("after", type.getDescription());
+            return result;
+        } catch (Exception e) {
+            return errorResult("Failed to set type description: " + e.getMessage(), e);
+        }
+    }
+
     public JsonObject handleMove(JsonObject args) {
         if (session.program() == null) return errorResult("No program loaded");
         try {

@@ -597,6 +597,12 @@ take absolute `path`. List returns immediate `categories` rows with `name`,
 `path`, and direct `type_count`, retaining the selected category path as context.
 Create includes missing parents; delete requires an empty non-root category.
 
+`type_set_description` takes a registered `type_name` and required string `text`
+for a struct, union, or enum. Empty text clears the description; an equal value
+does not invoke the setter. The receipt contains `name`, `path`, `status`
+(`updated` or `unchanged`), `changed`, and the actual description strings in
+`before` and `after`. It uses the ordinary request transaction/save boundary.
+
 `type_resize` takes `type_name` and nonnegative byte `size` for a non-packed
 structure. It preserves defined components and verifies size propagation before
 the ordinary request commits. `type_field_create_bitfield` takes `type_name`,

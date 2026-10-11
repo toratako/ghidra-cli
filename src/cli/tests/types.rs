@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn type_description_requires_text_but_accepts_explicit_clearing() {
+    assert!(Cli::try_parse_from(["ghidra-cli", "type", "set-description", "/Header"]).is_err());
+    let cli = Cli::try_parse_from([
+        "ghidra-cli",
+        "type",
+        "set-description",
+        "/Header",
+        "--text",
+        "",
+    ])
+    .unwrap();
+    let Commands::Type(TypeCommands::SetDescription(args)) = cli.command else {
+        panic!("expected type description edit");
+    };
+    assert_eq!(args.type_name, "/Header");
+    assert_eq!(args.text, "");
+}
+
+#[test]
 fn gdt_transfers_require_explicit_root_selection_and_object_output() {
     for command in ["import", "export"] {
         for (selection, all) in [

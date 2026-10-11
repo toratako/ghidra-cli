@@ -372,6 +372,45 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.POST_COMMENT, "pending-close-save");
     }
 
+    private void savedDescription(String expected) throws Exception {
+        Object reader = new Object();
+        Program saved = (Program) real.getDomainFile()
+            .getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
+        try {
+            String actual = saved.getDataTypeManager().getDataType("/DescriptionSaveProbe").getDescription();
+            check(java.util.Objects.equals(expected, actual), "Saved description: " + actual);
+        } finally { saved.release(reader); }
+    }
+
+    private void testDescriptionSaveRecovery() throws Exception {
+        JsonObject create = new JsonObject();
+        create.addProperty("definition", "DescriptionSaveProbe");
+        success(command("type_create", create));
+        String original = real.getDataTypeManager().getDataType("/DescriptionSaveProbe").getDescription();
+        JsonObject edit = new JsonObject();
+        edit.addProperty("type_name", "/DescriptionSaveProbe");
+        edit.addProperty("text", "pending description");
+        savesToFail = 1;
+        int before = saveCalls;
+        JsonObject response = command("type_set_description", edit);
+        saveFailed(response, "success");
+        check(saveCalls == before + 1, "Description save was retried");
+        JsonObject receipt = failed(response).getAsJsonObject("command_response").getAsJsonObject("data");
+        check(receipt.get("changed").getAsBoolean()
+            && "pending description".equals(receipt.get("after").getAsString()), response.toString());
+        check(real.isChanged(), "Failed save lost the description edit");
+        savedDescription(original);
+        // A rejected edit must neither erase nor save the earlier pending edit.
+        edit.remove("text");
+        rolledBack(command("type_set_description", edit));
+        check(saveCalls == before + 1, "Rejected description edit saved pending changes");
+        check("pending description".equals(real.getDataTypeManager()
+            .getDataType("/DescriptionSaveProbe").getDescription()), "Rollback lost pending description");
+        savedDescription(original);
+        success(command("program_save", new JsonObject()));
+        savedDescription("pending description");
+    }
+
     private void testForeignTransaction() throws Exception {
         int transaction = real.startTransaction("owned by another script");
         try {
@@ -528,6 +567,7 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "stats-cancel": testStatsCancellation(); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": testSaveRecovery(); break;
+                case "description-save": testDescriptionSaveRecovery(); break;
                 case "foreign-transaction": testForeignTransaction(); break;
                 case "start-failure": testTransactionStartFailure(); break;
                 case "mutation-leaked-child": testMutationLeakedChild(); break;
@@ -655,6 +695,12 @@ fn test_native_false_rolls_back_changes_before_the_failure() {
 #[serial]
 fn test_transient_save_failure_is_not_retried_and_pending_edits_survive_rollback() {
     run_transaction_probe("save-recovery");
+}
+
+#[test]
+#[serial]
+fn test_description_save_failure_retains_receipt_and_recovers_without_replay() {
+    run_transaction_probe("description-save");
 }
 
 #[test]

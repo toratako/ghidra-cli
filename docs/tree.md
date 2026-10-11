@@ -139,6 +139,7 @@ ghidra-cli
 │   │   └── export
 │   ├── delete
 │   ├── rename
+│   ├── set-description
 │   ├── clone
 │   ├── resize
 │   ├── move
@@ -214,4 +215,4 @@ ghidra-cli
     └── cancel
 ```
 
-202 command nodes (excluding the root), 0 aliases.
+203 command nodes (excluding the root), 0 aliases.

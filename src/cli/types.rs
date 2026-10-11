@@ -23,6 +23,8 @@ pub enum TypeCommands {
     Delete(TypeDeleteArgs),
     /// Rename a data type
     Rename(TypeRenameArgs),
+    /// Set the description of a registered struct, union, or enum
+    SetDescription(TypeSetDescriptionArgs),
     /// Clone a named type definition, sharing its referenced types
     Clone(TypeCloneArgs),
     /// Resize only the undefined tail of a nonpacked struct
@@ -314,6 +316,18 @@ pub struct TypeCloneArgs {
     /// Existing destination category; omit to keep the source category
     #[arg(long)]
     pub category: Option<String>,
+    #[command(flatten)]
+    pub options: ObjectOptions,
+}
+
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
+pub struct TypeSetDescriptionArgs {
+    /// Registered struct, union, or enum name or full type path
+    #[arg(value_name = "TYPE")]
+    pub type_name: String,
+    /// Description text; an empty string clears it
+    #[arg(long)]
+    pub text: String,
     #[command(flatten)]
     pub options: ObjectOptions,
 }

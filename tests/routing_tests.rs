@@ -704,6 +704,11 @@ impl RecordedBridge {
                         };
                         json!({key: rows, "count": rows.len()})
                     }
+                    "type_set_description" => json!({
+                        "status": "updated", "name": "Header", "path": "/Protocol/Header",
+                        "before": "old description", "after": args["text"], "changed": true,
+                        "observed_program": program,
+                    }),
                     _ => json!({"observed_program": program}),
                 };
                 let mut response =

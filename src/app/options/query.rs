@@ -123,6 +123,7 @@ pub(in crate::app) fn extract_query_options(command: &Commands) -> Option<QueryO
                 Some((&args.options).into())
             }
             cli::TypeCommands::Clone(args) => Some((&args.options).into()),
+            cli::TypeCommands::SetDescription(args) => Some((&args.options).into()),
             cli::TypeCommands::Resize(args) => Some((&args.options).into()),
             cli::TypeCommands::Move(args) => Some((&args.options).into()),
             cli::TypeCommands::Category(cmd) => match cmd {

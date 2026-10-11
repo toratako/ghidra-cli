@@ -239,6 +239,7 @@ final class CommandDispatcher {
                     ? semanticTypeUsesCommands.handleVariables(args) : typeUsesCommands.handleUses(args);
             case "type_field_uses": return semanticTypeUsesCommands.handleFields(args);
             case "type_clone":      return typeDefinitionCommands.handleClone(args);
+            case "type_set_description": return typeDefinitionCommands.handleSetDescription(args);
             case "type_move":       return typeDefinitionCommands.handleMove(args);
             case "type_resize":     return typeResizeCommands.handleResize(args);
             case "type_category_list": return typeDefinitionCommands.handleCategoryList(args);

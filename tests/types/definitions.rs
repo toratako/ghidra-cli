@@ -24,6 +24,184 @@ fn reopen(program: &str) {
     client.open_program(program).unwrap();
 }
 
+fn description_fixture() -> String {
+    let program = create_type_edit_program("x86:LE:64:default");
+    run_script(
+        &program,
+        r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateDescriptionTypes extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var path = new CategoryPath("/Descriptions");
+        var node = new StructureDataType(path, "Node", 8, dtm);
+        node.replaceAtOffset(0, DWordDataType.dataType, 4, "value", "field comment");
+        node.setDescription("original node");
+        var savedNode = dtm.addDataType(node, null);
+        var choice = new UnionDataType(path, "Choice", dtm);
+        choice.add(savedNode, "node", "nested type");
+        choice.add(new PointerDataType(savedNode, dtm), "link", "shared target");
+        choice.setDescription("original union");
+        var savedChoice = dtm.addDataType(choice, null);
+        var mode = new EnumDataType(path, "Mode", 4, dtm);
+        mode.add("Read", 1, "member comment");
+        mode.add("Write", 2);
+        mode.setDescription("original enum");
+        var savedMode = dtm.addDataType(mode, null);
+        var holder = new StructureDataType(path, "Holder", 0, dtm);
+        holder.add(new PointerDataType(savedNode, dtm), "link", "pointer");
+        holder.add(new ArrayDataType(savedNode, 2, -1, dtm), "nodes", "array");
+        holder.add(savedChoice, "choice", "union");
+        holder.add(savedMode, "mode", "enum");
+        var savedHolder = dtm.addDataType(holder, null);
+        var address = toAddr(0x1000);
+        currentProgram.getMemory().createUninitializedBlock("data", address, 256, false);
+        currentProgram.getListing().createData(address, savedHolder);
+        dtm.addDataType(new TypedefDataType(path, "Alias", savedNode, dtm), null);
+        dtm.addDataType(new FunctionDefinitionDataType(path, "Callback", dtm), null);
+        var other = new StructureDataType(new CategoryPath("/Other"), "Node", 4, dtm);
+        other.setDescription("other node");
+        dtm.addDataType(other, null);
+    }
+}
+"#,
+        &[],
+    );
+    program
+}
+
+#[test]
+#[serial]
+fn descriptions_update_clear_and_preserve_saved_layout_identity_and_uses() {
+    require_ghidra!();
+    let program = description_fixture();
+    let holder = definition(&program, "/Descriptions/Holder");
+    let other = definition(&program, "/Other/Node");
+    let text = "説明\n  partial layout; trailing spaces  ";
+    for path in [
+        "/Descriptions/Node",
+        "/Descriptions/Choice",
+        "/Descriptions/Mode",
+    ] {
+        let mut expected = definition(&program, path);
+        let before = expected["description"].clone();
+        let updated = command(&program, &["set-description", path, "--text", text]);
+        assert_eq!(updated["path"], path);
+        assert_eq!(updated["status"], "updated");
+        assert_eq!(updated["changed"], true);
+        assert_eq!(updated["before"], before);
+        assert_eq!(updated["after"], text);
+        expected["description"] = json!(text);
+        reopen(&program);
+        assert_eq!(definition(&program, path), expected);
+
+        for value in [text, ""] {
+            if value.is_empty() {
+                let cleared = command(&program, &["set-description", path, "--text", ""]);
+                assert_eq!(cleared["before"], text);
+                assert_eq!(cleared["after"], "");
+                assert_eq!(cleared["changed"], true);
+                expected["description"] = json!("");
+                reopen(&program);
+                assert_eq!(definition(&program, path), expected);
+            }
+            let client = harness().client().unwrap();
+            let guard =
+                || client.send_command("type_gdt_candidates", None).unwrap()["source"].clone();
+            let before = guard();
+            let unchanged = command(&program, &["set-description", path, "--text", value]);
+            assert_eq!(unchanged["status"], "unchanged");
+            assert_eq!(unchanged["changed"], false);
+            assert_eq!(unchanged["before"], value);
+            assert_eq!(unchanged["after"], value);
+            assert_eq!(guard(), before, "same-value edit changed the Program");
+        }
+        assert_eq!(definition(&program, "/Descriptions/Holder"), holder);
+        assert_eq!(definition(&program, "/Other/Node"), other);
+    }
+    reopen(&program);
+    run_script(
+        &program,
+        r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CheckDescriptionUses extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var node = dtm.getDataType("/Descriptions/Node");
+        var choice = (Union) dtm.getDataType("/Descriptions/Choice");
+        var holder = (Structure) dtm.getDataType("/Descriptions/Holder");
+        if (((Pointer) holder.getComponent(0).getDataType()).getDataType() != node
+                || ((Array) holder.getComponent(1).getDataType()).getDataType() != node
+                || holder.getComponent(2).getDataType() != choice
+                || holder.getComponent(3).getDataType() != dtm.getDataType("/Descriptions/Mode")
+                || choice.getComponent(0).getDataType() != node
+                || ((Pointer) choice.getComponent(1).getDataType()).getDataType() != node
+                || ((TypeDef) dtm.getDataType("/Descriptions/Alias")).getBaseDataType() != node
+                || currentProgram.getListing().getDataAt(toAddr(0x1000)).getDataType() != holder)
+            throw new IllegalStateException("Description edit changed registered type uses");
+    }
+}
+"#,
+        &[],
+    );
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
+fn descriptions_reject_ambiguous_unsupported_and_invalid_edits_without_changes() {
+    require_ghidra!();
+    let program = description_fixture();
+    let paths = [
+        "/Descriptions/Node",
+        "/Other/Node",
+        "/Descriptions/Alias",
+        "/Descriptions/Callback",
+    ];
+    let before: Vec<_> = paths
+        .iter()
+        .map(|path| definition(&program, path))
+        .collect();
+    for name in [
+        "Node",
+        "/Descriptions/Alias",
+        "/Descriptions/Callback",
+        "/dword",
+        "/Missing",
+    ] {
+        let result = type_command(
+            &program,
+            &["set-description", name, "--text", "must not change"],
+        );
+        result.assert_failure();
+    }
+    let client = harness().client().unwrap();
+    for args in [
+        json!({"type_name": "/Descriptions/Node"}),
+        json!({"type_name": "/Descriptions/Node", "text": null}),
+        json!({"type_name": "/Descriptions/Node", "text": 42}),
+    ] {
+        assert!(client
+            .send_command("type_set_description", Some(args))
+            .is_err());
+    }
+    reopen(&program);
+    for (path, expected) in paths.iter().zip(before) {
+        assert_eq!(definition(&program, path), expected);
+    }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
 #[test]
 #[serial]
 fn get_imported_and_cloned_function_definitions_exposes_saved_signatures() {

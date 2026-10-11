@@ -7,6 +7,22 @@ fn type_operations_preserve_wire_requests_and_targets_in_standalone_and_batch() 
     let selected = RecordedBridge::new();
     for (mut args, wire, expected) in [
         (
+            vec![
+                "type",
+                "set-description",
+                "/Protocol/Header",
+                "--text",
+                "説明  preserved text  ",
+            ],
+            "type_set_description",
+            json!({"type_name": "/Protocol/Header", "text": "説明  preserved text  "}),
+        ),
+        (
+            vec!["type", "set-description", "/Protocol/Header", "--text", ""],
+            "type_set_description",
+            json!({"type_name": "/Protocol/Header", "text": ""}),
+        ),
+        (
             vec!["type", "create", "struct", "Header"],
             "type_create",
             json!({"definition": "Header"}),
@@ -399,6 +415,31 @@ fn category_queries_keep_path_context_and_apply_query_options_in_the_client() {
         assert!(rows
             .iter()
             .all(|row| row.as_object().unwrap().len() == 1 && row["path"].is_string()));
+    }
+}
+
+#[test]
+fn description_receipts_preserve_text_with_projection_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for batch in [false, true] {
+        for text in ["説明  preserved text  ", ""] {
+            assert_eq!(
+                run_envelope(
+                    &bridge,
+                    &[
+                        "type",
+                        "set-description",
+                        "/Protocol/Header",
+                        "--text",
+                        text,
+                        "--fields",
+                        "path,before,after,changed",
+                    ],
+                    batch
+                ),
+                json!({"data": {"path": "/Protocol/Header", "before": "old description", "after": text, "changed": true}}),
+            );
+        }
     }
 }
 
