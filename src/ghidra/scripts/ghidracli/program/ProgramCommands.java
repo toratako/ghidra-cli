@@ -94,6 +94,15 @@ public final class ProgramCommands {
         return result;
     }
 
+    public JsonObject handleListRegisters() throws Exception {
+        if (session.program() == null) return errorResult("No program loaded");
+        JsonArray registers = ghidracli.function.VariableStorageCodec.registers(session.program(), session.monitor());
+        JsonObject result = new JsonObject();
+        result.add("registers", registers);
+        result.addProperty("count", registers.size());
+        return result;
+    }
+
     public JsonObject handleListRelocations() throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 

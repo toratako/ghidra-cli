@@ -42,6 +42,14 @@ on `function`. Function tags belong to `function`; symbol and analysis commands
 can use function lookup without a reverse dependency. Handlers do not call other
 handlers; shared bit-field editing lives in `types.BitFields`.
 
+`function.FunctionStorage` prepares a complete parameter/return layout from saved
+values or a parsed declaration, checks native conflicts, updates once, and verifies
+readback. `VariableStorageCodec` converts memory-layout byte offsets to native
+compound significance order (reverse on little-endian languages); signature
+inspection uses the inverse mapping. Register listing shares this codec's native
+register eligibility rules. Both editing paths use the ordinary `ProgramSession`
+transaction/save boundary, including cancellation after the native update.
+
 Public classes/methods are the entry points used by another package or a headless
 entry script. Keep domain-only helpers and methods package-private. The native
 decompiler stays with its owner in `session`, independently of which feature

@@ -128,6 +128,14 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/function/FunctionSignatureCommands.java"),
     ),
     (
+        "ghidracli/function/FunctionStorage.java",
+        include_str!("../scripts/ghidracli/function/FunctionStorage.java"),
+    ),
+    (
+        "ghidracli/function/VariableStorageCodec.java",
+        include_str!("../scripts/ghidracli/function/VariableStorageCodec.java"),
+    ),
+    (
         "ghidracli/function/FunctionSignatureSupport.java",
         include_str!("../scripts/ghidracli/function/FunctionSignatureSupport.java"),
     ),

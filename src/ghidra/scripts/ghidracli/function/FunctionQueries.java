@@ -188,6 +188,8 @@ public final class FunctionQueries {
         result.addProperty("size", type.getLength());
         // Preserve native <VOID>, <UNASSIGNED>, and <BAD> storage, not an empty location.
         result.addProperty("storage", param.getVariableStorage().toString());
+        result.addProperty("storage_size", param.getVariableStorage().size());
+        result.add("storage_pieces", VariableStorageCodec.encode(session.program(), param.getVariableStorage()));
         result.addProperty("forced_indirect", param.isForcedIndirect());
         if (param.isForcedIndirect()) {
             DataType formal = param.getFormalDataType();

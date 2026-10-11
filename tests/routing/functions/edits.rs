@@ -2,6 +2,137 @@ use super::super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
 #[test]
+fn storage_locations_route_identically_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    for complete in [false, true] {
+        let mut args = vec![
+            "function",
+            if complete {
+                "set-signature"
+            } else {
+                "set-storage"
+            },
+            "entry",
+        ];
+        if complete {
+            args.extend(["--signature", "long long entry(int head, int tail)"]);
+        }
+        args.extend([
+            "--param-register",
+            "head",
+            "EAX",
+            "--param-stack",
+            "tail",
+            "-0x10",
+            "--return-register-piece",
+            "04",
+            "EDX",
+            "0x4",
+            "--return-register-piece",
+            "0",
+            "EAX",
+            "4",
+            "--program",
+            "B",
+            "--fields",
+            "observed_program",
+        ]);
+        for batch in [false, true] {
+            bridge.requests.lock().unwrap().clear();
+            let receipt = if batch {
+                std::fs::write(
+                    bridge.root.path().join("storage.txt"),
+                    batch_arguments(&args),
+                )
+                .unwrap();
+                bridge.run(&["batch", "storage.txt"])["results"][0]["result"]["data"].clone()
+            } else {
+                bridge.run(&args)
+            };
+            assert_eq!(receipt, json!({"observed_program": "B"}));
+            let requests = bridge.requests.lock().unwrap();
+            let edits: Vec<_> = requests
+                .iter()
+                .filter(|r| r["command"].as_str().unwrap().starts_with("function_set_"))
+                .collect();
+            assert_eq!(edits.len(), 1);
+            assert_eq!(edits[0]["program"], "B");
+            assert_eq!(
+                edits[0]["command"],
+                if complete {
+                    "function_set_signature"
+                } else {
+                    "function_set_storage"
+                }
+            );
+            assert_eq!(
+                edits[0]["args"]["storage"],
+                json!({
+                    "parameters": [
+                        {"name":"head", "pieces":[{"kind":"register", "register":"EAX"}]},
+                        {"name":"tail", "pieces":[{"kind":"stack", "stack_offset":-16}]}
+                    ],
+                    "return": [
+                        {"kind":"register", "register":"EAX", "value_offset":0, "size":4},
+                        {"kind":"register", "register":"EDX", "value_offset":4, "size":4}
+                    ]
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn invalid_storage_stops_batch_before_any_earlier_edit() {
+    let bridge = RecordedBridge::new();
+    for options in [
+        vec![],
+        vec![
+            "--param-register",
+            "value",
+            "EAX",
+            "--param-stack",
+            "value",
+            "4",
+        ],
+        vec![
+            "--return-register-piece",
+            "0",
+            "EAX",
+            "4",
+            "--return-stack-piece",
+            "8",
+            "4",
+            "4",
+        ],
+        vec!["--param-stack", "value", "--json"],
+        vec!["--param-stack", "value", "2147483648"],
+        vec!["--return-register-piece", "0", "EAX", "0"],
+    ] {
+        let mut args = vec!["function", "set-storage", "entry"];
+        args.extend(options);
+        args.extend(["--program", "must-not-open"]);
+        let output = bridge.command().args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?}");
+        std::fs::write(
+            bridge.root.path().join("invalid-storage.txt"),
+            format!("function rename entry renamed\n{}", batch_arguments(&args)),
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .args(["batch", "invalid-storage.txt"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["validation_failed"], true);
+        assert_eq!(result["commands_executed"], 0);
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
 fn signature_type_bindings_preserve_pairs_and_duplicates_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     for (base, wire, mut expected) in [

@@ -298,6 +298,9 @@ all types/categories there, including external and unmapped addresses.
 hex `original_bytes`. Multiple relocations at one address remain separate.
 `program_list_calling_conventions` returns `{calling_conventions, count}` with
 `name` and `is_default` from the selected Program's compiler specification.
+`program_list_registers` returns `{registers, count}` with `name`, `bit_length`,
+byte `size`, `address`, and `base_register` for byte-addressable nonzero registers
+outside processor context. Names and widths come from the selected language.
 These lists fetch complete inputs for the common Rust query pipeline.
 `function_set_calling_convention` accepts only names in that selected compiler
 specification's list; unsupported names fail before the function is changed.
@@ -349,6 +352,27 @@ add `detail.candidates`; syntax errors retain source positions when available.
 Explicit `const`, `volatile`, `restrict`, and `_Atomic` qualifiers are rejected
 because Ghidra function datatypes cannot preserve them. Parsing and validation
 precede application through the ordinary atomic request boundary.
+
+`function_set_storage` takes `target` and `storage` to patch saved parameter or
+return locations. `function_set_signature` accepts the same optional `storage`
+object for a complete custom ABI; when present, every declared parameter and
+non-void return requires a location. Omission uses the existing dynamic path.
+The storage object contains `parameters: [{name, pieces}, ...]` and optional
+`return: [piece, ...]`. A piece has `kind: "register"` plus `register`, or
+`kind: "stack"` plus signed entry-SP-relative `stack_offset`. A single location
+infers width from the type. Explicit pieces add both `value_offset` and `size`
+in bytes, covering consecutive offsets from zero in the value's memory layout.
+Register pieces occupy the low bytes of the named register. A single float
+register piece may be wider than its type where native storage supports it.
+
+Partial edits freeze the whole saved ABI, materializing auto-parameters and
+preserving omitted locations, types, order, comments and sources. They reject
+forced-indirect values; an explicit physical signature is required instead.
+Both paths reject thunks with the actual owner address and check native storage,
+parameter overlaps and local conflicts before a single `CUSTOM_STORAGE` update.
+They re-read the result and return `status` (`storage_set` or `signature_set`),
+`function`, `address`, `signature`, `changed`, and `before`/`after` signature
+details extended with `name`, `signature`, and `calling_convention`.
 
 `function_call_signature_get/set/clear` take caller `target` and explicit `at`.
 Set also takes `signature` and optional `convention`; omission chooses the Program
@@ -506,7 +530,12 @@ adding them to function lists. Optional `with_signature: true` adds
 current Program's Function API, without decompilation. Storage mode is `dynamic`
 or `custom`; source is the native signature SourceType, not a confidence rating.
 Return/parameter records have effective `type`, `type_path`, byte `size`, native
-display-string `storage`, and `forced_indirect`. Indirect records also have
+display-string `storage`, `storage_size`, `storage_pieces`, and `forced_indirect`.
+Pieces are ordered by `value_offset` in memory layout and include `size`,
+`address`, `kind`, and register name or signed stack offset when applicable.
+The native display string's compound ordering may differ. Empty pieces do not
+distinguish void from invalid/unassigned storage; retain the display marker.
+Indirect records also have
 `formal_type` and `formal_type_path`. Parameters include zero-based `ordinal`,
 `name`, and nullable `auto_parameter` (native AutoParameterType name), in signature
 order including auto-parameters. Native `<VOID>`, `<UNASSIGNED>`, and `<BAD>`
@@ -517,7 +546,7 @@ include `thunk_function`/`thunk_address` for its immediate target and
 `effective_function`/`effective_address` for its ultimate metadata owner;
 the parameter view still comes from the selected function so native
 thunk-specific `this` types are retained. Without the flag the field is omitted.
-`function_set_signature` also identifies a thunk's ultimate owner with top-level
+Without explicit storage, `function_set_signature` also identifies a thunk's ultimate owner with top-level
 `effective_function` and `effective_address`.
 
 Independent `with_frame: true` adds `frame_details` from the saved Function and

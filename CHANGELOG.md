@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add `function set-storage` for partial ABI location edits and storage options
+  on `function set-signature` for complete custom signatures, using register,
+  entry-SP-relative stack, or explicit byte pieces. Add `program list-registers`
+  and structured storage pieces to signature inspection and edit receipts.
 - Add `type set-description TYPE --text TEXT` for registered structs, unions,
   and enums. Empty text clears the description; unchanged values leave the type
   untouched. Receipts include the type path, old/new text, and change status.

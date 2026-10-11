@@ -21,7 +21,8 @@ pub(in crate::app) fn extract_project_from_command(command: &Commands) -> Option
             cli::FunctionCommands::Rename(args) => args.project.clone(),
             cli::FunctionCommands::Create(args) => args.project.clone(),
             cli::FunctionCommands::Delete(args) => args.project.clone(),
-            cli::FunctionCommands::SetSignature(args) => args.project.clone(),
+            cli::FunctionCommands::SetSignature(args) => args.options.project.clone(),
+            cli::FunctionCommands::SetStorage(args) => args.options.project.clone(),
             cli::FunctionCommands::SetReturnType(args) => args.project.clone(),
             cli::FunctionCommands::SetCallingConvention(args) => args.project.clone(),
             cli::FunctionCommands::SetStackPurge(args) => args.project.clone(),
@@ -173,6 +174,7 @@ pub(in crate::app) fn extract_project_from_command(command: &Commands) -> Option
             cli::ProgramCommands::Rebase(args) => args.options.project.clone(),
             cli::ProgramCommands::Import(args) => args.project.clone(),
             cli::ProgramCommands::ListRelocations(args)
+            | cli::ProgramCommands::ListRegisters(args)
             | cli::ProgramCommands::ListCallingConventions(args) => args.options.project.clone(),
             cli::ProgramCommands::List(args) => args.project.clone(),
             cli::ProgramCommands::Open(args) => args.project.clone(),
@@ -229,7 +231,8 @@ pub(in crate::app) fn extract_program_from_command(command: &Commands) -> Option
             cli::FunctionCommands::Rename(args) => args.program.clone(),
             cli::FunctionCommands::Create(args) => args.program.clone(),
             cli::FunctionCommands::Delete(args) => args.program.clone(),
-            cli::FunctionCommands::SetSignature(args) => args.program.clone(),
+            cli::FunctionCommands::SetSignature(args) => args.options.program.clone(),
+            cli::FunctionCommands::SetStorage(args) => args.options.program.clone(),
             cli::FunctionCommands::SetReturnType(args) => args.program.clone(),
             cli::FunctionCommands::SetCallingConvention(args) => args.program.clone(),
             cli::FunctionCommands::SetStackPurge(args) => args.program.clone(),
@@ -381,6 +384,7 @@ pub(in crate::app) fn extract_program_from_command(command: &Commands) -> Option
             }
             cli::ProgramCommands::Import(_) => None,
             cli::ProgramCommands::ListRelocations(args)
+            | cli::ProgramCommands::ListRegisters(args)
             | cli::ProgramCommands::ListCallingConventions(args) => {
                 args.name.clone().or_else(|| args.options.program.clone())
             }

@@ -56,7 +56,7 @@ fn targets_require_one_positional() {
                     (args.target, args.program, args.project)
                 }
                 Commands::Function(FunctionCommands::SetSignature(args)) => {
-                    (args.target, args.program, args.project)
+                    (args.target, args.options.program, args.options.project)
                 }
                 Commands::Function(FunctionCommands::SetReturnType(args)) => {
                     (args.target, args.program, args.project)

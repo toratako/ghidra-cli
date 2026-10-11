@@ -50,6 +50,8 @@ pub enum ProgramCommands {
     ListRelocations(ProgramQueryArgs),
     /// List calling conventions supported by the program's compiler specification
     ListCallingConventions(ProgramQueryArgs),
+    /// List byte-addressable ABI registers and subregisters for this program's language
+    ListRegisters(ProgramQueryArgs),
     /// Inspect and edit processor decoding context without redefining instructions
     #[command(subcommand)]
     Context(ProgramContextCommands),

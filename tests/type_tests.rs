@@ -42,6 +42,8 @@ mod return_types;
 mod semantic_uses;
 #[path = "types/signatures.rs"]
 mod signatures;
+#[path = "types/storage.rs"]
+mod storage;
 #[path = "types/unions.rs"]
 mod unions;
 #[path = "types/uses.rs"]

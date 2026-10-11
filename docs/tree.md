@@ -25,6 +25,7 @@ ghidra-cli
 │   ├── stats
 │   ├── list-relocations
 │   ├── list-calling-conventions
+│   ├── list-registers
 │   ├── context
 │   │   ├── list
 │   │   ├── get
@@ -51,6 +52,7 @@ ghidra-cli
 │   ├── create
 │   ├── delete
 │   ├── set-signature
+│   ├── set-storage
 │   ├── set-return-type
 │   ├── set-calling-convention
 │   ├── set-stack-purge
@@ -215,4 +217,4 @@ ghidra-cli
     └── cancel
 ```
 
-203 command nodes (excluding the root), 0 aliases.
+205 command nodes (excluding the root), 0 aliases.

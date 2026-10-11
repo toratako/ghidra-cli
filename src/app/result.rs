@@ -28,6 +28,7 @@ impl ResultShape {
                     &["function", "address", "project", "program", "modification"],
                 )
             }
+            Commands::Program(ProgramCommands::ListRegisters(_)) => Self::rows("registers"),
             Commands::Program(ProgramCommands::ListCallingConventions(_)) => {
                 Self::rows("calling_conventions")
             }

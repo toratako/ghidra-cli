@@ -16,6 +16,7 @@ mod options;
 mod output;
 mod project;
 mod references;
+mod storage;
 mod types;
 
 // Keep command types available through crate::cli while their definitions
@@ -34,6 +35,7 @@ pub use options::{ObjectOptions, QueryOptions};
 pub use output::OutputFormat;
 pub use project::*;
 pub use references::*;
+pub use storage::*;
 pub use types::*;
 
 #[derive(Parser, Clone)]

@@ -169,6 +169,7 @@ final class CommandDispatcher {
             case "program_rebase": return programRebaseCommands.handleRebase(args);
             case "program_list_relocations": return programCommands.handleListRelocations();
             case "program_list_calling_conventions": return programCommands.handleListCallingConventions();
+            case "program_list_registers": return programCommands.handleListRegisters();
             case "list_functions":  return functionCommands.handleListFunctions(args);
             case "get_function":    return functionCommands.handleGetFunction(args);
             case "function_disasm": return functionCommands.handleFunctionDisasm(args);
@@ -277,6 +278,7 @@ final class CommandDispatcher {
             case "tag_detach":      return tagCommands.handleTagDetach(args);
             // Function signature commands
             case "function_set_signature": return functionSignatureCommands.handleFunctionSetSignature(args);
+            case "function_set_storage": return functionSignatureCommands.handleFunctionSetStorage(args);
             case "function_set_return_type": return functionSignatureCommands.handleFunctionSetReturnType(args);
             case "function_set_calling_convention": return functionSignatureCommands.handleFunctionSetCallingConvention(args);
             case "function_set_stack_purge": return functionSignatureCommands.handleFunctionSetStackPurge(args);

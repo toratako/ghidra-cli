@@ -12,6 +12,7 @@ import ghidra.framework.model.DomainFile;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
@@ -174,6 +175,19 @@ public class RequestTransactionProbe extends GhidraScript {
             FunctionManager.class.getClassLoader(), new Class<?>[] { FunctionManager.class },
             (proxy, method, args) -> {
                 Object result = invoke(method, real.getFunctionManager(), args);
+                if (result instanceof Function function && fault != null && fault.startsWith("storage-")) {
+                    return Proxy.newProxyInstance(Function.class.getClassLoader(), new Class<?>[] { Function.class },
+                        (wrapper, operation, inputs) -> {
+                            Object value = invoke(operation, function, inputs);
+                            if (operation.getName().equals("updateFunction")) {
+                                String mode = fault;
+                                fault = null;
+                                if ("storage-cancel".equals(mode)) requestMonitor.cancel();
+                                else throw new IllegalStateException("injected failure after ABI update");
+                            }
+                            return value;
+                        });
+                }
                 if (method.getName().equals("removeFunction") && "native-false".equals(fault)) {
                     check(Boolean.TRUE.equals(result), "Fixture function was not removed");
                     fault = null;
@@ -411,6 +425,63 @@ public class RequestTransactionProbe extends GhidraScript {
         savedDescription("pending description");
     }
 
+    private void savedStorage(boolean custom) throws Exception {
+        Object reader = new Object();
+        Program saved = (Program) real.getDomainFile()
+            .getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
+        try {
+            check(saved.getFunctionManager().getFunctionAt(address).hasCustomVariableStorage() == custom,
+                "Saved storage mode differs from expected state");
+        } finally { saved.release(reader); }
+    }
+
+    private void testStorageTransaction(String mode) throws Exception {
+        JsonObject baseline = new JsonObject();
+        baseline.addProperty("target", "0x" + address.toString());
+        baseline.addProperty("signature", "int " + real.getFunctionManager().getFunctionAt(address).getName() + "(void)");
+        success(command("function_set_signature", baseline));
+        var original = real.getFunctionManager().getFunctionAt(address).getReturn().getVariableStorage();
+        JsonObject piece = new JsonObject();
+        piece.addProperty("kind", "register");
+        piece.addProperty("register", original.getRegisters().get(0).getName());
+        var pieces = new com.google.gson.JsonArray();
+        pieces.add(piece);
+        JsonObject storage = new JsonObject();
+        storage.add("return", pieces);
+        JsonObject edit = new JsonObject();
+        edit.addProperty("target", "0x" + address.toString());
+        edit.add("storage", storage);
+        int before = saveCalls;
+        if (mode.equals("storage-save")) savesToFail = 1;
+        else fault = mode;
+        JsonObject response = command("function_set_storage", edit);
+        if (mode.equals("storage-save")) {
+            saveFailed(response, "success");
+            check(saveCalls == before + 1, "ABI save was retried");
+            JsonObject receipt = failed(response).getAsJsonObject("command_response").getAsJsonObject("data");
+            check(receipt.get("changed").getAsBoolean()
+                && receipt.getAsJsonObject("after").get("storage_mode").getAsString().equals("custom"), response.toString());
+            check(real.getFunctionManager().getFunctionAt(address).hasCustomVariableStorage(), "Lost pending ABI edit");
+            savedStorage(false);
+            piece.addProperty("register", "NONEXISTENT");
+            rolledBack(command("function_set_storage", edit));
+            check(real.getFunctionManager().getFunctionAt(address).hasCustomVariableStorage(), "Rejected edit erased pending ABI");
+            check(saveCalls == before + 1, "Rejected edit saved pending ABI");
+            success(command("program_save", new JsonObject()));
+            savedStorage(true);
+        } else {
+            rolledBack(response);
+            requestMonitor.clearCancelled();
+            var function = real.getFunctionManager().getFunctionAt(address);
+            check(!function.hasCustomVariableStorage() && function.getReturn().getVariableStorage().equals(original),
+                "Failed ABI edit escaped rollback");
+            check(saveCalls == before, "Failed ABI edit was saved");
+            savedStorage(false);
+            success(command("function_set_storage", edit));
+            savedStorage(true);
+        }
+    }
+
     private void testForeignTransaction() throws Exception {
         int transaction = real.startTransaction("owned by another script");
         try {
@@ -568,6 +639,7 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": testSaveRecovery(); break;
                 case "description-save": testDescriptionSaveRecovery(); break;
+                case "storage-error": case "storage-cancel": case "storage-save": testStorageTransaction(mode); break;
                 case "foreign-transaction": testForeignTransaction(); break;
                 case "start-failure": testTransactionStartFailure(); break;
                 case "mutation-leaked-child": testMutationLeakedChild(); break;
@@ -701,6 +773,24 @@ fn test_transient_save_failure_is_not_retried_and_pending_edits_survive_rollback
 #[serial]
 fn test_description_save_failure_retains_receipt_and_recovers_without_replay() {
     run_transaction_probe("description-save");
+}
+
+#[test]
+#[serial]
+fn test_storage_late_error_rolls_back_native_abi_update() {
+    run_transaction_probe("storage-error");
+}
+
+#[test]
+#[serial]
+fn test_storage_cancellation_rolls_back_native_abi_update() {
+    run_transaction_probe("storage-cancel");
+}
+
+#[test]
+#[serial]
+fn test_storage_save_failure_retains_receipt_and_pending_abi() {
+    run_transaction_probe("storage-save");
 }
 
 #[test]

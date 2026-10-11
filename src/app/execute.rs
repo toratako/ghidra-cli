@@ -58,6 +58,18 @@ pub(super) fn validate_command_syntax(command: &Commands) -> anyhow::Result<()> 
             "--function requires --kind variable"
         );
     }
+    match command {
+        Commands::Function(cli::FunctionCommands::SetStorage(args)) => {
+            anyhow::ensure!(
+                args.storage.edits().map_err(anyhow::Error::msg)?.is_some(),
+                "Specify at least one parameter or return storage location"
+            );
+        }
+        Commands::Function(cli::FunctionCommands::SetSignature(args)) => {
+            args.storage.edits().map_err(anyhow::Error::msg)?;
+        }
+        _ => {}
+    }
     let type_bindings = match command {
         Commands::Function(cli::FunctionCommands::SetSignature(args)) => Some(&args.type_bindings),
         Commands::Function(cli::FunctionCommands::CallSignature(
@@ -271,6 +283,7 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::Rebase(args) => client.program_rebase(&args.base),
                 ProgramCommands::Stats(_) => client.stats(),
                 ProgramCommands::ListRelocations(_) => client.program_list_relocations(),
+                ProgramCommands::ListRegisters(_) => client.send_command("program_list_registers", None),
                 ProgramCommands::ListCallingConventions(_) => client.program_list_calling_conventions(),
                 ProgramCommands::Export(args) => {
                     let output = std::path::absolute(&args.output)?;

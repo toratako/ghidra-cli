@@ -41,6 +41,7 @@ pub(in crate::app) fn extract_query_options(command: &Commands) -> Option<QueryO
         }
         Commands::Program(
             cli::ProgramCommands::ListRelocations(args)
+            | cli::ProgramCommands::ListRegisters(args)
             | cli::ProgramCommands::ListCallingConventions(args),
         ) => Some(args.options.clone()),
         Commands::Symbol(
@@ -54,6 +55,8 @@ pub(in crate::app) fn extract_query_options(command: &Commands) -> Option<QueryO
             },
             cli::FunctionCommands::List(args) => Some(args.options.clone()),
             cli::FunctionCommands::Get(args) => Some((&args.options).into()),
+            cli::FunctionCommands::SetSignature(args) => Some((&args.options).into()),
+            cli::FunctionCommands::SetStorage(args) => Some((&args.options).into()),
             cli::FunctionCommands::SetBody(args) => Some((&args.options).into()),
             cli::FunctionCommands::SetThunk(args) => Some((&args.options).into()),
             cli::FunctionCommands::ClearThunk(args) => Some((&args.options).into()),

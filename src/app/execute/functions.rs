@@ -86,12 +86,20 @@ pub(super) fn execute(
                 "address": args.target,
             })),
         ),
-        FunctionCommands::SetSignature(args) => client.send_command(
-            "function_set_signature",
-            Some(with_type_bindings(
+        FunctionCommands::SetSignature(args) => {
+            let mut request = with_type_bindings(
                 json!({"target": args.target, "signature": args.signature}),
                 &args.type_bindings,
-            )),
+            );
+            if let Some(storage) = args.storage.edits().map_err(anyhow::Error::msg)? {
+                request["storage"] = serde_json::to_value(storage)?;
+            }
+            client.send_command("function_set_signature", Some(request))
+        }
+        FunctionCommands::SetStorage(args) => client.send_command(
+            "function_set_storage",
+            Some(json!({"target": args.target,
+                "storage": args.storage.edits().map_err(anyhow::Error::msg)?})),
         ),
         FunctionCommands::SetReturnType(args) => {
             client.function_set_return_type(&args.target, &args.return_type)

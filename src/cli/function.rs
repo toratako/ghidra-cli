@@ -21,8 +21,10 @@ pub enum FunctionCommands {
     Create(CreateFunctionArgs),
     /// Delete function
     Delete(FunctionDeleteArgs),
-    /// Set function signature from C-style string
+    /// Set a C signature; explicit storage requires all parameter and non-void return locations
     SetSignature(SetSignatureArgs),
+    /// Set saved parameter and return locations; freezes the whole function's ABI storage
+    SetStorage(super::SetStorageArgs),
     /// Set function return type while preserving inferred parameters
     SetReturnType(SetReturnTypeArgs),
     /// Set function calling convention
@@ -154,10 +156,10 @@ pub struct SetSignatureArgs {
     pub signature: String,
     #[command(flatten)]
     pub type_bindings: SignatureTypeBindings,
-    #[arg(long)]
-    pub program: Option<String>,
-    #[arg(long)]
-    pub project: Option<String>,
+    #[command(flatten)]
+    pub storage: super::FunctionStorageOptions,
+    #[command(flatten)]
+    pub options: ObjectOptions,
 }
 
 #[derive(Args, Clone, Serialize, Deserialize, Debug)]

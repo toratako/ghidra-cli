@@ -195,7 +195,9 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
                 details["return"],
                 json!({
                     "type":"int", "type_path":"/int", "size":4,
-                    "storage":"EAX:4", "forced_indirect":false
+                    "storage":"EAX:4", "storage_size":4, "forced_indirect":false,
+                    "storage_pieces":[{"kind":"register", "register":"EAX", "value_offset":0,
+                        "size":4, "address":"register:0x00000000"}]
                 })
             );
             assert_eq!(details["params"].as_array().unwrap().len(), 2);

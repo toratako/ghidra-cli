@@ -37,6 +37,10 @@ public final class FunctionSignatureCommands {
 
             var funcDef = FunctionSignatureSupport.parse(session, sigStr, args.get("type_bindings"), false);
 
+            if (args.has("storage")) {
+                return new FunctionStorage(session, functionQueries).apply(func, args.getAsJsonObject("storage"), funcDef);
+            }
+
             ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
                 func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
             if (!cmd.applyTo(session.program(), session.monitor())) {
@@ -63,6 +67,21 @@ public final class FunctionSignatureCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to set signature: " + e.getMessage(), e);
+        }
+    }
+
+    public JsonObject handleFunctionSetStorage(JsonObject args) {
+        if (session.program() == null) return errorResult("No program loaded");
+        try {
+            String target = VariableStorageCodec.text(args, "target");
+            Function function = functionQueries.findFunctionByNameOrAddress(target);
+            if (function == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+            if (!args.has("storage") || !args.get("storage").isJsonObject()) {
+                throw new IllegalArgumentException("storage object required");
+            }
+            return new FunctionStorage(session, functionQueries).apply(function, args.getAsJsonObject("storage"), null);
+        } catch (Exception error) {
+            return errorResult("Failed to set function storage: " + error.getMessage(), error);
         }
     }
 
