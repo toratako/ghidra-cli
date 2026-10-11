@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-12
+
 ### Added
 
 - Add `function set-storage` for partial ABI location edits and storage options
@@ -17,12 +19,93 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add `decompile --predicate-simplification true|false` to control Ghidra's
   grouping of conditional execution into `if/else` for one request. Results
   report the effective setting, and other decompiler requests use native defaults.
+- Add GitHub artifact attestations for released binary and skill archives,
+  with optional verification instructions.
 
 ### Changed
 
 - Retain bounded loader diagnostics in `program import` success results and
   error details across both import routes, including failures after the program
   was saved. One-shot library imports return a structured completion receipt.
+- Avoid cloning query rows during filtering, sorting, and pagination to reduce
+  allocations for large result sets.
+- Pin GitHub Actions to commit SHAs and configure Dependabot updates for
+  Actions and Cargo dependencies.
+- Use locked Cargo builds, tests, and publishing in CI, and gate release
+  artifacts on a fresh dependency audit. Run audits on pull requests and daily.
+- Upload release archives to a draft and verify their filenames, sizes, and
+  SHA-256 digests before publication. Serialize publication per tag and refuse
+  to modify published releases, supporting immutable release assets.
+- Update locked versions of `clap`, `comfy-table`, `pest`/`pest_derive`,
+  `thiserror`, `lazy_static`, `libc`, and `uuid`.
+
+### Fixed
+
+- Validate regular expressions and configuration-dependent pagination bounds
+  throughout nested batches before executing any mutations. Reject query limits,
+  offsets, and configured default limits outside the wire integer range.
+- Preserve the selected program across empty nested batches, including ranges
+  with no executable lines, so later edits retain their intended target.
+- Bind function variable snapshots to the Ghidra project location and name,
+  rejecting selections copied from another project even when program paths,
+  revisions, and variable rows match.
+- Resolve namespace-qualified function targets exactly for reads and edits.
+- Reject label creation that would rename a default-named function, deletion
+  of libraries that still own external imports, and comment updates without text
+  before making unintended changes.
+- Reject ambiguous type field names and roll back struct or union field growth
+  that would leave incomplete parent components or inconsistent applied data.
+- Resolve registered absolute type paths before interpreting pointer or array
+  syntax in their names.
+- Include user-defined types imported into `/functions` in C import receipts,
+  while keeping generated callback definitions in their functions categories.
+- Accept `.gdt` input symlinks whose targets have another extension, and reject
+  archive import conflicts in type descriptions and function/parameter comments
+  instead of silently reusing stale metadata.
+- Reject fractional and overflowing enum sizes from bridge clients instead of
+  truncating them before validation.
+- Stage every native program export before replacing destination files, so
+  exporter failures or cancellation preserve existing output. Restore XML export
+  backups if publication fails and report retained backups if restoration fails.
+- Read memory in bounded chunks instead of allocating the entire requested
+  range up front, preserving partial current-memory reads and complete
+  original-byte reads across mapping boundaries.
+- Follow pointer components inside structures and arrays when resolving
+  indirect call edges.
+- Restrict offset-only virtual-call candidates to the selected vtable's address
+  space, excluding unrelated loads through other overlays.
+- Return recoverable Java errors as job failures, rolling back ordinary
+  requests and retaining script stdout on errors and cancellation.
+- Retain cancellation requests made while native cancellation is disabled and
+  deliver them when cancellation is re-enabled.
+- Validate artifact declarations before executing scripts, and stream artifact
+  row counts and checksums with bounded buffers and cancellation checks.
+- Recommend inspecting jobs when an import's analysis response is lost instead
+  of replaying analysis whose outcome is unknown.
+- Use UTF-8 explicitly for bridge requests and responses, preserving non-ASCII
+  text when the JVM's default encoding differs.
+- Match regex filters against original text, preserving Unicode characters
+  and explicit case flags while retaining case-insensitive defaults.
+- Sort nullable and mixed-type query fields consistently, keeping missing/null
+  values together and applying secondary keys without disrupting scalar order.
+- Preserve signed type sizes, including dynamic size `-1`, in compact output.
+- Honor `--json` and `--pretty` for parser errors when a preceding `--format`
+  option is missing its value.
+- Reject unusable explicit Java homes without falling back to another JDK,
+  including empty selections and failed runtime probes. Display selected paths
+  without escaping separators in diagnostics.
+- Bound retained bridge startup logs while preserving early structured failures
+  and OSGi recovery hints. Prevent launcher PID publication from overwriting the
+  JVM's authoritative PID during startup.
+- Apply one deadline to bridge liveness probes, including connection retries,
+  writes, and reads. Reject unrepresentable shutdown deadlines without
+  panicking.
+- Resolve project deletion paths through the filesystem before locking,
+  stopping, and deleting, preserving symlink and parent-component semantics.
+- Inspect private GAR project copies read-only to prevent asynchronous database
+  cleanup from racing archive traversal or restore publication.
+- Lock the configuration directory before resolving and replacing its file,
+  preventing concurrent update races on Windows while preserving symlinks.
 
 ## [0.9.0] - 2026-09-24
 
@@ -1282,7 +1365,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0-rc.1...v0.7.0
