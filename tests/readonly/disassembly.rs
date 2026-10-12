@@ -109,6 +109,13 @@ public class CreateFunctionDisasmFixture extends GhidraScript {
                     "{target}: {result}"
                 );
                 assert_eq!(result["count"], expected.len());
+                if target == "short_case" {
+                    assert_eq!(result["instructions"][0]["bytes"], "4889e5");
+                    assert_eq!(result["instructions"][1]["bytes"], "c3");
+                }
+                if target == "split_case" {
+                    assert_eq!(result["instructions"][2]["bytes"], "e91b000000");
+                }
                 let output = ghidra(harness)
                     .args(["function", "disassemble", target, "--limit", "0"])
                     .with_project(test_project(), &name)

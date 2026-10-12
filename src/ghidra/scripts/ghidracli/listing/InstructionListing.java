@@ -9,6 +9,7 @@ import ghidra.program.model.mem.MemoryAccessException;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
+import java.util.HexFormat;
 
 /** Shared instruction rows for address, range, and whole-function disassembly. */
 public final class InstructionListing {
@@ -44,11 +45,7 @@ public final class InstructionListing {
     }
 
     private JsonObject instructionToJson(Instruction instr) throws MemoryAccessException {
-        byte[] byteArray = instr.getBytes();
-        StringBuilder bytesHex = new StringBuilder();
-        for (byte b : byteArray) {
-            bytesHex.append(String.format("%02x", b & 0xff));
-        }
+        String bytesHex = HexFormat.of().formatHex(instr.getBytes());
 
         JsonArray operands = new JsonArray();
         int numOperands = instr.getNumOperands();
@@ -58,7 +55,7 @@ public final class InstructionListing {
 
         JsonObject instrData = new JsonObject();
         instrData.addProperty("address", AddressCodec.format(instr.getAddress()));
-        instrData.addProperty("bytes", bytesHex.toString());
+        instrData.addProperty("bytes", bytesHex);
         instrData.addProperty("mnemonic", instr.getMnemonicString());
         instrData.add("operands", operands);
         return instrData;
