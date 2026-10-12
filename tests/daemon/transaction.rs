@@ -1141,14 +1141,24 @@ public class RequestTransactionProbe extends GhidraScript {
             requestMonitor.clearCancelled();
             try {
                 if (session != null) {
-                    // Cleanup follows the assertions. A failed probe must not
-                    // hide its original error behind a stale native wrapper.
-                    if (mode.equals("selector-finish-assertion") || mode.equals("selector-commit-assertion")) {
-                        command("program_save", new JsonObject());
+                    if (mode.equals("selector-commit-assertion")) {
+                        // The injected listener leaves native commit cleanup
+                        // interrupted after the DB transaction has ended. Do
+                        // not retry it; discard only this probe's own consumer
+                        // of the disposable Program, leaving production save
+                        // and transaction recovery checks intact.
+                        var consumer = session.getClass().getDeclaredField("consumer");
+                        consumer.setAccessible(true);
+                        selected.release(consumer.get(session));
+                        selected = null;
+                    } else {
+                        if (mode.equals("selector-finish-assertion")) {
+                            command("program_save", new JsonObject());
+                        }
+                        Method close = session.getClass().getDeclaredMethod("closeProgram");
+                        close.setAccessible(true);
+                        close.invoke(session);
                     }
-                    Method close = session.getClass().getDeclaredMethod("closeProgram");
-                    close.setAccessible(true);
-                    close.invoke(session);
                 }
             } finally { real.release(owner); }
         }
