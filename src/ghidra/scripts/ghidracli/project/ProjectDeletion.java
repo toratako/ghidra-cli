@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -20,6 +21,11 @@ public final class ProjectDeletion {
     public static JsonObject run(String projectPath) throws Exception {
         File project = new File(projectPath).getAbsoluteFile();
         ProjectLocator locator = new ProjectLocator(project.getParent(), project.getName());
+        // ProjectLocator strips .gpr. Never let that normalization redirect a
+        // deletion to a sibling project protected by a different lifecycle lock.
+        if (!locator.getName().equals(project.getName())) {
+            throw new IOException("Use a project base path without the .gpr suffix: " + project);
+        }
         FileLocker lock = LockFactory.createFileLocker(locator.getProjectLockFile());
         if (!lock.lock()) {
             JsonObject detail = new JsonObject();
@@ -31,8 +37,9 @@ public final class ProjectDeletion {
         try {
             Path data = locator.getProjectDir().toPath();
             Path descriptor = locator.getMarkerFile().toPath();
-            boolean deleted = Files.exists(data) || Files.exists(descriptor);
-            if (Files.exists(data)) {
+            boolean deleted = Files.exists(data, LinkOption.NOFOLLOW_LINKS)
+                || Files.exists(descriptor, LinkOption.NOFOLLOW_LINKS);
+            if (Files.exists(data, LinkOption.NOFOLLOW_LINKS)) {
                 // Do not follow symlinks to unrelated directories.
                 Files.walkFileTree(data, new SimpleFileVisitor<Path>() {
                     @Override

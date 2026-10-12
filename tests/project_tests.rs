@@ -12,6 +12,9 @@ mod common;
 #[path = "project/archive.rs"]
 mod archive;
 
+#[path = "project/deletion.rs"]
+mod deletion;
+
 /// Generate unique project name for test isolation.
 /// UUID prevents collisions in parallel CI runs.
 fn unique_project_name(prefix: &str) -> String {

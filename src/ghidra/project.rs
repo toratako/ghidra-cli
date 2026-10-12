@@ -18,7 +18,8 @@ impl ProjectPaths {
     }
 
     pub fn exists(&self) -> bool {
-        self.descriptor.exists() || self.data.exists()
+        // Deletion must still claim and remove dangling project artifacts.
+        self.descriptor.symlink_metadata().is_ok() || self.data.symlink_metadata().is_ok()
     }
 
     pub fn has_program_data(&self) -> bool {
