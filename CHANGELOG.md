@@ -19,6 +19,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lose applied settings or leave incomplete parent data, including bitfields,
   alignment changes, and field deletion.
 - Reject ambiguous structure field names before adding new fields.
+- Reject colliding C tag/typedef definitions before they replace existing types.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

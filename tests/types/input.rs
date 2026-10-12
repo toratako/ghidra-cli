@@ -191,6 +191,71 @@ public class CheckImportRollbackFixture extends GhidraScript {
 
 #[test]
 #[serial]
+fn type_import_rejects_colliding_tag_and_typedef_definitions_without_changing_users() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--code",
+            "struct Item { int original; int tail; }; struct Holder { struct Item item; };",
+        ],
+    )
+    .assert_success();
+    let client = harness().client().unwrap();
+    let fixture = include_str!("CheckCImportNamespaceCollision.java");
+    client
+        .script_run_source(fixture, &["setup".into()], &[], false)
+        .unwrap();
+    let paths = ["/Item", "/Holder"];
+    let before: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|path| type_command(&program, &["get", path]).data())
+        .collect();
+    let before_types: serde_json::Value = type_command(&program, &["list", "--limit", "0"]).data();
+    let code = "struct Fresh { int marker; }; struct Item { long long changed; }; \
+        typedef int Item; struct Holder { struct Item item; };";
+
+    for category in [None, Some("/Draft")] {
+        let mut args = vec!["import-c", "--code", code];
+        if let Some(category) = category {
+            args.extend(["--category", category]);
+        }
+        let failed = type_command(&program, &args);
+        failed
+            .assert_failure()
+            .assert_stderr_contains("same type path")
+            .assert_stderr_contains("/Item");
+        let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            assert_eq!(
+                type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                before_types
+            );
+            for (path, expected) in paths.iter().zip(&before) {
+                assert_eq!(
+                    &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+                    expected,
+                    "{path}"
+                );
+            }
+            client
+                .script_run_source(fixture, &["check".into()], &[], false)
+                .unwrap();
+        }
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_category_preserves_root_types_and_users_after_reopen() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

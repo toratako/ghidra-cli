@@ -71,6 +71,17 @@ public final class TypeImportCommands {
             parsedTypes.addAll(parser.getTypes().values());
             parsedTypes.addAll(parser.getFunctions().values());
 
+            // C tag and typedef namespaces can name distinct definitions at the
+            // same Ghidra path. Resolving either with replacement would discard
+            // the other and redirect its users to a different kind of type.
+            Map<String, DataType> definitionsByPath = new HashMap<>();
+            for (DataType type : parsedTypes) {
+                if (definitionsByPath.putIfAbsent(type.getPathName(), type) != null) {
+                    throw new IllegalArgumentException(
+                        "C definitions share the same type path: " + type.getPathName());
+                }
+            }
+
             CategoryPath lookupPath = CategoryPath.ROOT;
             if (categoryPath != null) {
                 String normalizedPath = categoryPath.startsWith("/")
