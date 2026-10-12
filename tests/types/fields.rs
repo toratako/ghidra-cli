@@ -980,3 +980,88 @@ public class CreateSpecialFieldFixtures extends GhidraScript {
             .any(|field| field["name"] == field_name));
     }
 }
+
+#[test]
+#[serial]
+fn huge_sparse_type_get_rejects_allocation_and_keeps_the_bridge_and_database_healthy() {
+    require_ghidra!();
+    let program = super::create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateSparseTypeGetFixture extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        for (int length : new int[] { Integer.MAX_VALUE, 8 }) {
+            String name = length == 8 ? "SmallSparseGet" : "HugeSparseGet";
+            var structure = new StructureDataType(name, length, dtm);
+            structure.replaceAtOffset(length - 4, DWordDataType.dataType, 4, "tail", "keep");
+            var saved = (Structure) dtm.addDataType(structure, null);
+            if (saved.getNumComponents() != length - 3)
+                throw new IllegalStateException("Unexpected sparse component count");
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = client.send_command("type_gdt_candidates", None).unwrap();
+        let error = client
+            .send_command_with_timeout(
+                "type_get",
+                Some(json!({"name": "HugeSparseGet"})),
+                Some(std::time::Duration::from_secs(30)),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("at most 100000"), "{error:#}");
+        let after = client.send_command("type_gdt_candidates", None).unwrap();
+        // A rejected request rolls back, which advances Ghidra's event-based
+        // modification number even when the saved types are unchanged.
+        assert_eq!(after["types"], before["types"]);
+        assert_eq!(
+            after["source"]["archive_id"],
+            before["source"]["archive_id"]
+        );
+        let small = client.type_get("SmallSparseGet").unwrap();
+        let offsets: Vec<_> = small["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|component| component["offset"].as_u64().unwrap())
+            .collect();
+        assert_eq!(offsets, [0, 1, 2, 3, 4]);
+        assert_eq!(small["components"][4]["name"], "tail");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(client.type_get("SmallSparseGet").unwrap(), small);
+        client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CheckSparseTypeGetFixture extends GhidraScript {
+    public void run() throws Exception {
+        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/HugeSparseGet");
+        var fields = structure.getDefinedComponents();
+        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE - 3
+                || fields.length != 1 || fields[0].getOffset() != Integer.MAX_VALUE - 4
+                || fields[0].getLength() != 4 || !"tail".equals(fields[0].getFieldName())
+                || !"keep".equals(fields[0].getComment()))
+            throw new IllegalStateException("Type inspection changed the saved sparse structure");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    });
+}

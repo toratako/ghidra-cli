@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.database.data.DataTypeUtilities;
 import ghidra.program.model.data.Array;
+import ghidra.program.model.data.Composite;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
@@ -31,6 +32,7 @@ import static ghidracli.protocol.JsonProtocol.getArgString;
 import static ghidracli.protocol.JsonProtocol.getNonnegativeIntArg;
 
 public final class TypeCommands {
+    private static final int MAX_COMPONENTS = 100_000;
     private final ProgramSession session;
     private final TypeResolver typeResolver;
 
@@ -81,7 +83,7 @@ public final class TypeCommands {
         return result;
     }
 
-    public JsonObject handleTypeGet(JsonObject args) {
+    public JsonObject handleTypeGet(JsonObject args) throws ghidra.util.exception.CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
 
         String typeName = getArgString(args, "name");
@@ -105,21 +107,13 @@ public final class TypeCommands {
             Structure struct = (Structure) dataType;
             typeInfo.addProperty("size", StructureFields.length(struct));
             typeInfo.addProperty("packing_enabled", struct.isPackingEnabled());
-            JsonArray components = new JsonArray();
-            for (DataTypeComponent comp : struct.getComponents()) {
-                components.add(StructureFields.describe(comp));
-            }
-            typeInfo.add("components", components);
+            typeInfo.add("components", describeComponents(struct));
         } else if (dataType instanceof Union) {
             typeInfo.addProperty("kind", "union");
             Union union = (Union) dataType;
             typeInfo.addProperty("size", UnionFields.length(union));
             typeInfo.addProperty("packing_enabled", union.isPackingEnabled());
-            JsonArray components = new JsonArray();
-            for (DataTypeComponent comp : union.getComponents()) {
-                components.add(StructureFields.describe(comp));
-            }
-            typeInfo.add("components", components);
+            typeInfo.add("components", describeComponents(union));
         } else if (dataType instanceof ghidra.program.model.data.Enum) {
             typeInfo.addProperty("kind", "enum");
             ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) dataType;
@@ -162,6 +156,20 @@ public final class TypeCommands {
         }
 
         return typeInfo;
+    }
+
+    private JsonArray describeComponents(Composite type) throws ghidra.util.exception.CancelledException {
+        int count = type.getNumComponents();
+        if (count > MAX_COMPONENTS)
+            throw new IllegalArgumentException("Type has " + count + " components; type get supports at most "
+                + MAX_COMPONENTS + ": " + type.getPathName());
+        session.monitor().checkCancelled();
+        JsonArray components = new JsonArray();
+        for (DataTypeComponent component : type.getComponents()) {
+            session.monitor().checkCancelled();
+            components.add(StructureFields.describe(component));
+        }
+        return components;
     }
 
     private static JsonObject describeSignatureType(DataType type) {
