@@ -136,6 +136,37 @@ fn applied_data_values_and_bounded_traversal() {
             false,
         )
         .expect("apply wide integer bitfields");
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.CharDataType;
+import ghidra.program.model.data.PascalString255DataType;
+public class CreatePartialStringValues extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        var pascal = toAddr(0x8000);
+        memory.createInitializedBlock("pascal_prefix", pascal,
+            new java.io.ByteArrayInputStream(new byte[]{1, 'x'}), 2, monitor, false);
+        memory.createUninitializedBlock("pascal_unreadable_tail", pascal.add(2), 254, false);
+        createData(pascal, PascalString255DataType.dataType);
+        // The applied data unit stays two bytes long after changing its length prefix.
+        memory.setByte(pascal, (byte) 0xff);
+
+        var terminated = toAddr(0x9000);
+        memory.createInitializedBlock("terminated_value", terminated,
+            new java.io.ByteArrayInputStream(new byte[]{'o', 'k', 0}), 3, monitor, false);
+        memory.createUninitializedBlock("unused_array_tail", terminated.add(3), 5, false);
+        createData(terminated, new ArrayDataType(CharDataType.dataType, 8, 1));
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .expect("apply strings with partial initialized storage");
 
     let root = read(&client, "data_record", 4, 100);
     assert_eq!(root["kind"], "structure");
@@ -247,6 +278,15 @@ fn applied_data_values_and_bounded_traversal() {
     assert_eq!(field(&partial, "partial")["reason"], "unreadable_memory");
     assert_eq!(field(&partial, "available")["state"], "available");
     assert_eq!(field(&partial, "available")["value"], "0");
+    let pascal = read(&client, "0x8000", 0, 0);
+    assert_eq!(pascal["size"], 2);
+    assert_eq!(pascal["state"], "unavailable");
+    assert_eq!(pascal["reason"], "unreadable_memory");
+    assert!(pascal["value"].is_null());
+    let terminated = read(&client, "0x9000", 0, 0);
+    assert_eq!(terminated["size"], 8);
+    assert_eq!(terminated["state"], "available");
+    assert_eq!(terminated["value"], "ok");
     assert_eq!(
         read(&client, "0x1800", 0, 0)["value"],
         u128::MAX.to_string()

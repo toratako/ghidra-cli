@@ -36,10 +36,12 @@ public final class DataCommands {
 
     private final ProgramSession session;
     private final AddressResolver addressResolver;
+    private final StringQueries stringQueries;
 
     public DataCommands(ProgramSession session, AddressResolver addressResolver) {
         this.session = session;
         this.addressResolver = addressResolver;
+        this.stringQueries = new StringQueries(session);
     }
 
     public JsonObject handleList(JsonObject args) throws Exception {
@@ -184,6 +186,15 @@ public final class DataCommands {
         if (!buffer.isInitializedMemory()) {
             result.addProperty("state", "unavailable");
             result.addProperty("reason", "uninitialized_memory");
+            return;
+        }
+        if (data.hasStringValue()) {
+            // The native interpretation can consume more (patched Pascal prefixes)
+            // or less (terminated char arrays) than the stored data-unit length.
+            String value = stringQueries.value(data);
+            result.addProperty("state", value == null ? "unavailable" : "available");
+            if (value == null) result.addProperty("reason", "unreadable_memory");
+            else result.addProperty("value", value);
             return;
         }
         // isInitializedMemory() only tests the start. Checking the complete
