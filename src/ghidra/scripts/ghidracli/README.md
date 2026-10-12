@@ -373,6 +373,9 @@ relax their types. Parameter conflicts fail the request without force-removing
 locals or renaming symbols; the GUI's commit helper permits both side effects.
 Existing explicit declarations, external functions, and undefined return types
 do not require decompilation; undefined return types do not raise signature source.
+Convention changes verify that all explicit parameter identities survive native
+automatic-input conversion. Declaration edits retain comments by saved parameter
+name, including reordered inputs.
 
 `FunctionVariables` supplies the same decompiler symbol population for list,
 get, set, and structure inference. Name matching and optional selection guards

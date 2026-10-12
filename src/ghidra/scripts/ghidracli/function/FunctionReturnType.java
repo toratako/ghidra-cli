@@ -16,6 +16,7 @@ import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.pcode.LocalSymbolMap;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
+import ghidra.util.exception.InvalidInputException;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,7 +59,7 @@ final class FunctionReturnType {
         PrototypeModel convention = conventionForCommit(function, high);
         if (parametersMatch(symbols, existing)) {
             if (!convention.getName().equals(function.getCallingConventionName())) {
-                function.setCallingConvention(convention.getName());
+                setCallingConvention(function, convention.getName());
             }
             return 0;
         }
@@ -197,6 +198,22 @@ final class FunctionReturnType {
         throw new IllegalArgumentException("Unsupported calling convention: " + name
             + ". Supported calling conventions: " + String.join(", ", supported)
             + ". Use `program list-calling-conventions` to inspect this program's conventions.");
+    }
+
+    static void setCallingConvention(Function function, String convention) throws InvalidInputException {
+        var explicit = Arrays.stream(function.getParameters())
+            .filter(parameter -> !parameter.isAutoParameter())
+            .map(parameter -> parameter.getSymbol().getID()).toList();
+        function.setCallingConvention(convention);
+        var retained = Arrays.stream(function.getParameters())
+            .filter(parameter -> !parameter.isAutoParameter())
+            .map(parameter -> parameter.getSymbol().getID()).toList();
+        // Native __thiscall conversion removes saved pointer parameters named
+        // 'this' and replaces their types/comments with a generated auto input.
+        if (!explicit.equals(retained)) {
+            throw new IllegalStateException("Ghidra did not retain every explicit parameter "
+                + "while changing the calling convention");
+        }
     }
 
     private static IllegalStateException cannotPreserve(String reason) {

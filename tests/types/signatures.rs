@@ -92,6 +92,65 @@ fn assert_unchanged_after_reopen(program: &str, signature: &Value, inventory: &V
 
 #[test]
 #[serial]
+fn signature_edits_retain_comments_on_named_parameters_after_reordering_and_reopen() {
+    require_ghidra!();
+    let program = create_program(64);
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        set_signature(&program, "int lookup(int keep, int change)").assert_success();
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class AnnotateSignatureParameters extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1000));
+        for (var parameter : function.getParameters())
+            parameter.setComment("retain " + parameter.getName());
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        set_signature(
+            &program,
+            "long long lookup(char *change, int added, int keep)",
+        )
+        .assert_success();
+        let after = function();
+        assert_eq!(after["signature_details"]["return"]["type"], "longlong");
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            assert_eq!(function(), after);
+            client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class CheckSignatureParameterComments extends GhidraScript {
+    public void run() throws Exception {
+        var parameters = getFunctionAt(toAddr(0x1000)).getParameters();
+        for (var parameter : parameters) {
+            String expected = parameter.getName().equals("added") ? null : "retain " + parameter.getName();
+            if (!java.util.Objects.equals(expected, parameter.getComment()))
+                throw new IllegalStateException("Lost comment for " + parameter.getName()
+                    + ": " + parameter.getComment());
+        }
+        if (!parameters[0].getDataType().getName().equals("char *")
+                || !parameters[1].getName().equals("added") || !parameters[2].getName().equals("keep"))
+            throw new IllegalStateException("Signature parameter update was not applied");
+    }
+}
+"#, &[], &[], false).unwrap();
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn explicit_signature_bindings_resolve_typedef_collisions_without_persisting_aliases() {
     require_ghidra!();
     let program = create_program(64);

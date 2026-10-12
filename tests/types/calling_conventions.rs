@@ -30,6 +30,140 @@ fn function(target: &str) -> Value {
 
 #[test]
 #[serial]
+fn convention_edits_reject_native_removal_of_explicit_parameters_atomically() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("convention-parameters-{}", unique_suffix());
+    client
+        .script_run_source(
+            include_str!("../readonly/CreateSignatureDetailsFixture.java"),
+            &[program.clone(), "gcc".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.listing.ParameterImpl;
+import ghidra.program.model.listing.Function.FunctionUpdateType;
+import ghidra.program.model.symbol.SourceType;
+public class CreateExplicitThisParameter extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1100));
+        function.replaceParameters(FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS, false,
+            SourceType.USER_DEFINED,
+            new ParameterImpl("this", new PointerDataType(IntegerDataType.dataType), currentProgram),
+            new ParameterImpl("count", IntegerDataType.dataType, currentProgram));
+        function.getParameter(0).setComment("saved explicit object");
+        function.getParameter(1).setComment("saved count");
+    }
+}
+"#, &[], &[], false).unwrap();
+        let before = function("plain");
+        let failed = command(&program, "plain", "__thiscall");
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("explicit parameter"),
+            "{error}"
+        );
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            assert_eq!(function("plain"), before);
+            client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+public class CheckExplicitThisParameterComments extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1100));
+        if (!"saved explicit object".equals(function.getParameter(0).getComment())
+                || !"saved count".equals(function.getParameter(1).getComment()))
+            throw new IllegalStateException("Convention edit lost parameter comments");
+    }
+}
+"#,
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
+        }
+        // Other concrete convention changes retain both formal inputs and comments.
+        command(&program, "plain", "__regparm3").assert_success();
+        let register_abi = function("plain");
+        assert_eq!(register_abi["calling_convention"], "__regparm3");
+        assert_eq!(
+            register_abi["signature_details"]["params"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            register_abi["signature_details"]["params"][0]["name"],
+            "this"
+        );
+        assert_eq!(
+            register_abi["signature_details"]["params"][1]["name"],
+            "count"
+        );
+        command(&program, "plain", "__cdecl").assert_success();
+        assert_eq!(function("plain"), before);
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.SourceType;
+public class RenameExplicitObjectParameter extends GhidraScript {
+    public void run() throws Exception {
+        getFunctionAt(toAddr(0x1100)).getParameter(0).setName("object", SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        command(&program, "plain", "__thiscall").assert_success();
+        let thiscall = function("plain");
+        assert_eq!(
+            thiscall["signature_details"]["params"][0]["auto_parameter"],
+            "THIS"
+        );
+        assert_eq!(thiscall["signature_details"]["params"][1]["name"], "object");
+        assert_eq!(thiscall["signature_details"]["params"][1]["type"], "int *");
+        assert_eq!(thiscall["signature_details"]["params"][2]["name"], "count");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(function("plain"), thiscall);
+        client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class CheckThiscallFormalParameterComments extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1100));
+        if (!"saved explicit object".equals(function.getParameter(1).getComment())
+                || !"saved count".equals(function.getParameter(2).getComment()))
+            throw new IllegalStateException("Convention edit lost retained formal parameter comments");
+    }
+}
+"#, &[], &[], false).unwrap();
+    });
+}
+
+#[test]
+#[serial]
 fn convention_validation_uses_selected_spec_and_preserves_rejected_edits_after_reopen() {
     require_ghidra!();
     let client = harness().client().unwrap();

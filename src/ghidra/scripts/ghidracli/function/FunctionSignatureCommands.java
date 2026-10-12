@@ -42,6 +42,17 @@ public final class FunctionSignatureCommands {
                 return new FunctionStorage(session, functionQueries).apply(func, args.getAsJsonObject("storage"), funcDef);
             }
 
+            // A declaration changes names and types, not saved parameter comments.
+            // Match by name so reordered inputs keep their own annotations.
+            for (var declared : funcDef.getArguments()) {
+                for (var saved : func.getParameters()) {
+                    if (!saved.isAutoParameter() && saved.getName().equals(declared.getName())) {
+                        declared.setComment(saved.getComment());
+                        break;
+                    }
+                }
+            }
+
             ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
                 func.getEntryPoint(), funcDef, SourceType.USER_DEFINED);
             if (!cmd.applyTo(session.program(), session.monitor())) {
@@ -152,7 +163,7 @@ public final class FunctionSignatureCommands {
 
             FunctionReturnType.requireCallingConvention(session.program(), convention);
             Function effective = func.isThunk() ? func.getThunkedFunction(true) : func;
-            effective.setCallingConvention(convention);
+            FunctionReturnType.setCallingConvention(effective, convention);
 
             String sig = null;
             try { sig = func.getPrototypeString(false, false); } catch (Exception e) {}
