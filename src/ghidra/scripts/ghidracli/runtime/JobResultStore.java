@@ -3,6 +3,7 @@ package ghidracli.runtime;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -64,7 +65,8 @@ final class JobResultStore {
             }
         };
         try {
-            OutputStreamWriter writer = new OutputStreamWriter(bounded, StandardCharsets.UTF_8);
+            BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(bounded, StandardCharsets.UTF_8), 1024);
             GSON.toJson(response, writer);
             writer.flush();
             return bytes.toByteArray();

@@ -227,7 +227,8 @@ final class JobScheduler {
             }
 
             JobRecord record = new JobRecord(jobId(req), command);
-            ProgramJob job = new ProgramJob(record, args.deepCopy(), program);
+            // Parsing creates this request's private tree; the queued job takes ownership.
+            ProgramJob job = new ProgramJob(record, args, program);
 
             synchronized (lifecycleLock) {
                 if (!acceptingJobs) {

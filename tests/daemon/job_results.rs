@@ -257,6 +257,17 @@ public class CheckJobResultStore extends GhidraScript {
         Object missing = retain.invoke(store, oversized, 120L);
         check("too_large".equals(state.get(missing)), "oversized reason");
         check(field(type, "retainedBytes").getLong(store) == 0, "oversized result retained");
+        // Split a surrogate pair at writer/encoder buffer boundaries and enforce
+        // byte limits when the final buffered output is flushed.
+        for (int prefix : new int[] {1013, 8181}) {
+            JsonObject boundary = new JsonObject();
+            boundary.addProperty("value", "a".repeat(prefix) + "\uD83D\uDE00é");
+            byte[] expected = boundary.toString().getBytes(StandardCharsets.UTF_8);
+            Object exact = constructor.newInstance(10L, expected.length, expected.length);
+            check(Arrays.equals((byte[]) snapshot.invoke(exact, boundary), expected), "exact UTF-8 limit");
+            Object tooSmall = constructor.newInstance(10L, expected.length, expected.length - 1);
+            check(snapshot.invoke(tooSmall, boundary) == null, "buffered UTF-8 overflow");
+        }
         // History eviction must remove the lookup and release its retained body too.
         Class<?> schedulerType = loader.loadClass("ghidracli.runtime.JobScheduler");
         Class<?> recordType = loader.loadClass("ghidracli.runtime.JobRecord");
