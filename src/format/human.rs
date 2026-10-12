@@ -32,20 +32,19 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                     continue;
                 }
 
-                // Special case: disasm instruction with mnemonic
-                if let (Some(addr), Some(mnem)) = (
+                // Raw P-code results also have an address and mnemonic. Only
+                // instruction rows carry the assembly operand array.
+                if let (Some(addr), Some(mnem), Some(ops)) = (
                     map.get("address").and_then(|v| v.as_str()),
                     map.get("mnemonic").and_then(|v| v.as_str()),
+                    map.get("operands").and_then(JsonValue::as_array),
                 ) {
                     let bytes = map.get("bytes").and_then(|v| v.as_str()).unwrap_or("");
-                    let operands = match map.get("operands") {
-                        Some(JsonValue::Array(ops)) => ops
-                            .iter()
-                            .map(format_json_value)
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        _ => String::new(),
-                    };
+                    let operands = ops
+                        .iter()
+                        .map(format_json_value)
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     result.push_str(&format!(
                         "{:<12} {:<16} {} {}\n",
                         addr, bytes, mnem, operands
@@ -117,11 +116,6 @@ pub(super) fn format_compact<T: Serialize>(data: &[T]) -> Result<String> {
                                     | "name"
                                     | "size"
                                     | "value"
-                                    | "mnemonic"
-                                    | "bytes"
-                                    | "operands"
-                                    | "code"
-                                    | "signature"
                                     | "signature_details"
                                     | "frame_details"
                             )

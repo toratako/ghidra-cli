@@ -15,6 +15,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   indirect calls, avoiding false targets from interior pointer bytes.
 - Treat incomplete bridge response frames and unexpected shutdown responses as
   unknown outcomes without replaying requests.
+- Preserve P-code operations and projected fields in compact output.
 
 ## [0.10.0] - 2026-10-12
 

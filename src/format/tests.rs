@@ -385,6 +385,58 @@ fn compact_preserves_typed_option_values_beside_their_names() {
 }
 
 #[test]
+fn compact_distinguishes_pcode_at_results_from_assembly_rows() {
+    let response = json!({
+        "address": "0x1000", "mnemonic": "MOV", "instruction": "MOV EAX,EDX",
+        "count": 1, "pcode": [{"mnemonic": "COPY", "output": {"register": "EAX"},
+            "inputs": [{"register": "EDX"}]}]
+    });
+    let output = DefaultFormatter
+        .format(&[response], OutputFormat::Compact)
+        .unwrap();
+    for expected in [
+        "0x1000",
+        "mnemonic=MOV",
+        "instruction=MOV EAX,EDX",
+        "count=1",
+        "COPY",
+        "EAX",
+        "EDX",
+    ] {
+        assert!(output.contains(expected), "missing {expected}: {output}");
+    }
+    let instruction = json!({"address": "0x1000", "bytes": "89d0", "mnemonic": "MOV", "operands": ["EAX", "EDX"]});
+    let output = DefaultFormatter
+        .format(&[instruction], OutputFormat::Compact)
+        .unwrap();
+    assert_eq!(
+        output.split_whitespace().collect::<Vec<_>>(),
+        ["0x1000", "89d0", "MOV", "EAX,", "EDX"]
+    );
+}
+
+#[test]
+fn compact_generic_rows_keep_fields_not_rendered_by_a_special_format() {
+    for (response, expected) in [
+        (
+            json!({"address": "0x1000", "mnemonic": "MOV", "bytes": "89d0"}),
+            vec!["mnemonic=MOV", "bytes=89d0"],
+        ),
+        (
+            json!({"name": "main", "signature": "int main(void)"}),
+            vec!["signature=int main(void)"],
+        ),
+    ] {
+        let output = DefaultFormatter
+            .format(&[response], OutputFormat::Compact)
+            .unwrap();
+        for expected in expected {
+            assert!(output.contains(expected), "missing {expected}: {output}");
+        }
+    }
+}
+
+#[test]
 fn compact_keeps_dynamic_type_sizes_and_full_width_unsigned_sizes() {
     let data = [
         json!({"name": "string", "size": -1}),
