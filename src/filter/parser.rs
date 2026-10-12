@@ -238,9 +238,13 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> Result<Value> {
             Rule::number => {
                 let num_str = inner.as_str();
                 if num_str.contains('.') {
-                    let num = num_str.parse::<f64>().map_err(|_| {
-                        GhidraError::FilterParseError(format!("Invalid number: {}", num_str))
-                    })?;
+                    let num = num_str
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|num| num.is_finite())
+                        .ok_or_else(|| {
+                            GhidraError::FilterParseError(format!("Invalid number: {}", num_str))
+                        })?;
                     return Ok(Value::Number(num));
                 } else {
                     let num = num_str.parse::<i64>().map_err(|_| {
@@ -289,6 +293,37 @@ mod tests {
     fn test_parse_and() {
         let filter = parse_filter("name=test AND size>100").unwrap();
         assert!(matches!(filter.expr, FilterExpr::Logical { .. }));
+    }
+
+    #[test]
+    fn not_prefix_does_not_change_field_selection() {
+        let data = serde_json::json!({
+            "NOT_count": 1,
+            "NOTable": true,
+            "_count": 1,
+            "able": true,
+        });
+        for (input, expected) in [
+            ("NOT_count=1", true),
+            ("NOTable=true", true),
+            ("NOT NOT_count=1", false),
+            ("NOT(NOTable=false)", true),
+        ] {
+            assert_eq!(
+                parse_filter(input).unwrap().evaluate(&data).unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_decimal_literals_before_evaluating_rows() {
+        let overflow = format!("{}.0", "9".repeat(400));
+        for input in [format!("size>{overflow}"), format!("size IN [-{overflow}]")] {
+            let error = parse_filter(&input).err().expect(&input);
+            assert!(error.to_string().contains("Invalid number"), "{error}");
+        }
     }
 
     #[test]

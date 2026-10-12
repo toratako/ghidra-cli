@@ -7,7 +7,8 @@ expr = { SOI ~ logical_expr ~ EOI }
 logical_expr = { logical_and ~ (("OR" | "||") ~ logical_and)* }
 logical_and = { logical_term ~ (("AND" | "&&") ~ logical_term)* }
 logical_term = { logical_not | "(" ~ logical_expr ~ ")" | comparison }
-logical_not = { ("NOT" | "!") ~ logical_term }
+logical_not = { (not_keyword | "!") ~ logical_term }
+not_keyword = @{ "NOT" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // Comparison expressions
 comparison = { field ~ (compare_op ~ value | string_op ~ string_value | existence_check | in_check) }

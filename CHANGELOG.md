@@ -17,6 +17,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unknown outcomes without replaying requests.
 - Preserve P-code operations and projected fields in compact output.
 - Keep relative Java home selections usable when launchers change directories.
+- Parse fields beginning with `NOT` without treating the prefix as negation,
+  and reject overflowing decimal filter literals.
 
 ## [0.10.0] - 2026-10-12
 
