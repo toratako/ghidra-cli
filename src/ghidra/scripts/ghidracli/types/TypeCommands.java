@@ -119,6 +119,7 @@ public final class TypeCommands {
             ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) dataType;
             JsonArray members = new JsonArray();
             for (String name : enumType.getNames()) {
+                session.monitor().checkCancelled();
                 JsonObject member = new JsonObject();
                 member.addProperty("name", name);
                 member.addProperty("value", enumType.getValue(name));
@@ -140,6 +141,7 @@ public final class TypeCommands {
             typeInfo.add("return", describeSignatureType(function.getReturnType()));
             JsonArray parameters = new JsonArray();
             for (ParameterDefinition parameter : function.getArguments()) {
+                session.monitor().checkCancelled();
                 JsonObject row = describeSignatureType(parameter.getDataType());
                 row.addProperty("ordinal", parameter.getOrdinal());
                 row.addProperty("name", parameter.getName());

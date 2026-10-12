@@ -23,6 +23,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CancellationException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,6 +62,7 @@ public final class TypeResolver {
     }
 
     public DataType resolveRegisteredDataType(String name) {
+        checkCancelled();
         if (name == null || name.trim().isEmpty()) return null;
         String trimmed = name.trim();
         DataTypeManager dtm = session.program().getDataTypeManager();
@@ -76,6 +78,7 @@ public final class TypeResolver {
     }
 
     public DataType resolveDataType(String name) {
+        checkCancelled();
         if (name == null || name.trim().isEmpty()) return null;
         String trimmed = name.trim();
         DataTypeManager dtm = session.program().getDataTypeManager();
@@ -150,6 +153,7 @@ public final class TypeResolver {
 
     /** Exact registered path lookup, without interpreting pointer/array expressions. */
     public DataType resolveDataTypePath(String path) {
+        checkCancelled();
         DataTypeManager dtm = session.program().getDataTypeManager();
         DataType found = dtm.getDataType(path);
         if (found == null) {
@@ -169,6 +173,7 @@ public final class TypeResolver {
         List<Integer> counts = new ArrayList<>();
         int end = 0;
         while (matcher.find()) {
+            checkCancelled();
             if (matcher.start() != end) break;
             int count;
             try {
@@ -191,6 +196,7 @@ public final class TypeResolver {
         // C dimensions are outermost first: byte[2][3] is two arrays of three
         // bytes. Construct from the final dimension inward to preserve shape.
         for (int i = counts.size() - 1; i >= 0; i--) {
+            checkCancelled();
             int elementLength = element.getAlignedLength();
             if (element.isZeroLength() || element.getLength() <= 0 || elementLength <= 0) {
                 throw invalidArray(expression, "array element type must have a fixed positive size");
@@ -215,6 +221,7 @@ public final class TypeResolver {
         Map<String, DataType> matches = new TreeMap<>();
         Iterator<DataType> iter = mgr.getAllDataTypes();
         while (iter.hasNext()) {
+            checkCancelled();
             DataType candidate = iter.next();
             if (candidate.getName().equals(name)) {
                 matches.put(candidate.getPathName(), candidate);
@@ -230,5 +237,9 @@ public final class TypeResolver {
                 + "'. Use a full path: " + String.join(", ", matches.keySet()), detail);
         }
         return matches.isEmpty() ? null : matches.values().iterator().next();
+    }
+
+    private void checkCancelled() {
+        if (session.monitor().isCancelled()) throw new CancellationException("Command cancelled");
     }
 }

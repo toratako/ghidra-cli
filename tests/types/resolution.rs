@@ -658,3 +658,34 @@ public class CreateExpressionNamedType extends GhidraScript {
     assert_eq!(get_type(&program, "Holder")["components"][0]["size"], 3);
     client.open_program(TEST_PROGRAM).unwrap();
 }
+
+#[test]
+#[serial]
+fn type_resolution_and_definition_reads_cancel_without_database_changes() {
+    require_ghidra!();
+    let program = create_program(64);
+    let members = (0..32)
+        .map(|index| format!("QUERY_{index} = {index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let parameters = (0..32)
+        .map(|index| format!("int argument_{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let code = format!(
+        "struct LookupTarget {{ int value; }}; \
+         enum QueryEnum {{ {members} }}; int QueryFunction({parameters});"
+    );
+    type_command(&program, &["import-c", "--code", &code]).assert_success();
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    let checked = client.script_run_source(
+        include_str!("CheckTypeQueriesReadOnly.java"),
+        &[],
+        &[],
+        false,
+    );
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    checked.unwrap();
+}

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import ghidra.docking.settings.Settings;
 import ghidra.docking.settings.SettingsDefinition;
 import ghidra.program.model.data.*;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import java.util.*;
 
@@ -28,9 +29,9 @@ final class TypeArchiveGraph {
             // Their individual bit offsets are captured on each component below.
             if (!(type instanceof BitFieldDataType)) {
                 types.put(type.getPathName(), type);
-                layouts.put(type.getPathName(), layout(type));
+                layouts.put(type.getPathName(), layout(type, monitor));
             }
-            pending.addAll(children(type));
+            pending.addAll(children(type, monitor));
         }
     }
 
@@ -158,7 +159,7 @@ final class TypeArchiveGraph {
             monitor.checkCancelled();
             DataType atPath = destination.getDataType(source.getPathName());
             if (atPath != null) {
-                requireEquivalent(source, atPath);
+                requireEquivalent(source, atPath, monitor);
                 SourceArchive incomingArchive = source.getSourceArchive();
                 SourceArchive existingArchive = atPath.getSourceArchive();
                 if (source.getUniversalID() != null && incomingArchive != null && existingArchive != null
@@ -183,7 +184,7 @@ final class TypeArchiveGraph {
             if (origin != null && source.getUniversalID() != null) {
                 DataType byIdentity = destination.getDataType(origin, source.getUniversalID());
                 if (byIdentity != null) {
-                    requireEquivalent(source, byIdentity);
+                    requireEquivalent(source, byIdentity, monitor);
                     if (!source.getPathName().equals(byIdentity.getPathName()))
                         throw conflict(source, byIdentity, "source identity occurs at a different path");
                     reusable.put(source.getPathName(), byIdentity);
@@ -193,8 +194,9 @@ final class TypeArchiveGraph {
         return reusable;
     }
 
-    private static void requireEquivalent(DataType source, DataType existing) {
-        if (!layout(source).equals(layout(existing)) || !source.isEquivalent(existing))
+    private static void requireEquivalent(DataType source, DataType existing, TaskMonitor monitor)
+            throws CancelledException {
+        if (!layout(source, monitor).equals(layout(existing, monitor)) || !source.isEquivalent(existing))
             throw conflict(source, existing, "non-equivalent definition");
         requireSettings(source, existing);
     }
@@ -241,11 +243,13 @@ final class TypeArchiveGraph {
             + " (existing " + existing.getPathName() + ")");
     }
 
-    private static List<DataType> children(DataType type) {
+    private static List<DataType> children(DataType type, TaskMonitor monitor) throws CancelledException {
         List<DataType> result = new ArrayList<>();
         if (type instanceof Composite) {
-            for (DataTypeComponent component : ((Composite) type).getDefinedComponents())
+            for (DataTypeComponent component : ((Composite) type).getDefinedComponents()) {
+                monitor.checkCancelled();
                 result.add(component.getDataType());
+            }
         } else if (type instanceof TypeDef) result.add(((TypeDef) type).getDataType());
         else if (type instanceof Array) result.add(((Array) type).getDataType());
         else if (type instanceof Pointer) {
@@ -255,7 +259,10 @@ final class TypeArchiveGraph {
         else if (type instanceof FunctionDefinition) {
             FunctionDefinition function = (FunctionDefinition) type;
             result.add(function.getReturnType());
-            for (ParameterDefinition argument : function.getArguments()) result.add(argument.getDataType());
+            for (ParameterDefinition argument : function.getArguments()) {
+                monitor.checkCancelled();
+                result.add(argument.getDataType());
+            }
         }
         return result;
     }
@@ -308,7 +315,7 @@ final class TypeArchiveGraph {
         return result;
     }
 
-    private static JsonObject layout(DataType type) {
+    private static JsonObject layout(DataType type, TaskMonitor monitor) throws CancelledException {
         JsonObject result = reference(type);
         result.addProperty("kind", kind(type));
         result.addProperty("alignment", type.getAlignment());
@@ -336,6 +343,7 @@ final class TypeArchiveGraph {
             result.addProperty("minimum_alignment", composite.getExplicitMinimumAlignment());
             JsonArray components = new JsonArray();
             for (DataTypeComponent component : composite.getDefinedComponents()) {
+                monitor.checkCancelled();
                 JsonObject row = reference(component.getDataType());
                 row.addProperty("ordinal", component.getOrdinal());
                 row.addProperty("offset", component.getOffset());
@@ -361,6 +369,7 @@ final class TypeArchiveGraph {
             result.addProperty("noreturn", function.hasNoReturn());
             JsonArray arguments = new JsonArray();
             for (ParameterDefinition argument : function.getArguments()) {
+                monitor.checkCancelled();
                 JsonObject row = reference(argument.getDataType());
                 row.addProperty("name", argument.getName());
                 row.addProperty("comment", argument.getComment());
@@ -370,7 +379,10 @@ final class TypeArchiveGraph {
         } else if (type instanceof ghidra.program.model.data.Enum) {
             ghidra.program.model.data.Enum enumeration = (ghidra.program.model.data.Enum) type;
             JsonObject members = new JsonObject();
-            for (String name : enumeration.getNames()) members.addProperty(name, enumeration.getValue(name));
+            for (String name : enumeration.getNames()) {
+                monitor.checkCancelled();
+                members.addProperty(name, enumeration.getValue(name));
+            }
             result.add("members", members);
         }
         return result;
