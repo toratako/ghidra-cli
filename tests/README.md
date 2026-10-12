@@ -86,8 +86,11 @@ Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel gro
 per OS: `daemon_tests`, and the project/bootstrap/reliability/fixture suites.
 
 Suite roots own their fixtures and serial locks; domain modules remain in the
-original test executables. `routing_tests.rs` owns the recorded bridge shared by
-`routing/`, and `output_format_integration.rs` keeps presentation tests alongside
+original test executables. `routing_tests.rs` owns the recorded bridge's TCP worker,
+request log, and temporary files. [routing/recorded.rs](routing/recorded.rs) handles
+program selection, response envelopes, and injected failures;
+[routing/responses.rs](routing/responses.rs) supplies command result fixtures.
+`output_format_integration.rs` keeps presentation tests alongside
 the configuration, installation, project, and validation modules in `output/`.
 Filter a domain with, for example,
 `cargo test --test daemon_tests program_session::`.

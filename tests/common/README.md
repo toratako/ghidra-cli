@@ -2,7 +2,10 @@
 
 | Source | Responsibility |
 |---|---|
-| [mod.rs](mod.rs) | `DaemonTestHarness`, per-executable project ownership, availability checks, cleanup |
+| [mod.rs](mod.rs) | Shared exports, per-executable project ownership and suite-exit cleanup |
+| [bridge.rs](bridge.rs) | `DaemonTestHarness` startup, connection and shutdown |
+| [doctor.rs](doctor.rs) | Cached prerequisite checks and failure diagnostics |
+| [process.rs](process.rs) | Child-process timeouts and output capture |
 | [fixture.rs](fixture.rs) | Run-scoped binary and analyzed source, publication locking, isolated copies |
 | [helpers.rs](helpers.rs) | `GhidraCommand`, `GhidraResult`, name matching and assertions |
 | [schemas.rs](schemas.rs) | Response validation |
