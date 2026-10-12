@@ -28,6 +28,7 @@ public final class ProgramSession {
     private final DecompilerSession decompiler = new DecompilerSession();
     private ProgramTransaction requestTransaction;
     private boolean requestActive;
+    private boolean requestSaved;
     private boolean atomicRequest;
     private long requestModification;
     private SaveFailure saveFailure;
@@ -156,6 +157,7 @@ public final class ProgramSession {
         }
         saveFailure = null;
         requestFailure = null;
+        requestSaved = false;
         atomicRequest = atomic;
         requestActive = true;
         try {
@@ -252,7 +254,7 @@ public final class ProgramSession {
             if (saveFailure != null) throw saveFailure;
             // A rejected edit must not save unrelated, pending edits from an
             // earlier save failure. They remain available for explicit recovery.
-            return new RequestOutcome(!rolledBack && save(), rolledBack, cancelled);
+            return new RequestOutcome(!rolledBack && (save() || requestSaved), rolledBack, cancelled);
         } finally {
             requestActive = false;
             atomicRequest = false;
@@ -278,6 +280,7 @@ public final class ProgramSession {
             if (program().isChanged()) {
                 throw new IllegalStateException("Program still has unsaved changes");
             }
+            if (requestActive) requestSaved = true;
             return true;
         } catch (Exception | Error failure) {
             if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;

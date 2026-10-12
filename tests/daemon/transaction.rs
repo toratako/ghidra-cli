@@ -805,6 +805,38 @@ public class RequestTransactionProbe extends GhidraScript {
             "Cancelled deletion removed the file or left a transaction open");
         savedComment(CodeUnit.EOL_COMMENT, prior);
         savedComment(CodeUnit.PRE_COMMENT, "saved-before-cancelled-delete");
+
+        // A save completed before deletion failed, so the wire receipt must
+        // retain it even though request completion sees a clean Program.
+        // Reinstall fault injection after deletion recovery reopened the real Program.
+        Method close = type.getDeclaredMethod("closeProgram");
+        close.setAccessible(true);
+        close.invoke(session);
+        configureDispatcher();
+        savesToFail = 1;
+        saveFailed(command("comment_set", comment("pending-before-cancelled-delete", "PRE")), "success");
+        previousSaveCalls = saveCalls;
+        cancelAfterSave = true;
+        JsonObject args = new JsonObject();
+        args.addProperty("program", file.getPathname());
+        JsonObject response;
+        try { response = command("program_delete", args); }
+        finally {
+            cancelAfterSave = false;
+            requestMonitor.clearCancelled();
+        }
+        JsonObject detail = failed(response);
+        check(detail.has("partial_changes_saved") && detail.get("partial_changes_saved").getAsBoolean()
+            && detail.get("cancelled").getAsBoolean(), response.toString());
+        check(saveCalls == previousSaveCalls + 1, "Deletion completion retried its successful save");
+        check(selected == real && file.exists() && real.getCurrentTransactionInfo() == null,
+            "Cancelled deletion did not retain its selected Program");
+        savedComment(CodeUnit.PRE_COMMENT, "pending-before-cancelled-delete");
+        args.addProperty("program", file.getPathname() + "/absent");
+        JsonObject unchangedFailure = command("program_delete", args);
+        JsonObject unchangedDetail = failed(unchangedFailure);
+        check(unchangedDetail == null || !unchangedDetail.has("partial_changes_saved"),
+            "A later request inherited the prior save receipt: " + unchangedFailure);
         success(command("comment_set", comment("after-cancelled-delete", "PRE")));
         savedComment(CodeUnit.PRE_COMMENT, "after-cancelled-delete");
     }
