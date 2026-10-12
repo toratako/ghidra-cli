@@ -11,6 +11,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +45,12 @@ final class ArtifactManifest {
             if (path == null || !path.isJsonPrimitive() || !path.getAsJsonPrimitive().isString()
                     || path.getAsString().isEmpty())
                 throw new IllegalArgumentException("expect[" + index + "].path must be a nonempty string");
+            try {
+                Path.of(path.getAsString());
+            } catch (InvalidPathException error) {
+                throw new IllegalArgumentException("expect[" + index + "].path is invalid: "
+                    + error.getReason());
+            }
             JsonElement schema = spec.get("schema");
             if (schema != null && !schema.isJsonNull()
                     && (!schema.isJsonPrimitive() || !schema.getAsJsonPrimitive().isString()))

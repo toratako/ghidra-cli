@@ -36,6 +36,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Preserve save failures without implicit retries, prevent failed preview setup
   from saving earlier pending edits, and restore selection after cancelled deletion.
 - Verify GAR directory payload checksums before publishing restored projects.
+- Reject invalid artifact paths before scripts execute.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

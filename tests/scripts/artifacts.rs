@@ -293,7 +293,7 @@ public class FailWithAssertion extends GhidraScript {
     }
 }
 "#,
-            &[marker.clone()],
+            std::slice::from_ref(&marker),
             &[],
             false,
         )
@@ -366,6 +366,10 @@ public class WriteOnRun extends GhidraScript {
         (
             serde_json::json!([{"path": 42}]),
             "expect[0].path must be a nonempty string",
+        ),
+        (
+            serde_json::json!([{"path": "invalid\0artifact.jsonl"}]),
+            "expect[0].path is invalid",
         ),
         (
             serde_json::json!([{"path": artifact, "schema": 42}]),
