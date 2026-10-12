@@ -189,6 +189,41 @@ public class ExportTestLocale extends GhidraScript {
         "previous XML export"
     );
     assert!(blocked_sidecar.is_dir());
+
+    // Cross a stream buffer boundary and finish at the address-space maximum.
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CreateBinaryExportTail extends GhidraScript {
+    public void run() throws Exception {
+        byte[] tail = new byte[65543];
+        for (int i = 0; i < tail.length; i++) tail[i] = (byte) (i * 17);
+        currentProgram.getMemory().createInitializedBlock("stream_tail",
+            toAddr(0xfffefff9L), new java.io.ByteArrayInputStream(tail),
+            tail.length, monitor, false);
+        currentProgram.getMemory().createByteMappedBlock("initialized_alias",
+            toAddr(0x3000), toAddr(0x1010), 4, false);
+        byte[] overlay = {0x11, 0x22, 0x33};
+        currentProgram.getMemory().createInitializedBlock("export_overlay",
+            toAddr(0x4000), new java.io.ByteArrayInputStream(overlay),
+            overlay.length, monitor, true);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let streamed = client
+        .program_export("binary", Some(raw_path.to_str().unwrap()))
+        .expect("stream initialized ranges through their final byte");
+    assert_receipt(&streamed, &program, "binary", &[&raw_path]);
+    bytes.extend_from_slice(&0x1234_5678u32.to_le_bytes());
+    bytes.extend((0..65543).map(|index| (index * 17) as u8));
+    bytes.extend_from_slice(&[0x11, 0x22, 0x33]);
+    assert_eq!(std::fs::read(&raw_path).unwrap(), bytes);
     assert_no_export_staging(directory.path());
 }
 
@@ -237,6 +272,18 @@ fn failed_export_preserves_existing_output() {
         .program_export("hex", Some(output.to_str().unwrap()))
         .expect_err("failed exports do not publish incomplete new files");
     assert!(!output.exists());
+    let binary_output = output_dir
+        .join("bounded.bin")
+        .to_string_lossy()
+        .into_owned();
+    client
+        .script_run_source(
+            include_str!("CheckBinaryExportBounds.java"),
+            &[binary_output],
+            &[],
+            false,
+        )
+        .expect("large binary exports use bounded reads and preserve outputs on failure");
     client.program_info().expect("bridge remains usable");
     assert_no_export_staging(&output_dir);
 }

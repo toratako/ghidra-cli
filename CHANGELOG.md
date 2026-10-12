@@ -29,6 +29,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   readable string values, and observe cancellation during string traversal.
 - Report the actual conflicting code/data unit when defining data.
 - Observe cancellation during decompiler warning collection.
+- Stream binary exports with bounded reads and cancellation, including readable
+  mapped aliases and overlays, while preserving existing outputs on failure.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

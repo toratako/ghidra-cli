@@ -3,6 +3,8 @@ package ghidracli.program;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.util.exporter.Exporter;
+import ghidra.program.model.mem.Memory;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.session.ProgramSession;
 import java.io.File;
@@ -90,7 +92,12 @@ public final class ProgramExportCommands {
             boolean preserveStaging = false;
             try {
                 Path staged = staging.resolve(destination.getFileName());
-                exported = exportMethod.invoke(exporter, staged.toFile(), session.program(), null, mon);
+                if ("binary".equalsIgnoreCase(exportFormat)) {
+                    exportBinary(staged, session.program().getMemory(), mon);
+                    exported = true;
+                } else {
+                    exported = exportMethod.invoke(exporter, staged.toFile(), session.program(), null, mon);
+                }
                 if (Boolean.TRUE.equals(exported)) {
                     for (Path target : destinations) {
                         exportArtifact(staging.resolve(target.getFileName()));
@@ -136,6 +143,33 @@ public final class ProgramExportCommands {
             Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
                 && e.getCause() != null ? e.getCause() : e;
             return errorResult("Failed to export (" + exportFormat + "): " + cause.getMessage());
+        }
+    }
+
+    private static void exportBinary(Path output, Memory memory, TaskMonitor monitor)
+            throws IOException, CancelledException, ghidra.program.model.mem.MemoryAccessException {
+        // Native BinaryExporter allocates an int-sized array for each complete
+        // range and ignores its monitor. Stream initialized address ranges,
+        // including readable mapped aliases and overlays, in native address order
+        // so large ranges neither truncate nor exhaust the bridge JVM. This
+        // selection is consistent across supported Ghidra versions.
+        byte[] buffer = new byte[64 * 1024];
+        try (var stream = Files.newOutputStream(output)) {
+            for (var range : memory.getAllInitializedAddressSet().getAddressRanges()) {
+                var cursor = range.getMinAddress();
+                long remaining = range.getLength();
+                while (remaining > 0) {
+                    monitor.checkCancelled();
+                    int length = (int) Math.min(remaining, buffer.length);
+                    int read = memory.getBytes(cursor, buffer, 0, length);
+                    if (read <= 0) {
+                        throw new IOException("Could not read initialized memory at " + cursor);
+                    }
+                    stream.write(buffer, 0, read);
+                    remaining -= read;
+                    if (remaining > 0) cursor = cursor.add(read);
+                }
+            }
         }
     }
 
