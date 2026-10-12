@@ -9,6 +9,10 @@ import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.symbol.SymbolUtilities;
 import ghidracli.protocol.JsonProtocol;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** Shared component serialization and detached field-edit validation. */
@@ -186,10 +190,16 @@ public final class StructureFields {
     }
 
     static void verifyOtherFields(Structure original, Structure staged, DataTypeComponent old) {
+        // Bit-fields and zero-length fields can share an offset.
+        Map<Integer, List<DataTypeComponent>> candidatesByOffset = new HashMap<>();
+        for (DataTypeComponent candidate : staged.getDefinedComponents()) {
+            candidatesByOffset.computeIfAbsent(candidate.getOffset(), ignored -> new ArrayList<>())
+                .add(candidate);
+        }
         for (DataTypeComponent field : original.getDefinedComponents()) {
             if (old != null && field.getOrdinal() == old.getOrdinal()) continue;
             boolean found = false;
-            for (DataTypeComponent candidate : staged.getDefinedComponents()) {
+            for (DataTypeComponent candidate : candidatesByOffset.getOrDefault(field.getOffset(), List.of())) {
                 if (field.getOffset() == candidate.getOffset() && field.getLength() == candidate.getLength()
                         && Objects.equals(field.getFieldName(), candidate.getFieldName())
                         && Objects.equals(field.getComment(), candidate.getComment())

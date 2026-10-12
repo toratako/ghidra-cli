@@ -818,6 +818,18 @@ public class CreateSpecialFieldFixtures extends GhidraScript {
         (format!("{prefix}Bits"), "flags"),
         (format!("{prefix}Zero"), "zero"),
     ] {
+        if field_name == "zero" {
+            let before = definition(&name);
+            assert_eq!(
+                field(&before, "zero")["offset"],
+                field(&before, "end")["offset"]
+            );
+            success(set(&name, "0", &["--comment", "updated start"]));
+            let after = definition(&name);
+            for neighbor in ["zero", "end"] {
+                assert_eq!(field(&after, neighbor), field(&before, neighbor));
+            }
+        }
         let before = definition(&name);
         let target = field(&before, field_name);
         if field_name == "zero" {
