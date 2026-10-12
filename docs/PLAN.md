@@ -48,17 +48,10 @@ For bulk rename/comment/type/signature/patch operations add:
 - save;
 - result counts and invariant checks.
 
-## 3. Protocol capabilities
-
-Extend `bridge_info` into a versioned capability contract covering protocol version, Ghidra/Java versions, command/features, job control, script/bundle support, streaming/frame limits, server-side query support, and current project/program identity.
-
-Report capability mismatches explicitly; never silently fall back to different semantics.
-
 ## Build order
 
-1. [Protocol capability contract](#3-protocol-capabilities) needed by query/streaming work.
-2. [Server-side query/streaming and structured bulk export](#1-server-side-query-and-streaming).
-3. [Transactional bulk apply](#2-transactional-bulk-apply).
+1. [Server-side query/streaming and structured bulk export](#1-server-side-query-and-streaming).
+2. [Transactional bulk apply](#2-transactional-bulk-apply).
 
 ## Open design questions
 
