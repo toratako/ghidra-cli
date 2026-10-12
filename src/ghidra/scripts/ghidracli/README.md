@@ -777,7 +777,10 @@ No disassembly, analysis, or function creation runs during the search.
 `graph_callers`, `graph_callees`, and `graph_calls`. Incoming traversal follows
 reverse references to function bodies (including interior destinations), thunks,
 and typed pointer slots; every candidate is checked by the same outgoing edge
-resolver. One call site can have multiple destinations; duplicate references to
+resolver. CALL flow destinations are executable addresses, even when typed pointer
+data occupies the same location; only operand evidence follows those pointers.
+Target selection also prioritizes valid CALL destinations over pointer aliases.
+One call site can have multiple destinations; duplicate references to
 one resolved landing address produce one row, preferring CALL evidence over READ/DATA.
 Distinct landing addresses within one function remain distinct calls. Typed pointer
 resolution precedes containing-function lookup so embedded literal pools are not

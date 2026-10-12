@@ -64,7 +64,11 @@ final class CallReferences {
             : Set.of(explicit);
         Map<Address, Endpoint> endpoints = new LinkedHashMap<>();
         for (Address candidate : candidates) {
-            for (Endpoint endpoint : destinations(candidate).values()) {
+            // A recorded executable target is stronger evidence than pointer
+            // data at the same address, just as an exact Function is.
+            boolean followPointers = session.program().getFunctionManager().getFunctionAt(candidate) == null
+                && !hasCallTargetReference(candidate);
+            for (Endpoint endpoint : destinations(candidate, followPointers).values()) {
                 endpoints.put(endpoint.address(), endpoint);
             }
         }
@@ -74,8 +78,19 @@ final class CallReferences {
         return endpoints.isEmpty() ? null : endpoints.values().iterator().next();
     }
 
-    /** Follow only typed pointer references, retaining known addresses without a Function. */
-    private Map<Address, Endpoint> destinations(Address start) throws CancelledException {
+    private boolean hasCallTargetReference(Address address) throws CancelledException {
+        for (Reference reference : session.program().getReferenceManager().getReferencesTo(address)) {
+            session.monitor().checkCancelled();
+            if (reference.getReferenceType().isCall()
+                    && isCallSite(session.program().getListing().getInstructionAt(
+                        reference.getFromAddress()), reference)) return true;
+        }
+        return false;
+    }
+
+    /** Operand evidence and target aliases may follow pointers; call flow targets execute directly. */
+    private Map<Address, Endpoint> destinations(Address start, boolean followPointers)
+            throws CancelledException {
         FunctionManager fm = session.program().getFunctionManager();
         ReferenceManager refs = session.program().getReferenceManager();
         Map<Address, Endpoint> endpoints = new LinkedHashMap<>();
@@ -93,11 +108,13 @@ final class CallReferences {
                 continue;
             }
             boolean followed = false;
-            for (Reference ref : refs.getReferencesFrom(address)) {
-                session.monitor().checkCancelled();
-                if (isPointerReference(ref)) {
-                    pending.addLast(ref.getToAddress());
-                    followed = true;
+            if (followPointers) {
+                for (Reference ref : refs.getReferencesFrom(address)) {
+                    session.monitor().checkCancelled();
+                    if (isPointerReference(ref)) {
+                        pending.addLast(ref.getToAddress());
+                        followed = true;
+                    }
                 }
             }
             if (!followed) {
@@ -136,7 +153,8 @@ final class CallReferences {
         for (Reference ref : session.program().getReferenceManager().getReferencesFrom(site)) {
             session.monitor().checkCancelled();
             if (!isCallSite(instruction, ref)) continue;
-            for (Map.Entry<Address, Endpoint> destination : destinations(ref.getToAddress()).entrySet()) {
+            for (Map.Entry<Address, Endpoint> destination : destinations(ref.getToAddress(),
+                    !ref.getReferenceType().isCall()).entrySet()) {
                 Call call = new Call(site, caller, destination.getValue(), destination.getKey(),
                     ref.getToAddress(), ref.getReferenceType());
                 Call previous = calls.get(destination.getKey());
