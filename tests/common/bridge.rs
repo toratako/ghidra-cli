@@ -127,3 +127,22 @@ impl Drop for DaemonTestHarness {
         );
     }
 }
+
+/// Select an already-created temporary program for a test, then restore the
+/// suite program and delete the temporary file before resuming any test panic.
+/// Setup and cleanup failures remain test failures; deletion requires restoration
+/// to succeed. The caller owns fixture creation and the bridge's lifetime.
+pub fn with_temporary_program(
+    client: &ghidra_cli::ipc::client::BridgeClient,
+    program: &str,
+    restore_program: &str,
+    check: impl FnOnce(),
+) {
+    client.open_program(program).unwrap();
+    let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(check));
+    client.open_program(restore_program).unwrap();
+    client.program_delete(program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

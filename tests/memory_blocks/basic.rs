@@ -40,15 +40,9 @@ fn with_fixture(language: &str, check: impl FnOnce(&DaemonTestHarness, &BridgeCl
     client
         .script_run_source(CREATE_FIXTURE, &[name.clone(), language.into()], &[], false)
         .unwrap();
-    client.open_program(&name).unwrap();
-    let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    crate::common::with_temporary_program(&client, &name, TEST_PROGRAM, || {
         check(harness, &client, &name);
-    }));
-    client.open_program(TEST_PROGRAM).unwrap();
-    client.program_delete(&name).unwrap();
-    if let Err(panic) = checked {
-        std::panic::resume_unwind(panic);
-    }
+    });
 }
 
 fn cli(harness: &DaemonTestHarness, program: &str, args: &[&str]) -> Value {

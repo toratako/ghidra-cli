@@ -17,13 +17,9 @@ fn fixture(language: &str, check: impl FnOnce(&BridgeClient)) {
             false,
         )
         .unwrap();
-    client.open_program(&name).unwrap();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(&client)));
-    client.open_program(TEST_PROGRAM).unwrap();
-    client.program_delete(&name).unwrap();
-    if let Err(panic) = result {
-        std::panic::resume_unwind(panic);
-    }
+    crate::common::with_temporary_program(&client, &name, TEST_PROGRAM, || {
+        check(&client);
+    });
 }
 
 fn verify(client: &BridgeClient, mode: &str) {

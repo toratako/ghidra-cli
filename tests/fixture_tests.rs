@@ -1,7 +1,8 @@
-//! Real Ghidra coverage for relocating a closed project and isolating copies.
+//! Real Ghidra coverage for isolated project copies and temporary program ownership.
 mod common;
 
 #[test]
+#[serial_test::serial]
 fn relocated_fixture_preserves_analysis_and_isolates_mutations() -> anyhow::Result<()> {
     common::require_ghidra();
     let root = tempfile::Builder::new()
@@ -55,5 +56,69 @@ fn relocated_fixture_preserves_analysis_and_isolates_mutations() -> anyhow::Resu
         .to_string()
         .contains(marker));
     drop(harness);
+    Ok(())
+}
+
+#[test]
+#[serial_test::serial]
+fn temporary_program_cleanup_restores_selection_and_preserves_test_panics() -> anyhow::Result<()> {
+    common::require_ghidra();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-program-test-")
+        .tempdir()?;
+    let project = root.path().join("project");
+    common::fixture::copy_analyzed_project(&project)?;
+    let harness =
+        common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    let client = harness.client()?;
+    let program = "temporary-fixture";
+    for should_panic in [false, true] {
+        client.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+public class CreateTemporaryProgram extends GhidraScript {
+    public void run() throws Exception {
+        var language = currentProgram.getLanguage();
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            &[program.to_owned()],
+            &[],
+            false,
+        )?;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            common::with_temporary_program(&client, program, common::FIXTURE_PROGRAM, || {
+                assert_eq!(
+                    client.list_programs().unwrap()["current_program_name"],
+                    program
+                );
+                if should_panic {
+                    std::panic::panic_any("fixture assertion panic");
+                }
+            });
+        }));
+        if should_panic {
+            assert_eq!(
+                outcome.unwrap_err().downcast_ref::<&str>(),
+                Some(&"fixture assertion panic")
+            );
+        } else {
+            outcome.unwrap();
+        }
+        let listed = client.list_programs()?;
+        assert_eq!(listed["current_program_name"], common::FIXTURE_PROGRAM);
+        assert!(listed["programs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["name"] != program));
+    }
     Ok(())
 }

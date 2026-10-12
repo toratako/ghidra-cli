@@ -121,7 +121,7 @@ Filter a domain with, for example,
 | `address_tests` | Strict address syntax, exact-name collisions, rejected mutations, and address output round trips |
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `xref_tests`, `equate_tests`, `bookmark_tests`, `namespace_tests` | Operand/source-safe reference edits, exact constant associations, bookmark identity, guarded namespace hierarchy edits/deletion, and primary mutations |
-| `fixture_tests` | Relocated analyzed projects, durable edits, and isolation between copies |
+| `fixture_tests` | Relocated analyzed projects, durable edits, isolated copies, and temporary program cleanup after assertion failures |
 | `command_tests` | Version flags, doctor, config |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `standalone_jar_tests` | Relocated official default JAR, doctor, imports, bridge operations, and project lifecycle |

@@ -3,7 +3,7 @@
 | Source | Responsibility |
 |---|---|
 | [mod.rs](mod.rs) | Shared exports, per-executable project ownership and suite-exit cleanup |
-| [bridge.rs](bridge.rs) | `DaemonTestHarness` startup, connection and shutdown |
+| [bridge.rs](bridge.rs) | `DaemonTestHarness` lifecycle and temporary program selection/cleanup |
 | [doctor.rs](doctor.rs) | Cached prerequisite checks and failure diagnostics |
 | [process.rs](process.rs) | Child-process timeouts and output capture |
 | [fixture.rs](fixture.rs) | Run-scoped binary and analyzed source, publication locking, isolated copies |
@@ -58,6 +58,12 @@ basename, omit sibling lock/discovery files, and reject existing destinations.
 
 `require_ghidra!()` shares one `DoctorCheck` per executable, not per macro
 expansion; see [prerequisite policy](../README.md#run).
+
+For a test-owned program created in a shared bridge, `with_temporary_program()`
+opens it, runs the assertions, restores the named suite program, and deletes the
+temporary program even when an assertion panics. Creation stays with the domain
+fixture. Cached programs and tests exercising cleanup itself retain their own
+lifetime management.
 
 `DaemonTestHarness::new()` calls the lifecycle API directly, preserving startup
 errors, and records the PID and port. Drop calls `stop_bridge()` to drain accepted

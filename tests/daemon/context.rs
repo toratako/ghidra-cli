@@ -83,13 +83,9 @@ public class CreateProcessorContextFixture extends GhidraScript {
             false,
         )
         .unwrap();
-    client.open_program(&name).unwrap();
-    let checked = std::panic::catch_unwind(|| check(&client, &name));
-    client.open_program(TEST_PROGRAM).unwrap();
-    client.program_delete(&name).unwrap();
-    if let Err(panic) = checked {
-        std::panic::resume_unwind(panic);
-    }
+    crate::common::with_temporary_program(&client, &name, TEST_PROGRAM, || {
+        check(&client, &name);
+    });
 }
 
 #[test]

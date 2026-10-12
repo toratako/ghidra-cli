@@ -31,15 +31,9 @@ fn with_fixture(check: impl FnOnce(&DaemonTestHarness, &BridgeClient, &str)) {
             false,
         )
         .unwrap();
-    client.open_program(&name).unwrap();
-    let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    crate::common::with_temporary_program(&client, &name, TEST_PROGRAM, || {
         check(harness, &client, &name);
-    }));
-    client.open_program(TEST_PROGRAM).unwrap();
-    client.program_delete(&name).unwrap();
-    if let Err(panic) = checked {
-        std::panic::resume_unwind(panic);
-    }
+    });
 }
 
 fn get(client: &BridgeClient, address: &str) -> Value {

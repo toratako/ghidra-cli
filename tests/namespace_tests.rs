@@ -33,14 +33,9 @@ fn with_fixture(test: impl FnOnce(&BridgeClient, &str)) {
             false,
         )
         .unwrap();
-    client.open_program(&program).unwrap();
-    let checked =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| test(&client, &program)));
-    client.open_program(FIXTURE_PROGRAM).unwrap();
-    client.program_delete(&program).unwrap();
-    if let Err(panic) = checked {
-        std::panic::resume_unwind(panic);
-    }
+    crate::common::with_temporary_program(&client, &program, FIXTURE_PROGRAM, || {
+        test(&client, &program);
+    });
 }
 
 fn command(program: &str, args: &[&str]) -> Value {

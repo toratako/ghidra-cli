@@ -16,7 +16,7 @@ mod process;
 pub mod schemas;
 
 // Re-export commonly used items
-pub use bridge::DaemonTestHarness;
+pub use bridge::{with_temporary_program, DaemonTestHarness};
 pub use doctor::{assert_doctor_ready, require_ghidra, DoctorCheck};
 pub use helpers::{
     get_function_address, get_function_addresses, ghidra, GhidraCommand, GhidraResult,

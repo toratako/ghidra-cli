@@ -22,13 +22,9 @@ fn fixture(check: impl FnOnce(&BridgeClient)) {
     client
         .script_run_source(FIXTURE, &["create".to_owned(), name.clone()], &[], false)
         .unwrap();
-    client.open_program(&name).unwrap();
-    let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(&client)));
-    client.open_program(common::FIXTURE_PROGRAM).unwrap();
-    client.program_delete(&name).unwrap();
-    if let Err(panic) = checked {
-        std::panic::resume_unwind(panic);
-    }
+    crate::common::with_temporary_program(&client, &name, common::FIXTURE_PROGRAM, || {
+        check(&client);
+    });
 }
 
 fn reopen(client: &BridgeClient) {
