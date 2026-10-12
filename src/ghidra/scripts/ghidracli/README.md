@@ -617,6 +617,8 @@ File and stdin Java sources share JDK declaration parsing for their qualified
 class name. Keep the source's immediate parent as its explicitly selected bundle;
 derive package names from the parser, not directory names or regex matching.
 File declarations are parsed after the bundle build to preserve compile diagnostics.
+Check the requested source's recorded build errors before loading its class:
+Ghidra can retain an older packaged class after compilation fails.
 `ScriptCommands` owns the source directory and bundle created for each stdin
 invocation. It uninstalls that exact bundle, removes its compiled files and host
 registration, then deletes the owned source and empty directory after execution.

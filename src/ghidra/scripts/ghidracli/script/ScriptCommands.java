@@ -187,6 +187,16 @@ public final class ScriptCommands {
                 Class<?> bundleClass = bundle.getClass();
                 try {
                     bundleClass.getMethod("build", PrintWriter.class).invoke(bundle, out);
+                    // Ghidra records source compilation errors instead of throwing.
+                    // A previous packaged class can remain in its output tree when
+                    // the source sits directly in this bundle root. Never load it
+                    // after the explicitly requested source failed to compile.
+                    if (bundleClass.getMethod("getErrors", ResourceFile.class)
+                            .invoke(bundle, source) != null) {
+                        out.flush();
+                        return errorResult("Script failed to compile: " + scriptFile.getPath()
+                            + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
+                    }
                     String locationId = (String) bundleClass
                         .getMethod("getLocationIdentifier").invoke(bundle);
                     bhClass.getMethod("activateSynchronously", String.class)

@@ -59,10 +59,7 @@ fn inline_script_bundles_are_released_on_success_failure_and_cancellation() {
                 assert!(error.to_string().contains(expected), "{error}");
                 if mode == "compile_failure" {
                     let message = error.to_string();
-                    assert!(
-                        message.contains("The class could not be found"),
-                        "{message}"
-                    );
+                    assert!(message.contains("Script failed to compile"), "{message}");
                     assert!(message.contains("cannot find symbol"), "{message}");
                 }
             }
@@ -470,6 +467,55 @@ public final class PackagedAudit extends GhidraScript {
     );
     assert_eq!(result["script"], "PackagedAudit.java");
     assert!(!std::path::Path::new(result["path"].as_str().unwrap()).exists());
+}
+
+#[test]
+#[serial]
+fn java_packaged_script_compile_failure_never_executes_its_previous_class() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("RebuiltScript.java");
+    let artifact = directory.path().join("execution.txt");
+    let source = r#"
+package audit.rebuild;
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class RebuiltScript extends GhidraScript {
+    public void run() throws Exception {
+        Files.writeString(Path.of(getScriptArgs()[0]), "executed");
+    }
+}
+"#;
+    let args = [artifact.to_string_lossy().into_owned()];
+    fs::write(&path, source).unwrap();
+    client
+        .script_run(path.to_str().unwrap(), &args, &[], false)
+        .unwrap();
+    assert_eq!(fs::read_to_string(&artifact).unwrap(), "executed");
+    fs::remove_file(&artifact).unwrap();
+
+    fs::write(
+        &path,
+        source.replace("Files.writeString", "Files.missingCompileSymbol"),
+    )
+    .unwrap();
+    for _ in 0..2 {
+        let result = client.script_run(path.to_str().unwrap(), &args, &[], false);
+        assert!(
+            !artifact.exists(),
+            "A previous compiled script was executed"
+        );
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("cannot find symbol"), "{error}");
+    }
+
+    fs::write(&path, source).unwrap();
+    client
+        .script_run(path.to_str().unwrap(), &args, &[], false)
+        .unwrap();
+    assert_eq!(fs::read_to_string(&artifact).unwrap(), "executed");
 }
 
 #[test]
