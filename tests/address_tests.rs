@@ -97,6 +97,10 @@ public class CreateAddressFixture extends GhidraScript {
         var thunk = functions.createFunction("lookup_thunk", thunkEntry,
             new AddressSet(thunkEntry), SourceType.USER_DEFINED);
         thunk.setThunkedFunction(external);
+        symbols.createLabel(space.getAddress(0x1607), "0xentry", scope, SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1608), "handler<ns::0xItem>", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1609), "scope0::0xcollision", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x160a), "0xcollision", scope, SourceType.USER_DEFINED);
     }
 }
 "#,
@@ -129,6 +133,8 @@ fn check_symbol_address_names(client: &BridgeClient) {
         ("handler<ns::Item>", "0x00001601"),
         ("scoped<ns::Item>", "0x00001602"),
         ("scope0::scoped<ns::Item>", "0x00001602"),
+        ("scope0::0xentry", "0x00001607"),
+        ("handler<ns::0xItem>", "0x00001608"),
         // Namespace symbols have NO_ADDRESS and cannot make a real label ambiguous.
         ("scope0", "0x00001605"),
     ] {
@@ -137,22 +143,24 @@ fn check_symbol_address_names(client: &BridgeClient) {
             .unwrap_or_else(|error| panic!("resolve exact label {name}: {error:#}"));
         assert_eq!(result["address"], address);
     }
-    let before = client
-        .send_command("read_memory", Some(json!({"address":"0x1603", "size":2})))
-        .unwrap();
-    let error = client
-        .send_command(
-            "memory_write",
-            Some(json!({"address":"scope0::collision", "hex":"90"})),
-        )
-        .expect_err("exact own-name and qualified-name collision must stay ambiguous");
-    assert!(error.to_string().contains("Ambiguous"), "{error:#}");
-    assert_eq!(
-        client
-            .send_command("read_memory", Some(json!({"address":"0x1603", "size":2})))
-            .unwrap(),
-        before
-    );
+    for (target, address) in [
+        ("scope0::collision", "0x1603"),
+        ("scope0::0xcollision", "0x1609"),
+    ] {
+        let before = client
+            .send_command("read_memory", Some(json!({"address":address, "size":2})))
+            .unwrap();
+        let error = client
+            .send_command("memory_write", Some(json!({"address":target, "hex":"90"})))
+            .expect_err("exact own-name and qualified-name collision must stay ambiguous");
+        assert!(error.to_string().contains("Ambiguous"), "{error:#}");
+        assert_eq!(
+            client
+                .send_command("read_memory", Some(json!({"address":address, "size":2})))
+                .unwrap(),
+            before
+        );
+    }
 }
 
 fn check_import_base_addresses(client: &BridgeClient, fixture: &std::path::Path) {

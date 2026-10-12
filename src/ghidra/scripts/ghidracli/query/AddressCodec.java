@@ -10,13 +10,13 @@ import java.util.regex.Pattern;
 
 /** The CLI's explicit, round-trippable address syntax. */
 public final class AddressCodec {
-    private static final Pattern EXPLICIT_PREFIX = Pattern.compile("(?:^|:)0[xX]");
+    private static final Pattern EXPLICIT_PREFIX = Pattern.compile("(?:^|(?<!:):)0[xX]");
     private static final Pattern OFFSET = Pattern.compile("0[xX][0-9a-fA-F]+(?:\\.[0-9a-fA-F]+)?");
     private static final Pattern HEX = Pattern.compile("0[xX][0-9a-fA-F]+");
 
     private AddressCodec() {}
 
-    /** Includes malformed explicit addresses, which must never fall back to names. */
+    /** Includes malformed explicit addresses, while :: remains an exact-name separator. */
     public static boolean isExplicit(String text) {
         return text != null && EXPLICIT_PREFIX.matcher(text.trim()).find();
     }
