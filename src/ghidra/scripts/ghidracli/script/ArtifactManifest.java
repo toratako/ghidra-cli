@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgBool;
@@ -30,8 +31,9 @@ final class ArtifactManifest {
 
     private static volatile String cachedGhidraVersion;
 
-    /** Reject invalid row constraints before a script can make changes. */
+    /** Reject invalid artifact constraints before a script can make changes. */
     static void validateExpectations(JsonObject args) {
+        getArgBool(args, "allow_empty", false);
         if (args == null || !args.has("expect")) return;
         if (!args.get("expect").isJsonArray())
             throw new IllegalArgumentException("expect must be an array");
@@ -56,6 +58,11 @@ final class ArtifactManifest {
                     && (!schema.isJsonPrimitive() || !schema.getAsJsonPrimitive().isString()))
                 throw new IllegalArgumentException("expect[" + index + "].schema must be a string");
             JsonProtocol.getNonnegativeLongArg(spec, "min_rows");
+            if (spec.has("min_rows") && !spec.get("min_rows").isJsonNull()
+                    && !isRowCountable(path.getAsString())) {
+                throw new IllegalArgumentException("expect[" + index
+                    + "].min_rows requires a row-countable (.jsonl/.ndjson) artifact");
+            }
         }
     }
 
@@ -98,10 +105,7 @@ final class ArtifactManifest {
             }
             if (spec.has("min_rows") && !spec.get("min_rows").isJsonNull()) {
                 long minRows = JsonProtocol.getNonnegativeLongArg(spec, "min_rows");
-                if (!manifest.has("rows")) {
-                    failures.add("min_rows set but " + manifest.get("path").getAsString()
-                        + " is not a row-countable (.jsonl/.ndjson) artifact");
-                } else if (manifest.get("rows").getAsLong() < minRows) {
+                if (manifest.get("rows").getAsLong() < minRows) {
                     failures.add(manifest.get("path").getAsString() + " has "
                         + manifest.get("rows").getAsLong() + " rows, expected >= " + minRows);
                 }
@@ -131,9 +135,8 @@ final class ArtifactManifest {
         }
         m.addProperty("exists", true);
         m.addProperty("bytes", f.length());
-        String lower = rawPath.toLowerCase();
         try {
-            if (lower.endsWith(".jsonl") || lower.endsWith(".ndjson")) {
+            if (isRowCountable(rawPath)) {
                 m.addProperty("rows", countLines(f));
             }
             m.addProperty("sha256", sha256File(f));
@@ -149,6 +152,11 @@ final class ArtifactManifest {
         String gv = ghidraVersion();
         if (!gv.isEmpty()) m.addProperty("ghidra_version", gv);
         return m;
+    }
+
+    private static boolean isRowCountable(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".jsonl") || lower.endsWith(".ndjson");
     }
 
     /** Stream the file counting newlines; handles multi-GB JSONL exports. */

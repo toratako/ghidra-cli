@@ -375,6 +375,10 @@ public class WriteOnRun extends GhidraScript {
             serde_json::json!([{"path": artifact, "schema": 42}]),
             "expect[0].schema must be a string",
         ),
+        (
+            serde_json::json!([{"path": artifact, "min_rows": 0}]),
+            "min_rows requires a row-countable (.jsonl/.ndjson) artifact",
+        ),
     ] {
         let error = client
             .send_command(
@@ -392,4 +396,38 @@ public class WriteOnRun extends GhidraScript {
             "script ran with malformed expect: {expect}"
         );
     }
+}
+
+#[test]
+#[serial]
+fn test_invalid_allow_empty_fails_before_script_execution() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let artifact = work.path().join("unexpected.txt");
+    let error = client
+        .send_command(
+            "script_run",
+            Some(serde_json::json!({
+                "source": r#"
+import ghidra.app.script.GhidraScript;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class WriteBeforeArtifactValidation extends GhidraScript {
+    public void run() throws Exception {
+        Files.writeString(Path.of(getScriptArgs()[0]), "ran");
+    }
+}
+"#,
+                "args": [artifact],
+                "expect": [{"path": artifact}],
+                "allow_empty": "true",
+            })),
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("allow_empty must be a boolean"),
+        "{error}"
+    );
+    assert!(!artifact.exists(), "script ran with malformed allow_empty");
 }
