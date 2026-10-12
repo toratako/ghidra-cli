@@ -153,6 +153,10 @@ public class CreateFieldSettings extends GhidraScript {
         assert_saved_field_settings(&name, &["0", tail]);
     }
     let name = format!("{prefix}Unpacked");
+    for replacement in ["qword", "word", "dword"] {
+        success(set(&name, "0", &["--type", replacement]));
+        assert_saved_field_settings(&name, &["0", "16"]);
+    }
     success(set(
         &name,
         "8",
@@ -172,6 +176,33 @@ public class CreateFieldSettings extends GhidraScript {
         .open_program(TEST_PROGRAM)
         .unwrap();
     assert_saved_field_settings(&name, &["16"]);
+}
+
+#[test]
+#[serial]
+fn append_rejects_ambiguous_or_normalized_field_names_without_changing_the_layout() {
+    require_ghidra!();
+    let name = create_struct();
+    success(set(&name, "0", &["--name", "head", "--type", "dword"]));
+    let unnamed = success(set(&name, "8", &["--type", "byte"]));
+    let before = definition(&name);
+    let default_name = unnamed["after"]["display_name"].as_str().unwrap();
+    for (field_name, message) in [
+        ("head", "already exists"),
+        (default_name, "already exists"),
+        (" ", "must not be empty"),
+    ] {
+        rejected_unchanged(
+            &name,
+            &before,
+            command(&[
+                "field", "append", &name, "--name", field_name, "--type", "byte",
+            ]),
+            message,
+        );
+    }
+    harness().client().unwrap().program_close().unwrap();
+    assert_eq!(definition(&name), before);
 }
 
 #[test]

@@ -29,10 +29,17 @@ public final class BitFieldCommands {
             if (baseName == null) throw new IllegalArgumentException("field_type required");
             DataType base = resolver.resolveDataType(baseName);
             if (base == null) throw new IllegalArgumentException("Field type not found: " + baseName);
-            return BitFields.replace((Structure) target, null, StructureFields.offset(args),
-                requiredInteger(args, "storage_size"), requiredInteger(args, "bit_offset"),
+            Structure structure = (Structure) target;
+            int offset = StructureFields.offset(args);
+            int storage = requiredInteger(args, "storage_size");
+            TypeResizeCommands.PropagationSnapshot propagation = (long) offset + storage > StructureFields.length(structure)
+                ? new TypeResizeCommands.PropagationSnapshot(session, structure) : null;
+            JsonObject result = BitFields.replace(structure, null, offset,
+                storage, requiredInteger(args, "bit_offset"),
                 requiredInteger(args, "bit_size"), base, getArgString(args, "field_name"),
                 getArgString(args, "comment"));
+            if (propagation != null) propagation.verify();
+            return result;
         } catch (Exception e) {
             return errorResult("Failed to create bit-field: " + e.getMessage(), e);
         }

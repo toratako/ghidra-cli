@@ -94,10 +94,15 @@ public final class TypeResizeCommands {
         private final List<Application> applications;
 
         PropagationSnapshot(ProgramSession session, DataType target) throws Exception {
+            this(session, target, -1);
+        }
+
+        PropagationSnapshot(ProgramSession session, DataType target, int deletedDefinedIndex) throws Exception {
             this.session = session;
             this.target = target;
             affected = captureDefinitions(session, target);
-            applications = captureApplications(session, affected);
+            applications = captureApplications(session, affected,
+                deletedDefinedIndex < 0 ? null : target, deletedDefinedIndex);
         }
 
         void verify() throws Exception {
@@ -137,6 +142,11 @@ public final class TypeResizeCommands {
 
     private static List<Application> captureApplications(
             ProgramSession session, Map<DataType, Definition> affected) throws Exception {
+        return captureApplications(session, affected, null, -1);
+    }
+
+    private static List<Application> captureApplications(ProgramSession session,
+            Map<DataType, Definition> affected, DataType deletedType, int deletedDefinedIndex) throws Exception {
         Listing listing = session.program().getListing();
         List<Application> applications = new ArrayList<>();
         // Scan every defined root, including typedef and nested array applications.
@@ -146,7 +156,7 @@ public final class TypeResizeCommands {
             session.monitor().checkCancelled();
             Data item = data.next();
             if (affected.containsKey(item.getDataType()))
-                applications.add(new Application(item, listing, session.monitor()));
+                applications.add(new Application(item, listing, session.monitor(), deletedType, deletedDefinedIndex));
         }
         return applications;
     }
@@ -163,13 +173,19 @@ public final class TypeResizeCommands {
 
     private static Map<List<Integer>, Map<String, Object>> appliedSettings(Data data, TaskMonitor monitor)
             throws CancelledException {
+        return appliedSettings(data, monitor, null, -1);
+    }
+
+    private static Map<List<Integer>, Map<String, Object>> appliedSettings(Data data, TaskMonitor monitor,
+            DataType deletedType, int deletedDefinedIndex) throws CancelledException {
         Map<List<Integer>, Map<String, Object>> result = new HashMap<>();
-        appliedSettings(data, new ArrayList<>(), result, monitor);
+        appliedSettings(data, new ArrayList<>(), result, monitor, deletedType, deletedDefinedIndex);
         return result;
     }
 
     private static void appliedSettings(Data data, List<Integer> path,
-            Map<List<Integer>, Map<String, Object>> result, TaskMonitor monitor) throws CancelledException {
+            Map<List<Integer>, Map<String, Object>> result, TaskMonitor monitor,
+            DataType deletedType, int deletedDefinedIndex) throws CancelledException {
         monitor.checkCancelled();
         require(data != null, "incomplete applied component");
         Map<String, Object> values = settings(data);
@@ -178,16 +194,19 @@ public final class TypeResizeCommands {
         if (base instanceof Composite) {
             DataTypeComponent[] fields = ((Composite) base).getDefinedComponents();
             for (int i = 0; i < fields.length; i++) {
+                if (base == deletedType && i == deletedDefinedIndex) continue;
                 // Defined-field indices survive filler ordinal changes. Array
                 // indices likewise retain element identity across stride changes.
-                path.add(i);
-                appliedSettings(data.getComponent(fields[i].getOrdinal()), path, result, monitor);
+                // A deletion intentionally removes one subtree and renumbers later fields.
+                path.add(base == deletedType && i > deletedDefinedIndex ? i - 1 : i);
+                appliedSettings(data.getComponent(fields[i].getOrdinal()), path, result, monitor,
+                    deletedType, deletedDefinedIndex);
                 path.remove(path.size() - 1);
             }
         } else if (base instanceof Array) {
             for (int i = 0; i < ((Array) base).getNumElements(); i++) {
                 path.add(i);
-                appliedSettings(data.getComponent(i), path, result, monitor);
+                appliedSettings(data.getComponent(i), path, result, monitor, deletedType, deletedDefinedIndex);
                 path.remove(path.size() - 1);
             }
         }
@@ -317,13 +336,14 @@ public final class TypeResizeCommands {
         final DataType neighborType;
         final int neighborInstructionLength;
 
-        Application(Data data, Listing listing, TaskMonitor monitor) throws CancelledException {
+        Application(Data data, Listing listing, TaskMonitor monitor,
+                DataType deletedType, int deletedDefinedIndex) throws CancelledException {
             address = data.getMinAddress();
             type = data.getDataType();
             // Instance settings are keyed by address in Ghidra. A packed parent
             // or an array can move components without relocating those settings.
             // Keep only explicit values, then verify their component association.
-            settings = appliedSettings(data, monitor);
+            settings = appliedSettings(data, monitor, deletedType, deletedDefinedIndex);
             Data nextData = listing.getDefinedDataAfter(address);
             Instruction nextInstruction = listing.getInstructionAfter(address);
             CodeUnit next = nextData;

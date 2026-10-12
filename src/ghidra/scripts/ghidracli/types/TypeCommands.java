@@ -400,18 +400,22 @@ public final class TypeCommands {
                 return UnionFields.append(session, (Union) structType, fieldName, fieldDataType, StructureFields.size(args));
 
             Structure struct = (Structure) structType;
+            StructureFields.validateName(struct, null, fieldName);
             DataTypeUtilities.checkAncestry(struct, fieldDataType);
             Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
             Integer size = StructureFields.size(args);
+            DataTypeComponent expected;
             if (size != null) {
                 if ((long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
                     return errorResult("Field size must fit within the structure");
-                DataTypeComponent added = staged.add(fieldDataType, size, fieldName, null);
-                if (added.getLength() != size)
+                expected = staged.add(fieldDataType, size, fieldName, null);
+                if (expected.getLength() != size)
                     return errorResult("Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
             } else {
-                staged.add(fieldDataType, fieldName, null);
+                expected = staged.add(fieldDataType, fieldName, null);
             }
+            if (!fieldName.equals(expected.getFieldName()))
+                return errorResult("Ghidra did not preserve the requested field name");
             // Preserve existing components and their per-field default settings.
             int sizeBefore = StructureFields.length(struct);
             TypeResizeCommands.PropagationSnapshot propagation =
@@ -495,7 +499,7 @@ public final class TypeCommands {
             if (structType == null) return errorResult("Type not found: " + typeName);
             if (structType instanceof Union) {
                 Union union = (Union) structType;
-                return UnionFields.delete(union, TypeFields.unionOrdinal(union, args));
+                return UnionFields.delete(session, union, TypeFields.unionOrdinal(union, args));
             }
             if (!(structType instanceof Structure))
                 return errorResult("Type is not a struct or union: " + typeName);
@@ -504,8 +508,20 @@ public final class TypeCommands {
             DataTypeComponent field = TypeFields.structureDeletionTarget(struct, args);
             int sizeBefore = StructureFields.length(struct);
             JsonObject before = StructureFields.describe(field);
+            Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
+            staged.delete(field.getOrdinal());
+            TypeFields.verifyComponentCount(staged);
+            int deletedDefinedIndex = 0;
+            for (DataTypeComponent defined : struct.getDefinedComponents()) {
+                if (defined.getOrdinal() == field.getOrdinal()) break;
+                deletedDefinedIndex++;
+            }
+            TypeResizeCommands.PropagationSnapshot propagation = struct.isPackingEnabled()
+                    || StructureFields.length(staged) != sizeBefore || staged.getAlignment() != struct.getAlignment()
+                ? new TypeResizeCommands.PropagationSnapshot(session, struct, deletedDefinedIndex) : null;
             struct.delete(field.getOrdinal());
             TypeFields.verifyComponentCount(struct);
+            if (propagation != null) propagation.verify();
             return TypeFields.result(struct, sizeBefore, StructureFields.length(struct), before, null, "deleted");
         } catch (Exception e) {
             return errorResult("Failed to delete field: " + e.getMessage(), e);

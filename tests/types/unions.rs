@@ -136,6 +136,187 @@ fn union_creation_member_edits_and_deletions_persist() {
 
 #[test]
 #[serial]
+fn union_alignment_changes_reject_incomplete_applied_parents_even_when_size_is_unchanged() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateUnionAlignmentCases extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        int address = 0x1000;
+        for (String name : new String[] { "AlignAppend", "AlignSet" }) {
+            var union = new UnionDataType(CategoryPath.ROOT, name, dtm);
+            union.setPackingEnabled(true);
+            union.add(new ArrayDataType(ByteDataType.dataType, 8, -1, dtm), "raw", null);
+            var saved = dtm.addDataType(union, null);
+            var holder = new StructureDataType(name + "Holder", 0, dtm);
+            holder.setPackingEnabled(true);
+            holder.add(ByteDataType.dataType, "prefix", null);
+            holder.add(saved, "payload", null);
+            holder.add(ByteDataType.dataType, "tail", null);
+            var parent = dtm.addDataType(holder, null);
+            if (parent.getLength() != 10 || saved.getAlignment() != 1)
+                throw new IllegalStateException("Unexpected initial union alignment");
+            currentProgram.getMemory().createInitializedBlock(name, toAddr(address),
+                10, (byte) 0, monitor, false);
+            currentProgram.getListing().createData(toAddr(address), parent);
+            address += 0x100;
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    for (name, action, selector, operand) in [
+        ("AlignAppend", "append", "--name", "wide"),
+        ("AlignSet", "set", "--field", "raw"),
+    ] {
+        let before = definition(&program, name);
+        let parent_name = format!("{name}Holder");
+        let parent = definition(&program, &parent_name);
+        let failed = type_command(
+            &program,
+            &["field", action, name, selector, operand, "--type", "qword"],
+        );
+        failed
+            .assert_failure()
+            .assert_stderr_contains("Unsafe resize");
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        assert_eq!(definition(&program, name), before);
+        assert_eq!(definition(&program, &parent_name), parent);
+    }
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CheckUnionAlignmentRollback extends GhidraScript {
+    public void run() throws Exception {
+        for (int address : new int[] { 0x1000, 0x1100 }) {
+            var data = currentProgram.getListing().getDefinedDataAt(toAddr(address));
+            if (data == null || data.getLength() != 10 || data.getDataType().getLength() != 10)
+                throw new IllegalStateException("Union alignment left incomplete applied data");
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn field_deletion_preserves_remaining_applied_settings_or_rolls_back() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.program.model.data.*;
+public class CreateFieldDeletionSettingsCases extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        int address = 0x1000;
+        for (boolean keepSettings : new boolean[] { true, false }) {
+            String suffix = keepSettings ? "Guarded" : "Free";
+            var union = new UnionDataType(CategoryPath.ROOT, "DeleteUnion" + suffix, dtm);
+            union.add(QWordDataType.dataType, "wide", null);
+            union.add(DWordDataType.dataType, "narrow", null);
+            var savedUnion = dtm.addDataType(union, null);
+            var holder = new StructureDataType("DeleteHolder" + suffix, 0, dtm);
+            holder.setPackingEnabled(true);
+            holder.add(savedUnion, "payload", null);
+            holder.add(ByteDataType.dataType, "tail", null);
+            var packed = new StructureDataType("DeleteStruct" + suffix, 0, dtm);
+            packed.setPackingEnabled(true);
+            packed.add(QWordDataType.dataType, "wide", null);
+            packed.add(DWordDataType.dataType, "tail", null);
+            for (var type : new StructureDataType[] { holder, packed }) {
+                currentProgram.getMemory().createInitializedBlock(type.getName(), toAddr(address),
+                    32, (byte) 0, monitor, false);
+                var data = currentProgram.getListing().createData(toAddr(address), dtm.addDataType(type, null));
+                if (keepSettings)
+                    FormatSettingsDefinition.DEF.setChoice(data.getComponent(1), FormatSettingsDefinition.BINARY);
+                address += 0x100;
+            }
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    for name in ["DeleteUnionGuarded", "DeleteStructGuarded"] {
+        let before = definition(&program, name);
+        let holder = definition(&program, "DeleteHolderGuarded");
+        let failed = type_command(&program, &["field", "delete", name, "--field", "wide"]);
+        failed
+            .assert_failure()
+            .assert_stderr_contains("applied component settings changed");
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        assert_eq!(definition(&program, name), before);
+        assert_eq!(definition(&program, "DeleteHolderGuarded"), holder);
+    }
+    for name in ["DeleteUnionFree", "DeleteStructFree"] {
+        success(type_command(
+            &program,
+            &["field", "delete", name, "--field", "wide"],
+        ));
+        assert_eq!(definition(&program, name)["size"], 4);
+    }
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+public class CheckFieldDeletionSettingsCases extends GhidraScript {
+    public void run() throws Exception {
+        var listing = currentProgram.getListing();
+        for (int address : new int[] { 0x1000, 0x1100 }) {
+            var data = listing.getDefinedDataAt(toAddr(address));
+            if (FormatSettingsDefinition.DEF.getChoice(data.getComponent(1)) != FormatSettingsDefinition.BINARY)
+                throw new IllegalStateException("Deletion lost a retained component's settings");
+        }
+        if (listing.getDefinedDataAt(toAddr(0x1200)).getLength() != 5
+                || listing.getDefinedDataAt(toAddr(0x1300)).getLength() != 4)
+            throw new IllegalStateException("Safe deletion failed to propagate complete data");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn union_growth_rejects_truncated_parent_embedding() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

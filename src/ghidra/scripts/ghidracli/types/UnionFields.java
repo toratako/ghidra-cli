@@ -67,7 +67,8 @@ final class UnionFields {
         DataTypeComponent field = staged.add(type, size == null ? type.getLength() : size, name, null);
         verifyField(field, name, size);
         int beforeSize = length(union);
-        TypeResizeCommands.PropagationSnapshot propagation = length(staged) > beforeSize
+        TypeResizeCommands.PropagationSnapshot propagation = length(staged) != beforeSize
+                || staged.getAlignment() != union.getAlignment()
             ? new TypeResizeCommands.PropagationSnapshot(session, union) : null;
         DataTypeComponent added = union.add(type, field.getLength(), name, null);
         if (propagation != null) propagation.verify();
@@ -105,7 +106,8 @@ final class UnionFields {
         if (before.equals(describe(staged.getComponent(ordinal))) && beforeSize == length(staged))
             return TypeFields.result(union, beforeSize, length(union), before, before, "unchanged");
 
-        TypeResizeCommands.PropagationSnapshot propagation = length(staged) > beforeSize
+        TypeResizeCommands.PropagationSnapshot propagation = length(staged) != beforeSize
+                || staged.getAlignment() != union.getAlignment()
             ? new TypeResizeCommands.PropagationSnapshot(session, union) : null;
 
         if (type == null) {
@@ -140,10 +142,16 @@ final class UnionFields {
         return false;
     }
 
-    static JsonObject delete(Union union, int ordinal) {
+    static JsonObject delete(ProgramSession session, Union union, int ordinal) throws Exception {
         JsonObject before = describe(target(union, ordinal));
         int beforeSize = length(union);
+        Union staged = (Union) union.copy(union.getDataTypeManager());
+        staged.delete(ordinal);
+        TypeResizeCommands.PropagationSnapshot propagation = length(staged) != beforeSize
+                || staged.getAlignment() != union.getAlignment()
+            ? new TypeResizeCommands.PropagationSnapshot(session, union, ordinal) : null;
         union.delete(ordinal);
+        if (propagation != null) propagation.verify();
         return TypeFields.result(union, beforeSize, length(union), before, null, "deleted");
     }
 }

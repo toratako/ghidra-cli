@@ -2,6 +2,9 @@ package ghidracli.types;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import ghidra.docking.settings.Settings;
+import ghidra.docking.settings.SettingsDefinition;
+import ghidra.docking.settings.SettingsImpl;
 import ghidra.program.database.data.DataTypeUtilities;
 import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.DataType;
@@ -90,6 +93,17 @@ public final class StructureFields {
         return target;
     }
 
+    static void validateName(Structure struct, DataTypeComponent old, String name) throws Exception {
+        if (name == null) return;
+        if (name.isBlank()) throw new IllegalArgumentException("Field name must not be empty");
+        SymbolUtilities.validateName(name);
+        for (DataTypeComponent other : struct.getDefinedComponents()) {
+            if (old != null && other.getOrdinal() == old.getOrdinal()) continue;
+            if (name.equals(other.getFieldName()) || name.equals(other.getDefaultFieldName()))
+                throw conflict("Field name already exists: " + name, other);
+        }
+    }
+
     static Plan set(Structure struct, TypeFields.StructureSelection selected, String name, DataType type,
             String comment, boolean commentSpecified, Integer sizeOverride) throws Exception {
         if (sizeOverride != null && type == null)
@@ -102,14 +116,7 @@ public final class StructureFields {
             throw new IllegalArgumentException("At least one of --name, --type, or --comment is required");
         if (old == null && type == null)
             throw new IllegalArgumentException("--type is required to create a field in undefined space");
-        if (name != null) {
-            SymbolUtilities.validateName(name);
-            for (DataTypeComponent other : struct.getDefinedComponents()) {
-                if (old != null && other.getOrdinal() == old.getOrdinal()) continue;
-                if (name.equals(other.getFieldName()) || name.equals(other.getDefaultFieldName()))
-                    throw conflict("Field name already exists: " + name, other);
-            }
-        }
+        validateName(struct, old, name);
         String effectiveName = name != null ? name : old == null ? null : old.getFieldName();
         String effectiveComment = commentSpecified ? (comment.isEmpty() ? null : comment)
             : old == null ? null : old.getComment();
@@ -258,10 +265,27 @@ public final class StructureFields {
                         throw new IllegalArgumentException("Clearing a field changed the structure size");
                     verifyOtherFields(staged, original, null);
                 } else {
+                    Settings settings = before == null ? null : new SettingsImpl(before.getDefaultSettings());
                     int growth = length(staged) - length(original);
                     if (growth > 0) original.growStructure(growth);
-                    original.replaceAtOffset(offset, after.getDataType(), after.getLength(),
+                    DataTypeComponent replacement = original.replaceAtOffset(offset, after.getDataType(), after.getLength(),
                         after.getFieldName(), after.getComment());
+                    // A size-changing replacement recreates the component record.
+                    // Preserve only explicit settings supported by the new type.
+                    if (settings != null) {
+                        Settings destination = replacement.getDefaultSettings();
+                        destination.clearAllSettings();
+                        for (String key : settings.getNames()) {
+                            for (SettingsDefinition definition : replacement.getDataType().getSettingsDefinitions()) {
+                                if (key.equals(definition.getStorageKey()) && destination.isChangeAllowed(definition)) {
+                                    destination.setValue(key, settings.getValue(key));
+                                    if (!Objects.equals(settings.getValue(key), destination.getValue(key)))
+                                        throw new IllegalArgumentException("Ghidra could not preserve field setting: " + key);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             return result;

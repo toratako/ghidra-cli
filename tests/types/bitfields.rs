@@ -104,6 +104,95 @@ public class CreateBitEditFixtures extends GhidraScript {
 
 #[test]
 #[serial]
+fn bitfield_growth_checks_parent_and_applied_data_before_saving() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateBitfieldGrowthCases extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        for (String name : new String[] { "EmbeddedBits", "EdgeBits", "FreeBits" }) {
+            var child = dtm.addDataType(new StructureDataType(name, 4, dtm), null);
+            if (name.equals("EmbeddedBits")) {
+                var parent = new StructureDataType("BitsParent", 8, dtm);
+                parent.replaceAtOffset(0, child, 4, "child", null);
+                parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", "keep");
+                dtm.addDataType(parent, null);
+            } else if (name.equals("EdgeBits")) {
+                currentProgram.getMemory().createInitializedBlock("edge", toAddr(0x1000),
+                    6, (byte) 0, monitor, false);
+                currentProgram.getListing().createData(toAddr(0x1000), child);
+            }
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let parent = definition(&program, "BitsParent");
+    for name in ["EmbeddedBits", "EdgeBits"] {
+        let before = definition(&program, name);
+        let failed = create(
+            &program,
+            name,
+            "4",
+            "4",
+            "0",
+            "3",
+            &["--name", "flags", "--type", "uint32_t"],
+        );
+        failed
+            .assert_failure()
+            .assert_stderr_contains("Unsafe resize");
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        assert_eq!(definition(&program, name), before);
+        assert_eq!(definition(&program, "BitsParent"), parent);
+    }
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CheckBitfieldGrowthRollback extends GhidraScript {
+    public void run() throws Exception {
+        var data = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
+        if (data == null || data.getLength() != 4 || data.getDataType().getLength() != 4)
+            throw new IllegalStateException("Bitfield growth left incomplete applied data");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let grown = success(create(
+        &program,
+        "FreeBits",
+        "4",
+        "4",
+        "0",
+        "3",
+        &["--name", "flags", "--type", "uint32_t"],
+    ));
+    assert_eq!(grown["size_after"], 8);
+    client.program_close().unwrap();
+    assert_eq!(definition(&program, "FreeBits")["size"], 8);
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn explicit_bitfields_keep_program_endian_locations_across_edits_and_reopen() {
     require_ghidra!();
     let client = harness().client().unwrap();
