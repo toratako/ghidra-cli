@@ -284,7 +284,8 @@ final class FieldUses {
                     classified = true;
                     continue;
                 }
-                if ((opcode == PcodeOp.PTRSUB || opcode == PcodeOp.PTRADD || opcode == PcodeOp.INT_ADD)
+                if ((opcode == PcodeOp.PTRSUB || opcode == PcodeOp.PTRADD
+                        || opcode == PcodeOp.INT_ADD || opcode == PcodeOp.INT_SUB)
                         && use.slot == 0 && op.getOutput() != null) {
                     PointerValue advanced = advance(pointer, op);
                     if (advanced != null) {
@@ -320,11 +321,13 @@ final class FieldUses {
             }
             return null;
         }
-        long delta = displacement.getOffset();
+        long delta = signed(displacement);
         try {
             if (op.getOpcode() == PcodeOp.PTRADD) {
                 if (!op.getInput(2).isConstant()) return null;
                 delta = Math.multiplyExact(delta, op.getInput(2).getOffset());
+            } else if (op.getOpcode() == PcodeOp.INT_SUB) {
+                delta = Math.negateExact(delta);
             }
             long offset = Math.addExact(pointer.offset(), delta);
             if (offset < 0 || offset >= field.getLength()) return null;
@@ -430,14 +433,17 @@ final class FieldUses {
                 node = definition.getInput(0);
                 continue;
             }
-            if (opcode != PcodeOp.PTRSUB && opcode != PcodeOp.PTRADD && opcode != PcodeOp.INT_ADD) return false;
+            if (opcode != PcodeOp.PTRSUB && opcode != PcodeOp.PTRADD
+                    && opcode != PcodeOp.INT_ADD && opcode != PcodeOp.INT_SUB) return false;
             Varnode displacement = definition.getInput(1);
             if (!displacement.isConstant()) return false;
             try {
-                long delta = displacement.getOffset();
+                long delta = signed(displacement);
                 if (opcode == PcodeOp.PTRADD) {
                     if (!definition.getInput(2).isConstant()) return false;
                     delta = Math.multiplyExact(delta, definition.getInput(2).getOffset());
+                } else if (opcode == PcodeOp.INT_SUB) {
+                    delta = Math.negateExact(delta);
                 }
                 offset = Math.addExact(offset, Math.multiplyExact(delta, unit));
             } catch (ArithmeticException e) {
@@ -506,6 +512,11 @@ final class FieldUses {
         return (op.getOpcode() == PcodeOp.COPY || op.getOpcode() == PcodeOp.CAST)
             && op.getInput(0).getSize() == op.getOutput().getSize()
             && op.getInput(0).getHigh().getOffset() == op.getOutput().getHigh().getOffset();
+    }
+
+    private static long signed(Varnode value) {
+        int shift = Math.max(0, Long.SIZE - value.getSize() * Byte.SIZE);
+        return value.getOffset() << shift >> shift;
     }
 
     private static int size(Varnode value) { return value == null ? 0 : value.getSize(); }

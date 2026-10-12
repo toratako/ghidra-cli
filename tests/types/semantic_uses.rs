@@ -265,6 +265,24 @@ fn semantic_field_uses_follow_nested_arrays_and_by_value_components() {
 
 #[test]
 #[serial]
+fn semantic_field_uses_follow_signed_pointer_arithmetic_within_the_selected_field() {
+    require_ghidra!();
+    restored(|| {
+        harness()
+            .client()
+            .unwrap()
+            .script_run_source(
+                include_str!("CheckSemanticFieldPointerArithmetic.java"),
+                &[],
+                &[],
+                false,
+            )
+            .expect("signed pointer arithmetic preserves native field reads");
+    });
+}
+
+#[test]
+#[serial]
 fn semantic_scans_distinguish_empty_failed_and_limited_work_and_apply_queries() {
     require_ghidra!();
     restored(|| {
