@@ -418,6 +418,45 @@ fn batch_updates_target_from_failed_requests_and_clears_it_after_close() {
 }
 
 #[test]
+fn batch_keeps_inherited_target_when_a_line_fails_before_program_dispatch() {
+    let bridge = RecordedBridge::new();
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        concat!(
+            "type archive import missing.gdt --all --program B\n",
+            "comment set 0x1000 --text after-local-failure\n",
+        ),
+    )
+    .unwrap();
+
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt", "--program", "A"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 2);
+    assert_eq!(report["failed"], 1);
+    assert!(report["results"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("missing.gdt"));
+    assert_eq!(
+        report["results"][1]["result"]["data"]["observed_program"],
+        "A"
+    );
+    let requests = bridge.requests.lock().unwrap();
+    let operations: Vec<_> = requests
+        .iter()
+        .filter(|request| request["command"] != "bridge_info")
+        .collect();
+    assert_eq!(operations.len(), 1);
+    assert_eq!(operations[0]["command"], "comment_set");
+    assert_eq!(operations[0]["program"], "A");
+}
+
+#[test]
 fn batch_rejects_invalid_arguments_before_selecting_any_program() {
     let bridge = RecordedBridge::new();
     std::fs::write(

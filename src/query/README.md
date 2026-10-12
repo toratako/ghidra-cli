@@ -2,7 +2,7 @@
 
 `Query::from_options` parses the query before connecting to Ghidra.
 `QueryPlan` then resolves the configured limit and splits the work into bridge
-fetch arguments and a residual Rust query. `app::CommandResult` carries that
+fetch arguments and a residual Rust query. `app::result::CommandResult` carries that
 same residual query and effective page to standalone or batch output; output
 does not rebuild them. The page is recorded before consuming a pushed offset,
 so metadata describes the original selection.

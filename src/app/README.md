@@ -12,7 +12,8 @@ and target checks in `src/cli/tests.rs`.
 
 | File | Responsibility |
 |------|----------------|
-| `mod.rs` | Command routing, early filter validation, and bridge/program selection |
+| `mod.rs` | Command routing, batch preflight, early filter validation, and bridge capability checks |
+| `workflow.rs` | Invocation-owned project selections, nested batch execution, and single-command bridge/startup workflows |
 | `options.rs`, `options/target.rs`, `options/query.rs` | Classify bridge requirements; extract project/program targets and query options from command variants |
 | `execute.rs` | Dispatch bridge requests using planned list fetch arguments, range parsing, and comment input resolution |
 | `execute/functions.rs` | Function dispatch and guarded selection of one decompiler variable |
@@ -22,7 +23,7 @@ and target checks in `src/cli/tests.rs`.
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
 | `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
-| `result.rs` | Declare command result shapes, retain context/page metadata, and apply queries to produce the common result value |
+| `result.rs` | Carry execution results with their residual queries, declare result shapes, retain context/page metadata, and apply queries to produce the common result value |
 | `output.rs` | Render common results for standalone/batch/management output and route C-only decompiler diagnostics to stderr |
 | `management.rs` | Bridge lifecycle, `job list/get/result/cancel`, and explicit save without auto-start |
 | `recovery.rs` | Unknown-outcome job recovery with resolved project paths and shared shell quoting |
@@ -120,7 +121,9 @@ inherit the policy unless overridden. Transaction/save failures and unknown outc
 always stop them, including failures at the end of nested batches.
 Preserve the timeout type for exit 75. Omitted project inherits the batch project,
 and query modifiers apply within each result.
-One invocation shares a project-to-program selection map across nested batches.
+`workflow::BridgeExecution` owns one project-to-program selection map for the
+invocation, shared across nested batches. Its execution boundary reconciles each
+command's selection observation before propagating success or failure.
 Outer and nested `--program` values set selection intent; each line's explicit
 target overrides the inherited target. The actual selection reported by each
 executed response updates that project's context on success or error; an explicit

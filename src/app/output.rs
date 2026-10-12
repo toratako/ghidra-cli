@@ -1,6 +1,5 @@
 use super::options::extract_query_options;
-use super::result::{CommandOutput, ResultShape};
-use super::CommandResult;
+use super::result::{CommandOutput, CommandResult, ResultShape};
 use crate::cli::{Cli, Commands};
 use crate::error::GhidraError;
 use crate::format::{auto_detect_format, DefaultFormatter, Formatter, OutputFormat};

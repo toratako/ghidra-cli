@@ -5,6 +5,14 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 
+/// Raw execution result and the query work still required before presentation.
+pub(super) struct CommandResult {
+    pub(super) value: Value,
+    pub(super) query: Option<Query>,
+    pub(super) shape: ResultShape,
+    pub(super) page: Option<Page>,
+}
+
 /// The command owns its result shape; payload keys never select a shape.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) enum ResultShape {
