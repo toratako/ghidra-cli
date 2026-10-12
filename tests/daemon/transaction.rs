@@ -17,6 +17,7 @@ import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 import java.io.IOException;
@@ -32,7 +33,16 @@ public class RequestTransactionProbe extends GhidraScript {
     private Object session;
     private Object dispatcher;
     private Method execute;
-    private final TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
+    private final TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true) {
+        @Override public void checkCancelled() throws CancelledException {
+            Throwable failure = openMonitorFailure;
+            openMonitorFailure = null;
+            if (failure instanceof Error error) throw error;
+            if (failure instanceof RuntimeException exception) throw exception;
+            super.checkCancelled();
+        }
+    };
+    private Throwable openMonitorFailure;
     private String fault;
     private boolean failNextTransaction;
     private Integer leakedTransaction;
@@ -707,6 +717,63 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.PRE_COMMENT, "after-deletion-refusal");
     }
 
+    private void testFailedOpenReleasesConsumer() throws Exception {
+        Class<?> type = session.getClass();
+        Method begin = type.getDeclaredMethod("beginRequest", String.class);
+        Method open = type.getDeclaredMethod("open", DomainFile.class);
+        Method finish = type.getDeclaredMethod("finishRequest", boolean.class);
+        begin.setAccessible(true);
+        open.setAccessible(true);
+        finish.setAccessible(true);
+        var folder = real.getDomainFile().getParent().createFolder("failed-open");
+        for (boolean assertion : new boolean[] { false, true }) {
+            DomainFile file = real.getDomainFile().copyTo(folder.createFolder("target-" + assertion), monitor);
+            Program previous = selected;
+            var previousConsumers = real.getConsumerList();
+            Program[] acquired = { null };
+            Object[] acquiredConsumer = { null };
+            Throwable injected = assertion ? new AssertionError("injected post-open assertion")
+                : new IllegalStateException("injected post-open exception");
+            DomainFile target = (DomainFile) Proxy.newProxyInstance(DomainFile.class.getClassLoader(),
+                new Class<?>[] { DomainFile.class }, (proxy, method, args) -> {
+                    Object result = invoke(method, file, args);
+                    if (method.getName().equals("getDomainObject")) {
+                        acquired[0] = (Program) result;
+                        acquiredConsumer[0] = args[0];
+                        // Fail at ProgramSession's first cancellation check after
+                        // the native open has acquired the session consumer.
+                        openMonitorFailure = injected;
+                    }
+                    return result;
+                });
+            try {
+                begin.invoke(session, "open_program");
+                Throwable failure = null;
+                try { open.invoke(session, target); }
+                catch (InvocationTargetException caught) { failure = caught.getCause(); }
+                finally { finish.invoke(session, false); }
+                check(failure == injected, "Open lost its original failure: " + failure);
+                check(selected == previous, "Failed open changed the selected Program");
+                check(real.getConsumerList().equals(previousConsumers), "Failed open released the previous consumer");
+                check(acquired[0] != null && acquired[0].isClosed()
+                    && acquired[0].getConsumerList().isEmpty(), "Failed open leaked its target consumer");
+                savedComment(CodeUnit.EOL_COMMENT, prior);
+                open.invoke(session, file);
+                check(selected.getDomainFile().getPathname().equals(file.getPathname()),
+                    "Open could not recover after failure");
+                Program retried = selected;
+                open.invoke(session, real.getDomainFile());
+                check(retried.isClosed(), "Switch retained the retried target Program");
+                file.delete();
+            } finally {
+                openMonitorFailure = null;
+                if (acquired[0] != null && acquired[0].isUsedBy(acquiredConsumer[0])) {
+                    acquired[0].release(acquiredConsumer[0]);
+                }
+            }
+        }
+    }
+
     public void run() throws Exception {
         String folderName = getScriptArgs()[0];
         String mode = getScriptArgs()[2];
@@ -733,6 +800,7 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "preview-leaked-child": testPreviewLeakedChild(); break;
                 case "preview-start-failure": testPreviewTransactionStartFailure(); break;
                 case "cancelled-delete-refusal": testCancelledDeletionRefusal(); break;
+                case "failed-open": testFailedOpenReleasesConsumer(); break;
                 case "preview": testPreviewAfterEdit(); break;
                 default: throw new IllegalArgumentException(mode);
             }
@@ -928,4 +996,10 @@ fn test_preview_transaction_start_failures_do_not_save_earlier_pending_edits() {
 #[serial]
 fn test_cancelled_deletion_refusal_restores_selection_and_preserves_consumers() {
     run_transaction_probe("cancelled-delete-refusal");
+}
+
+#[test]
+#[serial]
+fn test_failed_program_open_releases_its_consumer_and_preserves_selection() {
+    run_transaction_probe("failed-open");
 }

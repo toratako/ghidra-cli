@@ -329,7 +329,7 @@ public final class ProgramSession {
             ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager((Program) domObj)
                 .initializeOptions();
             mon.checkCancelled();
-        } catch (Exception failure) {
+        } catch (Exception | Error failure) {
             domObj.release(consumer);
             throw failure;
         }
