@@ -96,10 +96,15 @@ public final class ListingCommands {
 
             Listing listing = session.program().getListing();
             try {
+                session.monitor().checkCancelled();
                 if (force) {
-                    listing.clearCodeUnits(addr, clearEnd, false);
+                    listing.clearCodeUnits(addr, clearEnd, false, session.monitor());
                 }
-                listing.createData(addr, dataType, length);
+                session.monitor().checkCancelled();
+                if (listing.createData(addr, dataType, length) == null) {
+                    throw new IllegalStateException("Ghidra did not create data at " + AddressCodec.format(addr));
+                }
+                session.monitor().checkCancelled();
             } catch (ghidra.program.model.util.CodeUnitInsertionException e) {
                 // Surface the conflicting code unit's own type/length/range.
                 return defineDataConflictError(addr, clearEnd, typeName, e);
