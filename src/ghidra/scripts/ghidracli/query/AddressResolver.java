@@ -43,6 +43,17 @@ public final class AddressResolver {
             checkCancelled();
             appendSymbols(st.getSymbols(target.substring(separator + 2)), target, candidates);
         }
+        // Generated external names are absent from the name index, and the
+        // function iterator below visits only local functions. Include both
+        // external labels and functions before deciding that a name is unique.
+        SymbolIterator externals = st.getExternalSymbols();
+        while (externals.hasNext()) {
+            checkCancelled();
+            Symbol symbol = externals.next();
+            if (symbol.getName().equals(target) || symbol.getName(true).equals(target)) {
+                appendAddress(symbol.getAddress(), candidates);
+            }
+        }
         FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
         while (iter.hasNext()) {
             checkCancelled();

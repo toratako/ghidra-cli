@@ -365,6 +365,158 @@ fn symbol_lookup_round_trips_generated_variable_names() {
 
 #[test]
 #[serial]
+fn generated_external_names_resolve_the_exact_reference_target() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::deletion::create_symbol_fixture_program();
+    crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.SourceType;
+public class GeneratedExternalNames extends GhidraScript {
+    public void run() throws Exception {
+        var external = currentProgram.getExternalManager();
+        var function = external.addExtFunction("generated_library", null,
+            toAddr(0x2000), SourceType.DEFAULT);
+        var label = external.addExtLocation("generated_library", null,
+            toAddr(0x3000), SourceType.DEFAULT);
+        var references = currentProgram.getReferenceManager();
+        references.addExternalReference(toAddr(0x1000), 0, function,
+            SourceType.USER_DEFINED, RefType.UNCONDITIONAL_CALL);
+        references.addExternalReference(toAddr(0x1001), 0, label,
+            SourceType.USER_DEFINED, RefType.DATA);
+        currentProgram.getSymbolTable().createLabel(toAddr(0x1040),
+            function.getSymbol().getName(), SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let listed = client.symbol_list(None, None, None).unwrap();
+        let targets: Vec<_> = listed["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["namespace"] == "generated_library" && row["source"] == "DEFAULT")
+            .cloned()
+            .collect();
+        assert_eq!(targets.len(), 2, "{listed}");
+        let function = targets
+            .iter()
+            .find(|row| row["type"] == "Function")
+            .unwrap();
+        let name = function["name"].as_str().unwrap();
+        let memory = client
+            .send_command(
+                "read_memory",
+                Some(serde_json::json!({"address": "0x1040", "size": 1})),
+            )
+            .unwrap();
+        let error = client
+            .send_command(
+                "memory_write",
+                Some(serde_json::json!({"address": name, "hex": "90"})),
+            )
+            .expect_err("a generated external name must make the local label ambiguous");
+        assert!(error.to_string().contains("Ambiguous"), "{error:#}");
+        assert_eq!(
+            client
+                .send_command(
+                    "read_memory",
+                    Some(serde_json::json!({"address": "0x1040", "size": 1}))
+                )
+                .unwrap(),
+            memory
+        );
+        assert_eq!(client.symbol_list(None, None, None).unwrap(), listed);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            client
+                .send_command(
+                    "read_memory",
+                    Some(serde_json::json!({"address": "0x1040", "size": 1}))
+                )
+                .unwrap(),
+            memory
+        );
+        assert_eq!(client.symbol_list(None, None, None).unwrap(), listed);
+        let candidates = client.symbol_get_by_name(name).unwrap();
+        let label = candidates["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["namespace"] == "Global")
+            .unwrap();
+        client
+            .symbol_delete_targets(name, std::slice::from_ref(label))
+            .unwrap();
+        for target in &targets {
+            let name = target["name"].as_str().unwrap();
+            let address = target["address"].as_str().unwrap();
+            let expected = client.xrefs_to(address.to_owned()).unwrap();
+            assert_eq!(expected["count"], 1);
+            for selected in [name.to_owned(), format!("generated_library::{name}")] {
+                assert_eq!(
+                    client
+                        .xrefs_to(selected.clone())
+                        .unwrap_or_else(|error| panic!("generated external {selected}: {error:#}")),
+                    expected
+                );
+            }
+            if target["type"] == "Function" {
+                let qualified = format!("generated_library::{name}");
+                let before = client
+                    .send_command(
+                        "get_function",
+                        Some(serde_json::json!({"address": address})),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    client
+                        .send_command(
+                            "get_function",
+                            Some(serde_json::json!({"address": qualified}))
+                        )
+                        .unwrap(),
+                    before
+                );
+                client
+                    .send_command(
+                        "function_set_noreturn",
+                        Some(serde_json::json!({"target": qualified, "value": true})),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    client
+                        .send_command(
+                            "get_function",
+                            Some(serde_json::json!({"address": address}))
+                        )
+                        .unwrap()["no_return"],
+                    true
+                );
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+                assert_eq!(
+                    client
+                        .send_command("get_function", Some(serde_json::json!({"address": name})))
+                        .unwrap()["no_return"],
+                    true
+                );
+            }
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn test_duplicate_function_names_rejected_before_mutation() {
     require_ghidra!();
     let harness = harness();
