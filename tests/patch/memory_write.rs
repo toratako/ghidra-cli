@@ -79,6 +79,37 @@ fn memory_write_preserves_data_settings_and_unchanged_instructions() {
     });
 }
 
+#[test]
+#[serial]
+fn memory_write_clears_shortened_instructions_when_their_parsed_tail_changes() {
+    fixture("x86:LE:64:default", |client| {
+        client
+            .send_command(
+                "memory_block_create",
+                Some(
+                    json!({"name": "high_patch", "start": "0xffff800000000000", "size": 4,
+                    "fill": 0, "permissions": "rw"}),
+                ),
+            )
+            .unwrap();
+        client.memory_write("0xffff800000000000", "01").unwrap();
+        verify(client, "shortened-intact");
+        // The listing shows one instruction byte and then a dword, but all five
+        // bytes still contribute to the instruction's decoded value.
+        client.memory_write("0x1122", "22").unwrap();
+        verify(client, "shortened-cleared");
+        // An intervening instruction can end before an older shortened
+        // instruction's parsed tail, so finding only the nearest one is unsafe.
+        for address in ["0x1144", "0x1164"] {
+            client.memory_write(address, "22").unwrap();
+        }
+        verify(client, "intervening-preserved");
+        reopen(client);
+        verify(client, "shortened-cleared");
+        verify(client, "intervening-preserved");
+    });
+}
+
 fn pointers(language: &str, width: usize, big: bool) {
     fixture(language, |client| {
         for slot in 0..=14 {

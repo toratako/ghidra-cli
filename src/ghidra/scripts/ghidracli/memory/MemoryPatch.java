@@ -101,10 +101,18 @@ final class MemoryPatch {
         for (AddressRange range : changed) {
             // Set-based listing iterators may omit units starting before a range.
             inspect(listing.getDefinedDataContaining(range.getMinAddress()));
-            include(listing.getInstructionContaining(range.getMinAddress()));
         }
         for (Data data : listing.getDefinedData(changed, true)) inspect(data);
-        for (Instruction instruction : listing.getInstructions(changed, true)) include(instruction);
+        // Shortened instructions still decode their full parsed bytes. Their
+        // tails may overlap later instructions or data, so the nearest preceding
+        // instruction cannot bound the search for all affected decodings.
+        AddressSet instructionStarts = new AddressSet(address.getAddressSpace().getMinAddress(),
+            changed.getMaxAddress());
+        for (Instruction instruction : listing.getInstructions(instructionStarts, true)) {
+            session.monitor().checkCancelled();
+            Address parsedEnd = instruction.getMinAddress().addNoWrap(instruction.getParsedLength() - 1);
+            if (changed.intersects(instruction.getMinAddress(), parsedEnd)) include(instruction);
+        }
     }
 
     private void rejectSharedFileBytes(Map<FileBytes, List<MemoryBlockSourceInfo>> fileSources)

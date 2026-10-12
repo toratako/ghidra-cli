@@ -93,6 +93,37 @@ public class MemoryWriteFixture extends GhidraScript {
                     listing.createData(a(0x1102), DWordDataType.dataType);
                     refs.addMemoryReference(a(0x1100), a(0x1800), RefType.DATA, SourceType.USER_DEFINED, 0);
                     p.getEquateTable().createEquate("instruction_equate", 1).addReference(a(0x1100), 0);
+                    mem.setBytes(a(0x1120), new byte[]{(byte)0xb8,0x11,0,0,0});
+                    check(new DisassembleCommand(a(0x1120), new AddressSet(a(0x1120), a(0x1124)), false)
+                        .applyTo(p, monitor), "define shortened instruction");
+                    listing.getInstructionAt(a(0x1120)).setLengthOverride(1);
+                    listing.createData(a(0x1121), DWordDataType.dataType);
+                    refs.addMemoryReference(a(0x1120), a(0x1800), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    refs.addMemoryReference(a(0x1121), a(0x1808), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    p.getEquateTable().createEquate("shortened_instruction_equate", 1).addReference(a(0x1120), 0);
+                    for (long base : new long[]{0x1140, 0x1160}) {
+                        boolean shortened = base == 0x1140;
+                        mem.setBytes(a(base), shortened
+                            ? new byte[]{(byte)0xb8,0x66,(byte)0x90,0,0}
+                            : new byte[]{(byte)0xb8,(byte)0x90,0,0,0});
+                        check(new DisassembleCommand(a(base), new AddressSet(a(base), a(base + 4)), false)
+                            .applyTo(p, monitor), "define outer overlapping instruction");
+                        listing.getInstructionAt(a(base)).setLengthOverride(1);
+                        check(new DisassembleCommand(a(base + 1), new AddressSet(a(base + 1),
+                            a(base + (shortened ? 2 : 1))), false).applyTo(p, monitor),
+                            "define intervening instruction");
+                        if (shortened) listing.getInstructionAt(a(base + 1)).setLengthOverride(1);
+                        check(listing.getInstructionAt(a(base)).getParsedLength() == 5
+                            && listing.getInstructionAt(a(base + 1)).getParsedLength() == (shortened ? 2 : 1),
+                            "fixture parsed extents do not overlap as intended");
+                        listing.createData(a(base + 2), WordDataType.dataType);
+                        listing.createData(a(base + 4), ByteDataType.dataType);
+                        refs.addMemoryReference(a(base), a(0x1800), RefType.DATA, SourceType.USER_DEFINED, 0);
+                        refs.addMemoryReference(a(base + 1), a(0x1808), RefType.DATA, SourceType.USER_DEFINED, 0);
+                        refs.addMemoryReference(a(base + 2), a(0x1810), RefType.DATA, SourceType.USER_DEFINED, 0);
+                        p.getEquateTable().createEquate("outer_equate_" + base, 1).addReference(a(base), 0);
+                        p.getEquateTable().createEquate("inner_equate_" + base, 1).addReference(a(base + 1), 0);
+                    }
                 } else if (languageId.startsWith("MIPS")) {
                     mem.setBytes(a(0x1100), new byte[]{0x10,0,0,1,0x24,2,0,1});
                     check(new DisassembleCommand(a(0x1100), new AddressSet(a(0x1100), a(0x1107)), false)
@@ -202,6 +233,39 @@ public class MemoryWriteFixture extends GhidraScript {
             check(data(0x1102) != null, "neighbor data lost");
             check(refs.getReferencesFrom(a(0x1100)).length == 0, "cleared instruction refs");
             check(p.getEquateTable().getEquates(a(0x1100), 0).isEmpty(), "cleared instruction equate");
+        } else if (mode.equals("shortened-intact")) {
+            var instruction = listing.getInstructionAt(a(0x1120));
+            check(instruction != null && instruction.getLength() == 1 && instruction.getParsedLength() == 5,
+                "unrelated edit cleared shortened instruction");
+            ref(0x1120, 0x1800, SourceType.USER_DEFINED, true);
+            check(p.getEquateTable().getEquates(a(0x1120), 0).size() == 1, "shortened instruction equate lost");
+            for (long base : new long[]{0x1140, 0x1160}) {
+                check(listing.getInstructionAt(a(base)) != null, "unrelated edit cleared outer instruction");
+                check(listing.getInstructionAt(a(base + 1)) != null, "unrelated edit cleared inner instruction");
+            }
+        } else if (mode.equals("shortened-cleared")) {
+            check(listing.getInstructionAt(a(0x1120)) == null, "shortened instruction still defined");
+            check(data(0x1121) != null && data(0x1121).getLength() == 4, "parsed-tail data lost");
+            check(p.getMemory().getByte(a(0x1122)) == (byte)0x22, "parsed-tail byte not patched");
+            check(refs.getReferencesFrom(a(0x1120)).length == 0, "shortened instruction references retained");
+            check(p.getEquateTable().getEquates(a(0x1120), 0).isEmpty(), "shortened instruction equate retained");
+            ref(0x1121, 0x1808, SourceType.USER_DEFINED, true);
+        } else if (mode.equals("intervening-preserved")) {
+            for (long base : new long[]{0x1140, 0x1160}) {
+                check(listing.getInstructionAt(a(base)) == null, "outer parsed-tail instruction retained");
+                var inner = listing.getInstructionAt(a(base + 1));
+                check(inner != null && inner.getLength() == 1
+                    && inner.getParsedLength() == (base == 0x1140 ? 2 : 1), "intervening instruction lost");
+                check(data(base + 2) != null && data(base + 2).getLength() == 2,
+                    "overlapping data definition lost");
+                check(data(base + 4) != null && p.getMemory().getByte(a(base + 4)) == (byte)0x22,
+                    "outer parsed-tail data not patched");
+                check(refs.getReferencesFrom(a(base)).length == 0, "outer instruction references retained");
+                check(p.getEquateTable().getEquates(a(base), 0).isEmpty(), "outer instruction equate retained");
+                check(p.getEquateTable().getEquates(a(base + 1), 0).size() == 1, "inner instruction equate lost");
+                ref(base + 1, 0x1808, SourceType.USER_DEFINED, true);
+                ref(base + 2, 0x1810, SourceType.USER_DEFINED, true);
+            }
         } else if (mode.equals("delay")) {
             check(listing.getInstructionAt(a(0x1100)) == null && listing.getInstructionAt(a(0x1104)) == null, "delay slot clearing unit");
         } else if (mode.equals("pointers")) {
