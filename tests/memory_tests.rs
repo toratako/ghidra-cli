@@ -453,8 +453,9 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
         )
         .unwrap();
     client.memory_write("0x1000", "deadbeef").unwrap();
+    // The overlay's first byte shares backing storage with 0x200b.
     client
-        .memory_write("original_overlay:0x1000", "aabbccdd")
+        .memory_write("original_overlay:0x1001", "bbccdd")
         .unwrap();
     // The stored original bytes must not depend on reopening the host input file.
     std::fs::remove_file(&binary).unwrap();
@@ -554,7 +555,7 @@ fn check_memory_sources(client: &BridgeClient) {
     assert_eq!(read_memory(client, "0x1000", 8)["hex"], "deadbeef14151617");
     assert_eq!(
         read_memory(client, "original_overlay:0x1000", 4)["hex"],
-        "aabbccdd"
+        "74bbccdd"
     );
     let overlay = read_original(client, "original_overlay:0x1000", 4);
     assert_eq!(overlay["hex"], "74757677");

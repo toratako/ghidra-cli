@@ -9,6 +9,7 @@ import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.*;
 import ghidra.program.util.DefaultLanguageService;
+import java.io.ByteArrayInputStream;
 
 public class MemoryWriteFixture extends GhidraScript {
     private Program p;
@@ -28,6 +29,28 @@ public class MemoryWriteFixture extends GhidraScript {
     private void pointer(long address, long value, DataType type) throws Exception {
         pointerBytes(a(address), value, type.getLength());
         p.getListing().createData(a(address), type);
+    }
+    private void createFileAliases() throws Exception {
+        var memory = p.getMemory();
+        byte[] bytes = new byte[64];
+        bytes[9] = 0x18;
+        var file = memory.createFileBytes("shared.bin", 0x100, bytes.length,
+            new ByteArrayInputStream(bytes), monitor);
+        memory.createInitializedBlock("file_source", a(0x5000), file, 0, 64, false);
+        memory.createInitializedBlock("file_alias", a(0x6000), file, 8, 8, false);
+        var overlay = memory.createInitializedBlock("file_overlay", a(0x5000), file, 8, 8, true);
+        var joined = memory.createInitializedBlock("joined_file", a(0x8000), file, 8, 8, false);
+        var next = memory.createInitializedBlock("joined_file_tail", a(0x8008), file, 8, 8, false);
+        memory.join(joined, next);
+        // Matching public file attributes do not imply shared database storage.
+        var independent = memory.createFileBytes("shared.bin", 0x100, bytes.length,
+            new ByteArrayInputStream(bytes), monitor);
+        memory.createInitializedBlock("independent_file", a(0x9000), independent, 0, 64, false);
+        var ptr = new PointerDataType(null, width(), p.getDataTypeManager());
+        for (long address : new long[]{0x5008, 0x6000, 0x8000, 0x8008, 0x9008}) {
+            p.getListing().createData(a(address), ptr);
+        }
+        p.getListing().createData(overlay.getStart(), ptr);
     }
     private void create(String name, String languageId) throws Exception {
         var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID(languageId));
@@ -224,6 +247,18 @@ public class MemoryWriteFixture extends GhidraScript {
             Reference outside = refs.getReference(space.getAddress(0x1ff8), a(0x2900), 0);
             check(inside != null && outside != null, "overlay pointer targets");
             check(refs.getReferencesFrom(space.getAddress(0x1200)).length == 1 && refs.getReferencesFrom(space.getAddress(0x1ff8)).length == 1, "stale overlay references");
+        } else if (mode.equals("file-aliases")) {
+            for (long address : new long[]{0x5008, 0x6000, 0x8000, 0x8008}) {
+                check(data(address) != null && data(address).getValue().equals(a(0x1800)), "shared file pointer changed");
+                ref(address, 0x1800, SourceType.DEFAULT, true);
+                check(refs.getReferencesFrom(a(address)).length == 1, "shared file pointer references");
+            }
+            var overlay = p.getAddressFactory().getAddressSpace("file_overlay").getAddress(0x5000);
+            check(listing.getDefinedDataAt(overlay).getValue().equals(a(0x1800)), "shared overlay pointer changed");
+            check(refs.getReferencesFrom(overlay).length == 1
+                && refs.getReference(overlay, a(0x1800), 0) != null, "shared overlay pointer reference");
+            check(p.getMemory().getByte(a(0x5000)) == (byte)0xaa, "unshared source byte not changed");
+            ref(0x9008, 0x1900, SourceType.DEFAULT, true);
         } else throw new IllegalArgumentException(mode);
     }
 
@@ -231,6 +266,7 @@ public class MemoryWriteFixture extends GhidraScript {
         String[] args = getScriptArgs();
         if (args[0].equals("create")) { create(args[1], args[2]); return; }
         p = currentProgram;
+        if (args[0].equals("create-file-aliases")) { createFileAliases(); return; }
         verify(args[0]);
         Object reader = new Object();
         p = (Program)currentProgram.getDomainFile().getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, monitor);

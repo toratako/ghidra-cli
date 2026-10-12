@@ -1,6 +1,7 @@
 package ghidracli.memory;
 
 import ghidra.program.database.data.PointerTypedefInspector;
+import ghidra.program.database.mem.FileBytes;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressSet;
@@ -9,6 +10,7 @@ import ghidra.program.model.data.*;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.mem.MemoryBlockSourceInfo;
 import ghidra.program.model.mem.WrappedMemBuffer;
 import ghidra.program.model.symbol.OffsetReference;
 import ghidra.program.model.symbol.RefType;
@@ -18,8 +20,10 @@ import ghidra.program.model.symbol.SourceType;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -72,11 +76,14 @@ final class MemoryPatch {
 
         // Both writes through a mapping and writes to its source affect other
         // addresses. Until those views can be validated together, reject them.
+        Map<FileBytes, List<MemoryBlockSourceInfo>> fileSources = new HashMap<>();
         for (var block : memory.getBlocks()) {
             session.monitor().checkCancelled();
-            if (!block.isMapped()) continue;
-            boolean affected = changed.intersects(block.getStart(), block.getEnd());
+            boolean affected = block.isMapped() && changed.intersects(block.getStart(), block.getEnd());
             for (var source : block.getSourceInfos()) {
+                session.monitor().checkCancelled();
+                FileBytes file = source.getFileBytes().orElse(null);
+                if (file != null) fileSources.computeIfAbsent(file, key -> new ArrayList<>()).add(source);
                 var mapped = source.getMappedRange();
                 if (mapped.isPresent()) {
                     AddressRange range = mapped.get();
@@ -88,6 +95,7 @@ final class MemoryPatch {
                     + block.getName() + "); edits through its aliases cannot be preserved safely");
             }
         }
+        rejectSharedFileBytes(fileSources);
 
         var listing = session.program().getListing();
         for (AddressRange range : changed) {
@@ -97,6 +105,33 @@ final class MemoryPatch {
         }
         for (Data data : listing.getDefinedData(changed, true)) inspect(data);
         for (Instruction instruction : listing.getInstructions(changed, true)) include(instruction);
+    }
+
+    private void rejectSharedFileBytes(Map<FileBytes, List<MemoryBlockSourceInfo>> fileSources)
+            throws Exception {
+        // Direct file-backed blocks also share their modified bytes, even
+        // though Ghidra does not classify them as bit/byte-mapped blocks.
+        for (var sources : fileSources.values()) {
+            if (sources.size() < 2) continue;
+            for (var source : sources) {
+                session.monitor().checkCancelled();
+                for (AddressRange range : changed.intersectRange(source.getMinAddress(), source.getMaxAddress())) {
+                    long first = source.getFileBytesOffset(range.getMinAddress());
+                    long last = source.getFileBytesOffset(range.getMaxAddress());
+                    for (var alias : sources) {
+                        session.monitor().checkCancelled();
+                        if (alias == source) continue;
+                        long aliasFirst = alias.getFileBytesOffset();
+                        long aliasLast = Math.addExact(aliasFirst, alias.getLength() - 1);
+                        if (first <= aliasLast && last >= aliasFirst) {
+                            throw new IllegalArgumentException("Patch changes shared file bytes (block "
+                                + alias.getMemoryBlock().getName()
+                                + "); edits through its aliases cannot be preserved safely");
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private void include(Instruction instruction) throws Exception {

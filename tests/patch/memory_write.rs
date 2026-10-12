@@ -203,6 +203,42 @@ fn memory_write_rejects_shared_changes_but_allows_noops_and_independent_overlays
 
 #[test]
 #[serial]
+fn memory_write_rejects_shared_file_bytes_and_preserves_alias_metadata() {
+    fixture("x86:LE:64:default", |client| {
+        client
+            .script_run_source(FIXTURE, &["create-file-aliases".to_owned()], &[], false)
+            .unwrap();
+        let aliases = [
+            "0x5008",
+            "0x6000",
+            "file_overlay:0x5000",
+            "0x8000",
+            "0x8008",
+        ];
+        for address in aliases {
+            let original = read(client, address, 8);
+            client.memory_write(address, &original).unwrap();
+            let error = client
+                .memory_write(address, "0019000000000000")
+                .unwrap_err();
+            assert!(error.to_string().contains("shared file bytes"), "{error}");
+            for alias in aliases {
+                assert_eq!(read(client, alias, 8), original);
+            }
+        }
+        // Unchanged shared bytes can accompany an edit to an unshared file offset.
+        let mut bytes = read(client, "0x5000", 16);
+        bytes.replace_range(0..2, "aa");
+        client.memory_write("0x5000", &bytes).unwrap();
+        client.memory_write("0x9008", "0019000000000000").unwrap();
+        verify(client, "file-aliases");
+        reopen(client);
+        verify(client, "file-aliases");
+    });
+}
+
+#[test]
+#[serial]
 fn memory_write_clears_the_ghidra_delay_slot_unit() {
     fixture("MIPS:BE:32:default", |client| {
         client.memory_write("0x1107", "02").unwrap();
