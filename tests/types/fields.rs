@@ -207,6 +207,81 @@ fn append_rejects_ambiguous_or_normalized_field_names_without_changing_the_layou
 
 #[test]
 #[serial]
+fn shrinking_a_field_rejects_padding_component_count_overflow() {
+    require_ghidra!();
+    let program = super::create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateFieldShrinkCountFixture extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var structure = new StructureDataType("ShrinkCountFields", 8, dtm);
+        structure.insertBitFieldAt(0, 1, 0, UnsignedIntegerDataType.dataType, 3, "first", null);
+        structure.insertBitFieldAt(0, 1, 3, UnsignedIntegerDataType.dataType, 3, "second", null);
+        structure.replaceAtOffset(4, DWordDataType.dataType, 4, "word", "keep");
+        structure.growStructure(Integer.MAX_VALUE - 8);
+        var saved = (Structure) dtm.addDataType(structure, null);
+        if (saved.getNumComponents() != Integer.MAX_VALUE - 2)
+            throw new IllegalStateException("Fixture component count is invalid");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let failed = super::type_command(
+        &program,
+        &[
+            "field",
+            "set",
+            "ShrinkCountFields",
+            "--field",
+            "word",
+            "--type",
+            "byte",
+        ],
+    );
+    failed
+        .assert_failure()
+        .assert_stderr_contains("component count exceeds its supported range");
+    let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+    assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CheckFieldShrinkCountFixture extends GhidraScript {
+    public void run() throws Exception {
+        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/ShrinkCountFields");
+        var fields = structure.getDefinedComponents();
+        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE - 2
+                || fields.length != 3 || fields[2].getOrdinal() != 5 || fields[2].getOffset() != 4
+                || fields[2].getLength() != 4 || !"word".equals(fields[2].getFieldName())
+                || !"keep".equals(fields[2].getComment()))
+            throw new IllegalStateException("Overflow rejection changed the saved structure");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn set_field_preserves_attributes_and_offsets_while_shrinking_and_growing() {
     require_ghidra!();
     let name = create_struct();

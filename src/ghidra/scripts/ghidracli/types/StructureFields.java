@@ -161,6 +161,7 @@ public final class StructureFields {
                 throw new IllegalArgumentException("Ghidra cannot honor --size " + sizeOverride
                     + " for field type " + type.getName());
         }
+        TypeFields.verifyComponentCount(staged);
         verifyOtherFields(struct, staged, old);
         DataTypeComponent after = type == null ? staged.getComponent(old.getOrdinal()) : target(staged, offset);
         if (after == null || (name != null && !name.equals(after.getFieldName())))
@@ -281,6 +282,7 @@ public final class StructureFields {
                             }
                         }
                     }
+                    TypeFields.verifyComponentCount(original);
                 }
             }
             return result;
