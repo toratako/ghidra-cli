@@ -385,12 +385,25 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
     }
     // ZIP writers reject duplicate names, so construct a valid pair and change
     // the equal-length local/central names to collide after finalization.
-    for fault in ["duplicate", "separator_duplicate", "crc", "file_directory"] {
+    for fault in [
+        "duplicate",
+        "separator_duplicate",
+        "crc",
+        "directory_crc",
+        "file_directory",
+    ] {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
         zip.start_file("JAR_FORMAT", options)?;
-        zip.start_file("idata/a", options)?;
+        zip.start_file(
+            if fault == "directory_crc" {
+                "idata/a/"
+            } else {
+                "idata/a"
+            },
+            options,
+        )?;
         zip.write_all(b"unique-payload")?;
         zip.start_file(
             match fault {
@@ -408,7 +421,7 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
                     bytes[index + 6] = b'a';
                 }
             }
-        } else if fault == "crc" {
+        } else if fault == "crc" || fault == "directory_crc" {
             let index = bytes
                 .windows(14)
                 .position(|data| data == b"unique-payload")
@@ -429,6 +442,11 @@ fn gar_rejects_malformed_archives_without_publishing_or_leaving_staging() -> any
                 .as_str()
                 .unwrap()
                 .contains("Duplicate GAR entry: idata/a"));
+        } else if fault == "directory_crc" {
+            assert!(error["detail"]["cause"]
+                .as_str()
+                .unwrap()
+                .contains("Corrupt GAR entry: idata/a"));
         }
         assert_eq!(std::fs::read_dir(root.path())?.count(), 1, "{error}");
     }

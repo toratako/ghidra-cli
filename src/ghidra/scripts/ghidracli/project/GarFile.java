@@ -106,13 +106,11 @@ final class GarFile {
                 if (!destination.normalize().startsWith(data)) throw new IOException("Unsafe GAR path: " + name);
                 if (entry.isDirectory()) {
                     if (!skipped) directory(data, destination, directories);
-                    continue;
-                }
-                if (!skipped) directory(data, destination.getParent(), directories);
+                } else if (!skipped) directory(data, destination.getParent(), directories);
                 CRC32 crc = new CRC32();
                 long size;
                 try (InputStream in = zip.getInputStream(entry);
-                        OutputStream out = skipped ? OutputStream.nullOutputStream()
+                        OutputStream out = skipped || entry.isDirectory() ? OutputStream.nullOutputStream()
                             : Files.newOutputStream(destination, StandardOpenOption.CREATE_NEW)) {
                     size = transfer(in, out, monitor, crc);
                 }
