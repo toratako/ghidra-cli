@@ -354,6 +354,9 @@ fn type_import_rejects_lossy_floating_specifiers_without_changing_definitions() 
     for declaration in [
         "struct Existing { long double value; };",
         "typedef long /* comment */ float Lossy;",
+        "typedef long signed double Lossy;",
+        "typedef long signed float Lossy;",
+        "typedef long unsigned double Lossy;",
     ] {
         let code = format!("struct Fresh {{ int value; }}; {declaration}");
         type_command(&program, &["import-c", "--code", &code])
@@ -370,17 +373,130 @@ fn type_import_rejects_lossy_floating_specifiers_without_changing_definitions() 
         &[
             "import-c",
             "--code",
-            "struct Precise { longdouble value; double ordinary; long long integer; };",
+            "struct Precise { longdouble value; double ordinary; long long integer; signed long signed_integer; long unsigned unsigned_integer; };",
         ],
     )
     .assert_success();
     let precise: serde_json::Value = type_command(&program, &["get", "Precise"]).data();
     assert_eq!(precise["components"][0]["type"], "longdouble");
+    assert_eq!(precise["components"][1]["type"], "double");
+    assert_eq!(precise["components"][2]["type"], "longlong");
+    assert_eq!(precise["components"][3]["type"], "long");
+    assert_eq!(precise["components"][4]["type"], "ulong");
+    harness().client().unwrap().program_close().unwrap();
+    assert_eq!(
+        type_command(&program, &["get", "Precise"]).data::<serde_json::Value>(),
+        precise
+    );
     harness()
         .client()
         .unwrap()
         .open_program(TEST_PROGRAM)
         .unwrap();
+}
+
+#[test]
+#[serial]
+fn type_import_rejects_overflowing_new_composite_layouts_before_saving() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let before = type_command(&program, &["list", "--limit", "0"]);
+        before.assert_success();
+        let before: serde_json::Value = before.data();
+        for code in [
+            "struct OverflowingImport { char bytes[2147483647]; char extra; };",
+            "struct PointerToOverflow { struct { char bytes[2147483647]; char extra; } *value; };",
+            "typedef char OverflowingArray[2147483647][2];",
+        ] {
+            let rejected = type_command(&program, &["import-c", "--code", code]);
+            rejected
+                .assert_failure()
+                .assert_stderr_contains("supported range");
+            let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            let after = type_command(&program, &["list", "--limit", "0"]);
+            after.assert_success();
+            assert_eq!(after.data::<serde_json::Value>(), before);
+            client.program_close().unwrap();
+            let saved = type_command(&program, &["list", "--limit", "0"]);
+            saved.assert_success();
+            assert_eq!(saved.data::<serde_json::Value>(), before);
+        }
+        type_command(
+            &program,
+            &[
+                "import-c",
+                "--code",
+                "struct MaximumImport { char bytes[2147483646]; char extra; };",
+            ],
+        )
+        .assert_success();
+        let maximum = type_command(&program, &["get", "/MaximumImport"]);
+        maximum.assert_success();
+        let maximum: serde_json::Value = maximum.data();
+        assert_eq!(maximum["size"], i32::MAX);
+        client.program_close().unwrap();
+        let saved = type_command(&program, &["get", "/MaximumImport"]);
+        saved.assert_success();
+        assert_eq!(saved.data::<serde_json::Value>(), maximum);
+    });
+}
+
+#[test]
+#[serial]
+fn type_import_rejects_native_dropped_components_without_saving_partial_declarations() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let before = type_command(&program, &["list", "--limit", "0"]);
+        before.assert_success();
+        let before: serde_json::Value = before.data();
+        let rejected = type_command(
+            &program,
+            &[
+                "import-c",
+                "--code",
+                "struct DroppedComponent { short bytes[1073741824]; int retained; };",
+            ],
+        );
+        rejected
+            .assert_failure()
+            .assert_stderr_contains("C parser discarded a field");
+        let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        let after = type_command(&program, &["list", "--limit", "0"]);
+        after.assert_success();
+        assert_eq!(after.data::<serde_json::Value>(), before);
+        client.program_close().unwrap();
+        let saved = type_command(&program, &["list", "--limit", "0"]);
+        saved.assert_success();
+        assert_eq!(saved.data::<serde_json::Value>(), before);
+        type_command(
+            &program,
+            &[
+                "import-c",
+                "--code",
+                "struct CompleteComponent { short bytes[16]; int retained; };",
+            ],
+        )
+        .assert_success();
+        let complete = type_command(&program, &["get", "/CompleteComponent"]);
+        complete.assert_success();
+        let complete: serde_json::Value = complete.data();
+        assert_eq!(complete["size"], 36);
+        assert_eq!(complete["components"][0]["name"], "bytes");
+        assert_eq!(complete["components"][0]["size"], 32);
+        assert_eq!(complete["components"][1]["name"], "retained");
+        assert_eq!(complete["components"][1]["offset"], 32);
+        client.program_close().unwrap();
+        assert_eq!(
+            type_command(&program, &["get", "/CompleteComponent"]).data::<serde_json::Value>(),
+            complete
+        );
+    });
 }
 
 #[test]

@@ -190,6 +190,10 @@ public class CreateExtendedFloatingType extends GhidraScript {
             ),
             (
                 "function_set_signature",
+                json!({"target":"callee", "signature":"long signed double callee(double value)"}),
+            ),
+            (
+                "function_set_signature",
                 json!({"target":"callee", "signature":"double callee(long double value)",
                     "storage":{"return":[{"kind":"register","register":"ST0"}],
                         "parameters":[{"name":"value","pieces":[{"kind":"stack","stack_offset":4}]}]}}),
@@ -198,6 +202,11 @@ public class CreateExtendedFloatingType extends GhidraScript {
                 "function_call_signature_set",
                 json!({"target":"caller", "at":"0x1005",
                     "signature":"int observed(long double (*callback)(float value))"}),
+            ),
+            (
+                "function_call_signature_set",
+                json!({"target":"caller", "at":"0x1005",
+                    "signature":"int observed(long unsigned double (*callback)(float value))"}),
             ),
         ] {
             let error = client.send_command(command, Some(args)).unwrap_err();

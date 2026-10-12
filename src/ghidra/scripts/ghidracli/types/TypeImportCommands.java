@@ -7,6 +7,7 @@ import ghidra.app.util.cparser.C.CParserConstants;
 import ghidra.app.util.cparser.C.ParseException;
 import ghidra.app.util.cparser.C.Token;
 import ghidra.app.util.cparser.C.TokenMgrError;
+import ghidra.program.model.data.Array;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.Composite;
 import ghidra.program.model.data.DataType;
@@ -64,6 +65,12 @@ public final class TypeImportCommands {
             parser.setMonitor(session.monitor());
             parsedManager.parse(parser, processedCode);
             String parseMessages = parser.getParseMessages();
+            // Native CParser catches a failed component insertion and continues
+            // with the remaining fields. The resulting layout alone cannot
+            // reveal that a requested component was discarded.
+            if (parseMessages != null && parseMessages.lines().anyMatch(
+                    line -> line.startsWith("Bad structure size ")))
+                throw new IllegalArgumentException("C parser discarded a field: " + parseMessages.trim());
 
             Set<String> definedNames = new HashSet<>();
             definedNames.addAll(parser.getComposites().keySet());
@@ -91,6 +98,7 @@ public final class TypeImportCommands {
             // the same path in its definition maps. Traverse object identities
             // before any native resolve can collapse those different definitions.
             List<DataType> dependencies = TypeArchiveGraph.dependencies(parsedTypes, session.monitor());
+            verifyLayouts(dependencies);
 
             CategoryPath lookupPath = CategoryPath.ROOT;
             if (categoryPath != null) {
@@ -214,11 +222,14 @@ public final class TypeImportCommands {
             TypeResizeCommands.PropagationSnapshot propagation = replaced.isEmpty() ? null
                 : new TypeResizeCommands.PropagationSnapshot(session, replaced);
             Set<DataType> importedTypes = new HashSet<>();
+            Set<DataType> resolvedTypes = new HashSet<>();
             for (DataType dt : stagedTypes) {
                 session.monitor().checkCancelled();
                 DataType imported = dtm.resolve(dt, handler);
+                resolvedTypes.add(imported);
                 if (visibleTypes.contains(dt)) importedTypes.add(imported);
             }
+            verifyLayouts(TypeArchiveGraph.dependencies(resolvedTypes, session.monitor()));
             if (propagation != null) propagation.verifyReplacements();
 
             JsonArray typesArray = new JsonArray();
@@ -361,12 +372,26 @@ public final class TypeImportCommands {
     }
 
     private static void requireLosslessFloating(CParser tokens, Token token) {
-        if (token.kind != CParserConstants.LONG) return;
-        Token next = tokens.getToken(1);
-        if (next.kind == CParserConstants.DOUBLE || next.kind == CParserConstants.FLOAT)
+        Token next = SignatureTypes.lossyFloatingSpecifier(tokens, token);
+        if (next != null)
             throw new IllegalArgumentException("Unsupported C floating-point specifiers: "
                 + token.image + " " + next.image
                 + "; Ghidra's C parser converts them to double. Use an exact registered type name instead");
+    }
+
+    private void verifyLayouts(Iterable<DataType> types) throws CancelledException {
+        for (DataType type : types) {
+            session.monitor().checkCancelled();
+            if (type instanceof Structure) TypeFields.verifyComponentCount((Structure) type);
+            else if (type instanceof Composite) TypeFields.verifySize((Composite) type);
+            else if (type instanceof Array) {
+                Array array = (Array) type;
+                long length = (long) array.getNumElements() * array.getElementLength();
+                if (length > Integer.MAX_VALUE || length < 0
+                        || !array.isZeroLength() && array.getLength() != length)
+                    throw new IllegalArgumentException("Array size exceeds its supported range in " + type.getPathName());
+            }
+        }
     }
 
     private boolean isDefinition(DataType dt) {

@@ -98,13 +98,13 @@ final class FunctionSignatureSupport {
                 throw invalid("Ghidra function signatures cannot preserve the C type qualifier '"
                     + token.image + "'", token);
             }
-            if (previous != null && previous.kind == CParserConstants.LONG
-                    && (token.kind == CParserConstants.DOUBLE || token.kind == CParserConstants.FLOAT)) {
+            Token floating = SignatureTypes.lossyFloatingSpecifier(parser, token);
+            if (floating != null) {
                 // Native CParser resolves these specifiers as ordinary double,
                 // losing the extended floating type and its ABI layout.
                 throw invalid("Ghidra's C parser cannot preserve floating type specifiers '"
-                    + previous.image + " " + token.image
-                    + "'; use --bind-type NAME PATH to select an exact floating datatype", token);
+                    + token.image + " " + floating.image
+                    + "'; use --bind-type NAME PATH to select an exact floating datatype", floating);
             }
             switch (token.kind) {
                 case CParserConstants.CDECL, CParserConstants.STDCALL, CParserConstants.FASTCALL,

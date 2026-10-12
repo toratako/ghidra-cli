@@ -113,6 +113,16 @@ public final class SignatureTypes extends StandAloneDataTypeManager {
         return missing.contains(name);
     }
 
+    /** Native signedness specifiers do not prevent long floating types becoming double. */
+    public static Token lossyFloatingSpecifier(CParser tokens, Token token) {
+        if (token.kind != CParserConstants.LONG) return null;
+        int lookahead = 1;
+        Token next = tokens.getToken(lookahead);
+        while (next.kind == CParserConstants.SIGNED || next.kind == CParserConstants.UNSIGNED)
+            next = tokens.getToken(++lookahead);
+        return next.kind == CParserConstants.DOUBLE || next.kind == CParserConstants.FLOAT ? next : null;
+    }
+
     public static JsonProtocol.CommandException unknown(String name) {
         JsonObject detail = new JsonObject();
         detail.addProperty("type_name", name);
