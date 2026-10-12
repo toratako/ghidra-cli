@@ -521,18 +521,26 @@ final class JobScheduler {
     }
 
     private void refreshBridgeSnapshot() {
-        currentProgramNameSnapshot = session.programName();
-        currentProgramPathSnapshot = session.programPath();
+        String programName = session.programName();
+        String programPath = session.programPath();
 
         Project project = session.state() == null ? null : session.state().getProject();
-        projectNameSnapshot = project == null ? null : project.getName();
-        programCountSnapshot = 0;
+        String projectName = project == null ? null : project.getName();
+        int programCount = 0;
         if (project != null) {
             try {
-                programCountSnapshot = session.programFiles().size();
+                programCount = session.programFiles().size();
             } catch (Exception ignored) {
-                programCountSnapshot = 0;
+                programCount = 0;
             }
+        }
+        // Read Ghidra state on the program lane, then publish one coherent
+        // snapshot without holding the control lock during project traversal.
+        synchronized (lifecycleLock) {
+            currentProgramNameSnapshot = programName;
+            currentProgramPathSnapshot = programPath;
+            projectNameSnapshot = projectName;
+            programCountSnapshot = programCount;
         }
     }
 }

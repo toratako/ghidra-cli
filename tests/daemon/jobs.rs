@@ -610,3 +610,21 @@ public class WaitForCancellationListener extends GhidraScript {
         "cancelled"
     );
 }
+
+#[test]
+#[serial]
+fn bridge_info_observes_a_complete_program_snapshot_during_refresh() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    harness
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("CheckRuntimeSnapshotPublication.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+}
