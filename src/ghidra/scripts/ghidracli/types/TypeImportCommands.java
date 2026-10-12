@@ -3,7 +3,9 @@ package ghidracli.types;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.util.cparser.C.CParser;
+import ghidra.app.util.cparser.C.CParserConstants;
 import ghidra.app.util.cparser.C.ParseException;
+import ghidra.app.util.cparser.C.Token;
 import ghidra.app.util.cparser.C.TokenMgrError;
 import ghidra.program.database.data.DataTypeUtilities;
 import ghidra.program.model.data.CategoryPath;
@@ -13,12 +15,18 @@ import ghidra.program.model.data.DataTypeConflictHandler;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.StandAloneDataTypeManager;
+import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.TypeDef;
+import ghidra.program.model.data.Union;
+import ghidra.util.exception.CancelledException;
+import ghidra.util.task.TaskMonitor;
 import ghidracli.session.ProgramSession;
+import java.io.StringReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -43,8 +51,7 @@ public final class TypeImportCommands {
         String categoryPath = getArgString(args, "category");
 
         DataTypeManager dtm = session.program().getDataTypeManager();
-        try (StandAloneDataTypeManager parsedManager = new StandAloneDataTypeManager(
-                "C import", dtm.getDataOrganization())) {
+        try (ImportTypes parsedManager = new ImportTypes(dtm)) {
 
             String processedCode = code.trim();
             if (!processedCode.endsWith(";")) {
@@ -56,7 +63,7 @@ public final class TypeImportCommands {
             CParser parser = new CParser(parsedManager, false,
                 new DataTypeManager[] { dtm });
             parser.setMonitor(session.monitor());
-            parser.parse(processedCode);
+            parsedManager.parse(parser, processedCode);
             String parseMessages = parser.getParseMessages();
 
             Set<String> definedNames = new HashSet<>();
@@ -218,8 +225,117 @@ public final class TypeImportCommands {
         } catch (ParseException | TokenMgrError failure) {
             return errorResult("C parse error: " + failure.getMessage());
         } catch (Exception e) {
-            return errorResult("Failed to import C types: " + e.getMessage());
+            return errorResult("Failed to import C types: " + e.getMessage(), e);
         }
+    }
+
+    /** Keep CParser's external lookups exact without replacing its local declarations. */
+    private final class ImportTypes extends StandAloneDataTypeManager {
+        private final TypeResolver resolver = new TypeResolver(session);
+        private TagDeclarations tags;
+        private CParser parser;
+        private RuntimeException lookupFailure;
+
+        ImportTypes(DataTypeManager programTypes) {
+            super("C import", programTypes.getDataOrganization());
+        }
+
+        void parse(CParser parser, String code) throws ParseException, CancelledException {
+            tags = tagDeclarations(code, session.monitor());
+            this.parser = parser;
+            try {
+                parser.parse(code);
+            } catch (ParseException failure) {
+                // Native CParser wraps runtime lookup failures without retaining
+                // their message or cause. Preserve the ambiguity candidates.
+                if (lookupFailure != null) throw lookupFailure;
+                throw failure;
+            } finally {
+                this.parser = null;
+            }
+        }
+
+        @Override
+        public void findDataTypes(String name, List<DataType> results) {
+            super.findDataTypes(name, results);
+            if (parser == null || !results.isEmpty() || !name.matches("[A-Za-z_$][A-Za-z_$0-9]*")
+                    || tags.defined.contains(name)) return;
+            Token previous = parser.getToken(0);
+            Token next = parser.getToken(1);
+            // Native parsing probes a field/parameter/typedef name after its type.
+            if (previous.kind == CParserConstants.IDENTIFIER && name.equals(next.image)
+                    && !name.equals(previous.image)) return;
+            try {
+                DataType existing = resolver.resolveRegisteredDataType(name);
+                if (existing != null) {
+                    Integer kind = tags.kinds.get(name);
+                    if (kind != null && !(kind == CParserConstants.STRUCT && existing instanceof Structure)
+                            && !(kind == CParserConstants.UNION && existing instanceof Union)
+                            && !(kind == CParserConstants.ENUM && existing instanceof ghidra.program.model.data.Enum))
+                        throw new IllegalArgumentException("C tag kind does not match registered type: "
+                            + existing.getPathName());
+                    results.add(existing.clone(this));
+                }
+            } catch (RuntimeException failure) {
+                lookupFailure = failure;
+                throw failure;
+            }
+        }
+    }
+
+    private static final class TagDeclarations {
+        final Set<String> defined = new HashSet<>();
+        final Map<String, Integer> kinds = new HashMap<>();
+    }
+
+    /** Tag bodies shadow external names throughout their declaration, including forward uses. */
+    private static TagDeclarations tagDeclarations(String code, TaskMonitor monitor) throws CancelledException {
+        TagDeclarations tags = new TagDeclarations();
+        CParser tokens = new CParser(new StringReader(code));
+        for (Token token = tokens.getNextToken(); token.kind != CParserConstants.EOF;
+                token = tokens.getNextToken()) {
+            monitor.checkCancelled();
+            if (token.kind != CParserConstants.STRUCT && token.kind != CParserConstants.UNION
+                    && token.kind != CParserConstants.ENUM) continue;
+            int kind = token.kind;
+            token = tokens.getNextToken();
+            // Attributes and declspecs may precede the tag name. Ignore their
+            // balanced arguments so identifiers there cannot become tag names.
+            while (token.kind != CParserConstants.IDENTIFIER && token.kind != CParserConstants.EOF
+                    && !"{".equals(token.image) && !";".equals(token.image)) {
+                monitor.checkCancelled();
+                if ("(".equals(token.image)) {
+                    int depth = 1;
+                    while (depth > 0) {
+                        monitor.checkCancelled();
+                        token = tokens.getNextToken();
+                        if (token.kind == CParserConstants.EOF) return tags;
+                        if ("(".equals(token.image)) depth++;
+                        if (")".equals(token.image)) depth--;
+                    }
+                }
+                token = tokens.getNextToken();
+            }
+            if (token.kind != CParserConstants.IDENTIFIER) continue;
+            String name = token.image;
+            Integer previousKind = tags.kinds.putIfAbsent(name, kind);
+            if (previousKind != null && previousKind != kind)
+                throw new IllegalArgumentException("C tag name has conflicting kinds: " + name);
+            token = tokens.getNextToken();
+            // Native CParser accepts a parent struct or an enum's underlying
+            // type after ':'. Neither is another definition's tag name.
+            if (":".equals(token.image)) {
+                do {
+                    monitor.checkCancelled();
+                    token = tokens.getNextToken();
+                } while (token.kind != CParserConstants.EOF && !"{".equals(token.image)
+                    && !";".equals(token.image) && !",".equals(token.image)
+                    && !")".equals(token.image));
+            }
+            if ("{".equals(token.image)) tags.defined.add(name);
+            if (token.kind == CParserConstants.EOF) break;
+        }
+        return tags;
     }
 
     private boolean isDefinition(DataType dt) {

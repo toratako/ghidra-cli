@@ -256,6 +256,196 @@ fn type_import_rejects_colliding_tag_and_typedef_definitions_without_changing_us
 
 #[test]
 #[serial]
+fn type_import_rejects_ambiguous_external_references_and_keeps_local_definitions() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    for (category, code) in [
+        ("/zeta", "struct Shared { long long second; };"),
+        ("/alpha", "struct Shared { int first; };"),
+    ] {
+        type_command(
+            &program,
+            &["import-c", "--category", category, "--code", code],
+        )
+        .assert_success();
+    }
+    let client = harness().client().unwrap();
+    let before: serde_json::Value = type_command(&program, &["list", "--limit", "0"]).data();
+    let paths = ["/alpha/Shared", "/zeta/Shared"];
+    let definitions: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|path| type_command(&program, &["get", path]).data())
+        .collect();
+
+    for declaration in ["typedef Shared Alias;", "typedef struct Shared *Alias;"] {
+        let code = format!("struct Fresh {{ int marker; }}; {declaration}");
+        let failed = type_command(
+            &program,
+            &["import-c", "--category", "/Draft", "--code", &code],
+        );
+        failed
+            .assert_failure()
+            .assert_stderr_contains("Ambiguous type name");
+        let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        assert_eq!(
+            error["detail"]["candidates"],
+            serde_json::json!(["/alpha/Shared", "/zeta/Shared"]),
+            "{error}"
+        );
+        client.program_close().unwrap();
+        assert_eq!(
+            type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+            before
+        );
+        for (path, expected) in paths.iter().zip(&definitions) {
+            assert_eq!(
+                &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+                expected
+            );
+        }
+    }
+
+    // Local forward uses bind to the later body; the field named Shared is not a type lookup.
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--category",
+            "/Draft",
+            "--code",
+            "struct Shared; struct EarlyHolder { struct Shared *next; }; \
+             struct Shared { short local; }; typedef struct Shared Alias; \
+             typedef int Local; struct Holder { Local Shared; };",
+        ],
+    )
+    .assert_success();
+    client.program_close().unwrap();
+    let alias: serde_json::Value = type_command(&program, &["get", "/Draft/Alias"]).data();
+    assert_eq!(alias["base_type_path"], "/Draft/Shared");
+    let shared: serde_json::Value = type_command(&program, &["get", "/Draft/Shared"]).data();
+    assert_eq!(shared["components"][0]["name"], "local");
+    let early: serde_json::Value = type_command(&program, &["get", "/Draft/EarlyHolder"]).data();
+    assert_eq!(early["components"][0]["type_path"], "/Draft/Shared *");
+    let holder: serde_json::Value = type_command(&program, &["get", "/Draft/Holder"]).data();
+    assert_eq!(holder["components"][0]["name"], "Shared");
+    for (path, expected) in paths.iter().zip(&definitions) {
+        assert_eq!(
+            &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+            expected
+        );
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn type_import_tagged_references_preserve_existing_definitions_and_applied_data() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--category",
+            "/Existing",
+            "--code",
+            "struct Record { int value; int tail; }; \
+             union Payload { int value; long long wide; }; enum Status { GOOD=1, BAD=2 };",
+        ],
+    )
+    .assert_success();
+    let client = harness().client().unwrap();
+    let fixture = r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.program.model.data.*;
+public class CheckTaggedImportReferences extends GhidraScript {
+    public void run() throws Exception {
+        var manager = currentProgram.getDataTypeManager();
+        var record = (Structure) manager.getDataType("/Existing/Record");
+        var payload = manager.getDataType("/Existing/Payload");
+        var status = manager.getDataType("/Existing/Status");
+        var address = toAddr(0x1000);
+        if (getScriptArgs()[0].equals("setup")) {
+            currentProgram.getMemory().createInitializedBlock("data", address, 64, (byte) 0, monitor, false);
+            var applied = currentProgram.getListing().createData(address, record);
+            FormatSettingsDefinition.DEF.setChoice(applied.getComponent(0), FormatSettingsDefinition.DECIMAL);
+            return;
+        }
+        var pointer = (Pointer) ((TypeDef) manager.getDataType("/Draft/RecordPtr")).getDataType();
+        var holder = (Structure) manager.getDataType("/Draft/Holder");
+        if (pointer.getDataType() != record
+                || ((TypeDef) manager.getDataType("/Draft/PayloadAlias")).getDataType() != payload
+                || ((TypeDef) manager.getDataType("/Draft/StatusAlias")).getDataType() != status
+                || holder.getComponent(0).getDataType() != record
+                || holder.getComponent(1).getDataType() != payload
+                || holder.getComponent(2).getDataType() != status)
+            throw new IllegalStateException("Tagged references did not retain registered identities");
+        for (String name : new String[] { "Record", "Payload", "Status" })
+            if (manager.getDataType("/Draft/" + name) != null || manager.getDataType("/" + name) != null)
+                throw new IllegalStateException("Tagged reference created a replacement definition: " + name);
+        var applied = currentProgram.getListing().getDefinedDataAt(address);
+        if (applied == null || applied.getDataType() != record || applied.getLength() != 8
+                || FormatSettingsDefinition.DEF.getChoice(applied.getComponent(0)) != FormatSettingsDefinition.DECIMAL)
+            throw new IllegalStateException("Tagged reference changed existing applied data");
+    }
+}
+"#;
+    client
+        .script_run_source(fixture, &["setup".into()], &[], false)
+        .unwrap();
+    let paths = ["/Existing/Record", "/Existing/Payload", "/Existing/Status"];
+    let before: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|path| type_command(&program, &["get", path]).data())
+        .collect();
+    for code in [
+        "typedef struct Status *BadStatus;",
+        "typedef struct Payload *BadPayload;",
+    ] {
+        type_command(
+            &program,
+            &["import-c", "--category", "/Existing", "--code", code],
+        )
+        .assert_failure()
+        .assert_stderr_contains("C tag kind does not match registered type");
+        client.program_close().unwrap();
+        for (path, expected) in paths.iter().zip(&before) {
+            assert_eq!(
+                &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+                expected
+            );
+        }
+    }
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--category",
+            "/Draft",
+            "--code",
+            "typedef struct Record *RecordPtr; typedef union Payload PayloadAlias; \
+             typedef enum Status StatusAlias; \
+             struct Holder { struct Record record; union Payload payload; enum Status status; };",
+        ],
+    )
+    .assert_success();
+    client.program_close().unwrap();
+    for (path, expected) in paths.iter().zip(&before) {
+        assert_eq!(
+            &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+            expected
+        );
+    }
+    client
+        .script_run_source(fixture, &["check".into()], &[], false)
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_category_preserves_root_types_and_users_after_reopen() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
