@@ -59,6 +59,16 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
         &[],
         false,
     )?;
+    let timestamped = project
+        .with_added_extension("rep")
+        .join("timestamp/probe.bin");
+    std::fs::create_dir(timestamped.parent().unwrap())?;
+    let file = std::fs::File::create(&timestamped)?;
+    file.set_times(
+        std::fs::FileTimes::new()
+            .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(981_173_106)),
+    )?;
+    drop(file);
     let pid = bridge::read_pid_file(&project)?.unwrap();
     let backups = root.path().join(".backups");
     std::fs::create_dir(&backups)?;
@@ -77,6 +87,8 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let mut zip = zip::ZipArchive::new(std::fs::File::open(&gar)?)?;
     let marker = format!("{}.gpr", alias.file_name().unwrap().to_string_lossy());
     assert!(zip.by_name(&marker).is_ok());
+    let archived_time = zip.by_name("timestamp/probe.bin")?.last_modified().unwrap();
+    assert_eq!(archived_time.year(), 2001);
     assert!(!zip.file_names().any(|name| {
         name.rsplit('/')
             .next()
@@ -146,6 +158,16 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
         &[],
         false,
     )?;
+    let mut native_zip = zip::ZipArchive::new(std::fs::File::open(&native_gar)?)?;
+    let native_timestamp_index = native_zip
+        .file_names()
+        .position(|name| name.replace('\\', "/") == "timestamp/probe.bin")
+        .expect("native archive timestamp fixture");
+    assert_eq!(
+        native_zip.by_index(native_timestamp_index)?.last_modified(),
+        Some(archived_time)
+    );
+    drop(native_zip);
     let from_native = root.path().join("from-native");
     success(restore(&native_gar, &from_native)?)?;
     verify(&from_native)?;

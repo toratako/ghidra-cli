@@ -53,6 +53,8 @@ final class GarFile {
                         OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) {
                     transfer(in, out, monitor, null);
                 }
+                // GAR entries must retain the source time through this private copy.
+                Files.setLastModifiedTime(target, Files.getLastModifiedTime(path));
             }
         });
     }
