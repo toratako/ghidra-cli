@@ -116,13 +116,13 @@ final class JobScheduler {
                 failure = result.get("message").getAsString();
             }
         } catch (Exception e) {
-            failure = e.getMessage();
+            failure = JsonProtocol.errorMessage(e);
             responseStatus = "error";
             result = errorResponse(failure);
             result.addProperty("job_id", record.id);
         } catch (Error e) {
             if (JsonProtocol.isFatalError(e)) throw e;
-            failure = e.getMessage() == null ? e.toString() : e.getMessage();
+            failure = JsonProtocol.errorMessage(e);
             responseStatus = "error";
             result = errorResponse(failure);
             result.addProperty("job_id", record.id);
@@ -254,11 +254,11 @@ final class JobScheduler {
             return BridgeReply.pending(job.completion);
         } catch (Exception e) {
             return BridgeReply.immediate(
-                errorResponse(e.getMessage()));
+                errorResponse(JsonProtocol.errorMessage(e)));
         } catch (Error e) {
             if (JsonProtocol.isFatalError(e)) throw e;
             return BridgeReply.immediate(errorResponse(
-                e.getMessage() == null ? e.toString() : e.getMessage()));
+                JsonProtocol.errorMessage(e)));
         }
     }
 

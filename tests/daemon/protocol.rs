@@ -5,6 +5,24 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn native_failure_without_message_preserves_rollback_and_retained_error() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    harness
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/runtime/CheckNullMessageFailure.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn malformed_mutation_arguments_preserve_saved_tags() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);

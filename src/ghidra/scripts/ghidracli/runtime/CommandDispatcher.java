@@ -375,7 +375,7 @@ final class CommandDispatcher {
                 detail.addProperty("cancelled", true);
                 detail.addProperty("program", session.programPath());
             }
-            return errorResponse(e.getMessage(), detail);
+            return errorResponse(JsonProtocol.errorMessage(e), detail);
         }
         JsonObject response = executeCommand(command, args);
         try {
@@ -449,10 +449,10 @@ final class CommandDispatcher {
 
             return successResponse(result);
         } catch (Exception e) {
-            return errorResponse(e.getMessage(), JsonProtocol.errorDetail(e));
+            return errorResponse(JsonProtocol.errorMessage(e), JsonProtocol.errorDetail(e));
         } catch (Error e) {
             if (JsonProtocol.isFatalError(e)) throw e;
-            return errorResponse(e.getMessage() == null ? e.toString() : e.getMessage());
+            return errorResponse(JsonProtocol.errorMessage(e));
         }
     }
 }

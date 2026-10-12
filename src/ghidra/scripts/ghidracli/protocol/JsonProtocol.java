@@ -35,7 +35,7 @@ public final class JsonProtocol {
     public static JsonObject errorResponse(String message, JsonObject detail) {
         JsonObject resp = new JsonObject();
         resp.addProperty("status", "error");
-        resp.addProperty("message", message);
+        resp.addProperty("message", message == null || message.isEmpty() ? "Command failed" : message);
         if (detail != null) {
             resp.add("detail", detail);
         }
@@ -44,7 +44,7 @@ public final class JsonProtocol {
 
     public static JsonObject errorResult(String message) {
         JsonObject result = new JsonObject();
-        result.addProperty("error", message);
+        result.addProperty("error", message == null || message.isEmpty() ? "Command failed" : message);
         return result;
     }
 
@@ -57,6 +57,11 @@ public final class JsonProtocol {
 
     public static JsonObject errorDetail(Throwable cause) {
         return cause instanceof CommandException ? ((CommandException) cause).detail() : null;
+    }
+
+    public static String errorMessage(Throwable cause) {
+        String message = cause.getMessage();
+        return message == null || message.isEmpty() ? cause.toString() : message;
     }
 
     /** VM failures and forced thread termination cannot be safely returned as job errors. */
