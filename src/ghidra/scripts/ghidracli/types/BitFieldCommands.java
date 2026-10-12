@@ -38,7 +38,8 @@ public final class BitFieldCommands {
                 storage, requiredInteger(args, "bit_offset"),
                 requiredInteger(args, "bit_size"), base, getArgString(args, "field_name"),
                 getArgString(args, "comment"));
-            if (propagation != null) propagation.verify();
+            if (propagation != null)
+                propagation.verifyInsertion(result.getAsJsonObject("after").get("ordinal").getAsInt());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to create bit-field: " + e.getMessage(), e);

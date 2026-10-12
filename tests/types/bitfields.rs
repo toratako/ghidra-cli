@@ -193,6 +193,131 @@ public class CheckBitfieldGrowthRollback extends GhidraScript {
 
 #[test]
 #[serial]
+fn bitfield_growth_preserves_existing_applied_settings_when_inserting_before_fields() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for (language, bit_offset) in [("x86:LE:32:default", "0"), ("PowerPC:BE:32:default", "61")] {
+        let program = create_type_edit_program(language);
+        client.open_program(&program).unwrap();
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.program.model.data.*;
+public class CreateBitfieldInsertionSettings extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var child = new StructureDataType("GrowingBits", 4, dtm);
+        child.replaceAtOffset(2, WordDataType.dataType, 2, "tail", "retained field");
+        var saved = dtm.addDataType(child, null);
+        var holder = new StructureDataType("BitSettingsHolder", 32, dtm);
+        holder.replaceAtOffset(4, saved, 4, "first", null);
+        holder.replaceAtOffset(16, saved, 4, "second", null);
+        currentProgram.getMemory().createInitializedBlock("data", toAddr(0x1000),
+            128, (byte) 0, monitor, false);
+        var listing = currentProgram.getListing();
+        var direct = listing.createData(toAddr(0x1000), saved);
+        var savedHolder = (Structure) dtm.addDataType(holder, null);
+        var nested = listing.createData(toAddr(0x1040), savedHolder);
+        FormatSettingsDefinition.DEF.setChoice(direct.getComponent(2), FormatSettingsDefinition.DECIMAL);
+        FormatSettingsDefinition.DEF.setChoice(nested.getComponent(savedHolder.getComponentAt(4).getOrdinal())
+            .getComponent(2), FormatSettingsDefinition.BINARY);
+        FormatSettingsDefinition.DEF.setChoice(nested.getComponent(savedHolder.getComponentAt(16).getOrdinal())
+            .getComponent(2), FormatSettingsDefinition.OCTAL);
+        var guarded = saved.copy(dtm);
+        guarded.setName("GuardedBits");
+        guarded = dtm.addDataType(guarded, null);
+        var packed = new StructureDataType("GuardedBitHolder", 0, dtm);
+        packed.setPackingEnabled(true);
+        packed.add(guarded, "child", null);
+        packed.add(ByteDataType.dataType, "tag", null);
+        var guardedData = listing.createData(toAddr(0x1060), dtm.addDataType(packed, null));
+        FormatSettingsDefinition.DEF.setChoice(guardedData.getComponent(1), FormatSettingsDefinition.BINARY);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = without_ordinal(field(&definition(&program, "GrowingBits"), "tail"));
+        let created = success(create(
+            &program,
+            "GrowingBits",
+            "0",
+            "8",
+            bit_offset,
+            "3",
+            &["--name", "flags", "--type", "uint32_t"],
+        ));
+        assert_eq!(created["after"]["offset"], 0);
+        assert_eq!(created["size_after"], 8);
+        assert_eq!(
+            without_ordinal(field(&definition(&program, "GrowingBits"), "tail")),
+            before
+        );
+        let guarded = definition(&program, "GuardedBits");
+        let rejected = create(
+            &program,
+            "GuardedBits",
+            "0",
+            "8",
+            bit_offset,
+            "3",
+            &["--name", "flags", "--type", "uint32_t"],
+        );
+        rejected
+            .assert_failure()
+            .assert_stderr_contains("applied component settings changed");
+        let error: Value = serde_json::from_str(&rejected.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        assert_eq!(definition(&program, "GuardedBits"), guarded);
+        client.open_program(&program).unwrap();
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.docking.settings.FormatSettingsDefinition;
+import ghidra.program.model.data.Structure;
+public class CheckBitfieldInsertionSettings extends GhidraScript {
+    public void run() throws Exception {
+        var type = (Structure) currentProgram.getDataTypeManager().getDataType("/GrowingBits");
+        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/BitSettingsHolder");
+        var tail = type.getDefinedComponents()[1];
+        var direct = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
+        var nested = currentProgram.getListing().getDefinedDataAt(toAddr(0x1040));
+        if (type.getLength() != 8 || direct.getLength() != 8 || nested.getLength() != 32
+                || tail.getOffset() != 2 || tail.getLength() != 2
+                || holder.getComponentAt(4).getLength() != 8
+                || holder.getComponentAt(16).getLength() != 8)
+            throw new IllegalStateException("Incomplete bitfield insertion layout");
+        if (FormatSettingsDefinition.DEF.getChoice(direct.getComponent(tail.getOrdinal())) != FormatSettingsDefinition.DECIMAL
+                || FormatSettingsDefinition.DEF.getChoice(nested.getComponent(holder.getComponentAt(4).getOrdinal())
+                    .getComponent(tail.getOrdinal())) != FormatSettingsDefinition.BINARY
+                || FormatSettingsDefinition.DEF.getChoice(nested.getComponent(holder.getComponentAt(16).getOrdinal())
+                    .getComponent(tail.getOrdinal())) != FormatSettingsDefinition.OCTAL)
+            throw new IllegalStateException("Insertion changed retained applied settings");
+        var guarded = currentProgram.getListing().getDefinedDataAt(toAddr(0x1060));
+        if (guarded.getLength() != 5 || guarded.getComponent(1).getMinAddress().getOffset() != 0x1064
+                || FormatSettingsDefinition.DEF.getChoice(guarded.getComponent(1)) != FormatSettingsDefinition.BINARY)
+            throw new IllegalStateException("Rejected insertion moved a packed field or its settings");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(TEST_PROGRAM).unwrap();
+    }
+}
+
+#[test]
+#[serial]
 fn explicit_bitfields_keep_program_endian_locations_across_edits_and_reopen() {
     require_ghidra!();
     let client = harness().client().unwrap();

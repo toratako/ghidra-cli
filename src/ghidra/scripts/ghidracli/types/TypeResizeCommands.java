@@ -106,6 +106,23 @@ public final class TypeResizeCommands {
         }
 
         void verify() throws Exception {
+            verify(null, -1);
+        }
+
+        void verifyInsertion(int ordinal) throws Exception {
+            DataTypeComponent[] fields = ((Composite) target).getDefinedComponents();
+            for (int i = 0; i < fields.length; i++) {
+                if (fields[i].getOrdinal() == ordinal) {
+                    // Compare retained fields by their previous defined-field
+                    // indices, excluding the newly inserted subtree on this side.
+                    verify(target, i);
+                    return;
+                }
+            }
+            throw new IllegalArgumentException("Inserted field was not retained");
+        }
+
+        private void verify(DataType insertedType, int insertedDefinedIndex) throws Exception {
             for (Definition definition : affected.values()) {
                 session.monitor().checkCancelled();
                 if (definition.type != target)
@@ -113,7 +130,8 @@ public final class TypeResizeCommands {
             }
             for (Application application : applications) {
                 session.monitor().checkCancelled();
-                application.verify(session.program().getListing(), session.monitor());
+                application.verify(session.program().getListing(), session.monitor(),
+                    insertedType, insertedDefinedIndex);
             }
             if (target instanceof Structure) TypeFields.verifyComponentCount((Structure) target);
         }
@@ -171,21 +189,16 @@ public final class TypeResizeCommands {
         if (!condition) throw new IllegalArgumentException("Unsafe resize: " + message);
     }
 
-    private static Map<List<Integer>, Map<String, Object>> appliedSettings(Data data, TaskMonitor monitor)
-            throws CancelledException {
-        return appliedSettings(data, monitor, null, -1);
-    }
-
     private static Map<List<Integer>, Map<String, Object>> appliedSettings(Data data, TaskMonitor monitor,
-            DataType deletedType, int deletedDefinedIndex) throws CancelledException {
+            DataType excludedType, int excludedDefinedIndex) throws CancelledException {
         Map<List<Integer>, Map<String, Object>> result = new HashMap<>();
-        appliedSettings(data, new ArrayList<>(), result, monitor, deletedType, deletedDefinedIndex);
+        appliedSettings(data, new ArrayList<>(), result, monitor, excludedType, excludedDefinedIndex);
         return result;
     }
 
     private static void appliedSettings(Data data, List<Integer> path,
             Map<List<Integer>, Map<String, Object>> result, TaskMonitor monitor,
-            DataType deletedType, int deletedDefinedIndex) throws CancelledException {
+            DataType excludedType, int excludedDefinedIndex) throws CancelledException {
         monitor.checkCancelled();
         require(data != null, "incomplete applied component");
         Map<String, Object> values = settings(data);
@@ -194,19 +207,20 @@ public final class TypeResizeCommands {
         if (base instanceof Composite) {
             DataTypeComponent[] fields = ((Composite) base).getDefinedComponents();
             for (int i = 0; i < fields.length; i++) {
-                if (base == deletedType && i == deletedDefinedIndex) continue;
+                if (base == excludedType && i == excludedDefinedIndex) continue;
                 // Defined-field indices survive filler ordinal changes. Array
                 // indices likewise retain element identity across stride changes.
-                // A deletion intentionally removes one subtree and renumbers later fields.
-                path.add(base == deletedType && i > deletedDefinedIndex ? i - 1 : i);
+                // Exclude a deleted subtree before the edit, or an inserted
+                // subtree after it, normalizing later fields on that side.
+                path.add(base == excludedType && i > excludedDefinedIndex ? i - 1 : i);
                 appliedSettings(data.getComponent(fields[i].getOrdinal()), path, result, monitor,
-                    deletedType, deletedDefinedIndex);
+                    excludedType, excludedDefinedIndex);
                 path.remove(path.size() - 1);
             }
         } else if (base instanceof Array) {
             for (int i = 0; i < ((Array) base).getNumElements(); i++) {
                 path.add(i);
-                appliedSettings(data.getComponent(i), path, result, monitor, deletedType, deletedDefinedIndex);
+                appliedSettings(data.getComponent(i), path, result, monitor, excludedType, excludedDefinedIndex);
                 path.remove(path.size() - 1);
             }
         }
@@ -356,13 +370,18 @@ public final class TypeResizeCommands {
         }
 
         void verify(Listing listing, TaskMonitor monitor) throws CancelledException {
+            verify(listing, monitor, null, -1);
+        }
+
+        void verify(Listing listing, TaskMonitor monitor,
+                DataType insertedType, int insertedDefinedIndex) throws CancelledException {
             Data after = listing.getDefinedDataAt(address);
             String location = AddressCodec.format(address);
             require(after != null && type.equals(after.getDataType()),
                 "applied data was lost at " + location);
             require(!type.isZeroLength() && type.getLength() > 0 && after.getLength() == type.getLength(),
                 "incomplete applied data at " + location);
-            require(settings.equals(appliedSettings(after, monitor)),
+            require(settings.equals(appliedSettings(after, monitor, insertedType, insertedDefinedIndex)),
                 "applied component settings changed at " + location);
             if (neighbor != null) {
                 CodeUnit next = listing.getCodeUnitAt(neighbor);
