@@ -543,3 +543,114 @@ public class CreateStorageCodeFixture extends GhidraScript {
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
 }
+
+#[test]
+#[serial]
+fn memory_mapped_register_storage_keeps_register_pieces_after_reopen() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = create_type_edit_program("PIC-24F:LE:24:default");
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class CreateMemoryMappedStorageFunction extends GhidraScript {
+    public void run() throws Exception {
+        var address = toAddr(0x1000);
+        currentProgram.getFunctionManager().createFunction("entry", address,
+            new AddressSet(address), SourceType.USER_DEFINED);
+        var register = currentProgram.getRegister("W0");
+        if (!register.getAddress().isMemoryAddress())
+            throw new IllegalStateException("Fixture requires a memory-mapped ABI register");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let edit = command(
+            &program,
+            &[
+                "set-signature",
+                "entry",
+                "--signature",
+                "long entry(char small, long pair)",
+                "--param-register",
+                "small",
+                "W4",
+                "--param-register-piece",
+                "pair",
+                "0",
+                "W2",
+                "2",
+                "--param-register-piece",
+                "pair",
+                "2",
+                "W3",
+                "2",
+                "--return-register-piece",
+                "0",
+                "W0",
+                "2",
+                "--return-register-piece",
+                "2",
+                "W1",
+                "2",
+            ],
+        );
+        edit.assert_success();
+        let receipt = edit.data::<Value>();
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class CheckMemoryMappedNativeStorage extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1000));
+        if (!function.getReturn().getVariableStorage().getRegisters().stream()
+                .map(register -> register.getName()).toList().equals(java.util.List.of("W1", "W0"))
+            || !function.getParameter(0).getVariableStorage().isRegisterStorage()
+            || !function.getParameter(1).getVariableStorage().getRegisters().stream()
+                .map(register -> register.getName()).toList().equals(java.util.List.of("W3", "W2")))
+            throw new IllegalStateException("Native storage did not retain the ABI registers");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let inventory = client.send_command("program_list_registers", None).unwrap();
+        let signature = &receipt["after"];
+        for (pieces, registers) in [
+            (&signature["return"]["storage_pieces"], vec!["W0", "W1"]),
+            (&signature["params"][0]["storage_pieces"], vec!["W4byte"]),
+            (&signature["params"][1]["storage_pieces"], vec!["W2", "W3"]),
+        ] {
+            let pieces = pieces.as_array().unwrap();
+            assert_eq!(pieces.len(), registers.len());
+            for (piece, register) in pieces.iter().zip(registers) {
+                assert_eq!(piece["kind"], "register", "{receipt}");
+                assert_eq!(piece["register"], register, "{receipt}");
+                let listed = inventory["registers"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|row| row["name"] == register)
+                    .unwrap();
+                assert_eq!(piece["address"], listed["address"]);
+                assert_eq!(piece["size"], listed["size"]);
+            }
+        }
+        let saved = function("entry");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(function("entry"), saved);
+    });
+}

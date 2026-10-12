@@ -151,8 +151,9 @@ public final class VariableStorageCodec {
             if (node.getAddress().isStackAddress()) {
                 piece.addProperty("kind", "stack");
                 piece.addProperty("stack_offset", node.getOffset());
-            } else if (node.getAddress().isRegisterAddress()) {
-                piece.addProperty("kind", "register");
+            } else {
+                // Native ABI registers may live in a memory space (for example
+                // PIC24 W0). Identify the register before classifying its address.
                 Register register = program.getRegister(node.getAddress(), node.getSize());
                 if (register == null || register.getMinimumByteSize() < node.getSize()
                         || !lowAddress(register, node.getSize()).equals(node.getAddress())) {
@@ -162,9 +163,12 @@ public final class VariableStorageCodec {
                         .min(Comparator.comparingInt(Register::getMinimumByteSize).thenComparing(Register::getName))
                         .orElse(null);
                 }
-                piece.addProperty("register", register == null ? null : register.getName());
-            } else {
-                piece.addProperty("kind", node.getAddress().getAddressSpace().getName());
+                if (register != null || node.getAddress().isRegisterAddress()) {
+                    piece.addProperty("kind", "register");
+                    piece.addProperty("register", register == null ? null : register.getName());
+                } else {
+                    piece.addProperty("kind", node.getAddress().getAddressSpace().getName());
+                }
             }
             result.add(piece);
             offset += node.getSize();
