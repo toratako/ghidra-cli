@@ -18,10 +18,12 @@ import ghidra.program.model.symbol.SymbolUtilities;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import ghidracli.types.TypeResolver;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -97,7 +99,8 @@ public final class FunctionVariableCommands {
                 }
             }
 
-            List<HighSymbol> symbols = variables.decompile(function, args).symbols();
+            FunctionVariables.Decompilation decompilation = variables.decompile(function, args);
+            List<HighSymbol> symbols = decompilation.symbols();
             FunctionVariables.Selection selected = variables.select(function, symbols, name, args);
             if (selected.error() != null) return selected.error();
             HighSymbol target = selected.symbol();
@@ -124,8 +127,34 @@ public final class FunctionVariableCommands {
             JsonElement before = describeDatabase(function, saved);
             Function localOwner = function.isThunk() ? function.getThunkedFunction(true) : function;
             Map<Long, JsonElement> savedLocals = new LinkedHashMap<>();
+            Set<Long> separateLocals = new HashSet<>();
             for (Variable local : localOwner.getLocalVariables()) {
                 savedLocals.put(local.getSymbol().getID(), describeDatabase(localOwner, local));
+                // LocalSymbolMap only merges type-locked symbols. Undefined
+                // locals with matching merge names remain independent, including
+                // saved definitions omitted from the decompiler's result.
+                if (!target.isTypeLocked() && !local.getSymbol().equals(existingSymbol)) {
+                    separateLocals.add(local.getSymbol().getID());
+                }
+            }
+            for (HighSymbol other : symbols) {
+                if (other == target) continue;
+                Variable separate = savedVariable(function, other);
+                if (separate != null && !(separate instanceof Parameter)) {
+                    separateLocals.add(separate.getSymbol().getID());
+                }
+            }
+            if (target.isParameter()) {
+                Parameter parameter = function.getParameter(target.getCategoryIndex());
+                if (parameter == null || !parameter.getVariableStorage().equals(target.getStorage())) {
+                    // The native variable helper otherwise commits every inferred
+                    // input, replacing saved types/comments and forcing conflicts.
+                    new FunctionReturnType(session).commitParameters(localOwner, decompilation.high());
+                    parameter = function.getParameter(target.getCategoryIndex());
+                    if (parameter == null || !parameter.getVariableStorage().equals(target.getStorage())) {
+                        throw new IllegalStateException("Cannot safely retain the selected parameter storage");
+                    }
+                }
             }
             // Null preserves the saved type during a rename; inferred locals
             // receive sized undefined types through Ghidra's normal helper.
@@ -137,7 +166,8 @@ public final class FunctionVariableCommands {
             // request so its transaction restores those definitions instead.
             for (Variable local : localOwner.getLocalVariables()) {
                 JsonElement original = savedLocals.remove(local.getSymbol().getID());
-                if (original != null && (saved == null || target.isParameter())
+                if (original != null && (saved == null || target.isParameter()
+                        || separateLocals.contains(local.getSymbol().getID()))
                         && !original.equals(describeDatabase(localOwner, local))) {
                     throw new IllegalStateException("Variable edit would overwrite saved local: "
                         + original.getAsJsonObject().get("name").getAsString());

@@ -4,6 +4,189 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn inferred_parameter_edits_preserve_partially_saved_parameter_metadata() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::return_types::create_fixture();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let state = || {
+            client
+                .send_command(
+                    "get_function",
+                    Some(json!({"address":"partial", "with_signature":true})),
+                )
+                .unwrap()
+        };
+        let before = state();
+        let variables = client
+            .send_command("function_var_list", Some(json!({"target":"partial"})))
+            .unwrap();
+        let inferred = variables["variables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["kind"] == "parameter" && row["ordinal"] == 1)
+            .unwrap();
+        let edited = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"partial", "var_name":inferred["name"], "new_name":"count"})),
+            )
+            .unwrap();
+        assert!(edited["before"].is_null(), "{edited}");
+        assert_eq!(edited["after"]["name"], "count");
+        assert_eq!(edited["after"]["type"], "undefined4");
+        let after = state();
+        assert_eq!(
+            after["signature_details"]["params"][0],
+            before["signature_details"]["params"][0]
+        );
+        assert_eq!(
+            after["signature_details"]["return"],
+            before["signature_details"]["return"]
+        );
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(state(), after);
+        client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.SourceType;
+public class CheckVariableParameterMetadata extends GhidraScript {
+    public void run() throws Exception {
+        var parameter = getFunctionAt(toAddr(0x10a0)).getParameter(0);
+        if (!"buffer".equals(parameter.getName()) || parameter.getSource() != SourceType.USER_DEFINED
+                || !"retain partially saved parameter".equals(parameter.getComment()))
+            throw new IllegalStateException("Variable edit replaced existing parameter metadata");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn variable_edits_preserve_hidden_saved_locals_unless_the_symbol_is_a_locked_merge() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for locked in [false, true] {
+        let program = format!("variable-numbered-{}", uuid::Uuid::new_v4());
+        client
+            .script_run_source(
+                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                std::slice::from_ref(&program),
+                &[],
+                false,
+            )
+            .unwrap();
+        super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+            client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.Undefined4DataType;
+import ghidra.program.model.listing.LocalVariableImpl;
+import ghidra.program.model.symbol.SourceType;
+public class AddNumberedVariableGroup extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1000));
+        var type = Boolean.parseBoolean(getScriptArgs()[0])
+            ? IntegerDataType.dataType : Undefined4DataType.dataType;
+        function.addLocalVariable(new LocalVariableImpl("value", type,
+            -8, currentProgram), SourceType.USER_DEFINED);
+        function.addLocalVariable(new LocalVariableImpl("value$1", 0x18, type,
+            currentProgram.getRegister("EAX"), currentProgram), SourceType.USER_DEFINED);
+    }
+}
+"#,
+                    &[locked.to_string()],
+                    &[],
+                    false,
+                )
+                .unwrap();
+            let saved_state = |name: &str| {
+                client
+                    .script_run_source(
+                        r#"
+import ghidra.app.script.GhidraScript;
+public class CheckNumberedVariableState extends GhidraScript {
+    public void run() throws Exception {
+        var locals = getFunctionAt(toAddr(0x1000)).getLocalVariables();
+        var names = java.util.Arrays.stream(locals).map(local -> local.getName())
+            .collect(java.util.stream.Collectors.toSet());
+        String name = getScriptArgs()[0];
+        if (locals.length != 2 || !names.equals(java.util.Set.of(name, name + "$1")))
+            throw new IllegalStateException("Unexpected numbered local names: " + names);
+        for (var local : locals) {
+            if (!getScriptArgs()[1].equals(local.getDataType().getName()))
+                throw new IllegalStateException("Numbered local type was changed");
+        }
+    }
+}
+"#,
+                        &[
+                            name.into(),
+                            if locked { "int" } else { "undefined4" }.into(),
+                        ],
+                        &[],
+                        false,
+                    )
+                    .unwrap();
+            };
+            let list = || {
+                client
+                    .send_command("function_var_list", Some(json!({"target":"edit_target"})))
+                    .unwrap()
+            };
+            saved_state("value");
+            let before = list();
+            assert!(
+                before["variables"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|row| row["name"] == "value"),
+                "{before}"
+            );
+            let edit = client.send_command(
+                "function_var_set",
+                Some(json!({"target":"edit_target", "var_name":"value", "new_name":"renamed"})),
+            );
+            let expected_name = if locked {
+                assert_eq!(edit.unwrap()["after"]["name"], "renamed");
+                "renamed"
+            } else {
+                let failed = edit.unwrap_err();
+                let error = failed
+                    .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                    .unwrap();
+                assert!(error.to_string().contains("value$1"), "{error:?}");
+                assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+                assert_eq!(list()["variables"], before["variables"]);
+                "value"
+            };
+            let after = list();
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(&program).unwrap();
+                }
+                assert_eq!(list()["variables"], after["variables"]);
+                saved_state(expected_name);
+            }
+        });
+    }
+}
+
+#[test]
+#[serial]
 fn variable_resize_preserves_neighboring_saved_locals_for_saved_and_inferred_targets() {
     require_ghidra!();
     let client = harness().client().unwrap();

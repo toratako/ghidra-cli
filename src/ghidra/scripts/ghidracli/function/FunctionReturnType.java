@@ -46,6 +46,13 @@ final class FunctionReturnType {
         }
         HighFunction high = results.getHighFunction();
         if (high == null) throw cannotPreserve("Decompiler returned no high-level function");
+        int committed = commitParameters(function, high);
+        function.setReturnType(returnType, SourceType.USER_DEFINED);
+        return committed;
+    }
+
+    /** Materialize inferred inputs without replacing saved definitions or forcing conflicts. */
+    int commitParameters(Function function, HighFunction high) throws Exception {
         LocalSymbolMap symbols = high.getLocalSymbolMap();
         Parameter[] existing = function.getParameters();
         PrototypeModel convention = conventionForCommit(function, high);
@@ -53,7 +60,6 @@ final class FunctionReturnType {
             if (!convention.getName().equals(function.getCallingConventionName())) {
                 function.setCallingConvention(convention.getName());
             }
-            function.setReturnType(returnType, SourceType.USER_DEFINED);
             return 0;
         }
 
@@ -137,7 +143,6 @@ final class FunctionReturnType {
         if (!VariableUtilities.storageMatches(parameters, function.getParameters())) {
             throw cannotPreserve("Ghidra could not retain the inferred parameter storage");
         }
-        function.setReturnType(returnType, SourceType.USER_DEFINED);
         return committed;
     }
 
