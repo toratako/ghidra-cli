@@ -330,7 +330,9 @@ final class FieldUses {
                 delta = Math.negateExact(delta);
             }
             long offset = Math.addExact(pointer.offset(), delta);
-            if (offset < 0 || offset >= field.getLength()) return null;
+            // A one-past pointer can return to the field before an access.
+            // withinField still excludes dereferencing that boundary itself.
+            if (offset < 0 || offset > field.getLength()) return null;
             return new PointerValue(op.getOutput(), offset, pointer.indexScale());
         } catch (ArithmeticException e) {
             return null;

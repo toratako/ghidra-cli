@@ -140,6 +140,9 @@ public class CreateSemanticTypeUsesFixture extends GhidraScript {
                     0x8b, 0x44, 0x24, 0x08, 0xc3);
                 function("bit_write", 0x1580, pointer(bits),
                     0x8b, 0x44, 0x24, 0x04, 0x80, 0x08, 0x01, 0x31, 0xc0, 0xc3);
+                function("write_values", 0x15c0, pointer(packet),
+                    0x8b, 0x44, 0x24, 0x04, 0xc7, 0x40, 0x0c, 0x07, 0, 0, 0,
+                    0x31, 0xc0, 0xc3);
                 // An internal function with a body but no mapped instructions must
                 // make an exhaustive semantic scan report a decompilation failure.
                 var failed = program.getFunctionManager().createFunction("unmapped", address(0x3000),

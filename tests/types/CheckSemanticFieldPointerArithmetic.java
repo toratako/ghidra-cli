@@ -42,7 +42,8 @@ public class CheckSemanticFieldPointerArithmetic extends GhidraScript {
         return high.newVarnode(4, high.getAddressFactory().getConstantSpace().getAddress(value));
     }
 
-    private static void arithmetic(HighFunction high, PcodeOp origin, int opcode, long displacement)
+    private static void arithmetic(HighFunction high, PcodeOp origin, long forwardIndex,
+            int opcode, long displacement)
             throws Exception {
         var unique = high.getAddressFactory().getUniqueSpace();
         Varnode forward = high.newVarnode(4, unique.getAddress(0x70000000));
@@ -54,11 +55,11 @@ public class CheckSemanticFieldPointerArithmetic extends GhidraScript {
                 if (op.getInput(i) == origin.getOutput()) high.setInput(op, backward, i);
             }
         }
-        // The final address is unchanged by +one element followed by -one element.
+        // Include a legal one-past array pointer that returns before the access.
         // Keep these native AST operations detached from the saved program; a
         // subsequent optimizer pass would fold the arithmetic away.
         PcodeOp add = high.newOp(new SequenceNumber(origin.getSeqnum().getTarget(), 1000000),
-            PcodeOp.PTRADD, new ArrayList<>(List.of(origin.getOutput(), constant(high, 1), constant(high, 4))),
+            PcodeOp.PTRADD, new ArrayList<>(List.of(origin.getOutput(), constant(high, forwardIndex), constant(high, 4))),
             forward);
         ArrayList<Varnode> inputs = new ArrayList<>(List.of(forward, constant(high, displacement)));
         if (opcode == PcodeOp.PTRADD) inputs.add(constant(high, 4));
@@ -91,27 +92,45 @@ public class CheckSemanticFieldPointerArithmetic extends GhidraScript {
         var find = fieldsClass.getDeclaredMethod("find", sessionClass, Function.class,
             DecompileResults.class, ghidra.program.model.data.DataTypeComponent.class);
         find.setAccessible(true);
-        Function function = getFunctionAt(toAddr(0x1280));
         Structure packet = (Structure) currentProgram.getDataTypeManager().getDataType("/Semantic/Packet");
         long modification = currentProgram.getModificationNumber();
         DecompInterface engine = new DecompInterface();
         check(engine.openProgram(currentProgram), "Cannot open native decompiler");
         try {
-            int[] opcodes = {PcodeOp.PTRADD, PcodeOp.INT_ADD, PcodeOp.INT_SUB, PcodeOp.INT_ADD};
-            long[] offsets = {0xffffffffL, 0xfffffffcL, 4, 0xfffffff8L};
-            for (int i = 0; i < opcodes.length; i++) {
-                DecompileResults results = engine.decompileFunction(function, 30, monitor);
-                check(results.decompileCompleted(), results.getErrorMessage());
-                arithmetic(results.getHighFunction(), fieldPointer(results.getCCodeMarkup()),
-                    opcodes[i], offsets[i]);
-                Object findings = find.invoke(null, session, function, results, packet.getComponentAt(8));
-                var usesMethod = findings.getClass().getDeclaredMethod("uses");
-                usesMethod.setAccessible(true);
-                JsonArray uses = (JsonArray) usesMethod.invoke(findings);
-                check(uses.size() == 1, "Unexpected arithmetic field uses: " + uses);
-                String expected = i == 3 ? "address" : "read";
-                check(uses.get(0).getAsJsonObject().get("access").getAsString().equals(expected),
-                    "Incorrect field access after " + PcodeOp.getMnemonic(opcodes[i]) + ": " + uses);
+            int[] opcodes = {PcodeOp.PTRADD, PcodeOp.INT_ADD, PcodeOp.INT_SUB,
+                PcodeOp.INT_ADD, PcodeOp.PTRADD, PcodeOp.PTRADD};
+            long[] forwardIndices = {1, 1, 1, 1, 2, 2};
+            long[] offsets = {0xffffffffL, 0xfffffffcL, 4, 0xfffffff8L,
+                0xfffffffeL, 0xffffffffL};
+            for (long entry : new long[] {0x1280, 0x15c0}) {
+                Function function = getFunctionAt(toAddr(entry));
+                for (int i = 0; i < opcodes.length; i++) {
+                    DecompileResults results = engine.decompileFunction(function, 30, monitor);
+                    check(results.decompileCompleted(), results.getErrorMessage());
+                    arithmetic(results.getHighFunction(), fieldPointer(results.getCCodeMarkup()),
+                        forwardIndices[i], opcodes[i], offsets[i]);
+                    Object findings = find.invoke(null, session, function, results, packet.getComponentAt(8));
+                    var usesMethod = findings.getClass().getDeclaredMethod("uses");
+                    usesMethod.setAccessible(true);
+                    JsonArray uses = (JsonArray) usesMethod.invoke(findings);
+                    check(uses.size() == 1, "Unexpected arithmetic field uses: " + uses);
+                    String expected = i == 3 || i == 5 ? "address" : entry == 0x1280 ? "read" : "write";
+                    check(uses.get(0).getAsJsonObject().get("access").getAsString().equals(expected),
+                        "Incorrect field access after +" + forwardIndices[i] + " elements and "
+                            + PcodeOp.getMnemonic(opcodes[i]) + ": " + uses);
+                    if (i == 5) {
+                        var unresolvedMethod = findings.getClass().getDeclaredMethod("unresolved");
+                        unresolvedMethod.setAccessible(true);
+                        JsonArray unresolved = (JsonArray) unresolvedMethod.invoke(findings);
+                        boolean diagnosed = false;
+                        for (var row : unresolved) {
+                            diagnosed |= row.getAsJsonObject().get("reason").getAsString()
+                                .equals("memory_access_extends_beyond_field");
+                        }
+                        check(diagnosed,
+                            "One-past dereference lacks its field-bound diagnostic: " + unresolved);
+                    }
+                }
             }
             check(currentProgram.getModificationNumber() == modification,
                 "Detached arithmetic probe changed the saved program");
