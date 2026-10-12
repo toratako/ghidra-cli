@@ -793,3 +793,60 @@ public class CheckBlockByteSize extends GhidraScript {
         });
     }
 }
+
+#[test]
+#[serial]
+fn creating_backing_memory_preserves_existing_mapped_data() {
+    require_ghidra!();
+    with_fixture("x86:LE:64:default", |_, client, program| {
+        const CHECK_MAPPED_POINTER: &str = r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.PointerDataType;
+public class CheckCreationMappedPointer extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        var address = toAddr(0x3000);
+        if (getScriptArgs()[0].equals("create")) {
+            memory.createByteMappedBlock("unbacked_view", address, toAddr(0x4000), 8, false);
+            currentProgram.getListing().createData(address,
+                new PointerDataType(null, 8, currentProgram.getDataTypeManager()));
+        }
+        var data = currentProgram.getListing().getDefinedDataAt(address);
+        if (data == null || data.getValue() != null
+                || currentProgram.getReferenceManager().getReferencesFrom(address).length != 0)
+            throw new IllegalStateException("Unbacked mapped pointer changed");
+    }
+}
+"#;
+        client
+            .script_run_source(CHECK_MAPPED_POINTER, &["create".into()], &[], false)
+            .unwrap();
+        // Filling this source would make the pointer readable without updating
+        // its default reference, leaving saved data and xrefs inconsistent.
+        reject(
+            client,
+            "memory_block_create",
+            json!({"name": ".backing", "start": "0x4000", "size": 8,
+                "fill": 17, "permissions": "rw"}),
+        );
+        command(
+            client,
+            "memory_block_create",
+            json!({"name": ".isolated", "start": "0x4000", "size": 8,
+                "fill": 17, "permissions": "rw", "overlay": "isolated"}),
+        );
+        command(
+            client,
+            "memory_block_create",
+            json!({"name": ".unknown", "start": "0x4000", "size": 8,
+                "uninitialized": true, "permissions": "rw"}),
+        );
+        let saved = client.memory_block_list().unwrap();
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(client.memory_block_list().unwrap(), saved);
+        client
+            .script_run_source(CHECK_MAPPED_POINTER, &["check".into()], &[], false)
+            .unwrap();
+    });
+}

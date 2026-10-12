@@ -53,6 +53,9 @@ public final class MemoryBlockCommands {
             }
         } else {
             rejectCollision(start, end, null);
+            // Newly readable source bytes also change existing mapped views,
+            // whose data references are not refreshed by native block creation.
+            if (!uninitialized) rejectMappedSources(new AddressSet(start, end));
         }
 
         session.monitor().checkCancelled();
