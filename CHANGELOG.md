@@ -5,6 +5,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reject symbol and namespace edits when `--where` fails on any candidate,
+  instead of silently excluding that candidate from the selection.
+
 ## [0.10.0] - 2026-10-12
 
 ### Added

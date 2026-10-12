@@ -118,7 +118,16 @@ fn resolve_symbol_targets(
     }
 
     if let Some((expression, parsed)) = where_expr.zip(filter) {
-        candidates.retain(|s| parsed.evaluate(s).unwrap_or(false));
+        let mut selected = Vec::new();
+        for candidate in candidates {
+            if parsed
+                .evaluate(&candidate)
+                .map_err(describe_selector_error)?
+            {
+                selected.push(candidate);
+            }
+        }
+        candidates = selected;
         if candidates.is_empty() {
             anyhow::bail!(
                 "No symbol named '{}' matches --where '{}'",

@@ -72,7 +72,16 @@ fn resolve_target(
         .collect();
     anyhow::ensure!(!candidates.is_empty(), "Namespace not found: {path}");
     if let Some((expression, predicate)) = where_expr.zip(predicate) {
-        candidates.retain(|row| predicate.evaluate(row).unwrap_or(false));
+        let mut selected = Vec::new();
+        for candidate in candidates {
+            if predicate
+                .evaluate(candidate)
+                .map_err(crate::app::output::describe_selector_error)?
+            {
+                selected.push(candidate);
+            }
+        }
+        candidates = selected;
         anyhow::ensure!(
             !candidates.is_empty(),
             "No namespace at '{path}' matches --where '{}'",

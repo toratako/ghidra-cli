@@ -1,5 +1,48 @@
 use super::{batch_path_argument, RecordedBridge};
-use serde_json::Value;
+use serde_json::{json, Value};
+
+#[test]
+fn batch_selector_evaluation_errors_prevent_symbol_and_namespace_edits() {
+    let bridge = RecordedBridge::with_info(json!({
+        "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+        "explicit_addresses": true,
+        "namespace_rows": [
+            {"id": "1", "name": "Widget", "path": "app::Widget", "parent": "app", "kind": "class"},
+            {"id": "2", "name": "Widget", "path": "app::Widget", "parent": "app", "kind": "namespace"},
+        ],
+    }));
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        concat!(
+            "symbol delete shared --where 'kind=label OR name>2'\n",
+            "namespace delete app::Widget --where 'kind=class OR name>2'\n",
+        ),
+    )
+    .unwrap();
+
+    let output = bridge
+        .command()
+        .args(["batch", "batch.txt"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["commands_executed"], 2);
+    assert_eq!(report["failed"], 2);
+    for row in report["results"].as_array().unwrap() {
+        assert!(row["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid --where expression"));
+    }
+    let requests = bridge.requests.lock().unwrap();
+    let commands: Vec<_> = requests
+        .iter()
+        .filter(|request| request["command"] != "bridge_info")
+        .map(|request| request["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(commands, ["symbol_get_by_name", "namespace_list"]);
+}
 
 #[test]
 fn batch_on_error_controls_runtime_failures_after_preflight() {
