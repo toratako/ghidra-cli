@@ -3,6 +3,84 @@ use serde_json::{json, Value};
 
 #[test]
 #[serial]
+fn unreadable_pascal_extent_does_not_abort_string_reference_search() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("pascal-string-extent-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.data.PascalString255DataType;
+import ghidra.program.model.data.StringDataType;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.util.DefaultLanguageService;
+public class CreatePascalExtentFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:32:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("Pascal string extent");
+            try {
+                var space = program.getAddressFactory().getDefaultAddressSpace();
+                var valid = space.getAddress(0x1000);
+                program.getMemory().createInitializedBlock("valid", valid,
+                    new java.io.ByteArrayInputStream(new byte[]{'l', 'i', 'v', 'e', 0}),
+                    5, monitor, false);
+                program.getListing().createData(valid, StringDataType.dataType, 5);
+                var pascal = space.getMaxAddress().subtract(1);
+                program.getMemory().createInitializedBlock("pascal", pascal,
+                    new java.io.ByteArrayInputStream(new byte[]{1, 'x'}), 2, monitor, false);
+                program.getListing().createData(pascal, PascalString255DataType.dataType);
+                // Editing the length prefix does not resize the applied data unit.
+                program.getMemory().setByte(pascal, (byte) 0xff);
+                program.getReferenceManager().addMemoryReference(valid, valid,
+                    RefType.DATA, SourceType.USER_DEFINED, 0);
+            } finally {
+                program.endTransaction(tx, true);
+            }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally {
+            program.release(this);
+        }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let expected = json!([
+            {"address":"0x00001000", "value":"live", "char_length":4, "byte_length":5}
+        ]);
+        assert_eq!(
+            client.list_strings(None, None, None).unwrap()["strings"],
+            expected
+        );
+        assert_eq!(client.find_string("").unwrap()["results"], expected);
+        let references = client.string_refs("live".into()).unwrap();
+        assert_eq!(references["count"], 1, "{references}");
+        assert_eq!(references["results"][0]["string_value"], "live");
+        assert_eq!(client.string_refs("absent".into()).unwrap()["count"], 0);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn string_refs_include_interior_destinations_and_report_byte_offsets() {
     require_ghidra!();
     let harness = harness();

@@ -2,6 +2,7 @@ package ghidracli.listing;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
@@ -80,6 +81,10 @@ public final class StringQueries {
             Object value = data.getDataType().getValue(buffer, data, data.getLength());
             session.monitor().checkCancelled();
             return value == null ? null : value.toString();
+        } catch (AddressOverflowException unreadable) {
+            // A patched Pascal length prefix can extend beyond the address
+            // space even though the stored data unit still fits in memory.
+            return null;
         } catch (CancellationException cancelled) {
             throw new CancelledException();
         }
