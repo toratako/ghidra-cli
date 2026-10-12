@@ -220,6 +220,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/memory/MemoryPatch.java"),
     ),
     (
+        "ghidracli/memory/MemoryReads.java",
+        include_str!("../scripts/ghidracli/memory/MemoryReads.java"),
+    ),
+    (
         "ghidracli/memory/MemorySources.java",
         include_str!("../scripts/ghidracli/memory/MemorySources.java"),
     ),

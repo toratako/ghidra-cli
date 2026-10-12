@@ -24,6 +24,7 @@ public class CheckPartialMappingCancellation extends GhidraScript {
         TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
         int[] reads = {0};
         boolean[] cancel = {true};
+        String[] cancelledRead = {"getByte"};
         Object session = null;
         try {
             Memory memory = (Memory) Proxy.newProxyInstance(Memory.class.getClassLoader(),
@@ -31,7 +32,7 @@ public class CheckPartialMappingCancellation extends GhidraScript {
                     Object result;
                     try { result = method.invoke(real.getMemory(), args); }
                     catch (InvocationTargetException failure) { throw failure.getCause(); }
-                    if (method.getName().equals("getByte") && ++reads[0] == 2 && cancel[0]) {
+                    if (method.getName().equals(cancelledRead[0]) && ++reads[0] == 2 && cancel[0]) {
                         requestMonitor.cancel();
                     }
                     return result;
@@ -73,6 +74,19 @@ public class CheckPartialMappingCancellation extends GhidraScript {
             if (recovered.has("error") || recovered.get("size").getAsInt() != 128) {
                 throw new IllegalStateException("Fresh monitor failed to recover the readable prefix: " + recovered);
             }
+            cancelledRead[0] = "getBlock";
+            reads[0] = 0;
+            cancel[0] = true;
+            args.addProperty("address", "0x1800");
+            args.addProperty("size", 16);
+            JsonObject mapped = (JsonObject) read.invoke(commands, args);
+            if (!requestMonitor.isCancelled() || reads[0] != 2 || !mapped.has("error"))
+                throw new IllegalStateException("Cancelled mapping traversal returned partial success: " + mapped);
+            requestMonitor.clearCancelled();
+            cancel[0] = false;
+            JsonObject mappedRecovery = (JsonObject) read.invoke(commands, args);
+            if (mappedRecovery.has("error") || mappedRecovery.get("size").getAsInt() != 16)
+                throw new IllegalStateException("Mapping traversal did not recover: " + mappedRecovery);
         } finally {
             requestMonitor.clearCancelled();
             try {

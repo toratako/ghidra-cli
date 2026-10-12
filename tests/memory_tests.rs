@@ -408,6 +408,113 @@ fn parse_address(value: &Value) -> u64 {
 
 #[test]
 #[serial]
+fn memory_read_resolves_deep_self_mappings_without_native_recursion() {
+    require_ghidra!();
+    let directory = tempfile::Builder::new()
+        .prefix("ghidra-recursive-mappings-")
+        .tempdir()
+        .unwrap();
+    let project = directory.path().join("project");
+    let binary = directory.path().join("source.bin");
+    std::fs::write(&binary, [0x5a]).unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let program = import_oneshot(
+        &project,
+        &binary,
+        &installation,
+        &OneShotImportOptions {
+            language: Some("x86:LE:32:default".to_owned()),
+            loader: Some("BinaryLoader".to_owned()),
+            loader_options: vec![("baseAddr".to_owned(), "0x1000".to_owned())],
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .program;
+    let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    let client = harness.client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CreateRecursiveReadMappings extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        memory.createByteMappedBlock("self_shifted", toAddr(0x10000),
+            toAddr(0x10001), 16 * 1024, false);
+        memory.createInitializedBlock("shifted_source", toAddr(0x14000),
+            1, (byte) 0x5a, monitor, false);
+        memory.createByteMappedBlock("cycle", toAddr(0x20000), toAddr(0x20000), 1, false);
+        memory.createInitializedBlock("before_cycle", toAddr(0x1ffff),
+            1, (byte) 0x24, monitor, false);
+        memory.createByteMappedBlock("large_self_shifted", toAddr(0x1000000),
+            toAddr(0x1000001), 16 * 1024 * 1024, false);
+        memory.createInitializedBlock("large_shifted_source", toAddr(0x2000000),
+            1, (byte) 0x5a, monitor, false);
+        memory.createInitializedBlock("bit_source", toAddr(0x4000000),
+            1, (byte) 0x5a, monitor, false);
+        memory.createBitMappedBlock("inner_bits", toAddr(0x6000000), toAddr(0x4000000), 8, false);
+        memory.createBitMappedBlock("outer_bits", toAddr(0x5000000), toAddr(0x6000003), 8, false);
+        for (int i = 0; i < 3; i++) {
+            long start = 0x3000000 + i * 0x100000;
+            memory.createByteMappedBlock("mixed_deep_" + i, toAddr(start),
+                toAddr(start + 1), 65552, false);
+            memory.createByteMappedBlock("mixed_tail_" + i, toAddr(start + 65552),
+                toAddr(i == 2 ? start : 0x5000000 + i * 7), 1, false);
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let before = pointer_program_state(&client);
+    let resolved = read_memory(&client, "0x10000", 16 * 1024 + 2);
+    assert_eq!(resolved["size"], 16 * 1024 + 1);
+    assert_eq!(resolved["hex"], "5a".repeat(16 * 1024 + 1));
+    assert_eq!(resolved["pointers"].as_array().unwrap().len(), 4096);
+    assert_eq!(read_memory(&client, "0x1000000", 1)["hex"], "5a");
+    assert_eq!(read_memory(&client, "0x3000000", 1)["hex"], "01");
+    assert_eq!(read_memory(&client, "0x3100000", 1)["hex"], "00");
+    let vtable = client
+        .send_command(
+            "vtable_read",
+            Some(json!({"target":"0x10008", "abi":"itanium", "entries":1})),
+        )
+        .unwrap();
+    assert_eq!(vtable["header"]["offset_to_top"]["value"], "0x5a5a5a5a");
+    assert_eq!(vtable["header"]["offset_to_top"]["readable"], true);
+    assert_eq!(vtable["complete"], true);
+    assert_eq!(pointer_program_state(&client), before);
+    let error = client
+        .send_command("read_memory", Some(json!({"address":"0x20000", "size":1})))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("unreadable") || error.contains("cyclic"),
+        "{error}"
+    );
+    let error = client
+        .send_command(
+            "read_memory",
+            Some(json!({"address":"0x3200000", "size":1})),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("Cyclic"), "{error}");
+    let prefix = read_memory(&client, "0x1ffff", 2);
+    assert_eq!(prefix["size"], 1);
+    assert_eq!(prefix["hex"], "24");
+    assert_eq!(read_memory(&client, "0x1000", 1)["hex"], "5a");
+}
+
+#[test]
+#[serial]
 fn memory_read_keeps_the_initialized_prefix_of_partially_backed_mappings() {
     require_ghidra!();
     let directory = tempfile::Builder::new()
@@ -450,6 +557,8 @@ public class CreatePartialMemoryMappings extends GhidraScript {
         memory.createByteMappedBlock("nested_bytes", space.getAddress(0x1800),
             space.getAddress(0x2000), 32, false);
         memory.createUninitializedBlock("unknown_source", source.add(16), 16, false);
+        createData(space.getAddress(0x1800), new ghidra.program.model.data.ArrayDataType(
+            ghidra.program.model.data.CharDataType.dataType, 16, 1));
     }
 }
 "#,
@@ -470,6 +579,17 @@ public class CreatePartialMemoryMappings extends GhidraScript {
         assert_eq!(read_memory(&client, address, length * 2), bounded);
     }
     assert_eq!(pointer_program_state(&client), before);
+    let data = client
+        .send_command("data_read", Some(json!({"target": "0x1800"})))
+        .unwrap();
+    assert_eq!(data["state"], "available", "{data}");
+    assert_eq!(data["value"], "Z".repeat(16));
+    let strings = client.list_strings(None, None, None).unwrap();
+    assert_eq!(strings["strings"][0]["value"], "Z".repeat(16), "{strings}");
+    assert_eq!(
+        client.find_string("ZZ").unwrap()["results"],
+        strings["strings"]
+    );
     client
         .script_run_source(
             include_str!("memory_mappings/CheckPartialMappingCancellation.java"),
@@ -483,6 +603,14 @@ public class CreatePartialMemoryMappings extends GhidraScript {
             .send_command("read_memory", Some(json!({"address": address, "size": 1})))
             .is_err());
     }
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    assert_eq!(
+        client
+            .send_command("data_read", Some(json!({"target": "0x1800"})))
+            .unwrap()["value"],
+        "Z".repeat(16)
+    );
 }
 
 #[test]

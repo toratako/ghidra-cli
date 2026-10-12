@@ -7,9 +7,9 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
-import ghidra.program.model.mem.DumbMemBufferImpl;
 import ghidra.program.util.DefinedDataIterator;
 import ghidra.util.exception.CancelledException;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
@@ -60,28 +60,28 @@ public final class StringQueries {
         if (!data.hasStringValue()) return null;
         // Component reads through Data populate the entire root object's byte
         // cache, even for a short string in a huge aggregate.
-        var buffer = new DumbMemBufferImpl(session.program().getMemory(), data.getAddress()) {
-            @Override
-            public int getBytes(byte[] bytes, int offset) {
-                // Native terminator scans otherwise ignore cancellation inside
-                // one large char array, both for sizing and for decoding.
-                if (session.monitor().isCancelled()) throw new CancellationException();
-                return super.getBytes(bytes, offset);
-            }
-        };
+        var reads = new MemoryReads(session);
+        var buffer = reads.buffer(data.getAddress());
         try {
             var string = StringDataInstance.getStringDataInstance(
                 data.getBaseDataType(), buffer, data, data.getLength());
             int length = string.getStringLength();
             // A char array can terminate before its uninitialized trailing storage.
             // Check only the bytes consumed by the native string interpretation.
-            if (length < 0 || (length > 0 && !session.program().getMemory()
-                    .getAllInitializedAddressSet().contains(data.getAddress(),
-                        data.getAddress().addNoWrap(length - 1)))) return null;
-            Object value = data.getDataType().getValue(buffer, data, data.getLength());
+            if (length < 0) return null;
+            byte[] bytes = new byte[Math.min(length, 16 * 1024)];
+            for (int offset = 0; offset < length;) {
+                int requested = Math.min(bytes.length, length - offset);
+                if (reads.read(data.getAddress().addNoWrap(offset), bytes, 0, requested) != requested)
+                    return null;
+                offset += requested;
+            }
+            // Array.getValue additionally consults the incomplete native
+            // initialized set. Decode the already validated native instance.
+            String value = string.getStringValue();
             session.monitor().checkCancelled();
-            return value == null ? null : value.toString();
-        } catch (AddressOverflowException unreadable) {
+            return value;
+        } catch (AddressOverflowException | ghidra.program.model.mem.MemoryAccessException unreadable) {
             // A patched Pascal length prefix can extend beyond the address
             // space even though the stored data unit still fits in memory.
             return null;

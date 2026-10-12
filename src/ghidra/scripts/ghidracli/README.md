@@ -254,7 +254,7 @@ another consumer or terminate its checkout.
 | [`ListQuery`](query/ListQuery.java) | Literal contains, checked page bounds and matching-row offset/limit for the five supported list handlers and defined-string search; see [query execution](../../../query/README.md) |
 | [`StringQueries`](listing/StringQueries.java) | Shared defined-string scan and row generation for list/search; pattern and query filter precede paging; `char_length` counts Unicode code points and `byte_length` is the data definition's occupied bytes |
 | [`GraphCommands`](analysis/GraphCommands.java), [`PcodeCommands`](analysis/PcodeCommands.java) | Graph traversal and p-code |
-| [`MemoryCommands`](memory/MemoryCommands.java), [`MemoryPatch`](memory/MemoryPatch.java) | Current/original byte reads and preservation checks for byte edits |
+| [`MemoryCommands`](memory/MemoryCommands.java), [`MemoryPatch`](memory/MemoryPatch.java), [`MemoryReads`](memory/MemoryReads.java) | Current/original byte reads, shared iterative mapped-byte resolution and preservation checks for byte edits |
 | [`AnalysisCommands`](analysis/AnalysisCommands.java) | Full/range/pending analysis dispatch and typed analyzer configuration |
 | [`ScriptCommands`](script/ScriptCommands.java), [`ArtifactManifest`](script/ArtifactManifest.java) | Script compilation/execution and output-artifact validation |
 | [`AddressCodec`](query/AddressCodec.java), [`AddressResolver`](query/AddressResolver.java), [`IntegerLiteral`](query/IntegerLiteral.java), [`FunctionQueries`](function/FunctionQueries.java), [`NameSuggestions`](query/NameSuggestions.java) | Explicit address syntax/formatting, integer spelling, shared lookup and diagnostics; no handler-to-handler dependencies |

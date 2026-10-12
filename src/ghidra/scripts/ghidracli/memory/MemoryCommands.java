@@ -3,11 +3,7 @@ package ghidracli.memory;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressOverflowException;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.util.exception.CancelledException;
 import ghidracli.protocol.JsonProtocol;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
@@ -102,6 +98,7 @@ public final class MemoryCommands {
             byte[] bytes = new byte[chunkSize];
             StringBuilder hexStr = new StringBuilder();
             PointerValues pointerValues = new PointerValues(session);
+            MemoryReads reads = new MemoryReads(session);
             JsonArray pointers = new JsonArray();
             int bytesRead = 0;
             while (bytesRead < size) {
@@ -121,7 +118,12 @@ public final class MemoryCommands {
                     if (block == null || (!block.isInitialized() && !block.isMapped())) break;
                 }
                 int requested = Math.min(bytes.length, size - bytesRead);
-                int read = readChunk(mem, current, bytes, requested, bytesRead > 0);
+                int read;
+                try { read = reads.read(current, bytes, 0, requested); }
+                catch (ghidra.program.model.mem.MemoryAccessException unreadable) {
+                    if (bytesRead == 0) throw unreadable;
+                    break;
+                }
                 appendHex(hexStr, bytes, read);
                 for (int i = 0; i <= read - pointerSize; i += pointerSize) {
                     session.monitor().checkCancelled();
@@ -146,30 +148,6 @@ public final class MemoryCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to read memory: " + e.getMessage());
-        }
-    }
-
-    private int readChunk(Memory memory, Address address, byte[] bytes, int requested,
-            boolean hasPrefix) throws MemoryAccessException, CancelledException {
-        try {
-            return memory.getBytes(address, bytes, 0, requested);
-        } catch (MemoryAccessException failure) {
-            // A mapped block can throw after filling a readable prefix when its
-            // source becomes unavailable. The bulk API does not return that count.
-            // Re-read this bounded chunk to locate the actual byte boundary;
-            // initialized address sets can omit readable nested mappings.
-            int read = 0;
-            while (read < requested) {
-                session.monitor().checkCancelled();
-                try {
-                    bytes[read] = memory.getByte(address.addNoWrap(read));
-                } catch (MemoryAccessException | AddressOverflowException boundary) {
-                    if (read == 0 && !hasPrefix) throw failure;
-                    break;
-                }
-                read++;
-            }
-            return read;
         }
     }
 

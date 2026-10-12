@@ -6,6 +6,7 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.mem.ByteMemBufferImpl;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidracli.memory.MemoryReads;
 import ghidracli.memory.PointerValues;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
@@ -15,10 +16,12 @@ import java.math.BigInteger;
 final class VtableHeaders {
     private final ProgramSession session;
     private final PointerValues pointers;
+    private final MemoryReads reads;
 
     VtableHeaders(ProgramSession session) {
         this.session = session;
         this.pointers = new PointerValues(session);
+        this.reads = new MemoryReads(session);
     }
 
     JsonObject itanium(Address addressPoint, boolean relative) throws Exception {
@@ -194,7 +197,7 @@ final class VtableHeaders {
         session.monitor().checkCancelled();
         shift(address, width - 1);
         byte[] bytes = new byte[width];
-        if (session.program().getMemory().getBytes(address, bytes) != width) {
+        if (reads.read(address, bytes, 0, width) != width) {
             throw new MemoryAccessException("Incomplete read at " + AddressCodec.format(address));
         }
         return bytes;

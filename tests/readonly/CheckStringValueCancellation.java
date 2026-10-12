@@ -26,6 +26,13 @@ public class CheckStringValueCancellation extends GhidraScript {
         int[] nativeReads = {0};
         TaskMonitor[] requestMonitor = {new TaskMonitorAdapter(true) {
             @Override
+            public void checkCancelled() throws CancelledException {
+                // TaskMonitorAdapter reads its flag directly, bypassing isCancelled().
+                isCancelled();
+                super.checkCancelled();
+            }
+
+            @Override
             public boolean isCancelled() {
                 boolean nativeScan = StackWalker.getInstance().walk(frames -> frames.anyMatch(frame ->
                     frame.getClassName().equals("ghidra.program.model.data.StringDataInstance")

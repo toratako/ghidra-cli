@@ -31,7 +31,7 @@ public final class PointerValues {
         }
         session.monitor().checkCancelled();
         byte[] bytes = new byte[width];
-        if (session.program().getMemory().getBytes(address, bytes) != width) {
+        if (new MemoryReads(session).read(address, bytes, 0, width) != width) {
             throw new MemoryAccessException("Incomplete pointer at " + AddressCodec.format(address));
         }
         return read(address, bytes);

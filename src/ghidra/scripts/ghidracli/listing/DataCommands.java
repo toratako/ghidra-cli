@@ -12,11 +12,11 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.EndianSettingsDefinition;
 import ghidra.program.model.data.Enum;
 import ghidra.program.model.listing.Data;
-import ghidra.program.model.mem.DumbMemBufferImpl;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.DataConverter;
 import ghidra.util.exception.CancelledException;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
 import ghidracli.query.ListQuery;
@@ -182,7 +182,7 @@ public final class DataCommands {
         }
         // Data components delegate reads to their root's whole-object byte cache.
         // Use a small native buffer while retaining the applied Data's settings.
-        var buffer = new DumbMemBufferImpl(session.program().getMemory(), data.getAddress());
+        var buffer = new MemoryReads(session).buffer(data.getAddress());
         if (!buffer.isInitializedMemory()) {
             result.addProperty("state", "unavailable");
             result.addProperty("reason", "uninitialized_memory");

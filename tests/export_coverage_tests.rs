@@ -204,6 +204,15 @@ public class CreateBinaryExportTail extends GhidraScript {
             tail.length, monitor, false);
         currentProgram.getMemory().createByteMappedBlock("initialized_alias",
             toAddr(0x3000), toAddr(0x1010), 4, false);
+        currentProgram.getMemory().createByteMappedBlock("nested_alias",
+            toAddr(0x2800), toAddr(0x3000), 4, false);
+        currentProgram.getMemory().createBitMappedBlock("nested_bits",
+            toAddr(0x2810), toAddr(0x3000), 8, false);
+        currentProgram.getMemory().createByteMappedBlock("nested_skipped_bytes",
+            toAddr(0x2820), toAddr(0x3000), 2,
+            new ghidra.program.database.mem.ByteMappingScheme(1, 2), false);
+        currentProgram.getMemory().createByteMappedBlock("nested_partial",
+            toAddr(0x2830), toAddr(0x3000), 8, false);
         byte[] overlay = {0x11, 0x22, 0x33};
         currentProgram.getMemory().createInitializedBlock("export_overlay",
             toAddr(0x4000), new java.io.ByteArrayInputStream(overlay),
@@ -221,8 +230,24 @@ public class CreateBinaryExportTail extends GhidraScript {
         .expect("stream initialized ranges through their final byte");
     assert_receipt(&streamed, &program, "binary", &[&raw_path]);
     bytes.extend_from_slice(&0x1234_5678u32.to_le_bytes());
+    bytes.extend_from_slice(&[0, 0, 0, 1, 1, 1, 1, 0]);
+    bytes.extend_from_slice(&[0x78, 0x34]);
+    bytes.extend_from_slice(&0x1234_5678u32.to_le_bytes());
+    bytes.extend_from_slice(&0x1234_5678u32.to_le_bytes());
     bytes.extend((0..65543).map(|index| (index * 17) as u8));
     bytes.extend_from_slice(&[0x11, 0x22, 0x33]);
+    let actual = std::fs::read(&raw_path).unwrap();
+    assert_eq!(
+        actual.len(),
+        bytes.len(),
+        "readable nested aliases must be exported"
+    );
+    assert_eq!(actual, bytes);
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    client
+        .program_export("binary", Some(raw_path.to_str().unwrap()))
+        .unwrap();
     assert_eq!(std::fs::read(&raw_path).unwrap(), bytes);
     assert_no_export_staging(directory.path());
 }

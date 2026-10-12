@@ -3,9 +3,9 @@ package ghidracli.program;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.util.exporter.Exporter;
-import ghidra.program.model.mem.Memory;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
+import ghidracli.memory.MemoryReads;
 import ghidracli.session.ProgramSession;
 import java.io.File;
 import java.io.IOException;
@@ -93,7 +93,7 @@ public final class ProgramExportCommands {
             try {
                 Path staged = staging.resolve(destination.getFileName());
                 if ("binary".equalsIgnoreCase(exportFormat)) {
-                    exportBinary(staged, session.program().getMemory(), mon);
+                    exportBinary(staged, mon);
                     exported = true;
                 } else {
                     exported = exportMethod.invoke(exporter, staged.toFile(), session.program(), null, mon);
@@ -146,7 +146,7 @@ public final class ProgramExportCommands {
         }
     }
 
-    private static void exportBinary(Path output, Memory memory, TaskMonitor monitor)
+    private void exportBinary(Path output, TaskMonitor monitor)
             throws IOException, CancelledException, ghidra.program.model.mem.MemoryAccessException {
         // Native BinaryExporter allocates an int-sized array for each complete
         // range and ignores its monitor. Stream initialized address ranges,
@@ -154,14 +154,15 @@ public final class ProgramExportCommands {
         // so large ranges neither truncate nor exhaust the bridge JVM. This
         // selection is consistent across supported Ghidra versions.
         byte[] buffer = new byte[64 * 1024];
+        MemoryReads reads = new MemoryReads(session);
         try (var stream = Files.newOutputStream(output)) {
-            for (var range : memory.getAllInitializedAddressSet().getAddressRanges()) {
+            for (var range : reads.initializedAddresses().getAddressRanges()) {
                 var cursor = range.getMinAddress();
                 long remaining = range.getLength();
                 while (remaining > 0) {
                     monitor.checkCancelled();
                     int length = (int) Math.min(remaining, buffer.length);
-                    int read = memory.getBytes(cursor, buffer, 0, length);
+                    int read = reads.read(cursor, buffer, 0, length);
                     if (read <= 0) {
                         throw new IOException("Could not read initialized memory at " + cursor);
                     }

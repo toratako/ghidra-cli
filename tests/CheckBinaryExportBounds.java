@@ -5,6 +5,7 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 import java.lang.reflect.InvocationTargetException;
@@ -40,6 +41,17 @@ public class CheckBinaryExportBounds extends GhidraScript {
             // The proxy avoids allocating a multi-gigabyte fixture or artifact.
             var initialized = new AddressSet(space.getAddress(0x1000),
                 space.getAddress(0x1_0000_0fffL));
+            MemoryBlock block = (MemoryBlock) Proxy.newProxyInstance(MemoryBlock.class.getClassLoader(),
+                new Class<?>[] {MemoryBlock.class}, (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getStart": return initialized.getMinAddress();
+                        case "getEnd": return initialized.getMaxAddress();
+                        case "getSize": return 0x1_0000_0000L;
+                        case "isMapped": return false;
+                        case "isInitialized": return true;
+                        default: throw new UnsupportedOperationException(method.getName());
+                    }
+                });
             TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
             int[] reads = {0};
             String[] mode = {"cancel"};
@@ -47,6 +59,9 @@ public class CheckBinaryExportBounds extends GhidraScript {
                 new Class<?>[] {Memory.class}, (proxy, method, args) -> {
                     switch (method.getName()) {
                         case "getAllInitializedAddressSet": return initialized;
+                        case "getBlocks": return new MemoryBlock[] {block};
+                        case "getBlock": return initialized.contains((ghidra.program.model.address.Address) args[0])
+                            ? block : null;
                         case "getAddressRanges":
                             return args == null || args.length == 0
                                 ? initialized.getAddressRanges()
