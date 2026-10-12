@@ -15,11 +15,13 @@ import ghidra.app.util.opinion.LoaderService;
 import ghidra.formats.gfilesystem.FileSystemService;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.Project;
+import ghidra.framework.model.TransactionInfo;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
 import ghidra.program.util.GhidraProgramUtilities;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.protocol.JsonProtocol;
 import ghidracli.query.AddressCodec;
@@ -48,6 +50,10 @@ public final class ImportSupport {
         } catch (Exception error) {
             JsonObject detail = errorDetail(error);
             if (detail == null) detail = new JsonObject();
+            if (monitor.isCancelled() || error instanceof CancelledException
+                    || error.getCause() instanceof CancelledException) {
+                detail.addProperty("cancelled", true);
+            }
             detail.add("loader_diagnostics", diagnostics(log));
             JsonProtocol.CommandException failure = new JsonProtocol.CommandException(error.getMessage(), detail);
             failure.initCause(error);
@@ -140,6 +146,7 @@ public final class ImportSupport {
                 // This detached program belongs to the importer, not the live
                 // ProgramSession. Close its owned transaction before saving it.
                 ProgramTransaction transaction = new ProgramTransaction(program, "ghidra-cli program import analysis");
+                TransactionInfo info = program.getCurrentTransactionInfo();
                 boolean completed = false;
                 try {
                     ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager(program)
@@ -150,6 +157,10 @@ public final class ImportSupport {
                     completed = true;
                 } finally {
                     transaction.end(completed);
+                }
+                if (info.getStatus() != TransactionInfo.Status.COMMITTED
+                        || program.getCurrentTransactionInfo() != null) {
+                    throw new IllegalStateException("Import analysis transaction did not commit");
                 }
                 analysisState = "completed";
             }
@@ -171,7 +182,10 @@ public final class ImportSupport {
             DomainFile saved = loaded.getPrimary().getSavedDomainFile();
             detail.addProperty("import_status", saved == null ? "unknown" : "saved");
             if (saved != null) detail.addProperty("program", saved.getPathname());
-            throw new JsonProtocol.CommandException(stage + " failed: " + error.getMessage(), detail);
+            JsonProtocol.CommandException failure = new JsonProtocol.CommandException(
+                stage + " failed: " + error.getMessage(), detail);
+            failure.initCause(error);
+            throw failure;
         } finally {
             loaded.release(consumer);
         }

@@ -419,6 +419,44 @@ fn native_loader_diagnostics_survive_success_and_failure_in_both_pipelines() {
 
 #[test]
 #[serial_test::serial]
+fn failed_import_analysis_preserves_cancellation_and_releases_detached_programs() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    project.ok(&[
+        "program",
+        "import",
+        raw.to_str().unwrap(),
+        "--name",
+        "failure-probe-host",
+        "--language",
+        "x86:LE:32:default",
+        "--no-analyze",
+    ]);
+    project
+        .client()
+        .script_run_source(
+            include_str!("CheckImportFailures.java"),
+            &[raw.to_str().unwrap().to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    project.ok(&["bridge", "stop"]);
+    project.ok(&["bridge", "start", "--program", "recovered-import"]);
+    let programs = project.ok(&["program", "list"]);
+    let programs = programs.as_array().unwrap();
+    assert_eq!(programs.len(), 2, "{programs:?}");
+    assert!(programs
+        .iter()
+        .any(|program| program["name"] == "recovered-import"));
+    assert!(programs
+        .iter()
+        .any(|program| program["name"] == "failure-probe-host"));
+}
+
+#[test]
+#[serial_test::serial]
 fn loader_log_snapshot_bounds_empty_and_unicode_text() {
     require_ghidra!();
     let project = Project::new();
