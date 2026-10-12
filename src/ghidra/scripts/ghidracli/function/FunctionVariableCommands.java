@@ -188,6 +188,9 @@ public final class FunctionVariableCommands {
                 }
             }
             if (updated == null) throw new IllegalStateException("Edited variable could not be read from the database");
+            if (newName != null && !newName.equals(updated.getName())) {
+                throw new IllegalStateException("Ghidra did not retain the requested variable name: " + newName);
+            }
 
             JsonObject result = context(function);
             result.addProperty("status", "updated");

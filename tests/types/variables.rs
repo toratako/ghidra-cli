@@ -823,3 +823,48 @@ public class ChangeVariableSelectionRevision extends GhidraScript {
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
 }
+
+#[test]
+#[serial]
+fn parameter_edits_roll_back_when_native_naming_changes_the_requested_name() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("variable-name-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../function_variables/CreateVariableTestProgram.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let state = || {
+            client
+                .send_command(
+                    "get_function",
+                    Some(
+                        json!({"address":"edit_target", "with_signature":true, "with_frame":true}),
+                    ),
+                )
+                .unwrap()
+        };
+        let before = state();
+        let failed = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"edit_target", "var_name":"input",
+                    "new_name":"param_17", "type_name":"undefined8"})),
+            )
+            .unwrap_err();
+        let error = failed
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert!(error.to_string().contains("param_17"), "{error:?}");
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert_eq!(state(), before);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(state(), before);
+    });
+}

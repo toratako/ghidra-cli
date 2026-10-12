@@ -318,18 +318,28 @@ fn native_signature_application_cannot_silently_drop_declared_parameters() {
     set_signature(&program, "int lookup(void callback(Entry *entry))").assert_success();
     let before = function();
     let types_before = type_inventory(&program);
-    let failed = set_signature(&program, "void renamed(int __return_storage_ptr__)");
-    failed.assert_failure();
-    let error: Value = serde_json::from_str(&failed.stderr).unwrap();
-    assert!(
-        error["message"]
-            .as_str()
-            .unwrap()
-            .contains("did not retain all declared parameters"),
-        "{error}"
-    );
-    assert_eq!(error["detail"]["rolled_back"], true, "{error}");
-    assert_unchanged_after_reopen(&program, &before, &types_before);
+    for (declaration, diagnostic) in [
+        (
+            "void renamed(int __return_storage_ptr__)",
+            "did not retain all declared parameters",
+        ),
+        ("void renamed(long long param_17)", "param_17"),
+    ] {
+        let failed = set_signature(&program, declaration);
+        failed.assert_failure();
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert!(
+            error["message"].as_str().unwrap().contains(diagnostic),
+            "{error}"
+        );
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        assert_unchanged_after_reopen(&program, &before, &types_before);
+    }
+    // Unnamed declarations still acquire ordinary native parameter names.
+    set_signature(&program, "int lookup(int, char *)").assert_success();
+    let parameters = function()["signature_details"]["params"].clone();
+    assert_eq!(parameters[0]["name"], "param_1");
+    assert_eq!(parameters[1]["name"], "param_2");
     harness()
         .client()
         .unwrap()

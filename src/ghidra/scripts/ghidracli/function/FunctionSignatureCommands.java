@@ -8,6 +8,7 @@ import ghidra.program.model.symbol.SourceType;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import ghidracli.types.TypeResolver;
+import java.util.Arrays;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgBool;
@@ -48,14 +49,19 @@ public final class FunctionSignatureCommands {
                 throw new IllegalStateException(diagnostic == null || diagnostic.isBlank()
                     ? "Ghidra rejected the function signature" : diagnostic);
             }
-            // The native application helper treats reserved parameter names
-            // as automatic inputs and can silently omit them from a declaration.
-            int formalParameters = 0;
-            for (var parameter : func.getParameters()) {
-                if (!parameter.isAutoParameter()) formalParameters++;
-            }
-            if (formalParameters != funcDef.getArguments().length) {
+            // The native application helper treats reserved parameter names as
+            // automatic/default inputs and can silently omit or rename them.
+            var declaredParameters = funcDef.getArguments();
+            var formalParameters = Arrays.stream(func.getParameters())
+                .filter(parameter -> !parameter.isAutoParameter()).toList();
+            if (formalParameters.size() != declaredParameters.length) {
                 throw new IllegalStateException("Ghidra did not retain all declared parameters");
+            }
+            for (int i = 0; i < declaredParameters.length; i++) {
+                String name = declaredParameters[i].getName();
+                if (name != null && !name.isEmpty() && !name.equals(formalParameters.get(i).getName())) {
+                    throw new IllegalStateException("Ghidra did not retain the declared parameter name: " + name);
+                }
             }
 
             String newSig = null;
