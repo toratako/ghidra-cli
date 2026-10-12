@@ -13,6 +13,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   share their tail.
 - Preserve bound type identities in call-site signatures and retain callback
   types used outside call-site overrides.
+- Verify declared parameter counts after native signature application and reject
+  variable edits that delete or overwrite other saved locals.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

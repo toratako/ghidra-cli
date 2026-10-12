@@ -4,6 +4,125 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn variable_resize_preserves_neighboring_saved_locals_for_saved_and_inferred_targets() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    for already_saved in [false, true] {
+        let program = format!("variable-resize-{}", uuid::Uuid::new_v4());
+        client
+            .script_run_source(
+                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                std::slice::from_ref(&program),
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(&program).unwrap();
+        let listed = client
+            .send_command("function_var_list", Some(json!({"target":"edit_target"})))
+            .unwrap();
+        let local = listed["variables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["kind"] == "local")
+            .unwrap();
+        let variable_name = if already_saved {
+            client
+                .send_command(
+                    "function_var_set",
+                    Some(json!({"target":"edit_target", "var_name":local["name"], "new_name":"guarded"})),
+                )
+                .unwrap();
+            "guarded"
+        } else {
+            local["name"].as_str().unwrap()
+        };
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.listing.LocalVariableImpl;
+import ghidra.program.model.symbol.SourceType;
+public class AddVariableResizeNeighbor extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1000));
+        for (var local : function.getLocalVariables()) {
+            if (!"guarded".equals(local.getName()) || local.getStackOffset() != -8)
+                throw new IllegalStateException("Unexpected stack-local layout");
+        }
+        function.addLocalVariable(new LocalVariableImpl("kept_neighbor", IntegerDataType.dataType,
+            -4, currentProgram), SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let state = || {
+            client
+                .send_command(
+                    "get_function",
+                    Some(
+                        json!({"address":"edit_target", "with_signature":true, "with_frame":true}),
+                    ),
+                )
+                .unwrap()
+        };
+        let before = state();
+        let failed = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"edit_target", "var_name":variable_name,
+                    "new_name":"resized", "type_name":"longlong"})),
+            )
+            .unwrap_err();
+        let error = failed
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert!(error.to_string().contains("kept_neighbor"), "{error:?}");
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert_eq!(state(), before);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(state(), before);
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class RemoveVariableResizeNeighbor extends GhidraScript {
+    public void run() throws Exception {
+        var function = getFunctionAt(toAddr(0x1000));
+        for (var local : function.getLocalVariables()) {
+            if ("kept_neighbor".equals(local.getName())) function.removeVariable(local);
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let resized = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"edit_target", "var_name":variable_name,
+                    "new_name":"resized", "type_name":"longlong"})),
+            )
+            .unwrap();
+        assert_eq!(resized["after"]["name"], "resized");
+        assert_eq!(resized["after"]["size"], 8);
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&program).unwrap();
+    }
+}
+
+#[test]
+#[serial]
 fn variable_selection_rejects_identical_program_in_another_project() {
     require_ghidra!();
     let root = tempfile::Builder::new()

@@ -81,9 +81,19 @@ final class FunctionSignatureSupport {
             String signature, boolean callSite) throws CancelledException {
         parser.ReInit(new StringReader(signature));
         Token previous = null;
+        int parentheses = 0;
         for (Token token = parser.getNextToken(); token.kind != CParserConstants.EOF;
                 token = parser.getNextToken()) {
             session.monitor().checkCancelled();
+            if ("(".equals(token.image)) parentheses++;
+            else if (")".equals(token.image)) parentheses--;
+            if (token.kind == CParserConstants.VOID && parentheses > 0
+                    && parser.getToken(1).kind == CParserConstants.IDENTIFIER
+                    && !"(".equals(parser.getToken(2).image)) {
+                // Native ParameterTypeList drops a sole void parameter even
+                // when its declaration has a name.
+                throw invalid("void parameters cannot be named", parser.getToken(1));
+            }
             if (TYPE_QUALIFIERS.contains(token.image)) {
                 throw invalid("Ghidra function signatures cannot preserve the C type qualifier '"
                     + token.image + "'", token);
@@ -108,6 +118,11 @@ final class FunctionSignatureSupport {
             }
             if ("=".equals(token.image) || "&".equals(token.image)) {
                 throw invalid("initializers and C++ references are not function signature types", token);
+            }
+            if (":".equals(token.image)) {
+                // Native ParameterDeclaration accepts a bit-field width but
+                // discards it when constructing the parameter definition.
+                throw invalid("bit-fields are not function parameters", token);
             }
             if ("[".equals(token.image)) {
                 Token count = parser.getToken(1);

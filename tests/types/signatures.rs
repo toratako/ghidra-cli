@@ -267,6 +267,8 @@ fn invalid_c_declarations_leave_saved_signature_and_type_inventory_unchanged() {
         "void renamed(int data[Unknown])",
         "void renamed(int *__ptr32 value)",
         "void renamed(int value=2)",
+        "void renamed(int value:3)",
+        "void renamed(void value)",
         "void renamed(int &value)",
         "void renamed(int (value))",
         "void renamed(int (*callback)(int value)",
@@ -300,6 +302,34 @@ fn invalid_c_declarations_leave_saved_signature_and_type_inventory_unchanged() {
         }
         assert_unchanged_after_reopen(&program, &before, &types_before);
     }
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
+fn native_signature_application_cannot_silently_drop_declared_parameters() {
+    require_ghidra!();
+    let program = create_program(64);
+    // A function parameter returning void is valid; a named void value is not.
+    set_signature(&program, "int lookup(void callback(Entry *entry))").assert_success();
+    let before = function();
+    let types_before = type_inventory(&program);
+    let failed = set_signature(&program, "void renamed(int __return_storage_ptr__)");
+    failed.assert_failure();
+    let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("did not retain all declared parameters"),
+        "{error}"
+    );
+    assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+    assert_unchanged_after_reopen(&program, &before, &types_before);
     harness()
         .client()
         .unwrap()

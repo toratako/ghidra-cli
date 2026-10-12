@@ -18,8 +18,10 @@ import ghidra.program.model.symbol.SymbolUtilities;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import ghidracli.types.TypeResolver;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -120,10 +122,31 @@ public final class FunctionVariableCommands {
 
             JsonObject decompiler = describe(target);
             JsonElement before = describeDatabase(function, saved);
+            Function localOwner = function.isThunk() ? function.getThunkedFunction(true) : function;
+            Map<Long, JsonElement> savedLocals = new LinkedHashMap<>();
+            for (Variable local : localOwner.getLocalVariables()) {
+                savedLocals.put(local.getSymbol().getID(), describeDatabase(localOwner, local));
+            }
             // Null preserves the saved type during a rename; inferred locals
             // receive sized undefined types through Ghidra's normal helper.
             // The helper also rejects convention-generated auto parameters.
             HighFunctionDBUtil.updateDBVariable(target, newName, newType, SourceType.USER_DEFINED);
+            // Native local resizing and inferred-parameter commits can force
+            // conflicting saved locals out of the database. Creating an inferred
+            // local can also reuse an overlapping saved local's symbol. Fail the
+            // request so its transaction restores those definitions instead.
+            for (Variable local : localOwner.getLocalVariables()) {
+                JsonElement original = savedLocals.remove(local.getSymbol().getID());
+                if (original != null && (saved == null || target.isParameter())
+                        && !original.equals(describeDatabase(localOwner, local))) {
+                    throw new IllegalStateException("Variable edit would overwrite saved local: "
+                        + original.getAsJsonObject().get("name").getAsString());
+                }
+            }
+            if (!savedLocals.isEmpty()) {
+                throw new IllegalStateException("Variable edit would remove saved local(s): "
+                    + savedLocals.values().stream().map(row -> row.getAsJsonObject().get("name").getAsString()).toList());
+            }
 
             Variable updated = target.isParameter() ? function.getParameter(target.getCategoryIndex()) : null;
             if (!target.isParameter()) {

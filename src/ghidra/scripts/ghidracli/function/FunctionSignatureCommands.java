@@ -48,6 +48,15 @@ public final class FunctionSignatureCommands {
                 throw new IllegalStateException(diagnostic == null || diagnostic.isBlank()
                     ? "Ghidra rejected the function signature" : diagnostic);
             }
+            // The native application helper treats reserved parameter names
+            // as automatic inputs and can silently omit them from a declaration.
+            int formalParameters = 0;
+            for (var parameter : func.getParameters()) {
+                if (!parameter.isAutoParameter()) formalParameters++;
+            }
+            if (formalParameters != funcDef.getArguments().length) {
+                throw new IllegalStateException("Ghidra did not retain all declared parameters");
+            }
 
             String newSig = null;
             try { newSig = func.getPrototypeString(false, false); } catch (Exception e) {}
