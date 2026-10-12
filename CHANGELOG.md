@@ -5,6 +5,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-12
+
+### Changed
+
+- Reduce allocations in query projection, graph filtering, instruction byte
+  formatting, and bridge job request/result handling.
+- Use native instruction counts for program statistics instead of scanning
+  every instruction.
+- Index structure fields by offset during edit validation to avoid repeated
+  component allocation and scans.
+
 ### Fixed
 
 - Reject memory patches whose changed file bytes also back another memory view,
@@ -53,6 +64,90 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Parse fields beginning with `NOT` without treating the prefix as negation,
   and reject overflowing decimal filter literals.
 - Avoid recommending analysis retries when an import's rollback is unconfirmed.
+- Reject malformed bridge command names, booleans, strings, and string arrays
+  before dispatch or mutation.
+- Release acquired programs after initialization failures, and recover from
+  recursive analyzer stack overflows without losing the previous selection.
+- Preserve import cancellation details and original failures, and reject
+  aborted analysis transactions before reporting completion or saving imports.
+- Validate artifact `allow_empty` and row-count constraints before scripts can
+  modify programs or create external files.
+- Count tag memberships by stable IDs after tag name/comment edits, including
+  external and unmapped functions while retaining mapped-function deletion counts.
+- Preserve saved parameter types and comments when editing inferred variables,
+  rejecting native edits that overwrite independently saved locals.
+- Retain parameter comments by name across reordered signature edits, and reject
+  calling-convention changes that remove explicit parameters.
+- Reject bit-field parameters and named `void` parameters that the native C
+  parser would silently discard.
+- Preserve existing tagged type identities during C imports, rejecting ambiguous
+  registered references and mismatched tag kinds while respecting local definitions.
+- Reject conflicting C type definitions across dependencies before native
+  resolution can merge them.
+- Validate replacement C types against parent layouts and applied data, rolling
+  back replacements that truncate existing uses or lose applied settings.
+- Reject C imports with overflowing composite/array layouts or parser-discarded
+  fields before saving partial definitions.
+- Reject floating-point C declarations that Ghidra would silently narrow to
+  `double`, including signed/unsigned variants, in type imports, function
+  signatures, and call-site signatures.
+- Reject structure component-count and composite size/extent overflows before
+  saving, including padding growth, packed fields, and union alignment.
+- Bound component allocation when inspecting huge types and reject excessive
+  pointer/array expression nesting before native recursion exhausts the stack.
+- Observe cancellation throughout type lookup, definition serialization, and
+  archive dependency scans.
+- Allow safe bit-field insertion that grows a type while preserving settings on
+  existing fields and nested applied instances.
+- Include signedness metadata for wide integer bit-field values.
+- Invalidate shortened instructions when a patch changes their parsed tails,
+  even when intervening instructions or data hide the earlier instruction start.
+- Exclude superseded external targets, register/stack operand storage, and
+  unresolved indexed table bases from call graphs and instruction CFG results.
+- Preserve executable CALL destinations when pointer data is defined there,
+  keeping caller and callee queries consistent.
+- Validate string values against the bytes consumed by native decoding, skipping
+  unreadable Pascal strings in reference searches while retaining terminated
+  strings with uninitialized trailing storage.
+- Enumerate comments in all persistent native address spaces, including register,
+  stack, variable, and hash storage.
+- Reject comment and bookmark addresses that would alias a different persistent
+  target through native offset truncation or unsupported address spaces.
+- Follow signed pointer arithmetic and one-past intermediate pointers in semantic
+  field-use analysis while excluding accesses outside the selected field.
+- Retain usable native error messages and rollback details in completed job
+  results even when the original exception has no message.
+- Honor cancellation after saving and before deleting a program, restore selection
+  on refusal, and retain cancellation details for failed non-atomic requests.
+- Report completed saves with `partial_changes_saved` and `saved_programs` even
+  when target selection, a later save, or transaction completion fails; retain
+  these receipts alongside target rollback and save-failure diagnostics.
+- Publish coherent bridge status snapshots so concurrent status queries cannot
+  combine identities from different selected programs.
+- Keep project deletion bound to the requested filesystem artifacts, rejecting
+  native project-name normalization and removing dangling links without following
+  them into unrelated data.
+- Preserve source file modification times in GAR archive entries.
+- Roll back forced data definitions when native creation fails or is cancelled,
+  restoring cleared data, references, and equates.
+- Resolve nested byte/bit memory mappings consistently for reads, pointer/string
+  values, patch validation, and binary exports; retain readable prefixes and
+  detect cycles without recursive native reads.
+- Reject initialized memory blocks that would populate existing mapped sources
+  without refreshing their data references.
+- Include generated variable and external names in target resolution, and preserve
+  hexadecimal-looking qualified symbol names without treating them as addresses.
+- Verify requested symbol, function, and parameter names after native edits,
+  rolling back substitutions together with accompanying type or ABI changes.
+- Retain explicit function names when native creation detects a thunk, and reject
+  function creation when disassembly fails to produce an entry instruction.
+- Describe memory-mapped ABI registers as register storage, retaining register
+  names in simple and compound layouts.
+- Bound memory use and observe cancellation during name suggestions, with
+  locale-independent function/tag matching.
+- Exclude directories with `.java` or `.py` suffixes from script listings.
+- Reject failed packaged-script builds before loading cached classes, and
+  propagate fatal failures from reflective build/activation calls.
 
 ## [0.10.0] - 2026-10-12
 
@@ -1414,7 +1509,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.0...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/toratako/ghidra-cli/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/toratako/ghidra-cli/compare/v0.7.0...v0.8.0
