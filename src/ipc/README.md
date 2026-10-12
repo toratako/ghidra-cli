@@ -101,7 +101,8 @@ and is omitted from ordinary CLI output.
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON. `success`
 unwraps to `data` or `{}`; `error` retains message and structured detail;
-`shutdown` becomes `{"status":"shutdown"}`. Other statuses are protocol errors.
+`shutdown` becomes `{"status":"shutdown"}` and is accepted only for `shutdown_wait`.
+Other statuses are protocol errors.
 
 `job_status`, `job_cancel`, and `job_result` select a job with `args.job_id`.
 Status records include `result.state`: `pending`, `available`, `expired`, `evicted`,

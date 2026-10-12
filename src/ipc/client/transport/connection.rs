@@ -23,9 +23,7 @@ impl Connection {
         read_timeout: Option<Duration>,
         deadline: Option<Instant>,
     ) -> Result<Self> {
-        let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port)
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Invalid address: {}", e))?;
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
         let stream = connect_with_retry(&addr, deadline)?;
         // `None` => blocking reads (no timeout). A long analysis can exceed any
         // fixed cap, so callers route those ops through here with `None`.
@@ -50,7 +48,11 @@ impl Connection {
                 self.deadline,
                 Some(Duration::from_secs(30)),
             )?)?;
-            let written = self.stream.write(pending)?;
+            let written = match self.stream.write(pending) {
+                Ok(written) => written,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error.into()),
+            };
             anyhow::ensure!(written > 0, "Bridge closed while writing request");
             pending = &pending[written..];
         }
@@ -60,34 +62,37 @@ impl Connection {
 
     pub(super) fn read_line(&self) -> std::io::Result<String> {
         let mut reader = BufReader::new(&self.stream);
-        if self.deadline.is_some() {
+        let mut bytes = Vec::new();
+        loop {
             // Refresh the remaining budget on every receive, so a partial reply
             // cannot extend the shutdown deadline by trickling bytes.
-            let mut bytes = Vec::new();
-            loop {
-                self.stream
-                    .set_read_timeout(remaining_timeout(self.deadline, self.read_timeout)?)?;
-                let available = reader.fill_buf()?;
-                if available.is_empty() {
-                    break;
+            self.stream
+                .set_read_timeout(remaining_timeout(self.deadline, self.read_timeout)?)?;
+            let available = match reader.fill_buf() {
+                Ok(available) => available,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            };
+            if available.is_empty() {
+                if bytes.is_empty() {
+                    return Ok(String::new());
                 }
-                let count = available
-                    .iter()
-                    .position(|byte| *byte == b'\n')
-                    .map_or(available.len(), |index| index + 1);
-                let complete = available[count - 1] == b'\n';
-                bytes.extend_from_slice(&available[..count]);
-                reader.consume(count);
-                if complete {
-                    break;
-                }
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "Bridge closed the connection before completing its response frame",
+                ));
             }
-            String::from_utf8(bytes)
-                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-        } else {
-            let mut response_line = String::new();
-            reader.read_line(&mut response_line)?;
-            Ok(response_line)
+            let count = available
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(available.len(), |index| index + 1);
+            let complete = available[count - 1] == b'\n';
+            bytes.extend_from_slice(&available[..count]);
+            reader.consume(count);
+            if complete {
+                return String::from_utf8(bytes)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+            }
         }
     }
 }

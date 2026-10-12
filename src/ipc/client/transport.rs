@@ -170,6 +170,10 @@ impl BridgeClient {
                 "Invalid bridge response status: '{}'",
                 response.status
             );
+            anyhow::ensure!(
+                response.status != "shutdown" || command == "shutdown_wait",
+                "Unexpected shutdown response to '{command}'"
+            );
             if response.job_id.is_some() || (job_id.is_some() && response.status == "success") {
                 anyhow::ensure!(
                     response.job_id == job_id,

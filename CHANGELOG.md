@@ -13,6 +13,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   receipts when selected thunks or local symbols are deleted with their owner.
 - Require exact pointer-component starts and reference sources when resolving
   indirect calls, avoiding false targets from interior pointer bytes.
+- Treat incomplete bridge response frames and unexpected shutdown responses as
+  unknown outcomes without replaying requests.
 
 ## [0.10.0] - 2026-10-12
 

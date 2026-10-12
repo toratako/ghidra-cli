@@ -90,7 +90,11 @@ fn response_status_controls_success_and_failure() {
             writeln!(stream, "{response}").unwrap();
         });
         let result = client.send_command_with_deadline(
-            "ping",
+            if status == "shutdown" {
+                "shutdown_wait"
+            } else {
+                "ping"
+            },
             None,
             Some(std::time::Instant::now() + Duration::from_secs(2)),
         );
@@ -114,6 +118,26 @@ fn response_status_controls_success_and_failure() {
             }
         }
     }
+}
+
+#[test]
+fn reply_reassembles_utf8_across_receive_buffers() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port());
+    let data = serde_json::json!({"text": "é".repeat(10_000)});
+    let response = serde_json::json!({"status": "success", "data": data});
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(&stream).read_line(&mut line).unwrap();
+        writeln!(stream, "{response}").unwrap();
+    });
+    let result = client.send_command_with_timeout("ping", None, Some(Duration::from_secs(2)));
+    server.join().unwrap();
+    assert_eq!(result.unwrap(), data);
 }
 
 #[test]
@@ -286,7 +310,57 @@ fn eof_after_send_reports_unknown_outcome_without_replay() {
 }
 
 #[test]
-fn truncated_reply_retains_parse_failure_and_unknown_outcome() {
+fn unterminated_reply_reports_unknown_outcome_without_replay() {
+    for deadline in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let response = serde_json::json!({
+                "status": "success", "job_id": request["job_id"], "data": {"changed": true}
+            });
+            // A complete JSON object is still an incomplete wire frame without its newline.
+            write!(stream, "{response}").unwrap();
+            (listener, request["job_id"].as_str().unwrap().to_owned())
+        });
+        let result = if deadline {
+            client.send_command_with_deadline(
+                "comment_set",
+                None,
+                Some(std::time::Instant::now() + Duration::from_secs(2)),
+            )
+        } else {
+            client.send_command_with_timeout("comment_set", None, Some(Duration::from_secs(2)))
+        };
+        let (listener, sent_id) = server.join().unwrap();
+        let error = result.unwrap_err();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+            .is_some());
+        assert_eq!(
+            error
+                .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                .unwrap()
+                .id,
+            sent_id
+        );
+        assert_eq!(
+            error.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::UnexpectedEof
+        );
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    }
+}
+
+#[test]
+fn malformed_reply_retains_parse_failure_and_unknown_outcome() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let client = BridgeClient::new(listener.local_addr().unwrap().port());
     let server = std::thread::spawn(move || {
@@ -298,7 +372,7 @@ fn truncated_reply_retains_parse_failure_and_unknown_outcome() {
         BufReader::new(&stream).read_line(&mut request).unwrap();
         assert!(request.contains("comment_set"));
         stream
-            .write_all(b"{\"status\":\"success\",\"data\":")
+            .write_all(b"{\"status\":\"success\",\"data\":\n")
             .unwrap();
         listener
     });
@@ -348,6 +422,42 @@ fn mutation_read_timeout_retains_its_type_without_replay() {
     assert_eq!(timeout.command, "comment_set");
     listener.set_nonblocking(true).unwrap();
     assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+}
+
+#[test]
+fn shutdown_reply_is_only_accepted_for_shutdown_wait() {
+    for command in ["comment_set", "ping"] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let selection = crate::ipc::client::ProgramSelection::default();
+        let client = BridgeClient::new(listener.local_addr().unwrap().port())
+            .with_selection(selection.clone());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream, "{{\"status\":\"shutdown\"}}").unwrap();
+            (listener, request["job_id"].as_str().map(str::to_owned))
+        });
+        let result = client.send_command_with_timeout(command, None, Some(Duration::from_secs(2)));
+        let (listener, sent_id) = server.join().unwrap();
+        let error = result.unwrap_err();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+            .is_some());
+        assert_eq!(
+            error
+                .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                .map(|job| job.id.clone()),
+            sent_id
+        );
+        assert_eq!(selection.observed(), None);
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    }
 }
 
 #[test]
