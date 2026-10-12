@@ -1,14 +1,15 @@
-//! Connection retry, socket timeouts, and request/response transport.
+//! Request identity, response validation, and the boundary of unknown outcomes.
+
+mod connection;
 
 use super::BridgeClient;
 use crate::ipc::protocol::{
     BridgeCommandError, BridgeJob, BridgeOutcomeUnknownError, BridgeRequest, BridgeResponse,
     BridgeTimeoutError,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
+use connection::Connection;
 use serde_json::json;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
@@ -20,11 +21,6 @@ use tracing::debug;
 /// enough to outlast whatever is ahead of it. Override with
 /// `GHIDRA_CLI_READ_TIMEOUT` (seconds); `0` means block indefinitely.
 const DEFAULT_READ_TIMEOUT_SECS: u64 = 300;
-
-/// Wall-clock budget for establishing the initial TCP connection, retried with
-/// backoff while the bridge is starting, restarting, or its accept backlog is
-/// momentarily saturated. Override with `GHIDRA_CLI_CONNECT_DEADLINE` (seconds).
-const DEFAULT_CONNECT_DEADLINE_SECS: u64 = 60;
 
 /// Interpret a seconds string into an optional [`Duration`]: `0` means "no
 /// timeout" (`None`), and an absent/unparseable value falls back to `default`.
@@ -58,101 +54,6 @@ pub(super) fn long_op_timeout() -> Option<Duration> {
     {
         Some(0) | None => None,
         Some(secs) => Some(Duration::from_secs(secs)),
-    }
-}
-
-/// Overall connect budget, from `GHIDRA_CLI_CONNECT_DEADLINE` (min 1s).
-fn connect_deadline() -> Duration {
-    let secs = std::env::var("GHIDRA_CLI_CONNECT_DEADLINE")
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_CONNECT_DEADLINE_SECS);
-    Duration::from_secs(secs.max(1))
-}
-
-/// A connect error that means "not yet", not "never": the bridge is (re)starting
-/// or its accept backlog is momentarily full. Safe to wait and retry.
-fn is_transient_connect_error(e: &std::io::Error) -> bool {
-    use std::io::ErrorKind::*;
-    matches!(
-        e.kind(),
-        ConnectionRefused | ConnectionReset | ConnectionAborted | TimedOut | AddrInUse | WouldBlock
-    )
-}
-
-/// Connect to the bridge, waiting out transient failures.
-///
-/// A busy bridge still accepts connections and queues program jobs, so connect
-/// normally succeeds immediately and the wait happens on the read. But during
-/// bridge (re)start or saturated client capacity, connect can
-/// fail transiently; rather than surfacing that as a hard error we retry with
-/// exponential backoff until [`connect_deadline`] elapses. Only pre-send connect
-/// failures are retried — nothing has been written yet — so this stays safe for
-/// non-idempotent commands (rename/comment/patch).
-fn connect_with_retry(addr: &std::net::SocketAddr, deadline: Option<Instant>) -> Result<TcpStream> {
-    let budget = remaining_timeout(deadline, Some(connect_deadline()))?.unwrap();
-    let started = std::time::Instant::now();
-    retry_connect(
-        budget,
-        |timeout| TcpStream::connect_timeout(addr, timeout),
-        || started.elapsed(),
-        std::thread::sleep,
-    )
-    .map_err(|error| {
-        let message = format!(
-            "Failed to connect to bridge on port {} within {}s: {}. \
-             Is the bridge running? Check `ghidra-cli bridge status`.",
-            addr.port(),
-            budget.as_secs(),
-            error
-        );
-        anyhow::Error::new(error).context(message)
-    })
-}
-
-// Keep time and connection attempts injectable so deadline boundaries can be
-// checked without wall-clock races or changing the process environment.
-fn retry_connect<T>(
-    budget: Duration,
-    mut connect: impl FnMut(Duration) -> std::io::Result<T>,
-    mut elapsed: impl FnMut() -> Duration,
-    mut sleep: impl FnMut(Duration),
-) -> std::io::Result<T> {
-    let mut backoff = Duration::from_millis(100);
-    let mut last_err: Option<std::io::Error> = None;
-    loop {
-        let remaining = budget.saturating_sub(elapsed());
-        if remaining.is_zero() {
-            return Err(last_err.unwrap_or_else(|| std::io::ErrorKind::TimedOut.into()));
-        }
-        match connect(remaining.min(Duration::from_secs(10))) {
-            Ok(stream) if elapsed() < budget => return Ok(stream),
-            Ok(_) => return Err(std::io::ErrorKind::TimedOut.into()),
-            Err(e) if is_transient_connect_error(&e) => {
-                let wait = backoff.min(budget.saturating_sub(elapsed()));
-                debug!("bridge connect transient ({e}); retrying in {wait:?}");
-                last_err = Some(e);
-                sleep(wait);
-                backoff = (backoff * 2).min(Duration::from_secs(2));
-            }
-            Err(e) => return Err(e),
-        }
-    }
-}
-
-fn remaining_timeout(
-    deadline: Option<Instant>,
-    limit: Option<Duration>,
-) -> std::io::Result<Option<Duration>> {
-    match deadline {
-        Some(deadline) => {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(std::io::ErrorKind::TimedOut.into());
-            }
-            Ok(Some(limit.map_or(remaining, |limit| limit.min(remaining))))
-        }
-        None => Ok(limit),
     }
 }
 
@@ -205,18 +106,7 @@ impl BridgeClient {
         let timeout_description = deadline
             .map(|end| end.saturating_duration_since(Instant::now()))
             .or(read_timeout);
-        let addr: std::net::SocketAddr = format!("127.0.0.1:{}", self.port)
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Invalid address: {}", e))?;
-        let mut stream = connect_with_retry(&addr, deadline)?;
-        // `None` => blocking reads (no timeout). A long analysis can exceed any
-        // fixed cap, so callers route those ops through here with `None`.
-        stream
-            .set_read_timeout(remaining_timeout(deadline, read_timeout)?)
-            .context("Failed to set bridge read timeout before sending request")?;
-        stream
-            .set_write_timeout(remaining_timeout(deadline, Some(Duration::from_secs(30)))?)
-            .context("Failed to set bridge write timeout before sending request")?;
+        let mut connection = Connection::connect(self.port, read_timeout, deadline)?;
 
         let job_id = (!matches!(
             command,
@@ -247,56 +137,13 @@ impl BridgeClient {
         // From the first write onward, a transport/protocol failure cannot prove
         // that the bridge did not execute the command. Never replay it.
         let response = (|| -> Result<BridgeResponse> {
-            let mut pending = wire.as_bytes();
-            while !pending.is_empty() {
-                stream.set_write_timeout(remaining_timeout(
-                    deadline,
-                    Some(Duration::from_secs(30)),
-                )?)?;
-                let written = stream.write(pending)?;
-                anyhow::ensure!(written > 0, "Bridge closed while writing request");
-                pending = &pending[written..];
-            }
-
-            let mut reader = BufReader::new(&stream);
-            let mut response_line = String::new();
-            let read_result = if deadline.is_some() {
-                // Refresh the remaining budget on every receive, so a partial reply
-                // cannot extend the shutdown deadline by trickling bytes.
-                let mut bytes = Vec::new();
-                (|| -> std::io::Result<usize> {
-                    loop {
-                        stream.set_read_timeout(remaining_timeout(deadline, read_timeout)?)?;
-                        let available = reader.fill_buf()?;
-                        if available.is_empty() {
-                            break;
-                        }
-                        let count = available
-                            .iter()
-                            .position(|byte| *byte == b'\n')
-                            .map_or(available.len(), |index| index + 1);
-                        let complete = available[count - 1] == b'\n';
-                        bytes.extend_from_slice(&available[..count]);
-                        reader.consume(count);
-                        if complete {
-                            break;
-                        }
-                    }
-                    let count = bytes.len();
-                    response_line = String::from_utf8(bytes).map_err(|error| {
-                        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
-                    })?;
-                    Ok(count)
-                })()
-            } else {
-                reader.read_line(&mut response_line)
-            };
-            match read_result {
+            connection.write_request(&wire)?;
+            let response_line = match connection.read_line() {
                 // EOF before any response: bridge closed the socket without replying.
-                Ok(0) => {
+                Ok(line) if line.is_empty() => {
                     anyhow::bail!("Bridge closed the connection without responding to '{command}'")
                 }
-                Ok(_) => {}
+                Ok(line) => line,
                 // A read timeout here means the bridge is up (we connected) but hasn't
                 // reached our queued request in time — almost always because it is busy
                 // serving another agent. Surface that plainly, with the knob to wait longer.
@@ -313,7 +160,7 @@ impl BridgeClient {
                     .into())
                 }
                 Err(e) => return Err(e.into()),
-            }
+            };
 
             debug!("Received: {}", response_line.trim());
 

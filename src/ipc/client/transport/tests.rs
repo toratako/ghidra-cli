@@ -1,5 +1,4 @@
-use super::{is_transient_connect_error, parse_secs, retry_connect, BridgeClient};
-use std::cell::Cell;
+use super::{parse_secs, BridgeClient};
 use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
 use std::net::TcpListener;
 use std::time::Duration;
@@ -224,95 +223,6 @@ fn expired_shutdown_deadline_does_not_connect() {
 }
 
 #[test]
-fn connect_attempts_and_backoff_share_one_deadline() {
-    let elapsed = Cell::new(Duration::ZERO);
-    let mut attempts = Vec::new();
-    let mut waits = Vec::new();
-    let error = retry_connect::<()>(
-        Duration::from_millis(250),
-        |timeout| {
-            attempts.push(timeout);
-            Err(ErrorKind::ConnectionRefused.into())
-        },
-        || elapsed.get(),
-        |wait| {
-            waits.push(wait);
-            elapsed.set(elapsed.get() + wait);
-        },
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
-    assert_eq!(
-        attempts,
-        [Duration::from_millis(250), Duration::from_millis(150)]
-    );
-    assert_eq!(
-        waits,
-        [Duration::from_millis(100), Duration::from_millis(150)]
-    );
-    assert_eq!(elapsed.get(), Duration::from_millis(250));
-}
-
-#[test]
-fn connect_does_not_attempt_after_oversleep() {
-    let elapsed = Cell::new(Duration::ZERO);
-    let mut attempts = 0;
-    let error = retry_connect::<()>(
-        Duration::from_secs(20),
-        |timeout| {
-            attempts += 1;
-            assert_eq!(timeout, Duration::from_secs(10));
-            Err(ErrorKind::ConnectionRefused.into())
-        },
-        || elapsed.get(),
-        |_| elapsed.set(Duration::from_secs(21)),
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
-    assert_eq!(attempts, 1);
-}
-
-#[test]
-fn connect_rejects_success_returned_after_deadline() {
-    let elapsed = Cell::new(Duration::ZERO);
-    let error = retry_connect(
-        Duration::from_secs(1),
-        |timeout| {
-            assert_eq!(timeout, Duration::from_secs(1));
-            elapsed.set(Duration::from_secs(1));
-            Ok(())
-        },
-        || elapsed.get(),
-        |_| panic!("successful connect must not be retried"),
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::TimedOut);
-}
-
-#[test]
-fn connect_preserves_permanent_error_after_transient_failure() {
-    let elapsed = Cell::new(Duration::ZERO);
-    let mut attempts = 0;
-    let error = retry_connect::<()>(
-        Duration::from_secs(1),
-        |_| {
-            attempts += 1;
-            Err(if attempts == 1 {
-                ErrorKind::ConnectionRefused
-            } else {
-                ErrorKind::PermissionDenied
-            }
-            .into())
-        },
-        || elapsed.get(),
-        |wait| elapsed.set(elapsed.get() + wait),
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::PermissionDenied);
-    assert_eq!(attempts, 2);
-}
-
-#[test]
 fn invalid_read_timeout_fails_before_sending_request() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let client = BridgeClient::new(listener.local_addr().unwrap().port());
@@ -506,29 +416,4 @@ fn parse_secs_falls_back_when_absent_or_garbage() {
     assert_eq!(parse_secs(Some("nope"), 42), Some(Duration::from_secs(42)));
     // Fallback default of 0 still means "no timeout".
     assert_eq!(parse_secs(None, 0), None);
-}
-
-#[test]
-fn transient_connect_errors_are_retryable() {
-    for kind in [
-        ErrorKind::ConnectionRefused,
-        ErrorKind::ConnectionReset,
-        ErrorKind::ConnectionAborted,
-        ErrorKind::TimedOut,
-    ] {
-        assert!(
-            is_transient_connect_error(&Error::from(kind)),
-            "{kind:?} should be retryable"
-        );
-    }
-}
-
-#[test]
-fn permanent_connect_errors_are_not_retryable() {
-    for kind in [ErrorKind::NotFound, ErrorKind::PermissionDenied] {
-        assert!(
-            !is_transient_connect_error(&Error::from(kind)),
-            "{kind:?} should not be retryable"
-        );
-    }
 }
