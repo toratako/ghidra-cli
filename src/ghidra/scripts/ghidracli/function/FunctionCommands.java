@@ -333,6 +333,7 @@ public final class FunctionCommands {
 
             Address entry = func.getEntryPoint();
             String name = func.getName();
+            functionQueries.requireNoOutsideThunks(func, Set.of(func.getID()));
             if (!fm.removeFunction(entry)) {
                 return errorResult("Failed to delete function at " + AddressCodec.format(entry));
             }
@@ -343,7 +344,7 @@ public final class FunctionCommands {
             result.addProperty("address", AddressCodec.format(entry));
             return result;
         } catch (Exception e) {
-            return errorResult("Failed to delete function: " + e.getMessage());
+            return errorResult("Failed to delete function: " + e.getMessage(), e);
         }
     }
 }

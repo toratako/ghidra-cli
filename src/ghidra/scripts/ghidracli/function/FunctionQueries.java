@@ -12,6 +12,7 @@ import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.StackFrame;
 import ghidra.program.model.listing.Variable;
 import ghidracli.memory.MemoryBlockInfo;
+import ghidracli.protocol.JsonProtocol;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
 import ghidracli.query.NameSuggestions;
@@ -21,6 +22,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class FunctionQueries {
     private final ProgramSession session;
@@ -39,6 +41,24 @@ public final class FunctionQueries {
         var block = session.program().getMemory().getBlock(func.getEntryPoint());
         funcData.add("entry_memory", block == null ? JsonNull.INSTANCE : MemoryBlockInfo.summary(block));
         return funcData;
+    }
+
+    /** Native function deletion also deletes referring thunks. */
+    public void requireNoOutsideThunks(Function function, Set<Long> selectedIds)
+            throws ghidra.util.exception.CancelledException {
+        Address[] thunks = function.getFunctionThunkAddresses(true);
+        if (thunks == null) return;
+        for (Address address : thunks) {
+            session.monitor().checkCancelled();
+            Function thunk = session.program().getFunctionManager().getFunctionAt(address);
+            if (thunk != null && !selectedIds.contains(thunk.getID())) {
+                JsonObject detail = new JsonObject();
+                detail.add("function", functionContext(function));
+                detail.add("outside_thunk", functionContext(thunk));
+                throw new JsonProtocol.CommandException(
+                    "Deleting this function would delete an unselected thunk; clear or delete that thunk first", detail);
+            }
+        }
     }
 
     JsonObject functionToJson(Function func) {

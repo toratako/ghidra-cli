@@ -357,7 +357,13 @@ public final class SymbolCommands {
             SymbolTable symbolTable = session.program().getSymbolTable();
             List<Symbol> toDelete = resolveScopedSymbols(symbolTable, name, args);
             rejectNamespaceEdits(toDelete);
+            Set<Long> selectedIds = new HashSet<>();
+            for (Symbol symbol : toDelete) selectedIds.add(symbol.getID());
+            FunctionQueries queries = new FunctionQueries(session, new AddressResolver(session));
             for (Symbol symbol : toDelete) {
+                if (symbol.getSymbolType() == SymbolType.FUNCTION) {
+                    queries.requireNoOutsideThunks((Function) symbol.getObject(), selectedIds);
+                }
                 if (symbol.getSymbolType() == SymbolType.LIBRARY
                         && symbolTable.getChildren(symbol).hasNext()) {
                     throw new IllegalArgumentException(
@@ -387,7 +393,11 @@ public final class SymbolCommands {
             for (int i = 0; i < toDelete.size(); i++) {
                 try {
                     session.monitor().checkCancelled();
-                    if (!toDelete.get(i).delete())
+                    // Earlier selected functions can delete their children and
+                    // referring thunks. Use the detached identity, never stale
+                    // symbol metadata, and retain every selected deletion receipt.
+                    Symbol current = symbolTable.getSymbol(Long.parseLong(selected.get(i).get("id").getAsString()));
+                    if (current != null && !current.delete())
                         throw new IllegalStateException("Ghidra refused to delete symbol");
                     deleted.add(selected.get(i));
                 } catch (Exception e) {

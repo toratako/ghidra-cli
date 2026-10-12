@@ -9,6 +9,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
+- Protect unselected thunks from cascading function deletion, and retain complete
+  receipts when selected thunks or local symbols are deleted with their owner.
 
 ## [0.10.0] - 2026-10-12
 

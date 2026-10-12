@@ -90,6 +90,169 @@ public class CreateDefaultFunctionForLabel extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_function_and_symbol_deletion_preserve_unselected_thunks() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let client = harness().client().unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class CreateGuardedThunkDeletion extends GhidraScript {
+    public void run() throws Exception {
+        var manager = currentProgram.getFunctionManager();
+        var target = manager.createFunction("guarded_target", toAddr(0x1020),
+            new AddressSet(toAddr(0x1020), toAddr(0x1020)), SourceType.USER_DEFINED);
+        var thunk = manager.createFunction(null, toAddr(0x1030),
+            new AddressSet(toAddr(0x1030), toAddr(0x103f)), SourceType.DEFAULT);
+        thunk.setThunkedFunction(target);
+        var indirect = manager.createFunction(null, toAddr(0x1040),
+            new AddressSet(toAddr(0x1040), toAddr(0x1040)), SourceType.DEFAULT);
+        indirect.setThunkedFunction(thunk);
+        currentProgram.getSymbolTable().createLabel(toAddr(0x1010), "guarded_target",
+            SourceType.USER_DEFINED);
+        currentProgram.getSymbolTable().createLabel(toAddr(0x1031), "guarded_target",
+            thunk, SourceType.USER_DEFINED);
+
+        // Establish the native cascade independently of the CLI guards.
+        var nativeTarget = manager.createFunction("native_target", toAddr(0x1060),
+            new AddressSet(toAddr(0x1060), toAddr(0x1060)), SourceType.USER_DEFINED);
+        var nativeThunk = manager.createFunction("native_thunk", toAddr(0x1070),
+            new AddressSet(toAddr(0x1070), toAddr(0x1070)), SourceType.USER_DEFINED);
+        nativeThunk.setThunkedFunction(nativeTarget);
+        if (!manager.removeFunction(nativeTarget.getEntryPoint())
+                || manager.getFunctionAt(toAddr(0x1070)) != null)
+            throw new IllegalStateException("Native deletion must also delete the referring thunk");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let symbols_before = client.symbol_get_by_name("guarded_target").unwrap();
+        let target = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
+        let label = client.symbol_get("0x1010").unwrap()["symbols"][0].clone();
+        let thunk = client.symbol_get("0x1030").unwrap()["symbols"][0].clone();
+        let indirect = client.symbol_get("0x1040").unwrap()["symbols"][0].clone();
+        let local = client.symbol_get("0x1031").unwrap()["symbols"][0].clone();
+        assert_eq!(thunk["source"], "DEFAULT");
+        assert_eq!(indirect["source"], "DEFAULT");
+        let addresses = ["0x1020", "0x1030", "0x1040"];
+        let before: Vec<_> = addresses
+            .iter()
+            .map(|address| {
+                client
+                    .send_command(
+                        "get_function",
+                        Some(serde_json::json!({"address": address})),
+                    )
+                    .unwrap()
+            })
+            .collect();
+        for (command, args, diagnostic) in [
+            (
+                "delete_function",
+                serde_json::json!({"address": "0x1020"}),
+                "unselected thunk",
+            ),
+            (
+                "delete_function",
+                serde_json::json!({"address": "0x1030"}),
+                "unselected thunk",
+            ),
+            (
+                "symbol_delete",
+                serde_json::json!({"name": "guarded_target", "targets": [label, target]}),
+                "unselected thunk",
+            ),
+        ] {
+            let error = client.send_command(command, Some(args)).unwrap_err();
+            assert!(
+                error.to_string().contains(diagnostic),
+                "{command}: {error:#}"
+            );
+            let error = error
+                .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                .unwrap();
+            assert_eq!(error.detail["rolled_back"], true);
+            assert_eq!(
+                client.symbol_get_by_name("guarded_target").unwrap(),
+                symbols_before
+            );
+            for (address, expected) in addresses.iter().zip(&before) {
+                assert_eq!(
+                    client
+                        .send_command(
+                            "get_function",
+                            Some(serde_json::json!({"address": address}))
+                        )
+                        .unwrap(),
+                    *expected
+                );
+            }
+        }
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            client.symbol_get_by_name("guarded_target").unwrap(),
+            symbols_before
+        );
+        for (address, expected) in addresses.iter().zip(&before) {
+            assert_eq!(
+                client
+                    .send_command(
+                        "get_function",
+                        Some(serde_json::json!({"address": address}))
+                    )
+                    .unwrap(),
+                *expected
+            );
+        }
+        // Selecting every dependent makes one deletion safe, even when the owner
+        // appears before its thunks in the selection.
+        let deleted = client
+            .symbol_delete_targets(
+                "guarded_target",
+                &[
+                    label.clone(),
+                    target.clone(),
+                    local.clone(),
+                    thunk.clone(),
+                    indirect.clone(),
+                ],
+            )
+            .unwrap();
+        assert_eq!(deleted["count"], 5);
+        assert_eq!(
+            deleted["deleted"],
+            serde_json::json!([label, target, local, thunk, indirect])
+        );
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        for address in addresses {
+            assert!(client
+                .send_command(
+                    "get_function",
+                    Some(serde_json::json!({"address": address}))
+                )
+                .is_err());
+        }
+        assert!(client.symbol_get("0x1031").is_err());
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn test_symbol_delete_rejects_library_before_deleting_selected_label_or_imports() {
     require_ghidra!();
     let program = create_symbol_fixture_program();
@@ -443,7 +606,7 @@ public class CreateNamespaceOwnerFixture extends GhidraScript {
 
 #[test]
 #[serial]
-fn test_symbol_delete_rolls_back_function_child_deletion_and_rejects_foreign_transactions() {
+fn test_symbol_delete_handles_function_child_cascades_and_rejects_foreign_transactions() {
     require_ghidra!();
     let client = harness().client().unwrap();
     for prevent_save in [false, true] {
@@ -508,11 +671,10 @@ public class PreventSymbolDeletionSave extends GhidraScript {
                 .trim()
                 .to_owned()
         });
-        // Deleting a function also removes its local label. Deleting that selected
-        // child next returns false; the unrelated final target must not run.
-        let error = client
-            .symbol_delete_targets(name, &[parent.clone(), child.clone(), unaffected.clone()])
-            .unwrap_err();
+        // Native deletion removes the selected child with its parent. Its
+        // pre-mutation identity still belongs in the successful receipt.
+        let result = client
+            .symbol_delete_targets(name, &[parent.clone(), child.clone(), unaffected.clone()]);
         if let Some(transaction) = transaction {
             client
                 .script_run_source(
@@ -530,50 +692,56 @@ public class ReleaseSymbolDeletionSave extends GhidraScript {
                 )
                 .unwrap();
         }
-        let error = error
-            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
-            .unwrap();
         if prevent_save {
+            let error = result.unwrap_err();
+            let error = error
+                .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                .unwrap();
             // This request cannot own an atomic transaction while a script's
             // transaction remains open. Reject it without attempting deletion.
             assert_eq!(error.detail["transaction_failed"], true);
             assert!(error.detail.get("rolled_back").is_none());
             assert!(error.detail.get("save_failed").is_none());
             assert!(error.detail.get("attempted_deleted").is_none());
+            assert!(error.detail.get("partial_changes_saved").is_none());
+            assert_eq!(
+                client.symbol_get_by_name(name).unwrap()["symbols"],
+                serde_json::json!(selected)
+            );
         } else {
-            assert_eq!(error.detail["rolled_back"], true);
-            assert!(error.detail.get("count").is_none());
-            assert!(error.detail.get("deleted").is_none());
+            let deleted = result.unwrap();
+            assert_eq!(deleted["count"], 3);
             assert_eq!(
-                error.detail["attempted_deleted"],
-                serde_json::json!([parent])
+                deleted["deleted"],
+                serde_json::json!([parent, child, unaffected])
             );
-            assert_eq!(error.detail["failed"][0]["id"], child["id"]);
-            assert_eq!(
-                error.detail["failed"][0]["reason"],
-                "Ghidra refused to delete symbol"
-            );
-            assert_eq!(
-                error.detail["not_attempted"],
-                serde_json::json!([unaffected])
-            );
+            assert!(client
+                .send_command(
+                    "get_function",
+                    Some(serde_json::json!({"address": parent["address"]}))
+                )
+                .is_err());
+            // Ghidra preserves the deleted function's name as a fresh label.
+            let remaining = client.symbol_get_by_name(name).unwrap()["symbols"].clone();
+            assert_eq!(remaining.as_array().unwrap().len(), 1);
+            assert_eq!(remaining[0]["type"], "Label");
+            assert_eq!(remaining[0]["address"], parent["address"]);
+            assert_ne!(remaining[0]["id"], parent["id"]);
         }
-        assert!(error.detail.get("partial_changes_saved").is_none());
-        assert_eq!(
-            client.symbol_get_by_name(name).unwrap()["symbols"],
-            serde_json::json!(selected)
-        );
+        let persisted = client.symbol_get_by_name(name).unwrap()["symbols"].clone();
         client.program_close().unwrap();
         client.open_program(&program).unwrap();
         assert_eq!(
             client.symbol_get_by_name(name).unwrap()["symbols"],
-            serde_json::json!(selected)
+            persisted
         );
-        let deleted = client
-            .symbol_delete_targets(name, std::slice::from_ref(unaffected))
-            .unwrap();
-        assert_eq!(deleted["count"], 1);
-        assert_eq!(deleted["deleted"], serde_json::json!([unaffected]));
+        if prevent_save {
+            let deleted = client
+                .symbol_delete_targets(name, std::slice::from_ref(unaffected))
+                .unwrap();
+            assert_eq!(deleted["count"], 1);
+            assert_eq!(deleted["deleted"], serde_json::json!([unaffected]));
+        }
         client.open_program(TEST_PROGRAM).unwrap();
     }
 }
