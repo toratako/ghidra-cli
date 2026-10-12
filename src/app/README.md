@@ -22,7 +22,9 @@ and target checks in `src/cli/tests.rs`.
 | `execute/type_archives.rs` | Resolve GDT paths and select roots with guarded source snapshots |
 | `execute/scripts.rs` | Prepare script paths, stdin source, and expected artifact paths before dispatch |
 | `batch.rs`, `batch/recovery.rs` | Validate and freeze selected batch input before bridge work; aggregate execution results, apply the error policy, and derive recovery guidance |
-| `import.rs` | Validate loader options and coordinate durable import, bridge startup, and analysis |
+| `import.rs` | Coordinate durable import, bridge startup, and analysis; advance checkpoints at side-effect boundaries |
+| `import/options.rs` | Validate and construct loader options for both batch preflight and execution |
+| `import/progress.rs` | Retain import checkpoints and enrich failures with loader evidence and recovery guidance |
 | `result.rs` | Carry execution results with their residual queries, declare result shapes, retain context/page metadata, and apply queries to produce the common result value |
 | `output.rs` | Render common results for standalone/batch/management output and route C-only decompiler diagnostics to stderr |
 | `management.rs` | Bridge lifecycle, `job list/get/result/cancel`, and explicit save without auto-start |
