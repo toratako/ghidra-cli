@@ -254,6 +254,12 @@ public final class InstructionCfg {
                 RefType type = reference.getReferenceType();
                 if (!(type.isRead() || type == RefType.DATA || type == RefType.INDIRECTION)) continue;
                 Address via = reference.getToAddress();
+                // A reference can identify only an encoded table base while a
+                // runtime register selects the actual slot. Native operand
+                // addresses exist only for statically resolved memory operands.
+                Address operandAddress = instruction.getPrototype().getAddress(
+                    reference.getOperandIndex(), instruction.getInstructionContext());
+                if (!via.equals(operandAddress)) continue;
                 var data = session.program().getListing().getDefinedDataContaining(via);
                 if (data == null) continue;
                 long offset = via.subtract(data.getMinAddress());
@@ -309,7 +315,14 @@ public final class InstructionCfg {
                             .getOverridingReference(reference.getReferenceType()))) continue;
                 } else {
                     if (!instruction.getFlowType().isJump()) continue;
-                    if (reference.isExternalReference()) return true;
+                    if (reference.isExternalReference()) {
+                        InstructionPcodeOverride override = new InstructionPcodeOverride(instruction);
+                        instruction.getPrototype().getPcode(instruction.getInstructionContext(), override);
+                        // An applied jump override supersedes symbolic external
+                        // relocation evidence just as it supersedes memory targets.
+                        if (!override.isJumpOverrideRefApplied()) return true;
+                        continue;
+                    }
                 }
                 for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
                     session.monitor().checkCancelled();

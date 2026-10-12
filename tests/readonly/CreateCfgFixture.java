@@ -148,6 +148,24 @@ public class CreateCfgFixture extends GhidraScript {
                         address(program, 0x1770), address(program, 0x1440),
                         RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
                     program.getReferenceManager().setPrimary(inertJumpCall, true);
+                    code(program, 0x1780, 0xff, 0xe0);
+                    function(program, "external_jump", 0x1780, 0x1781);
+                    program.getReferenceManager().addExternalReference(address(program, 0x1780), 0,
+                        external, SourceType.USER_DEFINED, RefType.COMPUTED_JUMP);
+                    code(program, 0x1790, 0xe9, 0x6b, 0xfc, 0xff, 0xff);
+                    function(program, "overridden_external_jump", 0x1790, 0x1794);
+                    program.getReferenceManager().addExternalReference(address(program, 0x1790), -1,
+                        external, SourceType.USER_DEFINED, RefType.COMPUTED_JUMP);
+                    var jumpOverride = program.getReferenceManager().addMemoryReference(
+                        address(program, 0x1790), address(program, 0x1440),
+                        RefType.JUMP_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().setPrimary(jumpOverride, true);
+                    // A pointer table's base is not the effective address when
+                    // an unknown runtime register selects the slot.
+                    code(program, 0x17a0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+                    function(program, "indexed_pointer_caller", 0x17a0, 0x17a7);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17a0),
+                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
                 }
             } finally {
                 program.endTransaction(transaction, true);

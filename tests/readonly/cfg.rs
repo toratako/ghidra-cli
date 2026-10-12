@@ -322,3 +322,70 @@ fn instruction_cfg_keeps_delay_slot_outside_body_and_branch_origin() {
         std::panic::resume_unwind(error);
     }
 }
+
+#[test]
+#[serial]
+fn instruction_cfg_excludes_external_targets_replaced_by_jump_overrides() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("instruction-cfg-jump-override-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("CreateCfgFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let original = command(&program, "external_jump", &[]);
+        assert_eq!(rows(&original, "edges").len(), 1, "{original}");
+        assert_eq!(original["edges"][0]["target_state"], "external");
+        let overridden = command(&program, "overridden_external_jump", &[]);
+        assert_eq!(rows(&overridden, "edges").len(), 1, "{overridden}");
+        assert_eq!(overridden["edges"][0]["target"], "0x00001440");
+        assert_eq!(overridden["edges"][0]["target_state"], "outside_function");
+        check_references(&overridden);
+        let bounded = command(&program, "overridden_external_jump", &["--max-edges", "1"]);
+        assert_eq!(bounded["edges"], overridden["edges"], "{bounded}");
+        assert_eq!(bounded["completion"]["output"]["complete"], true);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(error) = checked {
+        std::panic::resume_unwind(error);
+    }
+}
+
+#[test]
+#[serial]
+fn instruction_cfg_does_not_resolve_unknown_pointer_table_indices() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("instruction-cfg-pointer-index-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("CreateCfgFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let indexed = command(&program, "indexed_pointer_caller", &[]);
+        assert_eq!(rows(&indexed, "calls").len(), 1, "{indexed}");
+        assert_eq!(
+            indexed["calls"][0]["target_state"], "unresolved",
+            "{indexed}"
+        );
+        assert!(indexed["calls"][0]["target"].is_null(), "{indexed}");
+        let fixed = command(&program, "pointer_caller", &[]);
+        assert_eq!(fixed["calls"][0]["target"], "0x00001400", "{fixed}");
+        assert_eq!(fixed["modification"], indexed["modification"]);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(error) = checked {
+        std::panic::resume_unwind(error);
+    }
+}
