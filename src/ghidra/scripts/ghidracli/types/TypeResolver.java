@@ -36,6 +36,9 @@ public final class TypeResolver {
 
     private static final Map<String, String> TYPE_NAME_ALIASES = buildTypeNameAliases();
     private static final Pattern ARRAY_DIMENSION = Pattern.compile("\\[\\s*([0-9]+)\\s*\\]\\s*");
+    // Native wrapper naming and cloning recurse too. Keep expression evaluation
+    // comfortably within supported JVM stacks before constructing those objects.
+    private static final int MAX_EXPRESSION_DEPTH = 128;
 
     static final class TypeResolutionException extends JsonProtocol.CommandException {
         TypeResolutionException(String message, JsonObject detail) {
@@ -78,6 +81,10 @@ public final class TypeResolver {
     }
 
     public DataType resolveDataType(String name) {
+        return resolveDataType(name, 0);
+    }
+
+    private DataType resolveDataType(String name, int depth) {
         checkCancelled();
         if (name == null || name.trim().isEmpty()) return null;
         String trimmed = name.trim();
@@ -94,13 +101,14 @@ public final class TypeResolver {
         // resolve the pointee with the same path/ambiguity rules. The target
         // manager supplies pointer width before a caller measures the type.
         if (trimmed.endsWith("*")) {
+            requireExpressionDepth(depth, 1, trimmed);
             String base = trimmed.substring(0, trimmed.length() - 1).trim();
-            DataType baseType = resolveDataType(base);
+            DataType baseType = resolveDataType(base, depth + 1);
             return baseType != null ? new PointerDataType(baseType, dtm) : null;
         }
 
         if (trimmed.indexOf('[') >= 0 || trimmed.indexOf(']') >= 0) {
-            return resolveArray(trimmed, dtm);
+            return resolveArray(trimmed, dtm, depth);
         }
 
         // A full path never falls back to another category or an alias.
@@ -162,7 +170,7 @@ public final class TypeResolver {
         return found != null ? found.clone(dtm) : null;
     }
 
-    private DataType resolveArray(String expression, DataTypeManager dtm) {
+    private DataType resolveArray(String expression, DataTypeManager dtm, int depth) {
         int firstDimension = expression.indexOf('[');
         if (firstDimension <= 0 || expression.substring(0, firstDimension).indexOf(']') >= 0) {
             throw invalidArray(expression, "expected a base type followed by [count]");
@@ -185,13 +193,14 @@ public final class TypeResolver {
                 throw invalidArray(expression, "array count must be positive");
             }
             counts.add(count);
+            requireExpressionDepth(depth, counts.size(), expression);
             end = matcher.end();
         }
         if (end != dimensions.length() || counts.isEmpty()) {
             throw invalidArray(expression, "expected positive decimal array counts, such as byte[16]");
         }
 
-        DataType element = resolveDataType(expression.substring(0, firstDimension));
+        DataType element = resolveDataType(expression.substring(0, firstDimension), depth + counts.size());
         if (element == null) return null;
         // C dimensions are outermost first: byte[2][3] is two arrays of three
         // bytes. Construct from the final dimension inward to preserve shape.
@@ -215,6 +224,13 @@ public final class TypeResolver {
         JsonObject detail = new JsonObject();
         detail.addProperty("type_name", expression);
         return new TypeResolutionException("Invalid array type '" + expression + "': " + reason, detail);
+    }
+
+    private void requireExpressionDepth(int depth, int additional, String expression) {
+        if (depth + additional <= MAX_EXPRESSION_DEPTH) return;
+        JsonObject detail = new JsonObject();
+        detail.addProperty("type_name", expression);
+        throw new TypeResolutionException("Type expression nesting exceeds " + MAX_EXPRESSION_DEPTH, detail);
     }
 
     private DataType findDataTypeByName(DataTypeManager mgr, String name, String requestedName) {

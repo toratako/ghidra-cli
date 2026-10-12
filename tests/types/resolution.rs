@@ -630,6 +630,8 @@ public class CreateExpressionNamedType extends GhidraScript {
         var dtm = currentProgram.getDataTypeManager();
         dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase", 1, dtm), null);
         dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase *", 3, dtm), null);
+        dtm.addDataType(new StructureDataType(CategoryPath.ROOT,
+            "DeepLiteral" + "*".repeat(129), 5, dtm), null);
     }
 }
 "#,
@@ -641,6 +643,10 @@ public class CreateExpressionNamedType extends GhidraScript {
     let exact = get_type(&program, "/ExprBase *");
     assert_eq!(exact["kind"], "struct");
     assert_eq!(exact["size"], 3);
+    assert_eq!(
+        get_type(&program, &format!("/DeepLiteral{}", "*".repeat(129)))["size"],
+        5
+    );
     assert_eq!(get_type(&program, "ExprBase *")["kind"], "pointer");
     type_command(
         &program,
@@ -688,4 +694,58 @@ fn type_resolution_and_definition_reads_cancel_without_database_changes() {
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
     checked.unwrap();
+}
+
+#[test]
+#[serial]
+fn excessive_type_expression_nesting_preserves_program_and_bridge() {
+    require_ghidra!();
+    let program = create_program(64);
+    let client = harness().client().unwrap();
+    client.open_program(&program).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        assert_eq!(get_type(&program, "byte *[2][3] *")["size"], 8);
+        assert_eq!(get_type(&program, "byte[2][3]")["size"], 6);
+        let before = type_command(&program, &["list", "--limit", "0"]);
+        before.assert_success();
+        let before: Value = before.data();
+        let holder = get_type(&program, "Holder");
+        for expression in [
+            format!("int{}", "*".repeat(10_000)),
+            format!("byte{}", "[1]".repeat(3_000)),
+            format!("byte{}{}", "*".repeat(96), "[1]".repeat(96)),
+        ] {
+            let failed = type_command(
+                &program,
+                &[
+                    "field",
+                    "append",
+                    "Holder",
+                    "--name",
+                    "rejected",
+                    "--type",
+                    &expression,
+                ],
+            );
+            failed
+                .assert_failure()
+                .assert_stderr_contains("Type expression nesting exceeds");
+            let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            // This client talks to the existing bridge directly and cannot restart it.
+            client.program_info().unwrap();
+            assert_eq!(get_type(&program, "Holder"), holder);
+        }
+        client.program_close().unwrap();
+        assert_eq!(get_type(&program, "Holder"), holder);
+        assert_eq!(
+            type_command(&program, &["list", "--limit", "0"]).data::<Value>(),
+            before
+        );
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
 }
