@@ -234,7 +234,7 @@ public final class ProgramSession {
     public RequestOutcome finishRequest(boolean successful) throws Exception {
         try {
             if (requestFailure != null) throw requestFailure;
-            boolean cancelled = atomicRequest && monitor().isCancelled();
+            boolean cancelled = monitor().isCancelled();
             boolean rolledBack = false;
             if (requestTransaction != null) {
                 if (atomicRequest && !requestTransaction.isSoleOwner()) {
@@ -353,6 +353,9 @@ public final class ProgramSession {
         boolean wasCurrent = isCurrent(file);
         if (wasCurrent) closeProgram();
         try {
+            // The durable save above deliberately ignores cancellation. Check
+            // again before starting deletion, then restore selection on failure.
+            monitor().checkCancelled();
             file.delete();
         } catch (Exception failure) {
             // Do not release other consumers or terminate checkouts. Restore

@@ -48,6 +48,7 @@ public class RequestTransactionProbe extends GhidraScript {
     private Integer leakedTransaction;
     private int savesToFail;
     private boolean failSaveWithAssertion;
+    private boolean cancelAfterSave;
     private int saveCalls;
     private int commentWrites;
     private int memoryWrites;
@@ -246,7 +247,12 @@ public class RequestTransactionProbe extends GhidraScript {
                         throw new IOException("injected one-shot save failure");
                     }
                 }
-                return invoke(method, real, args);
+                Object result = invoke(method, real, args);
+                if (method.getName().equals("save") && cancelAfterSave) {
+                    cancelAfterSave = false;
+                    requestMonitor.cancel();
+                }
+                return result;
             });
         Class<?> accessClass = bridgeLoader.loadClass(bridgePackage + "session.ScriptAccess");
         Object access = Proxy.newProxyInstance(bridgeLoader, new Class<?>[] { accessClass },
@@ -307,6 +313,44 @@ public class RequestTransactionProbe extends GhidraScript {
         success(command("comment_set", comment("after-stats-cancellation", "PRE")));
         savedComment(CodeUnit.EOL_COMMENT, prior);
         savedComment(CodeUnit.PRE_COMMENT, "after-stats-cancellation");
+    }
+
+    private void testNonAtomicCancellationDiagnostics() throws Exception {
+        JsonObject args = new JsonObject();
+        args.addProperty("source", """
+            import ghidra.app.script.GhidraScript;
+            public class SessionCancelledRequest extends GhidraScript {
+                public void run() throws Exception {
+                    setPreComment(toAddr(getScriptArgs()[0]), "cancelled-script-edit");
+                    monitor.cancel();
+                    monitor.checkCancelled();
+                }
+            }
+            """);
+        com.google.gson.JsonArray scriptArgs = new com.google.gson.JsonArray();
+        scriptArgs.add("0x" + address.toString());
+        args.add("args", scriptArgs);
+        JsonObject response = command("script_run", args);
+        JsonObject detail = failed(response);
+        check(detail != null && detail.has("cancelled") && detail.get("cancelled").getAsBoolean(),
+            "Non-atomic failure lost cancellation diagnostics: " + response);
+        check(detail.get("partial_changes_saved").getAsBoolean() && !detail.has("rolled_back"),
+            "Cancelled script did not retain its explicit non-atomic save semantics: " + response);
+        requestMonitor.clearCancelled();
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, "cancelled-script-edit");
+        // A completed non-atomic save still succeeds if cancellation arrives
+        // during its uninterruptible durable write.
+        int transaction = real.startTransaction("late save cancellation");
+        try { real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "saved-before-late-cancel"); }
+        finally { real.endTransaction(transaction, true); }
+        cancelAfterSave = true;
+        success(command("program_save", new JsonObject()));
+        check(!cancelAfterSave && requestMonitor.isCancelled(), "Save did not receive late cancellation");
+        requestMonitor.clearCancelled();
+        savedComment(CodeUnit.PRE_COMMENT, "saved-before-late-cancel");
+        success(command("comment_set", comment("after-cancelled-script", "PRE")));
+        savedComment(CodeUnit.PRE_COMMENT, "after-cancelled-script");
     }
 
     private void testMemoryFailure(String mode) throws Exception {
@@ -717,6 +761,54 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.PRE_COMMENT, "after-deletion-refusal");
     }
 
+    private void testCancelledDeletionAfterSave() throws Exception {
+        Class<?> type = session.getClass();
+        Method begin = type.getDeclaredMethod("beginRequest", String.class);
+        Method delete = type.getDeclaredMethod("delete", DomainFile.class);
+        Method finish = type.getDeclaredMethod("finishRequest", boolean.class);
+        begin.setAccessible(true);
+        delete.setAccessible(true);
+        finish.setAccessible(true);
+        DomainFile file = real.getDomainFile();
+        var consumers = real.getConsumerList();
+        boolean[] deletionAttempted = { false };
+        DomainFile target = (DomainFile) Proxy.newProxyInstance(DomainFile.class.getClassLoader(),
+            new Class<?>[] { DomainFile.class }, (proxy, method, args) -> {
+                if (method.getName().equals("delete")) deletionAttempted[0] = true;
+                return invoke(method, file, args);
+            });
+        begin.invoke(session, "program_delete");
+        real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "saved-before-cancelled-delete");
+        int previousSaveCalls = saveCalls;
+        cancelAfterSave = true;
+        boolean cancellationDelivered = false;
+        Throwable deletionFailure = null;
+        try { delete.invoke(session, target); }
+        catch (InvocationTargetException failure) { deletionFailure = failure.getCause(); }
+        finally {
+            finish.invoke(session, false);
+            cancellationDelivered = requestMonitor.isCancelled();
+            cancelAfterSave = false;
+            requestMonitor.clearCancelled();
+        }
+        check(cancellationDelivered && saveCalls == previousSaveCalls + 1,
+            "Deletion fixture did not cancel after its durable save");
+        check(!deletionAttempted[0],
+            "Cancellation during the durable save still attempted deletion");
+        check(deletionFailure instanceof CancelledException,
+            "Deletion lost the cancellation failure: " + deletionFailure);
+        check(selected == real && selected.getDomainFile().equals(file),
+            "Cancelled deletion did not restore the original selection");
+        check(real.getConsumerList().size() == consumers.size()
+            && real.getConsumerList().containsAll(consumers), "Cancelled deletion changed consumer ownership");
+        check(file.exists() && real.getCurrentTransactionInfo() == null,
+            "Cancelled deletion removed the file or left a transaction open");
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, "saved-before-cancelled-delete");
+        success(command("comment_set", comment("after-cancelled-delete", "PRE")));
+        savedComment(CodeUnit.PRE_COMMENT, "after-cancelled-delete");
+    }
+
     private void testFailedOpenReleasesConsumer() throws Exception {
         Class<?> type = session.getClass();
         Method begin = type.getDeclaredMethod("beginRequest", String.class);
@@ -790,6 +882,7 @@ public class RequestTransactionProbe extends GhidraScript {
             switch (mode) {
                 case "late-error": case "late-assertion": case "cancel": case "native-false": testLateFailure(mode); break;
                 case "stats-cancel": testStatsCancellation(); break;
+                case "non-atomic-cancel": testNonAtomicCancellationDiagnostics(); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": case "save-assertion": testSaveRecovery(mode); break;
                 case "description-save": testDescriptionSaveRecovery(); break;
@@ -800,6 +893,7 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "preview-leaked-child": testPreviewLeakedChild(); break;
                 case "preview-start-failure": testPreviewTransactionStartFailure(); break;
                 case "cancelled-delete-refusal": testCancelledDeletionRefusal(); break;
+                case "cancelled-delete-save": testCancelledDeletionAfterSave(); break;
                 case "failed-open": testFailedOpenReleasesConsumer(); break;
                 case "preview": testPreviewAfterEdit(); break;
                 default: throw new IllegalArgumentException(mode);
@@ -916,6 +1010,12 @@ fn test_program_stats_cancellation_stops_scanning_and_preserves_later_requests()
 
 #[test]
 #[serial]
+fn test_non_atomic_cancelled_script_retains_cancellation_and_saved_changes_diagnostics() {
+    run_transaction_probe("non-atomic-cancel");
+}
+
+#[test]
+#[serial]
 fn test_native_false_rolls_back_changes_before_the_failure() {
     run_transaction_probe("native-false");
 }
@@ -996,6 +1096,12 @@ fn test_preview_transaction_start_failures_do_not_save_earlier_pending_edits() {
 #[serial]
 fn test_cancelled_deletion_refusal_restores_selection_and_preserves_consumers() {
     run_transaction_probe("cancelled-delete-refusal");
+}
+
+#[test]
+#[serial]
+fn test_cancellation_during_save_prevents_deletion_and_restores_selection() {
+    run_transaction_probe("cancelled-delete-save");
 }
 
 #[test]
