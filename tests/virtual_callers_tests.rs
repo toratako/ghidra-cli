@@ -540,3 +540,37 @@ fn x86_32_bit_pointer_loads_use_four_byte_slot_offsets() {
         }
     });
 }
+
+#[test]
+#[serial]
+fn native_flow_and_reference_overrides_supersede_original_indirect_calls() {
+    require_ghidra!();
+    let name = format!("virtual-call-overrides-{}", uuid::Uuid::new_v4());
+    let client = harness().client().unwrap();
+    client
+        .script_run_source(
+            include_str!("fixtures/virtual_callers/CreateVirtualCallOverridesFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .expect("create native flow and reference overrides");
+    with_program(&name, |client, _| {
+        for caller in ["ordinary_indirect", "overridden_call_return"] {
+            let found = search(client, json!({"within":caller,"entries":1}));
+            single_call(&found, caller, 0, "table_value");
+            assert_eq!(found["scan"]["complete"], true, "{found}");
+        }
+        for caller in [
+            "overridden_branch",
+            "overridden_return",
+            "overridden_direct",
+        ] {
+            let found = search(client, json!({"within":caller,"entries":1}));
+            assert!(calls(&found).is_empty(), "{found}");
+            assert_eq!(found["scan"]["complete"], true, "{found}");
+            assert_eq!(found["scan"]["unresolved"], json!([]), "{found}");
+        }
+    });
+    client.program_delete(&name).unwrap();
+}

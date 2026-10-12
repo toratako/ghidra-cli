@@ -7,6 +7,7 @@ import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
@@ -213,7 +214,13 @@ final class CallReferences {
             return InstructionFlow.isCallReference(instruction, ref);
         }
         // PARAM describes an argument even when attached to a call instruction.
-        return instruction.getFlowType().isCall() && instruction.getFlowType().isComputed()
-            && (type.isRead() || type == RefType.DATA || type == RefType.INDIRECTION);
+        if (!instruction.getFlowType().isCall() || !instruction.getFlowType().isComputed()
+                || !(type.isRead() || type == RefType.DATA || type == RefType.INDIRECTION)) return false;
+        // A reference override can turn CALLIND into CALL without changing the
+        // Listing flow type. Its old operand read no longer identifies a callee.
+        for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
+            if (op.getOpcode() == PcodeOp.CALLIND) return true;
+        }
+        return false;
     }
 }

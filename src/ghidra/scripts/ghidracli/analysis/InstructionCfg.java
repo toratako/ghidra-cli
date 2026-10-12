@@ -6,12 +6,16 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.block.BasicBlockModel;
 import ghidra.program.model.block.CodeBlock;
+import ghidra.program.model.block.SimpleDestReferenceIterator;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.listing.InstructionPcodeOverride;
+import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.RefType;
 import ghidra.util.exception.CancelledException;
 import ghidracli.function.FunctionQueries;
+import ghidracli.listing.InstructionFlow;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
@@ -147,7 +151,11 @@ public final class InstructionCfg {
             Set<Address> knownJumps = new HashSet<>();
             // Ghidra eagerly gathers this block's references. Output caps do not bound that
             // native work; its request monitor supplies cancellation throughout collection.
-            var destinations = block.nativeBlock().getDestinations(session.monitor());
+            // Native indirection inference follows any primitive containing the
+            // operand, including integer data and interior pointer bytes. Keep
+            // native literal flows, then resolve pointers through our checked path.
+            var destinations = new SimpleDestReferenceIterator(
+                block.nativeBlock(), false, session.monitor());
             while (destinations.hasNext()) {
                 session.monitor().checkCancelled();
                 var reference = destinations.next();
@@ -156,11 +164,19 @@ public final class InstructionCfg {
                 Address target = reference.getReference();
                 FlowType type = reference.getFlowType();
                 Instruction instruction = session.program().getListing().getInstructionAt(site);
+                if (instruction == null) continue;
+                if (type.isCall() && !isCallReference(instruction, target, type)) continue;
+                if (type.isJump() && !isJumpReference(instruction, target, type)) continue;
+                if (type.isFallthrough() && !target.equals(instruction.getFallThrough())) continue;
                 if (type == RefType.INDIRECTION) {
                     // This is an operand pointer, not an instruction destination.
-                    FlowType effective = instruction == null ? type : instruction.getFlowType();
+                    FlowType effective = instruction.getFlowType();
+                    if (!hasIndirectFlow(instruction)) continue;
                     boolean call = effective.isCall();
-                    if (!emit(block, site, null, effective, call ? "call" : "unresolved", target)) return;
+                    boolean resolved = supplementPointer(block, instruction);
+                    if (!flowsComplete) return;
+                    if (!resolved && !emit(block, site, null, effective,
+                            call ? "call" : "unresolved", target)) return;
                     (call ? knownCalls : knownJumps).add(site);
                 } else {
                     boolean call = type.isCall();
@@ -180,7 +196,9 @@ public final class InstructionCfg {
                 Set<Address> known = type.isCall() ? knownCalls : knownJumps;
                 if ((type.isCall() || type.isJump()) && !known.contains(site)) {
                     boolean resolved = false;
-                    for (Address target : instruction.getFlows()) {
+                    // getFlows includes inert/nonprimary override references.
+                    // Effective p-code supplies only actual direct targets.
+                    for (Address target : directTargets(instruction, type.isCall())) {
                         session.monitor().checkCancelled();
                         if (!emit(block, site, target, type, type.isCall() ? "call" : "edge", null)) return;
                         resolved = true;
@@ -226,8 +244,9 @@ public final class InstructionCfg {
             }
         }
 
-        /** Supplement native block lookup for computed calls in the middle of a block. */
+        /** Resolve computed transfers only through exact typed pointer operands. */
         private boolean supplementPointer(Block block, Instruction instruction) throws CancelledException {
+            if (!hasIndirectFlow(instruction)) return false;
             boolean resolved = false;
             for (var reference : instruction.getReferencesFrom()) {
                 session.monitor().checkCancelled();
@@ -256,6 +275,64 @@ public final class InstructionCfg {
                 }
             }
             return resolved;
+        }
+
+        private boolean isCallReference(Instruction instruction, Address target, FlowType type)
+                throws CancelledException {
+            for (var reference : instruction.getReferencesFrom()) {
+                session.monitor().checkCancelled();
+                if (reference.getReferenceType().equals(type) && reference.getToAddress().equals(target)
+                        && InstructionFlow.isCallReference(instruction, reference)) return true;
+            }
+            return false;
+        }
+
+        private boolean hasIndirectFlow(Instruction instruction) throws CancelledException {
+            FlowType flow = instruction.getFlowType();
+            int opcode = flow.isCall() ? PcodeOp.CALLIND : flow.isJump() ? PcodeOp.BRANCHIND : -1;
+            if (opcode == -1) return false;
+            for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
+                session.monitor().checkCancelled();
+                if (op.getOpcode() == opcode) return true;
+            }
+            return false;
+        }
+
+        private boolean isJumpReference(Instruction instruction, Address target, FlowType type)
+                throws CancelledException {
+            for (var reference : instruction.getReferencesFrom()) {
+                session.monitor().checkCancelled();
+                if (!reference.getReferenceType().equals(type)
+                        || !reference.getToAddress().equals(target)) continue;
+                if (type.isOverride()) {
+                    if (!reference.isPrimary() || !target.equals(new InstructionPcodeOverride(instruction)
+                            .getOverridingReference(reference.getReferenceType()))) continue;
+                } else {
+                    if (!instruction.getFlowType().isJump()) continue;
+                    if (reference.isExternalReference()) return true;
+                }
+                for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
+                    session.monitor().checkCancelled();
+                    if ((op.getOpcode() == PcodeOp.BRANCH || op.getOpcode() == PcodeOp.CBRANCH)
+                            && op.getNumInputs() > 0 && !op.getInput(0).isConstant()
+                            && target.equals(op.getInput(0).getAddress())) return true;
+                    if (!type.isOverride() && op.getOpcode() == PcodeOp.BRANCHIND) return true;
+                }
+            }
+            return false;
+        }
+
+        private List<Address> directTargets(Instruction instruction, boolean call) throws CancelledException {
+            List<Address> targets = new ArrayList<>();
+            for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
+                session.monitor().checkCancelled();
+                boolean transfer = call ? op.getOpcode() == PcodeOp.CALL
+                    : op.getOpcode() == PcodeOp.BRANCH || op.getOpcode() == PcodeOp.CBRANCH;
+                if (transfer && op.getNumInputs() > 0 && !op.getInput(0).isConstant()) {
+                    targets.add(op.getInput(0).getAddress());
+                }
+            }
+            return targets;
         }
 
         private boolean crosses(Address site, Address target) {

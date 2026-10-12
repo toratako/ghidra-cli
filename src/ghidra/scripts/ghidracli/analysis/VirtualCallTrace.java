@@ -17,6 +17,7 @@ import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
 import ghidra.util.exception.CancelledException;
+import ghidracli.listing.InstructionFlow;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
@@ -83,7 +84,10 @@ final class VirtualCallTrace {
         while (instructions.hasNext()) {
             session.monitor().checkCancelled();
             Instruction instruction = instructions.next();
-            PcodeOp[] raw = instruction.getPcode(false);
+            // Flow/reference overrides define the current call. Raw CALLIND
+            // evidence must not resurrect a transfer changed to BRANCH/RETURN
+            // or a call whose target was replaced by a direct-call override.
+            PcodeOp[] raw = InstructionFlow.effectivePcode(instruction);
             List<Integer> indirect = new ArrayList<>();
             for (int i = 0; i < raw.length; i++) {
                 session.monitor().checkCancelled();

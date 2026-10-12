@@ -121,6 +121,20 @@ fn instruction_cfg_preserves_flows_body_boundaries_and_limits() {
         assert_eq!(interior_graph["count"], 1, "{interior_graph}");
         assert_eq!(interior_graph["calls"][0]["callee_address"], "0x00002001");
         assert!(interior_graph["calls"][0]["callee"].is_null());
+        let override_graph = client
+            .graph_callees("overridden_pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(override_graph["count"], 1, "{override_graph}");
+        assert_eq!(override_graph["calls"][0]["callee_address"], "0x00001440");
+        for (function, site, target) in [
+            ("overridden_pointer_caller", "0x00001270", "0x00001440"),
+            ("inactive_pointer_caller", "0x00001290", "0x00001400"),
+        ] {
+            let cfg = command(&program, function, &[]);
+            assert_eq!(rows(&cfg, "calls").len(), 1, "{cfg}");
+            assert_eq!(at(&cfg, "calls", site)["target"], target, "{cfg}");
+        }
+        assert!(rows(&command(&program, "inert_call_override", &[]), "calls").is_empty());
         assert_eq!(
             client.graph_callers("unreachable", Some(1), None).unwrap()["count"],
             0
@@ -147,6 +161,17 @@ fn instruction_cfg_preserves_flows_body_boundaries_and_limits() {
         assert_eq!(unknown["target_state"], "unresolved");
         assert!(unknown["target"].is_null());
         assert_eq!(unresolved["completion"]["scan"]["complete"], true);
+        for (function, site) in [
+            ("interior_pointer_jump", "0x000013a0"),
+            ("scalar_jump", "0x000013c0"),
+            ("inert_call_on_jump", "0x00001770"),
+        ] {
+            let cfg = command(&program, function, &[]);
+            assert!(rows(&cfg, "edges").is_empty(), "{cfg}");
+            let unknown = at(&cfg, "boundaries", site);
+            assert_eq!(unknown["target_state"], "unresolved", "{cfg}");
+            assert!(unknown["target"].is_null(), "{cfg}");
+        }
 
         let disjoint = command(&program, "disjoint", &[]);
         assert_eq!(rows(&disjoint, "nodes").len(), 1, "{disjoint}");

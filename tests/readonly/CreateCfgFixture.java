@@ -4,6 +4,7 @@ import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.IntegerDataType;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Program;
@@ -80,20 +81,43 @@ public class CreateCfgFixture extends GhidraScript {
                     // Reading from the middle of a typed pointer does not load its value.
                     code(program, 0x1260, 0xff, 0x15, 1, 0x20, 0, 0, 0x90, 0xc3);
                     function(program, "interior_pointer_caller", 0x1260, 0x1267);
+                    code(program, 0x1270, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
+                    function(program, "overridden_pointer_caller", 0x1270, 0x1277);
+                    var override = program.getReferenceManager().addMemoryReference(
+                        address(program, 0x1270), address(program, 0x1440),
+                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().setPrimary(override, true);
                     code(program, 0x1280, 0xff, 0xd0, 0x90, 0xc3);
                     function(program, "external_caller", 0x1280, 0x1283);
                     var external = program.getExternalManager().addExtFunction("fixture", "external_target",
                         null, SourceType.USER_DEFINED);
                     program.getReferenceManager().addExternalReference(address(program, 0x1280), 0,
                         external, SourceType.USER_DEFINED, RefType.COMPUTED_CALL);
+                    code(program, 0x1290, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
+                    function(program, "inactive_pointer_caller", 0x1290, 0x1297);
+                    var inactive = program.getReferenceManager().addMemoryReference(
+                        address(program, 0x1290), address(program, 0x1440),
+                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().setPrimary(inactive, false);
                     code(program, 0x1300, 0xe9, 0xfb, 0, 0, 0);
                     function(program, "outside", 0x1300, 0x1304);
                     code(program, 0x1350, 0xe9, 0xab, 0x0a, 0, 0);
                     function(program, "missing", 0x1350, 0x1354);
                     code(program, 0x1380, 0xff, 0xe0);
                     function(program, "unresolved", 0x1380, 0x1381);
+                    // The native block iterator follows any primitive at a READ
+                    // destination, including pointer interiors and non-pointers.
+                    code(program, 0x13a0, 0xff, 0x25, 1, 0x20, 0, 0);
+                    function(program, "interior_pointer_jump", 0x13a0, 0x13a5);
+                    program.getListing().createData(address(program, 0x2010), IntegerDataType.dataType);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x2010),
+                        address(program, 0x1600), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    code(program, 0x13c0, 0xff, 0x25, 0x10, 0x20, 0, 0);
+                    function(program, "scalar_jump", 0x13c0, 0x13c5);
                     code(program, 0x1400, 0xc3);
                     function(program, "target", 0x1400, 0x1400);
+                    code(program, 0x1440, 0xc3);
+                    function(program, "override_target", 0x1440, 0x1440);
                     code(program, 0x1500, 0x90, 0x90, 0x90, 0xc3);
                     function(program, "disjoint", 0x1500, 0x1500, 0x1502, 0x1503);
                     code(program, 0x1600, 0xc3);
@@ -112,6 +136,18 @@ public class CreateCfgFixture extends GhidraScript {
                     function(program, "redirected", 0x1740, 0x1741, 0x1750, 0x1750);
                     program.getListing().getInstructionAt(address(program, 0x1740))
                         .setFallThrough(address(program, 0x1750));
+                    code(program, 0x1760, 0x90, 0xc3);
+                    function(program, "inert_call_override", 0x1760, 0x1761);
+                    var inert = program.getReferenceManager().addMemoryReference(
+                        address(program, 0x1760), address(program, 0x1440),
+                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().setPrimary(inert, true);
+                    code(program, 0x1770, 0xff, 0xe0);
+                    function(program, "inert_call_on_jump", 0x1770, 0x1771);
+                    var inertJumpCall = program.getReferenceManager().addMemoryReference(
+                        address(program, 0x1770), address(program, 0x1440),
+                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().setPrimary(inertJumpCall, true);
                 }
             } finally {
                 program.endTransaction(transaction, true);

@@ -23,6 +23,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Resolve symbol names containing namespace separators, ignore addressless
   namespace symbols, and detect reparenting between identically named namespaces.
 - Observe cancellation during address lookup.
+- Honor effective flow overrides in call/CFG results and reject indirect targets
+  inferred from pointer interiors or nonpointer data.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete
