@@ -19,6 +19,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Keep relative Java home selections usable when launchers change directories.
 - Parse fields beginning with `NOT` without treating the prefix as negation,
   and reject overflowing decimal filter literals.
+- Avoid recommending analysis retries when an import's rollback is unconfirmed.
 
 ## [0.10.0] - 2026-10-12
 

@@ -55,7 +55,13 @@ impl ImportProgress {
             detail["analysis_status"].as_str().unwrap_or("unknown")
         );
         if detail["import_status"] == "saved" {
-            if let Some(program) = detail["program"].as_str() {
+            if detail["transaction_failed"] == true {
+                message.push_str(
+                    ". Do not re-import. Keep the bridge running: rollback is unconfirmed. \
+                     Close outstanding transactions through their owner and inspect the program \
+                     state before saving or retrying.",
+                );
+            } else if let Some(program) = detail["program"].as_str() {
                 let command = if detail["outcome_unknown"] == true {
                     vec![
                         "ghidra-cli".to_owned(),
@@ -217,6 +223,32 @@ mod tests {
             json!(["ghidra-cli", "job", "list", "--project", "project"])
         );
         assert!(!error.to_string().contains("\"analysis\",\"run\""));
+    }
+
+    #[test]
+    fn unconfirmed_analysis_rollback_keeps_the_bridge_running_without_a_retry_command() {
+        let progress = ImportProgress {
+            stage: "import.analysis",
+            imported: "saved",
+            analysis: "unknown",
+            program: Some("saved-name".into()),
+            receipt: None,
+        };
+        let error = progress.failure(
+            BridgeCommandError {
+                message: "Rollback failed".into(),
+                detail: json!({"transaction_failed": true}),
+            }
+            .into(),
+            Path::new("project"),
+        );
+        let detail = crate::error::diagnostic_detail(&error);
+        assert_eq!(detail["import_status"], "saved");
+        assert_eq!(detail["transaction_failed"], true);
+        assert!(detail.get("recovery").is_none());
+        let message = error.to_string();
+        assert!(message.contains("Do not re-import"), "{message}");
+        assert!(message.contains("Keep the bridge running"), "{message}");
     }
 
     #[test]
