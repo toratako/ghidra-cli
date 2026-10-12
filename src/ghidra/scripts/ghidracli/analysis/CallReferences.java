@@ -3,11 +3,14 @@ package ghidracli.analysis;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressIterator;
+import ghidra.program.model.lang.OperandType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.pcode.PcodeOp;
+import ghidra.program.model.pcode.Varnode;
+import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
@@ -225,7 +228,7 @@ final class CallReferences {
         return true;
     }
 
-    private boolean isCallSite(Instruction instruction, Reference ref) {
+    private boolean isCallSite(Instruction instruction, Reference ref) throws CancelledException {
         if (instruction == null) return false;
         // Register/stack references identify operand storage, not the runtime
         // code address held there by a computed call.
@@ -240,9 +243,72 @@ final class CallReferences {
                 || !(type.isRead() || type == RefType.DATA || type == RefType.INDIRECTION)) return false;
         // A reference override can turn CALLIND into CALL without changing the
         // Listing flow type. Its old operand read no longer identifies a callee.
-        for (PcodeOp op : InstructionFlow.effectivePcode(instruction)) {
-            if (op.getOpcode() == PcodeOp.CALLIND) return true;
+        PcodeOp[] operations = InstructionFlow.effectivePcode(instruction);
+        for (int i = 0; i < operations.length; i++) {
+            session.monitor().checkCancelled();
+            if (operations[i].getOpcode() == PcodeOp.CALLIND
+                    && !isDynamicBase(instruction, ref, operations, i)) return true;
         }
         return false;
+    }
+
+    /** An encoded indexed base is not a recorded resolved pointer-slot address. */
+    private boolean isDynamicBase(Instruction instruction, Reference reference,
+            PcodeOp[] operations, int call) throws CancelledException {
+        int operand = reference.getOperandIndex();
+        if (operand < 0 || operand >= instruction.getNumOperands()
+                || !OperandType.isDynamic(instruction.getPrototype().getOpType(
+                    operand, instruction.getInstructionContext()))) return false;
+        Address destination = reference.getToAddress();
+        boolean encoded = false;
+        for (Object object : instruction.getOpObjects(operand)) {
+            session.monitor().checkCancelled();
+            encoded |= object instanceof Address address && address.equals(destination)
+                || object instanceof Scalar scalar && (scalar.getUnsignedValue() == destination.getOffset()
+                    || scalar.getSignedValue() == destination.getOffset());
+        }
+        if (!encoded) return false;
+        int definition = definition(operations, call, operations[call].getInput(0));
+        while (definition >= 0 && (operations[definition].getOpcode() == PcodeOp.COPY
+                || operations[definition].getOpcode() == PcodeOp.CAST)) {
+            definition = definition(operations, definition, operations[definition].getInput(0));
+        }
+        if (definition < 0 || operations[definition].getOpcode() != PcodeOp.LOAD) return false;
+        PcodeOp load = operations[definition];
+        int addressDefinition = definition(operations, definition, load.getInput(1));
+        if (addressDefinition < 0 || operations[addressDefinition].getOpcode() != PcodeOp.INT_ADD) return false;
+        // Follow only additive address definitions. Sleigh can split base +
+        // index + displacement across temporaries; scales and stack constants
+        // do not contribute an additive displacement to this LOAD.
+        var space = session.program().getAddressFactory().getAddressSpace((int) load.getInput(0).getOffset());
+        Deque<Integer> pending = new ArrayDeque<>();
+        Set<Integer> visited = new HashSet<>();
+        pending.add(addressDefinition);
+        while (!pending.isEmpty()) {
+            session.monitor().checkCancelled();
+            int current = pending.removeFirst();
+            if (!visited.add(current)) continue;
+            for (Varnode input : operations[current].getInputs()) {
+                if (input.isConstant()) {
+                    Address base = space.getTruncatedAddress(input.getOffset(), false);
+                    base = instruction.getAddress().getAddressSpace().getOverlayAddress(base);
+                    if (destination.equals(base)) return true;
+                    continue;
+                }
+                int source = definition(operations, current, input);
+                if (source >= 0 && (operations[source].getOpcode() == PcodeOp.INT_ADD
+                        || operations[source].getOpcode() == PcodeOp.COPY
+                        || operations[source].getOpcode() == PcodeOp.CAST)) pending.addLast(source);
+            }
+        }
+        return false;
+    }
+
+    private int definition(PcodeOp[] operations, int before, Varnode value) throws CancelledException {
+        for (int i = before - 1; i >= 0; i--) {
+            session.monitor().checkCancelled();
+            if (value.equals(operations[i].getOutput())) return i;
+        }
+        return -1;
     }
 }

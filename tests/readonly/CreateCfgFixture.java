@@ -166,6 +166,31 @@ public class CreateCfgFixture extends GhidraScript {
                     function(program, "indexed_pointer_caller", 0x17a0, 0x17a7);
                     program.getReferenceManager().addMemoryReference(address(program, 0x17a0),
                         address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
+                    // A recorded runtime call destination remains stronger
+                    // evidence than the indexed operand's unresolved table base.
+                    code(program, 0x17b0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+                    function(program, "resolved_indexed_caller", 0x17b0, 0x17b7);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17b0),
+                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17b0),
+                        address(program, 0x1440), RefType.COMPUTED_CALL, SourceType.USER_DEFINED, 0);
+                    // A register-only memory operand has no encoded table base.
+                    // Its explicit READ records a known pointer-slot address.
+                    code(program, 0x17c0, 0xff, 0x10, 0xc3);
+                    function(program, "recorded_pointer_caller", 0x17c0, 0x17c2);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17c0),
+                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
+                    program.getListing().createData(address(program, 0x2008), PointerDataType.dataType);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x2008),
+                        address(program, 0x1440), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    code(program, 0x17d0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+                    function(program, "recorded_indexed_slot_caller", 0x17d0, 0x17d7);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17d0),
+                        address(program, 0x2008), RefType.READ, SourceType.USER_DEFINED, 0);
+                    code(program, 0x17e0, 0xff, 0x94, 0x83, 0, 0x20, 0, 0, 0xc3);
+                    function(program, "indexed_base_pointer_caller", 0x17e0, 0x17e7);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x17e0),
+                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
                 }
             } finally {
                 program.endTransaction(transaction, true);

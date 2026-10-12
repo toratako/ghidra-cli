@@ -379,9 +379,78 @@ fn instruction_cfg_does_not_resolve_unknown_pointer_table_indices() {
             "{indexed}"
         );
         assert!(indexed["calls"][0]["target"].is_null(), "{indexed}");
+        let outgoing = client
+            .graph_callees("indexed_pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(outgoing["count"], 0, "{outgoing}");
+        let added_base = command(&program, "indexed_base_pointer_caller", &[]);
+        assert_eq!(
+            added_base["calls"][0]["target_state"], "unresolved",
+            "{added_base}"
+        );
+        let outgoing = client
+            .graph_callees("indexed_base_pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(outgoing["count"], 0, "{outgoing}");
+        let incoming = client.graph_callers("target", Some(1), None).unwrap();
+        assert!(
+            rows(&incoming, "calls")
+                .iter()
+                .all(|call| call["caller"] != "indexed_pointer_caller"
+                    && call["caller"] != "indexed_base_pointer_caller"),
+            "{incoming}"
+        );
+        let graph = client.graph_calls(None).unwrap();
+        assert!(
+            rows(&graph, "edges")
+                .iter()
+                .all(|edge| edge["caller"] != "indexed_pointer_caller"
+                    && edge["caller"] != "indexed_base_pointer_caller"),
+            "{graph}"
+        );
         let fixed = command(&program, "pointer_caller", &[]);
         assert_eq!(fixed["calls"][0]["target"], "0x00001400", "{fixed}");
+        let resolved = command(&program, "resolved_indexed_caller", &[]);
+        assert_eq!(rows(&resolved, "calls").len(), 1, "{resolved}");
+        assert_eq!(resolved["calls"][0]["target"], "0x00001440", "{resolved}");
+        let outgoing = client
+            .graph_callees("resolved_indexed_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(outgoing["count"], 1, "{outgoing}");
+        assert_eq!(
+            outgoing["calls"][0]["destination"],
+            resolved["calls"][0]["target"]
+        );
+        let incoming = client
+            .graph_callers("override_target", Some(1), None)
+            .unwrap();
+        assert!(
+            rows(&incoming, "calls").contains(&outgoing["calls"][0]),
+            "{incoming}"
+        );
         assert_eq!(fixed["modification"], indexed["modification"]);
+        assert_eq!(resolved["modification"], indexed["modification"]);
+        let recorded = client
+            .graph_callees("recorded_pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(recorded["count"], 1, "{recorded}");
+        assert_eq!(
+            recorded["calls"][0]["destination"], "0x00001400",
+            "{recorded}"
+        );
+        let slot = client
+            .graph_callees("recorded_indexed_slot_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(slot["count"], 1, "{slot}");
+        assert_eq!(slot["calls"][0]["destination"], "0x00001440", "{slot}");
+        client
+            .script_run_source(
+                include_str!("CheckCallQueriesReadOnly.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&program).unwrap();
