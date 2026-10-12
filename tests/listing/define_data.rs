@@ -107,3 +107,102 @@ fn test_define_data_force_on_function_entry_warns() {
         entry
     );
 }
+
+#[test]
+#[serial]
+fn define_data_reports_the_overlapping_unit_when_the_start_is_undefined() {
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let name = format!("define-data-conflicts-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.model.data.WordDataType;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.util.DefaultLanguageService;
+public class CreateDataConflictFixture extends GhidraScript {
+    public void run() throws Exception {
+        var language = DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID("x86:LE:64:default"));
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int tx = program.startTransaction("data conflicts");
+            try {
+                var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
+                program.getMemory().createInitializedBlock("storage", start, 32, (byte) 0, monitor, false);
+                program.getListing().createData(start.add(2), WordDataType.dataType);
+                program.getMemory().setBytes(start.add(0x12), new byte[]{0x66, (byte) 0x90});
+                if (!new DisassembleCommand(start.add(0x12), null, false).applyTo(program, monitor)) {
+                    throw new IllegalStateException("Could not disassemble fixture");
+                }
+            } finally {
+                program.endTransaction(tx, true);
+            }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally {
+            program.release(this);
+        }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let before = client.send_command("data_list", None).unwrap();
+        for (target, kind, start, end, type_name) in [
+            ("0x1000", "data", "0x00001002", "0x00001003", "uint32_t"),
+            ("0x1003", "data", "0x00001002", "0x00001003", "uint16_t"),
+            (
+                "0x1010",
+                "instruction",
+                "0x00001012",
+                "0x00001013",
+                "uint32_t",
+            ),
+        ] {
+            let result = ghidra(harness)
+                .args([
+                    "--json",
+                    "listing",
+                    "define-data",
+                    target,
+                    "--type",
+                    type_name,
+                ])
+                .with_project(test_project(), &name)
+                .run();
+            result.assert_failure();
+            let error: serde_json::Value = serde_json::from_str(&result.stderr).unwrap();
+            let detail = &error["detail"];
+            assert_eq!(detail["conflicting_start"], start, "{error}");
+            assert_eq!(detail["conflicting_end"], end, "{error}");
+            assert_eq!(detail["conflicting_length"], 2, "{error}");
+            assert_eq!(detail["conflicting_kind"], kind, "{error}");
+            assert_eq!(detail["rolled_back"], true);
+            if kind == "data" {
+                assert_eq!(detail["conflicting_defined"], true);
+                assert_eq!(detail["conflicting_type"], "word");
+            }
+        }
+        assert_eq!(client.send_command("data_list", None).unwrap(), before);
+        assert_eq!(
+            client.disasm("0x1012", Some(1)).unwrap()["instructions"][0]["bytes"],
+            "6690"
+        );
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}

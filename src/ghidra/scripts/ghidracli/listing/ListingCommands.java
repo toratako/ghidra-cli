@@ -102,7 +102,7 @@ public final class ListingCommands {
                 listing.createData(addr, dataType, length);
             } catch (ghidra.program.model.util.CodeUnitInsertionException e) {
                 // Surface the conflicting code unit's own type/length/range.
-                return defineDataConflictError(addr, typeName, e);
+                return defineDataConflictError(addr, clearEnd, typeName, e);
             }
 
             JsonObject result = new JsonObject();
@@ -130,29 +130,38 @@ public final class ListingCommands {
         }
     }
 
-    private JsonObject defineDataConflictError(Address addr, String typeName, Exception cause) {
+    private JsonObject defineDataConflictError(Address addr, Address end, String typeName, Exception cause) {
         Listing listing = session.program().getListing();
+        AddressSet range = new AddressSet(addr, end);
         CodeUnit cu = listing.getCodeUnitContaining(addr);
+        if (cu instanceof Data data && !data.isDefined()) cu = null;
+        if (cu == null) {
+            var instructions = listing.getInstructions(range, true);
+            if (instructions.hasNext()) cu = instructions.next();
+        }
+        if (cu == null) {
+            var data = listing.getDefinedData(range, true);
+            if (data.hasNext()) cu = data.next();
+        }
+        if (cu == null) return errorResult("Failed to apply type: " + cause.getMessage(), cause);
 
         JsonObject detail = new JsonObject();
-        String description = "unknown";
-        if (cu != null) {
-            detail.addProperty("conflicting_start", AddressCodec.format(cu.getMinAddress()));
-            detail.addProperty("conflicting_end", AddressCodec.format(cu.getMaxAddress()));
-            detail.addProperty("conflicting_length", cu.getLength());
-            if (cu instanceof Instruction) {
-                detail.addProperty("conflicting_kind", "instruction");
-                detail.addProperty("conflicting_mnemonic", ((Instruction) cu).getMnemonicString());
-                description = "an instruction (" + ((Instruction) cu).getMnemonicString() + ")";
-            } else if (cu instanceof Data) {
-                Data d = (Data) cu;
-                detail.addProperty("conflicting_kind", "data");
-                detail.addProperty("conflicting_type", d.getDataType().getName());
-                detail.addProperty("conflicting_defined", d.isDefined());
-                description = (d.isDefined() ? "defined data of type " + d.getDataType().getName()
-                    : "undefined data") + " spanning " + AddressCodec.format(cu.getMinAddress())
-                    + "-" + AddressCodec.format(cu.getMaxAddress());
-            }
+        detail.addProperty("conflicting_start", AddressCodec.format(cu.getMinAddress()));
+        detail.addProperty("conflicting_end", AddressCodec.format(cu.getMaxAddress()));
+        detail.addProperty("conflicting_length", cu.getLength());
+        String description;
+        if (cu instanceof Instruction instruction) {
+            detail.addProperty("conflicting_kind", "instruction");
+            detail.addProperty("conflicting_mnemonic", instruction.getMnemonicString());
+            description = "an instruction (" + instruction.getMnemonicString() + ")";
+        } else {
+            Data data = (Data) cu;
+            detail.addProperty("conflicting_kind", "data");
+            detail.addProperty("conflicting_type", data.getDataType().getName());
+            detail.addProperty("conflicting_defined", true);
+            description = "defined data of type " + data.getDataType().getName()
+                + " spanning " + AddressCodec.format(cu.getMinAddress())
+                + "-" + AddressCodec.format(cu.getMaxAddress());
         }
 
         JsonObject err = errorResult("Conflicting data exists at " + AddressCodec.format(addr) + " for type " + typeName
