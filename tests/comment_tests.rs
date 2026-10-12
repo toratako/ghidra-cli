@@ -443,7 +443,7 @@ fn comment_terminal_stdin_explains_eof_even_when_quiet() {
 
 #[test]
 #[serial]
-fn test_comments_at_instruction_data_external_and_unmapped_addresses() {
+fn test_comments_at_native_address_spaces_and_interior_locations() {
     require_ghidra!();
     let client = harness().client().unwrap();
     let name = format!("comment-interior-{}", uuid::Uuid::new_v4());
@@ -492,7 +492,36 @@ public class CreateInteriorCommentFixture extends GhidraScript {
             .as_str()
             .unwrap()
             .to_string();
-        let addresses = ["0x1001", "0x1009", "0x10", external.as_str()];
+        let stack = client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class ReadCommentStackSpace extends GhidraScript {
+    public void run() {
+        println(currentProgram.getAddressFactory().getStackSpace().getName()
+            + ":0xfffffffffffffff0");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap()["stdout"]
+            .as_str()
+            .unwrap()
+            .trim()
+            .to_owned();
+        let addresses = [
+            "0x1001",
+            "0x1009",
+            "0x10",
+            external.as_str(),
+            "register:0x0",
+            stack.as_str(),
+            "VARIABLE:0x1",
+            "HASH:0x2",
+        ];
         for address in addresses {
             for kind in ["EOL", "PRE", "POST", "PLATE"] {
                 let text = format!("interior-{address}-{kind}");
@@ -504,10 +533,10 @@ public class CreateInteriorCommentFixture extends GhidraScript {
                         .unwrap()
                         .iter()
                         .any(|row| row["type"] == kind && row["text"] == text),
-                    "{comments}"
+                    "{address}/{kind}: {comments}"
                 );
                 let listed = client.comment_list(None, Some(&text), None).unwrap();
-                assert_eq!(listed["count"], 1, "{listed}");
+                assert_eq!(listed["count"], 1, "{address}/{kind}: {listed}");
                 assert_eq!(listed["comments"][0]["text"], text);
             }
             client.comment_delete(address, None, true).unwrap();
@@ -544,7 +573,15 @@ public class CreateInteriorCommentFixture extends GhidraScript {
             .with_project(test_project(), &name)
             .run();
         output.assert_success();
-        assert_eq!(output.data::<usize>(), 4);
+        assert_eq!(output.data::<usize>(), addresses.len());
+        client.program_close().unwrap();
+        client.open_program(&name).unwrap();
+        assert_eq!(
+            client
+                .comment_list(None, Some("comment-page-"), None)
+                .unwrap(),
+            all
+        );
     });
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();

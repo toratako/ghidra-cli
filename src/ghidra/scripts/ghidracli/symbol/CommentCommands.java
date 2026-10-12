@@ -51,13 +51,20 @@ public final class CommentCommands {
         };
         String[] commentNames = {"EOL", "PRE", "POST", "PLATE"};
 
-        // Comments can belong to external functions or unmapped addresses too.
+        // Include every address space supported by Ghidra's persistent address map,
+        // matching comment set/get even for register, stack and variable addresses.
         // The comment adapter requires a non-null set, even for an unrestricted query.
         AddressSet addresses = new AddressSet();
         for (AddressSpace space : session.program().getAddressFactory().getAllAddressSpaces()) {
-            if (space.isMemorySpace() || space.isExternalSpace()) {
+            if (space.isMemorySpace() || space.isExternalSpace() || space.isRegisterSpace()
+                    || space.isStackSpace() || space.isVariableSpace() || space.isHashSpace()) {
                 addresses.addRange(space.getMinAddress(), space.getMaxAddress());
             }
+        }
+        // VARIABLE is registered only under "join", outside getAllAddressSpaces().
+        AddressSpace variables = session.program().getAddressFactory().getAddressSpace("join");
+        if (variables != null && variables.isVariableSpace()) {
+            addresses.addRange(variables.getMinAddress(), variables.getMaxAddress());
         }
         AddressIterator addrIter = listing.getCommentAddressIterator(addresses, true);
         while (addrIter.hasNext()) {
