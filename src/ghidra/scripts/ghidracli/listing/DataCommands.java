@@ -225,6 +225,8 @@ public final class DataCommands {
             if (type instanceof AbstractIntegerDataType integerType) {
                 result.addProperty("signed", integerType.isSigned());
                 result.addProperty("bit_length", data.getLength() * 8);
+            } else if (type instanceof BitFieldDataType bitField) {
+                result.addProperty("signed", bitField.getPrimitiveBaseDataType().isSigned());
             }
         } else if (value instanceof Address pointer) {
             result.addProperty("value", AddressCodec.format(pointer));

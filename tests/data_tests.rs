@@ -128,6 +128,14 @@ fn applied_data_values_and_bounded_traversal() {
             false,
         )
         .expect("apply fixture data");
+    client
+        .script_run_source(
+            include_str!("fixtures/data/CreateWideBitFieldValues.java"),
+            &[],
+            &[],
+            false,
+        )
+        .expect("apply wide integer bitfields");
 
     let root = read(&client, "data_record", 4, 100);
     assert_eq!(root["kind"], "structure");
@@ -200,6 +208,17 @@ fn applied_data_values_and_bounded_traversal() {
     assert_eq!(field(&bits, "low")["bit_length"], 3);
     assert_eq!(field(&bits, "high")["value"], "17");
     assert_eq!(field(&bits, "high")["bit_offset"], 3);
+    let wide_bits = read(&client, "data_wide_bits", 1, 100);
+    let negative = field(&wide_bits, "negative");
+    assert_eq!(negative["value"], "-1");
+    assert_eq!(negative["signed"], true);
+    assert_eq!(negative["bit_length"], 80);
+    assert_eq!(negative["bit_offset"], 3);
+    let positive = field(&wide_bits, "positive");
+    assert_eq!(positive["value"], ((1_u128 << 80) - 1).to_string());
+    assert_eq!(positive["signed"], false);
+    assert_eq!(positive["bit_length"], 80);
+    assert_eq!(positive["bit_offset"], 3);
     assert_eq!(read(&client, "0x1110", 0, 0)["value"], i64::MIN.to_string());
     assert_eq!(read(&client, "0x1190", 0, 0)["value"], "255");
     let odd_unsigned = read(&client, "0x1198", 0, 0);
