@@ -342,6 +342,49 @@ public class CheckMultiReplacement extends GhidraScript {
 
 #[test]
 #[serial]
+fn type_import_rejects_lossy_floating_specifiers_without_changing_definitions() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &["import-c", "--code", "struct Existing { int value; };"],
+    )
+    .assert_success();
+    let before: serde_json::Value = type_command(&program, &["list", "--limit", "0"]).data();
+    for declaration in [
+        "struct Existing { long double value; };",
+        "typedef long /* comment */ float Lossy;",
+    ] {
+        let code = format!("struct Fresh {{ int value; }}; {declaration}");
+        type_command(&program, &["import-c", "--code", &code])
+            .assert_failure()
+            .assert_stderr_contains("Unsupported C floating-point specifiers");
+        harness().client().unwrap().program_close().unwrap();
+        assert_eq!(
+            type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+            before
+        );
+    }
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--code",
+            "struct Precise { longdouble value; double ordinary; long long integer; };",
+        ],
+    )
+    .assert_success();
+    let precise: serde_json::Value = type_command(&program, &["get", "Precise"]).data();
+    assert_eq!(precise["components"][0]["type"], "longdouble");
+    harness()
+        .client()
+        .unwrap()
+        .open_program(TEST_PROGRAM)
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_rejects_colliding_definitions_without_changing_users() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

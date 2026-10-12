@@ -120,6 +120,162 @@ fn check_calls(client: &BridgeClient, expected: &[usize]) {
 
 #[test]
 #[serial]
+fn floating_declarations_preserve_exact_bound_types_and_reject_native_narrowing() {
+    require_ghidra!();
+    fixture(|client, program| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.CategoryPath;
+import ghidra.program.model.data.Float10DataType;
+import ghidra.program.model.data.TypedefDataType;
+public class CreateExtendedFloatingType extends GhidraScript {
+    public void run() throws Exception {
+        var manager = currentProgram.getDataTypeManager();
+        manager.addDataType(new TypedefDataType(new CategoryPath("/Recovered"),
+            "ExtendedFloat", Float10DataType.dataType, manager), null);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let bindings = json!([{"name":"WideReal","path":"/Recovered/ExtendedFloat"}]);
+        run(
+            client,
+            "function_set_signature",
+            json!({"target":"callee", "signature":"WideReal callee(WideReal value)",
+                "type_bindings":bindings}),
+        );
+        let callee = function(client, "callee");
+        let value_parameter = callee["signature_details"]["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|parameter| parameter["name"] == "value")
+            .unwrap();
+        for value in [&callee["signature_details"]["return"], value_parameter] {
+            if value["forced_indirect"] == true {
+                assert_eq!(value["formal_type_path"], "/Recovered/ExtendedFloat");
+            } else {
+                assert_eq!(value["type_path"], "/Recovered/ExtendedFloat");
+                assert_eq!(value["size"], 10);
+            }
+        }
+        let original = run(
+            client,
+            "function_call_signature_set",
+            json!({"target":"caller", "at":"0x1005", "signature":"WideReal observed(double value)",
+                "type_bindings":bindings}),
+        );
+        assert_eq!(original["after"]["return"]["size"], 10);
+        assert_eq!(original["after"]["params"][0]["type"], "double");
+        let before = get(client, "caller", "0x1005");
+        let types_before = type_inventory(client);
+
+        // CParser substitutes ordinary 8-byte double for extended floating
+        // declarations, including callback types. All application paths share
+        // the same parser guard before they can replace saved ABI information.
+        for (command, args) in [
+            (
+                "function_set_signature",
+                json!({"target":"callee", "signature":"long /* ABI precision */ double callee(int value)"}),
+            ),
+            (
+                "function_set_signature",
+                json!({"target":"callee", "signature":"int callee(long float value)"}),
+            ),
+            (
+                "function_set_signature",
+                json!({"target":"callee", "signature":"double callee(long double value)",
+                    "storage":{"return":[{"kind":"register","register":"ST0"}],
+                        "parameters":[{"name":"value","pieces":[{"kind":"stack","stack_offset":4}]}]}}),
+            ),
+            (
+                "function_call_signature_set",
+                json!({"target":"caller", "at":"0x1005",
+                    "signature":"int observed(long double (*callback)(float value))"}),
+            ),
+        ] {
+            let error = client.send_command(command, Some(args)).unwrap_err();
+            let error = error.downcast_ref::<BridgeCommandError>().unwrap();
+            assert!(
+                error.to_string().contains("floating type specifiers"),
+                "{error:?}"
+            );
+            assert!(error.to_string().contains("--bind-type"), "{error:?}");
+            assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+            assert!(error.detail["line"].is_number(), "{error:?}");
+            assert!(error.detail["column"].is_number(), "{error:?}");
+            assert_eq!(function(client, "callee"), callee);
+            assert_eq!(get(client, "caller", "0x1005"), before);
+            assert_eq!(type_inventory(client), types_before);
+        }
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(function(client, "callee"), callee);
+        assert_eq!(get(client, "caller", "0x1005"), before);
+        assert_eq!(type_inventory(client), types_before);
+
+        let recovered = run(
+            client,
+            "function_call_signature_set",
+            json!({"target":"caller", "at":"0x1005",
+                "signature":"double observed(WideReal (*callback)(float value))", "type_bindings":bindings}),
+        );
+        assert_eq!(recovered["after"]["return"]["type"], "double");
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.FunctionDefinition;
+import ghidra.program.model.data.Pointer;
+import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.pcode.HighFunctionDBUtil;
+public class CheckExtendedFloatingCallback extends GhidraScript {
+    public void run() throws Exception {
+        var callee = getFunctionAt(toAddr(0x1100));
+        var returned = callee.getReturn().getFormalDataType();
+        if (returned.getLength() != 10 || !returned.getPathName().equals("/Recovered/ExtendedFloat")) {
+            throw new IllegalStateException("Bound function return type changed");
+        }
+        for (var parameter : callee.getParameters()) {
+            if (!parameter.getName().equals("value")) continue;
+            var type = parameter.getFormalDataType();
+            if (type.getLength() != 10 || !type.getPathName().equals("/Recovered/ExtendedFloat")) {
+                throw new IllegalStateException("Bound function parameter type changed");
+            }
+        }
+        var caller = getFunctionAt(toAddr(0x1000));
+        var space = HighFunction.findOverrideSpace(caller);
+        for (var symbol : currentProgram.getSymbolTable().getSymbols(toAddr(0x1005))) {
+            if (!space.equals(symbol.getParentNamespace()) || !symbol.getName().startsWith("prt_")) continue;
+            var signature = (FunctionDefinition) HighFunctionDBUtil.readOverride(symbol).getDataType();
+            var callback = (FunctionDefinition) ((Pointer) signature.getArguments()[0].getDataType()).getDataType();
+            if (callback.getReturnType().getLength() != 10
+                    || !callback.getReturnType().getPathName().equals("/Recovered/ExtendedFloat")
+                    || !callback.getArguments()[0].getDataType().getName().equals("float")) {
+                throw new IllegalStateException("Bound callback floating types changed");
+            }
+            return;
+        }
+        throw new IllegalStateException("Missing call signature override");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+    });
+}
+
+#[test]
+#[serial]
 fn direct_overrides_affect_only_selected_calls_and_preserve_shared_saved_types() {
     require_ghidra!();
     fixture(|client, program| {

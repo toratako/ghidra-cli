@@ -315,6 +315,7 @@ public final class TypeImportCommands {
         for (Token token = tokens.getNextToken(); token.kind != CParserConstants.EOF;
                 token = tokens.getNextToken()) {
             monitor.checkCancelled();
+            requireLosslessFloating(tokens, token);
             if (token.kind != CParserConstants.STRUCT && token.kind != CParserConstants.UNION
                     && token.kind != CParserConstants.ENUM) continue;
             int kind = token.kind;
@@ -348,6 +349,7 @@ public final class TypeImportCommands {
                 do {
                     monitor.checkCancelled();
                     token = tokens.getNextToken();
+                    requireLosslessFloating(tokens, token);
                 } while (token.kind != CParserConstants.EOF && !"{".equals(token.image)
                     && !";".equals(token.image) && !",".equals(token.image)
                     && !")".equals(token.image));
@@ -356,6 +358,15 @@ public final class TypeImportCommands {
             if (token.kind == CParserConstants.EOF) break;
         }
         return tags;
+    }
+
+    private static void requireLosslessFloating(CParser tokens, Token token) {
+        if (token.kind != CParserConstants.LONG) return;
+        Token next = tokens.getToken(1);
+        if (next.kind == CParserConstants.DOUBLE || next.kind == CParserConstants.FLOAT)
+            throw new IllegalArgumentException("Unsupported C floating-point specifiers: "
+                + token.image + " " + next.image
+                + "; Ghidra's C parser converts them to double. Use an exact registered type name instead");
     }
 
     private boolean isDefinition(DataType dt) {
