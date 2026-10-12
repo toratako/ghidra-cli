@@ -13,6 +13,7 @@ import ghidracli.session.ProgramSession;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 
 public final class AddressResolver {
     private final ProgramSession session;
@@ -27,32 +28,48 @@ public final class AddressResolver {
     }
 
     public LinkedHashSet<Address> namedAddresses(String target) {
+        checkCancelled();
         LinkedHashSet<Address> candidates = new LinkedHashSet<>();
         SymbolTable st = session.program().getSymbolTable();
-        int separator = target.lastIndexOf("::");
-        boolean qualified = separator >= 0;
-        String simpleName = qualified ? target.substring(separator + 2) : target;
-        SymbolIterator syms = st.getSymbols(simpleName);
-        while (syms.hasNext()) {
-            Symbol symbol = syms.next();
-            Address address = symbol.getAddress();
-            if (address != null && (!qualified || symbol.getName(true).equals(target))) {
-                candidates.add(address);
-            }
+        appendSymbols(st.getSymbols(target), null, candidates);
+        for (Symbol symbol : st.getGlobalSymbols(target)) {
+            checkCancelled();
+            appendAddress(symbol.getAddress(), candidates);
         }
-        if (!qualified) {
-            for (Symbol sym : st.getGlobalSymbols(target)) {
-                if (sym.getAddress() != null) candidates.add(sym.getAddress());
-            }
+        // A symbol's own name may contain :: (for example a C++ template).
+        // Every split can be the namespace boundary; compare the complete name.
+        for (int separator = target.indexOf("::"); separator >= 0;
+                separator = target.indexOf("::", separator + 2)) {
+            checkCancelled();
+            appendSymbols(st.getSymbols(target.substring(separator + 2)), target, candidates);
         }
         FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
         while (iter.hasNext()) {
+            checkCancelled();
             Function func = iter.next();
-            if (qualified ? func.getSymbol().getName(true).equals(target) : func.getName().equals(target)) {
+            if (func.getName().equals(target) || func.getSymbol().getName(true).equals(target)) {
                 candidates.add(func.getEntryPoint());
             }
         }
         return candidates;
+    }
+
+    private void appendSymbols(SymbolIterator syms, String qualifiedName, Set<Address> candidates) {
+        while (syms.hasNext()) {
+            checkCancelled();
+            Symbol symbol = syms.next();
+            if (qualifiedName == null || symbol.getName(true).equals(qualifiedName)) {
+                appendAddress(symbol.getAddress(), candidates);
+            }
+        }
+    }
+
+    private static void appendAddress(Address address, Set<Address> candidates) {
+        if (address != null && !Address.NO_ADDRESS.equals(address)) candidates.add(address);
+    }
+
+    private void checkCancelled() {
+        if (session.monitor().isCancelled()) throw new CancellationException("Command cancelled");
     }
 
     public Address resolveAddress(String target) {
@@ -121,6 +138,7 @@ public final class AddressResolver {
             FunctionManager fm = session.program().getFunctionManager();
             FunctionIterator funcs = fm.getFunctions(true);
             while (funcs.hasNext()) {
+                checkCancelled();
                 Function f = funcs.next();
                 if (!f.isThunk()) continue;
                 Function thunked = f.getThunkedFunction(true);

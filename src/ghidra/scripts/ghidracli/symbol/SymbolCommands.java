@@ -186,6 +186,7 @@ public final class SymbolCommands {
         result.addProperty("name", symbol.getName());
         result.addProperty("address", AddressCodec.format(symbol.getAddress()));
         result.addProperty("namespace", symbol.getParentNamespace().getName(true));
+        result.addProperty("namespace_id", Long.toString(symbol.getParentNamespace().getID()));
         result.addProperty("type", symbol.getSymbolType().toString());
         result.addProperty("source", symbol.getSource().toString());
         result.addProperty("is_primary", symbol.isPrimary());

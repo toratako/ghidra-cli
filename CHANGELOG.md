@@ -20,6 +20,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   alignment changes, and field deletion.
 - Reject ambiguous structure field names before adding new fields.
 - Reject colliding C tag/typedef definitions before they replace existing types.
+- Resolve symbol names containing namespace separators, ignore addressless
+  namespace symbols, and detect reparenting between identically named namespaces.
+- Observe cancellation during address lookup.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

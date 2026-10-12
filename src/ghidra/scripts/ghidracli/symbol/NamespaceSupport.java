@@ -175,6 +175,7 @@ final class NamespaceSupport {
         result.addProperty("name", namespace.getName());
         result.addProperty("path", namespace.getName(true));
         Namespace parent = namespace.getParentNamespace();
+        result.addProperty("parent_id", Long.toString(parent.getID()));
         result.add("parent", parent.isGlobal() ? JsonNull.INSTANCE
             : new com.google.gson.JsonPrimitive(parent.getName(true)));
         result.addProperty("kind", namespace.getSymbol().getSymbolType() == SymbolType.CLASS

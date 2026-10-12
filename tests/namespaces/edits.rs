@@ -337,6 +337,81 @@ public class CreateAmbiguousNamespaceSubtree extends GhidraScript {
 
 #[test]
 #[serial]
+fn stale_targets_detect_reparenting_between_namespaces_with_identical_display_paths() {
+    require_ghidra!();
+    with_fixture(|client, program| {
+        let fixture = include_str!("NamespaceIdentityFixture.java");
+        client.script_run_source(fixture, &[], &[], false).unwrap();
+        let symbols = client.symbol_get_by_name("identity_symbol").unwrap();
+        let rows = symbols["symbols"].as_array().unwrap();
+        let stale_symbol = rows
+            .iter()
+            .find(|row| row["namespace"] == "identity::parent")
+            .unwrap();
+        let unchanged_symbol = rows
+            .iter()
+            .find(|row| row["namespace"] == "Global")
+            .unwrap();
+        let stale_namespace = namespace(client, "identity::parent::child");
+        client
+            .script_run_source(fixture, &["reparent".to_owned()], &[], false)
+            .unwrap();
+        let current = client.symbol_get_by_name("identity_symbol").unwrap();
+        let current_symbol = current["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == stale_symbol["id"])
+            .unwrap();
+        assert_eq!(current_symbol["namespace"], stale_symbol["namespace"]);
+        assert_ne!(current_symbol["namespace_id"], stale_symbol["namespace_id"]);
+        let current_namespace = namespace(client, "identity::parent::child");
+        assert_eq!(current_namespace["id"], stale_namespace["id"]);
+        assert_eq!(current_namespace["path"], stale_namespace["path"]);
+        assert_eq!(current_namespace["parent"], stale_namespace["parent"]);
+        assert_ne!(current_namespace["parent_id"], stale_namespace["parent_id"]);
+        let before = state(client);
+        for (operation, args) in [
+            (
+                "symbol_delete",
+                json!({"name":"identity_symbol", "targets":[unchanged_symbol, stale_symbol]}),
+            ),
+            (
+                "namespace_delete",
+                json!({"target":stale_namespace,"recursive":true}),
+            ),
+        ] {
+            let error = client.send_command(operation, Some(args)).unwrap_err();
+            assert!(
+                error.to_string().contains("Stale"),
+                "{operation}: {error:#}"
+            );
+            assert_eq!(state(client), before);
+            assert_eq!(
+                client.symbol_get_by_name("identity_symbol").unwrap(),
+                current
+            );
+            assert_eq!(
+                namespace(client, "identity::parent::child"),
+                current_namespace
+            );
+        }
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(state(client), before);
+        assert_eq!(
+            client.symbol_get_by_name("identity_symbol").unwrap(),
+            current
+        );
+        assert_eq!(
+            namespace(client, "identity::parent::child"),
+            current_namespace
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn recursive_namespace_deletion_rejects_thunk_cascades_outside_the_selected_tree() {
     require_ghidra!();
     with_fixture(|client, program| {

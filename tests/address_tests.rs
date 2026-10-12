@@ -85,6 +85,18 @@ public class CreateAddressFixture extends GhidraScript {
         for (String name : new String[] {"0x", "0X", "0xnothex", "0x1000junk"}) {
             symbols.createLabel(space.getAddress(0x1500), name, SourceType.USER_DEFINED);
         }
+        var scope = symbols.getNamespace("scope0", null);
+        symbols.createLabel(space.getAddress(0x1601), "handler<ns::Item>", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1602), "scoped<ns::Item>", scope, SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1603), "scope0::collision", SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1604), "collision", scope, SourceType.USER_DEFINED);
+        symbols.createLabel(space.getAddress(0x1605), "scope0", scope, SourceType.USER_DEFINED);
+        var external = currentProgram.getExternalManager().addExtFunction("lookup", "lookup_external",
+            null, SourceType.IMPORTED).getFunction();
+        var thunkEntry = space.getAddress(0x1606);
+        var thunk = functions.createFunction("lookup_thunk", thunkEntry,
+            new AddressSet(thunkEntry), SourceType.USER_DEFINED);
+        thunk.setThunkedFunction(external);
     }
 }
 "#,
@@ -95,12 +107,52 @@ public class CreateAddressFixture extends GhidraScript {
         .expect("create name and address collisions");
 
     check_name_and_address_reads(&client);
+    check_symbol_address_names(&client);
+    client
+        .script_run_source(
+            include_str!("readonly/CheckAddressLookupCancellation.java"),
+            &[],
+            &[],
+            false,
+        )
+        .expect("name and external-thunk lookup cancellation and recovery");
     check_invalid_targets_do_not_mutate(&client, &harness);
     check_labels_do_not_select_functions(&client, &harness);
     check_address_only_ipc(&client);
     check_mutation_targets(&client, &harness);
     check_address_codec(&client);
     check_import_base_addresses(&client, &binary);
+}
+
+fn check_symbol_address_names(client: &BridgeClient) {
+    for (name, address) in [
+        ("handler<ns::Item>", "0x00001601"),
+        ("scoped<ns::Item>", "0x00001602"),
+        ("scope0::scoped<ns::Item>", "0x00001602"),
+        // Namespace symbols have NO_ADDRESS and cannot make a real label ambiguous.
+        ("scope0", "0x00001605"),
+    ] {
+        let result = client
+            .send_command("read_memory", Some(json!({"address":name, "size":1})))
+            .unwrap_or_else(|error| panic!("resolve exact label {name}: {error:#}"));
+        assert_eq!(result["address"], address);
+    }
+    let before = client
+        .send_command("read_memory", Some(json!({"address":"0x1603", "size":2})))
+        .unwrap();
+    let error = client
+        .send_command(
+            "memory_write",
+            Some(json!({"address":"scope0::collision", "hex":"90"})),
+        )
+        .expect_err("exact own-name and qualified-name collision must stay ambiguous");
+    assert!(error.to_string().contains("Ambiguous"), "{error:#}");
+    assert_eq!(
+        client
+            .send_command("read_memory", Some(json!({"address":"0x1603", "size":2})))
+            .unwrap(),
+        before
+    );
 }
 
 fn check_import_base_addresses(client: &BridgeClient, fixture: &std::path::Path) {
