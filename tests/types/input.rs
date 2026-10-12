@@ -191,6 +191,157 @@ public class CheckImportRollbackFixture extends GhidraScript {
 
 #[test]
 #[serial]
+fn type_import_rejects_truncated_existing_applications_without_saving_changes() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--code",
+            "struct Imported { int value; }; struct Embedded { int value; };",
+        ],
+    )
+    .assert_success();
+    let client = harness().client().unwrap();
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateConstrainedImportApplication extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var imported = dtm.getDataType("/Imported");
+        var holder = new StructureDataType(CategoryPath.ROOT, "ConstrainedHolder", 8, dtm);
+        holder.replaceAtOffset(0, dtm.getDataType("/Embedded"), 4, "child", null);
+        holder.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", "keep");
+        dtm.addDataType(holder, null);
+        var address = toAddr(0x1000);
+        currentProgram.getMemory().createInitializedBlock("data", address, 32, (byte) 0, monitor, false);
+        currentProgram.getListing().createData(address, imported);
+        currentProgram.getListing().createData(address.add(4), DWordDataType.dataType);
+    }
+}
+"#, &[], &[], false).unwrap();
+    let paths = ["/Imported", "/Embedded", "/ConstrainedHolder"];
+    let before: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|path| type_command(&program, &["get", path]).data())
+        .collect();
+    for name in ["Imported", "Embedded"] {
+        let code = format!("struct Fresh {{ int marker; }}; struct {name} {{ long long value; }};");
+        let failed = type_command(&program, &["import-c", "--code", &code]);
+        failed
+            .assert_failure()
+            .assert_stderr_contains("Unsafe resize");
+        let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        for (path, expected) in paths.iter().zip(&before) {
+            assert_eq!(
+                &type_command(&program, &["get", path]).data::<serde_json::Value>(),
+                expected
+            );
+        }
+        type_command(&program, &["get", "Fresh"]).assert_failure();
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class CheckConstrainedImportApplication extends GhidraScript {
+    public void run() throws Exception {
+        var listing = currentProgram.getListing();
+        var data = listing.getDefinedDataAt(toAddr(0x1000));
+        var neighbor = listing.getDefinedDataAt(toAddr(0x1004));
+        if (data == null || data.getLength() != 4 || data.getDataType().getLength() != 4
+                || neighbor == null || neighbor.getLength() != 4)
+            throw new IllegalStateException("Import changed constrained applied data");
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+    }
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
+fn type_import_propagates_multiple_replacements_through_existing_parents() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--code",
+            "struct First { int value; }; struct Second { int value; }; \
+         struct Holder { struct First first; struct Second second; }; \
+         struct Wrapper { struct Holder holder; char tail; }; \
+         struct Morph { int value; }; struct MorphHolder { struct Morph item; };",
+        ],
+    )
+    .assert_success();
+    let client = harness().client().unwrap();
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+public class ApplyMultiReplacement extends GhidraScript {
+    public void run() throws Exception {
+        var address = toAddr(0x1000);
+        currentProgram.getMemory().createInitializedBlock("data", address, 64, (byte) 0, monitor, false);
+        currentProgram.getListing().createData(address,
+            currentProgram.getDataTypeManager().getDataType("/Wrapper"));
+        currentProgram.getListing().createData(address.add(32),
+            currentProgram.getDataTypeManager().getDataType("/MorphHolder"));
+        currentProgram.getListing().createData(address.add(48),
+            currentProgram.getDataTypeManager().getDataType("/Morph"));
+    }
+}
+"#, &[], &[], false).unwrap();
+    type_command(
+        &program,
+        &[
+            "import-c",
+            "--code",
+            "struct First { long long value; }; struct Second { long long value; }; \
+         struct Holder { struct First left; struct Second right; }; union Morph { int value; };",
+        ],
+    )
+    .assert_success();
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.Structure;
+import ghidra.program.model.data.Union;
+public class CheckMultiReplacement extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var holder = (Structure) dtm.getDataType("/Holder");
+        var wrapper = (Structure) dtm.getDataType("/Wrapper");
+        var applied = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
+        if (holder.getLength() != 16 || !"left".equals(holder.getComponent(0).getFieldName())
+                || !"right".equals(holder.getComponent(1).getFieldName())
+                || wrapper.getComponent(1).getOffset() != 16 || applied == null
+                || applied.getLength() != wrapper.getLength()
+                || applied.getComponent(0).getLength() != 16)
+            throw new IllegalStateException("Import did not propagate complete replacement layouts");
+        var morph = dtm.getDataType("/Morph");
+        if (!(morph instanceof Union)
+                || ((Structure) dtm.getDataType("/MorphHolder")).getComponent(0).getDataType() != morph
+                || currentProgram.getListing().getDefinedDataAt(toAddr(0x1030)).getDataType() != morph)
+            throw new IllegalStateException("Import did not preserve uses of a replacement type identity");
+    }
+}
+"#, &[], &[], false).unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_rejects_colliding_definitions_without_changing_users() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

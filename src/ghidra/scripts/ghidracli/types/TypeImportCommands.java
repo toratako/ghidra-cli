@@ -203,12 +203,23 @@ public final class TypeImportCommands {
                     return this;
                 }
             };
+            Set<DataType> replaced = new HashSet<>();
+            for (String path : importedPaths) {
+                DataType existing = dtm.getDataType(path);
+                if (existing != null) replaced.add(existing);
+            }
+            // Replacement declarations intentionally change these definitions,
+            // but native size propagation must still preserve their existing
+            // parents, complete listing applications, and neighboring code units.
+            TypeResizeCommands.PropagationSnapshot propagation = replaced.isEmpty() ? null
+                : new TypeResizeCommands.PropagationSnapshot(session, replaced);
             Set<DataType> importedTypes = new HashSet<>();
             for (DataType dt : stagedTypes) {
                 session.monitor().checkCancelled();
                 DataType imported = dtm.resolve(dt, handler);
                 if (visibleTypes.contains(dt)) importedTypes.add(imported);
             }
+            if (propagation != null) propagation.verifyReplacements();
 
             JsonArray typesArray = new JsonArray();
             for (String name : definedNames) {
