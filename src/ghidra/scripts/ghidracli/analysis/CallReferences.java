@@ -209,6 +209,10 @@ final class CallReferences {
 
     private boolean isCallSite(Instruction instruction, Reference ref) {
         if (instruction == null) return false;
+        // Register/stack references identify operand storage, not the runtime
+        // code address held there by a computed call.
+        Address destination = ref.getToAddress();
+        if (!destination.isMemoryAddress() && !destination.isExternalAddress()) return false;
         RefType type = ref.getReferenceType();
         if (type.isCall()) {
             return InstructionFlow.isCallReference(instruction, ref);

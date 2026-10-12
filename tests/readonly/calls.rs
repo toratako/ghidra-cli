@@ -124,6 +124,21 @@ public class CreateCallSearchFixture extends GhidraScript {
                 refs.addMemoryReference(space.getAddress(0x3030), space.getAddress(0x3040), RefType.DATA, source, 0);
                 refs.addMemoryReference(space.getAddress(0x3040), space.getAddress(0x3030), RefType.DATA, source, 0);
                 refs.addMemoryReference(space.getAddress(0x10b8), space.getAddress(0x3030), RefType.READ, source, 0);
+                // Native operand-storage references do not identify runtime call targets.
+                var registerCall = space.getAddress(0x10f0);
+                program.getMemory().setBytes(registerCall, new byte[] {(byte)0xff, (byte)0xd0});
+                if (!new DisassembleCommand(registerCall,
+                        new AddressSet(registerCall, registerCall.add(1)), false).applyTo(program, monitor)) {
+                    throw new IllegalStateException("Could not disassemble register indirect call");
+                }
+                refs.addRegisterReference(registerCall, 0, program.getRegister("RAX"), RefType.READ, source);
+                var stackCall = space.getAddress(0x10f8);
+                program.getMemory().setBytes(stackCall, new byte[] {(byte)0xff, 0x54, 0x24, 0x20});
+                if (!new DisassembleCommand(stackCall,
+                        new AddressSet(stackCall, stackCall.add(3)), false).applyTo(program, monitor)) {
+                    throw new IllegalStateException("Could not disassemble stack indirect call");
+                }
+                refs.addStackReference(stackCall, 0, 0x20, RefType.READ, source);
                 // Argument references do not call the API, including on an unrelated CALL.
                 for (int address : new int[] {0x1030, 0x1050, 0x1070, 0x10c8, 0x10d0}) {
                     var site = space.getAddress(address);
