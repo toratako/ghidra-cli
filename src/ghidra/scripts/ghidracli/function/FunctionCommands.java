@@ -2,6 +2,7 @@ package ghidracli.function;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Function;
@@ -212,6 +213,19 @@ public final class FunctionCommands {
                 session.monitor().checkCancelled();
             }
 
+            var body = CreateFunctionCmd.getFunctionBody(session.program(), addr, session.monitor());
+            session.monitor().checkCancelled();
+            var overlapping = fm.getFunctionsOverlapping(body);
+            if (overlapping.hasNext()) {
+                session.monitor().checkCancelled();
+                Function other = overlapping.next();
+                // Native creation carves shared tails out of existing functions,
+                // deleting their local labels and variable references as it does so.
+                return errorResult("Function body overlaps existing function '" + other.getName()
+                    + "' at " + AddressCodec.format(other.getEntryPoint())
+                    + "; adjust its body explicitly before creating this function");
+            }
+
             Function created;
             try {
                 // FunctionManager.createFunction(..., body=null, ...) does not compute a
@@ -221,9 +235,8 @@ public final class FunctionCommands {
                 // body must contain the entrypoint". CreateFunctionCmd is what
                 // GhidraScript.createFunction()/the UI's "Create Function" action use: it
                 // follows flow from the entry point to compute a correct body first.
-                ghidra.app.cmd.function.CreateFunctionCmd cmd =
-                    new ghidra.app.cmd.function.CreateFunctionCmd(
-                        functionName, addr, null, SourceType.USER_DEFINED);
+                CreateFunctionCmd cmd = new CreateFunctionCmd(
+                    functionName, addr, body, SourceType.USER_DEFINED);
                 boolean ok = cmd.applyTo(session.program(), session.monitor());
                 session.monitor().checkCancelled();
                 if (!ok) {

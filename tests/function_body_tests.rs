@@ -76,6 +76,67 @@ fn zero_effects() -> Value {
 
 #[test]
 #[serial]
+fn function_creation_preserves_another_functions_shared_tail_and_annotations() {
+    require_ghidra!();
+    with_fixture("x86:LE:32:default", |client, program| {
+        client
+            .script_run_source(
+                include_str!("function_body/CreateSharedTailFixture.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = state(client);
+        let subject = get(client, "subject");
+        let other = get(client, "other");
+        let error = client
+            .send_command("create_function", Some(json!({"address":"0x1008"})))
+            .expect_err("Creating a conditional entry must not steal another function's tail");
+        let error = error.downcast_ref::<BridgeCommandError>().unwrap();
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert!(
+            error.to_string().contains("overlaps existing function"),
+            "{error:?}"
+        );
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            assert_eq!(get(client, "subject"), subject);
+            assert_eq!(get(client, "other"), other);
+            assert_eq!(
+                state(client),
+                before,
+                "Local labels and references must survive"
+            );
+            assert!(client
+                .send_command("get_function", Some(json!({"address":"0x1008"})))
+                .is_err());
+            client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+public class CheckRejectedFunctionEntry extends GhidraScript {
+    public void run() {
+        if (getInstructionAt(toAddr(0x1008)) != null) {
+            throw new IllegalStateException("Automatic disassembly escaped the rejected request");
+        }
+    }
+}
+"#,
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn body_preflight_preserves_annotations_and_shrink_reports_actual_native_losses() {
     require_ghidra!();
     with_fixture("x86:LE:32:default", |client, program| {

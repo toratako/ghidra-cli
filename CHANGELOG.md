@@ -9,6 +9,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Reject memory patches whose changed file bytes also back another memory view,
   preserving alias bytes and listing metadata.
+- Preserve existing function bodies and annotations when a new function would
+  share their tail.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete
