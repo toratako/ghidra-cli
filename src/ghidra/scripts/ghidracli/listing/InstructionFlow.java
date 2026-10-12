@@ -33,8 +33,11 @@ public final class InstructionFlow {
             return false;
         } else if (reference.isExternalReference()) {
             // External relocation metadata is not a memory-space p-code
-            // override. Graph queries still need these symbolic callees.
-            return true;
+            // override. Keep these symbolic callees unless a native CALL
+            // reference override actually replaced the instruction's target.
+            InstructionPcodeOverride override = new InstructionPcodeOverride(instruction);
+            instruction.getPrototype().getPcode(instruction.getInstructionContext(), override);
+            return !override.isCallOverrideRefApplied();
         }
         for (PcodeOp op : effectivePcode(instruction)) {
             if (op.getOpcode() == PcodeOp.CALL && op.getNumInputs() > 0

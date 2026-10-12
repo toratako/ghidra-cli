@@ -135,6 +135,8 @@ public class CreateCallSearchFixture extends GhidraScript {
                 refs.addExternalReference(space.getAddress(0x1060), 0, external, source, RefType.PARAM);
                 var override = refs.addMemoryReference(space.getAddress(0x10c0), space.getAddress(0x1200), RefType.CALL_OVERRIDE_UNCONDITIONAL, source, 0);
                 refs.setPrimary(override, true);
+                // A local call override also supersedes stale external relocation evidence.
+                refs.addExternalReference(space.getAddress(0x10c0), 1, external, source, RefType.COMPUTED_CALL);
                 var inactive = refs.addMemoryReference(space.getAddress(0x10c8), space.getAddress(0x1200), RefType.CALL_OVERRIDE_UNCONDITIONAL, source, 0);
                 refs.setPrimary(inactive, false);
                 // A primary call override on NOP has no CALL/CALLIND to override.
