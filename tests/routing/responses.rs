@@ -1,10 +1,25 @@
 //! Command result fixtures, independent of connections and session transitions.
 
-use super::{
-    function_candidates, functions, memory, namespaces, tables, thunks, types, virtual_callers,
-    ACTIVE_JOB_ID,
-};
 use serde_json::{json, Value};
+
+#[path = "responses/function_candidates.rs"]
+pub(super) mod function_candidates;
+#[path = "responses/functions.rs"]
+pub(super) mod functions;
+#[path = "responses/memory.rs"]
+mod memory;
+#[path = "responses/namespaces.rs"]
+mod namespaces;
+#[path = "responses/tables.rs"]
+pub(super) mod tables;
+#[path = "responses/thunks.rs"]
+pub(super) mod thunks;
+#[path = "responses/types.rs"]
+pub(super) mod types;
+#[path = "responses/virtual_callers.rs"]
+mod virtual_callers;
+
+pub(super) const ACTIVE_JOB_ID: &str = "73d7a267-ed73-4548-b8ee-24c7af918720";
 
 pub(super) fn data(request: &Value, program: &str, bridge_info: &Value) -> Value {
     let args = &request["args"];

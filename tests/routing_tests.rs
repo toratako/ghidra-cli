@@ -67,7 +67,9 @@ mod types;
 #[path = "routing/virtual_callers.rs"]
 mod virtual_callers;
 
-use responses::{api_list_fixture, call_graph_fixture, call_rows_fixture, symbol_fixture};
+use responses::{
+    api_list_fixture, call_graph_fixture, call_rows_fixture, symbol_fixture, ACTIVE_JOB_ID,
+};
 
 fn batch_path_argument(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
@@ -81,7 +83,6 @@ fn batch_arguments(args: &[&str]) -> String {
 }
 
 const JOB_ID: &str = "2c7a3b91-f960-4b85-87d7-e90cf7bf0625";
-const ACTIVE_JOB_ID: &str = "73d7a267-ed73-4548-b8ee-24c7af918720";
 
 struct RecordedBridge {
     root: tempfile::TempDir,

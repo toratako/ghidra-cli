@@ -4,5 +4,3 @@ mod decompile;
 mod edits;
 #[path = "functions/flow.rs"]
 mod flow;
-
-pub(super) use flow::flow_fixture;

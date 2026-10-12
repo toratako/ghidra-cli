@@ -1,31 +1,6 @@
 use super::{batch_arguments, run_envelope, RecordedBridge};
+use crate::responses::types::gdt_candidates_fixture;
 use serde_json::{json, Value};
-
-pub(crate) fn gdt_candidates_fixture(args: &Value) -> Value {
-    let types: Vec<_> = ["zeta", "alpha", "beta"]
-        .into_iter()
-        .enumerate()
-        .map(|(i, name)| {
-            json!({"name": name, "path": format!("/Protocol/{name}"), "category": "/Protocol",
-            "kind": "struct", "size": i + 1, "universal_id": format!("900719925474099{}", i + 1),
-            "source_archive": {"id": "9007199254740999", "name": "sdk", "kind": "FILE"}})
-        })
-        .collect();
-    json!({"types": types, "archive": {"path": args["file"], "id": "9007199254740999", "name": "sdk"},
-        "source": {"kind": if args["file"].is_string() {"archive"} else {"program"},
-            "file": args["file"], "stamp": "9007199254740999", "nested": {"opaque": true}}})
-}
-
-pub(crate) fn gdt_transfer_fixture(command: &str, args: &Value) -> Value {
-    let roots = if args["all"] == true {
-        json!(["/Protocol/zeta", "/Protocol/alpha", "/Protocol/beta"])
-    } else {
-        args["paths"].clone()
-    };
-    json!({"status": if command == "type_import_gdt" {"imported"} else {"exported"},
-        "roots": roots, "dependencies": ["/Dependency"], "changed": true,
-        "source": args["source"], "archive": {"path": args["file"]}})
-}
 
 #[test]
 fn gdt_transfers_select_uncapped_roots_and_forward_the_source_guard() {

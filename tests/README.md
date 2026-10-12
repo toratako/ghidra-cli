@@ -89,7 +89,9 @@ Suite roots own their fixtures and serial locks; domain modules remain in the
 original test executables. `routing_tests.rs` owns the recorded bridge's TCP worker,
 request log, and temporary files. [routing/recorded.rs](routing/recorded.rs) handles
 program selection, response envelopes, and injected failures;
-[routing/responses.rs](routing/responses.rs) supplies command result fixtures.
+[routing/responses.rs](routing/responses.rs) dispatches command result fixtures
+from [routing/responses/](routing/responses/), shared with assertions without
+depending on the test modules.
 `output_format_integration.rs` keeps presentation tests alongside
 the configuration, installation, project, and validation modules in `output/`.
 Filter a domain with, for example,
