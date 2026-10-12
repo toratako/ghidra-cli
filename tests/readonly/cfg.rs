@@ -101,7 +101,30 @@ fn instruction_cfg_preserves_flows_body_boundaries_and_limits() {
         assert_eq!(caller["completion"]["scan"]["complete"], true);
         let pointer = command(&program, "pointer_caller", &[]);
         assert_eq!(at(&pointer, "calls", "0x00001250")["target"], "0x00001400");
+        assert_eq!(rows(&pointer, "calls").len(), 1, "{pointer}");
         assert_eq!(rows(&pointer, "nodes").len(), 1, "{pointer}");
+        let interior_pointer = command(&program, "interior_pointer_caller", &[]);
+        let interior_call = at(&interior_pointer, "calls", "0x00001260");
+        assert_eq!(
+            interior_call["target_state"], "unresolved",
+            "{interior_pointer}"
+        );
+        assert!(interior_call["target"].is_null(), "{interior_pointer}");
+        let pointer_graph = client
+            .graph_callees("pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(pointer_graph["count"], 1, "{pointer_graph}");
+        assert_eq!(pointer_graph["calls"][0]["callee_address"], "0x00001400");
+        let interior_graph = client
+            .graph_callees("interior_pointer_caller", Some(1), None)
+            .unwrap();
+        assert_eq!(interior_graph["count"], 1, "{interior_graph}");
+        assert_eq!(interior_graph["calls"][0]["callee_address"], "0x00002001");
+        assert!(interior_graph["calls"][0]["callee"].is_null());
+        assert_eq!(
+            client.graph_callers("unreachable", Some(1), None).unwrap()["count"],
+            0
+        );
         let external = command(&program, "external_caller", &[]);
         assert_eq!(
             at(&external, "calls", "0x00001280")["target_state"],

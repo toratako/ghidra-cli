@@ -123,7 +123,8 @@ final class CallReferences {
         long offset = ref.getFromAddress().subtract(data.getMinAddress());
         if (offset > Integer.MAX_VALUE) return false;
         Data primitive = data.getPrimitiveAt((int) offset);
-        return primitive != null && primitive.isPointer();
+        return primitive != null && primitive.isPointer()
+            && primitive.getAddress().equals(ref.getFromAddress());
     }
 
     /** Keep distinct landing addresses, even within one callee, but deduplicate slot/flow evidence. */

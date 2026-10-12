@@ -240,8 +240,10 @@ public final class InstructionCfg {
                 long offset = via.subtract(data.getMinAddress());
                 if (offset > Integer.MAX_VALUE) continue;
                 var pointer = data.getPrimitiveAt((int) offset);
-                if (pointer == null || !pointer.isPointer()) continue;
-                for (var destination : pointer.getReferencesFrom()) {
+                // Interior bytes belong to the same primitive but do not load its
+                // pointer value. Only the primitive's start supplies this evidence.
+                if (pointer == null || !pointer.isPointer() || !pointer.getAddress().equals(via)) continue;
+                for (var destination : session.program().getReferenceManager().getReferencesFrom(via)) {
                     session.monitor().checkCancelled();
                     referencesScanned++;
                     RefType pointerType = destination.getReferenceType();

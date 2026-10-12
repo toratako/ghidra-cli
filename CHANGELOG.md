@@ -11,6 +11,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete
   receipts when selected thunks or local symbols are deleted with their owner.
+- Require exact pointer-component starts and reference sources when resolving
+  indirect calls, avoiding false targets from interior pointer bytes.
 
 ## [0.10.0] - 2026-10-12
 

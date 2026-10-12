@@ -75,6 +75,11 @@ public class CreateCfgFixture extends GhidraScript {
                         new PointerDataType(null, 4, program.getDataTypeManager()));
                     program.getReferenceManager().addMemoryReference(address(program, 0x2000),
                         address(program, 0x1400), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    program.getReferenceManager().addMemoryReference(address(program, 0x2001),
+                        address(program, 0x1600), RefType.DATA, SourceType.USER_DEFINED, 0);
+                    // Reading from the middle of a typed pointer does not load its value.
+                    code(program, 0x1260, 0xff, 0x15, 1, 0x20, 0, 0, 0x90, 0xc3);
+                    function(program, "interior_pointer_caller", 0x1260, 0x1267);
                     code(program, 0x1280, 0xff, 0xd0, 0x90, 0xc3);
                     function(program, "external_caller", 0x1280, 0x1283);
                     var external = program.getExternalManager().addExtFunction("fixture", "external_target",
