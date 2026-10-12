@@ -56,8 +56,7 @@ public final class CommentCommands {
         // The comment adapter requires a non-null set, even for an unrestricted query.
         AddressSet addresses = new AddressSet();
         for (AddressSpace space : session.program().getAddressFactory().getAllAddressSpaces()) {
-            if (space.isMemorySpace() || space.isExternalSpace() || space.isRegisterSpace()
-                    || space.isStackSpace() || space.isVariableSpace() || space.isHashSpace()) {
+            if (AnnotationAddresses.supports(space)) {
                 addresses.addRange(space.getMinAddress(), space.getMaxAddress());
             }
         }
@@ -103,7 +102,7 @@ public final class CommentCommands {
         if (addressStr == null) return errorResult("Address required");
 
         try {
-            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
+            Address addr = AnnotationAddresses.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();
@@ -143,7 +142,7 @@ public final class CommentCommands {
         if (text == null) return errorResult("Comment text required");
 
         try {
-            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
+            Address addr = AnnotationAddresses.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             int commentType = resolveCommentType(commentTypeStr);
@@ -175,7 +174,7 @@ public final class CommentCommands {
             int[] types = all
                 ? new int[] {CodeUnit.EOL_COMMENT, CodeUnit.PRE_COMMENT, CodeUnit.POST_COMMENT, CodeUnit.PLATE_COMMENT}
                 : new int[] {resolveCommentType(commentTypeStr)};
-            Address addr = AddressCodec.parse(session.program().getAddressFactory(), addressStr);
+            Address addr = AnnotationAddresses.parse(session.program().getAddressFactory(), addressStr);
             if (addr == null) return errorResult("Invalid address: " + addressStr);
 
             Listing listing = session.program().getListing();

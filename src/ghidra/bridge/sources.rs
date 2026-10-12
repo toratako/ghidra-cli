@@ -340,6 +340,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/session/ScriptAccess.java"),
     ),
     (
+        "ghidracli/symbol/AnnotationAddresses.java",
+        include_str!("../scripts/ghidracli/symbol/AnnotationAddresses.java"),
+    ),
+    (
         "ghidracli/symbol/BookmarkCommands.java",
         include_str!("../scripts/ghidracli/symbol/BookmarkCommands.java"),
     ),

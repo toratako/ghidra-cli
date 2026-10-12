@@ -522,6 +522,33 @@ public class ReadCommentStackSpace extends GhidraScript {
             "VARIABLE:0x1",
             "HASH:0x2",
         ];
+        client
+            .comment_set("stack:0x0", "preserve stack zero", Some("EOL"))
+            .unwrap();
+        let before = client.comment_list(None, None, None).unwrap();
+        for (command, args) in [
+            (
+                "comment_set",
+                serde_json::json!({"address": "stack:0x100000000", "text": "wrong target"}),
+            ),
+            (
+                "comment_delete",
+                serde_json::json!({"address": "stack:0x100000000", "all": true}),
+            ),
+            (
+                "comment_get",
+                serde_json::json!({"address": "stack:0x100000000"}),
+            ),
+            (
+                "comment_set",
+                serde_json::json!({"address": "const:0x1", "text": "invalid key"}),
+            ),
+        ] {
+            let error = client.send_command(command, Some(args)).unwrap_err();
+            assert!(error.to_string().contains("persist"), "{command}: {error}");
+            assert_eq!(client.comment_list(None, None, None).unwrap(), before);
+        }
+
         for address in addresses {
             for kind in ["EOL", "PRE", "POST", "PLATE"] {
                 let text = format!("interior-{address}-{kind}");

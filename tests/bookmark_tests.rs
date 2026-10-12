@@ -166,6 +166,69 @@ fn bookmark_edits_at_interior_unmapped_and_external_addresses_persist() {
 
 #[test]
 #[serial]
+fn bookmark_addresses_must_preserve_their_identity_in_native_storage() {
+    require_ghidra!();
+    with_fixture(|_, client, program| {
+        set(
+            client,
+            "stack:0x0",
+            "Note",
+            "Address identity",
+            "preserve zero",
+        );
+        set(
+            client,
+            "stack:0xffffffffffffffff",
+            "Note",
+            "Address identity",
+            "preserve minus one",
+        );
+        for address in ["stack:0x7fffffff", "stack:0xffffffff80000000"] {
+            let receipt = set(
+                client,
+                address,
+                "Note",
+                "Boundary",
+                "preserve signed offset",
+            );
+            assert_eq!(
+                get(client, address)["bookmarks"][0]["address"],
+                receipt["address"]
+            );
+        }
+        let before = client.send_command("bookmark_list", None).unwrap();
+        for address in ["stack:0x100000000", "stack:0xffffffff", "const:0x1"] {
+            let error = client
+                .send_command(
+                    "bookmark_set",
+                    Some(json!({
+                        "address": address, "category": "Address identity", "text": "wrong target"
+                    })),
+                )
+                .unwrap_err();
+            assert!(error.to_string().contains("persist"), "{address}: {error}");
+            assert_eq!(client.send_command("bookmark_list", None).unwrap(), before);
+        }
+        for command in ["bookmark_get", "bookmark_delete"] {
+            let error = client
+                .send_command(
+                    command,
+                    Some(json!({
+                        "address": "stack:0x100000000", "category": "Address identity"
+                    })),
+                )
+                .unwrap_err();
+            assert!(error.to_string().contains("persist"), "{command}: {error}");
+        }
+        assert_eq!(client.send_command("bookmark_list", None).unwrap(), before);
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(client.send_command("bookmark_list", None).unwrap(), before);
+    });
+}
+
+#[test]
+#[serial]
 fn bookmark_cli_preserves_japanese_multiline_stdin_and_file_text() {
     require_ghidra!();
     with_fixture(|harness, client, program| {

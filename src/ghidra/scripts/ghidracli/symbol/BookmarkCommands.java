@@ -38,7 +38,7 @@ public final class BookmarkCommands {
 
         String addressText = getArgString(args, "address");
         if (addressText == null) return errorResult("Address required");
-        Address address = AddressCodec.parse(session.program().getAddressFactory(), addressText);
+        Address address = AnnotationAddresses.parse(session.program().getAddressFactory(), addressText);
         if (address == null) return errorResult("Invalid address: " + addressText);
 
         JsonArray bookmarks = new JsonArray();
@@ -61,7 +61,7 @@ public final class BookmarkCommands {
         if (text == null) return errorResult("Bookmark text required");
         if (type == null) type = BookmarkType.NOTE;
 
-        Address address = AddressCodec.parse(session.program().getAddressFactory(), addressText);
+        Address address = AnnotationAddresses.parse(session.program().getAddressFactory(), addressText);
         if (address == null) return errorResult("Invalid address: " + addressText);
         session.monitor().checkCancelled();
         Bookmark bookmark = session.program().getBookmarkManager()
@@ -83,7 +83,7 @@ public final class BookmarkCommands {
         if (category == null) return errorResult("Bookmark category required");
         if (type == null) type = BookmarkType.NOTE;
 
-        Address address = AddressCodec.parse(session.program().getAddressFactory(), addressText);
+        Address address = AnnotationAddresses.parse(session.program().getAddressFactory(), addressText);
         if (address == null) return errorResult("Invalid address: " + addressText);
         BookmarkManager bookmarks = session.program().getBookmarkManager();
         Bookmark bookmark = bookmarks.getBookmark(address, type, category);
