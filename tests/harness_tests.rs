@@ -188,19 +188,31 @@ fn fixture_is_generated_once_and_runs_on_host() {
 }
 
 fn doctor_output(success: bool, stdout: &str, stderr: &str) -> std::process::Output {
+    use std::process::{ExitStatus, Output};
+    use std::sync::OnceLock;
+
+    static SUCCESS: OnceLock<ExitStatus> = OnceLock::new();
+    static FAILURE: OnceLock<ExitStatus> = OnceLock::new();
+
     // Obtain a portable ExitStatus without platform-specific raw status values.
-    let mut output = std::process::Command::new("rustc")
-        .arg(if success {
-            "--version"
-        } else {
-            "--not-a-valid-rustc-option"
-        })
-        .output()
-        .unwrap();
-    assert_eq!(output.status.success(), success);
-    output.stdout = stdout.as_bytes().to_vec();
-    output.stderr = stderr.as_bytes().to_vec();
-    output
+    let (cached, argument) = if success {
+        (&SUCCESS, "--version")
+    } else {
+        (&FAILURE, "--not-a-valid-rustc-option")
+    };
+    let status = *cached.get_or_init(|| {
+        let output = std::process::Command::new("rustc")
+            .arg(argument)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.success(), success);
+        output.status
+    });
+    Output {
+        status,
+        stdout: stdout.as_bytes().to_vec(),
+        stderr: stderr.as_bytes().to_vec(),
+    }
 }
 
 const HEALTHY: &str =

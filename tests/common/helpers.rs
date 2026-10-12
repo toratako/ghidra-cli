@@ -252,12 +252,17 @@ pub fn get_function_address(
     program: &str,
     name: &str,
 ) -> String {
-    let result = ghidra(harness)
+    let mut command = ghidra(harness)
         .arg("function")
         .arg("list")
         .with_project(project, program)
         .json_format()
-        .run();
+        .arg("--limit")
+        .arg("0");
+    if let Some(filter) = fixture_function_filter(name) {
+        command = command.arg("--filter").arg(filter);
+    }
+    let result = command.run();
 
     result.assert_success();
 
@@ -267,12 +272,18 @@ pub fn get_function_address(
         .unwrap_or_else(|| {
             let available: Vec<_> = functions.iter().map(|f| f.name.as_str()).collect();
             panic!(
-                "Function '{}' not found in program.\nAvailable functions: {:?}",
+                "Function '{}' not found in program.\nCandidate functions: {:?}",
                 name, available
             )
         })
         .address
         .clone()
+}
+
+/// Narrow fixture lookup without escaping literals or depending on Java/Rust
+/// Unicode case folding. The final lookup still matches the complete name.
+fn fixture_function_filter(name: &str) -> Option<String> {
+    (name.is_ascii() && !name.contains('\'')).then(|| format!("name~'{name}'"))
 }
 
 /// Prefer an exact name, then the platform's underscore prefix, then the first
