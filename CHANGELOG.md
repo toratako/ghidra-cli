@@ -25,6 +25,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Observe cancellation during address lookup.
 - Honor effective flow overrides in call/CFG results and reject indirect targets
   inferred from pointer interiors or nonpointer data.
+- Read nested strings without allocating their entire aggregate, retain only
+  readable string values, and observe cancellation during string traversal.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

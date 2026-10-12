@@ -6,12 +6,14 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
+import ghidra.program.model.mem.DumbMemBufferImpl;
 import ghidra.program.util.DefinedDataIterator;
 import ghidra.util.exception.CancelledException;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
 import java.util.Locale;
+import java.util.concurrent.CancellationException;
 
 /** Defined string values and their lengths, shared by listing and search. */
 public final class StringQueries {
@@ -30,19 +32,56 @@ public final class StringQueries {
         private DataIterator children;
 
         Data next() throws CancelledException {
-            while (true) {
-                session.monitor().checkCancelled();
-                if (children != null && children.hasNext()) {
-                    return children.next();
+            try {
+                while (true) {
+                    session.monitor().checkCancelled();
+                    if (children != null && children.hasNext()) {
+                        return children.next();
+                    }
+                    if (!roots.hasNext()) return null;
+                    Data root = roots.next();
+                    children = DefinedDataIterator.byDataType(session.program(),
+                        new AddressSet(root.getMinAddress(), root.getMaxAddress()), type -> {
+                            // Native traversal can visit every padding byte of a sparse
+                            // structure before returning from hasNext().
+                            if (session.monitor().isCancelled()) throw new CancellationException();
+                            return StringDataInstance.isStringDataType(type);
+                        });
                 }
-                if (!roots.hasNext()) return null;
-                // Bound native traversal to one root so skipping unrelated data
-                // still observes cancellation between top-level code units.
-                Data root = roots.next();
-                children = DefinedDataIterator.byDataType(session.program(),
-                    new AddressSet(root.getMinAddress(), root.getMaxAddress()),
-                    StringDataInstance::isStringDataType);
+            } catch (CancellationException cancelled) {
+                throw new CancelledException();
             }
+        }
+    }
+
+    String value(Data data) throws Exception {
+        session.monitor().checkCancelled();
+        if (!data.hasStringValue()) return null;
+        // Component reads through Data populate the entire root object's byte
+        // cache, even for a short string in a huge aggregate.
+        var buffer = new DumbMemBufferImpl(session.program().getMemory(), data.getAddress()) {
+            @Override
+            public int getBytes(byte[] bytes, int offset) {
+                // Native terminator scans otherwise ignore cancellation inside
+                // one large char array, both for sizing and for decoding.
+                if (session.monitor().isCancelled()) throw new CancellationException();
+                return super.getBytes(bytes, offset);
+            }
+        };
+        try {
+            var string = StringDataInstance.getStringDataInstance(
+                data.getBaseDataType(), buffer, data, data.getLength());
+            int length = string.getStringLength();
+            // A char array can terminate before its uninitialized trailing storage.
+            // Check only the bytes consumed by the native string interpretation.
+            if (length < 0 || (length > 0 && !session.program().getMemory()
+                    .getAllInitializedAddressSet().contains(data.getAddress(),
+                        data.getAddress().addNoWrap(length - 1)))) return null;
+            Object value = data.getDataType().getValue(buffer, data, data.getLength());
+            session.monitor().checkCancelled();
+            return value == null ? null : value.toString();
+        } catch (CancellationException cancelled) {
+            throw new CancelledException();
         }
     }
 
@@ -53,12 +92,12 @@ public final class StringQueries {
         DefinedStrings dataIter = definedStrings();
         Data data;
         while (!query.isFull() && (data = dataIter.next()) != null) {
-            if (!data.hasStringValue()) continue;
             String value;
             try {
-                Object decoded = data.getValue();
-                if (decoded == null) continue;
-                value = decoded.toString();
+                value = value(data);
+                if (value == null) continue;
+            } catch (CancelledException cancelled) {
+                throw cancelled;
             } catch (Exception e) {
                 // Keep unreadable string values out of both listing and search.
                 continue;

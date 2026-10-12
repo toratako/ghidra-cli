@@ -148,11 +148,8 @@ public final class SearchCommands {
             StringQueries.DefinedStrings dataIter = stringQueries.definedStrings();
             Data data;
             while ((data = dataIter.next()) != null) {
-                if (!data.hasStringValue()) continue;
-
-                Object value = data.getValue();
-                if (value == null) continue;
-                String val = value.toString();
+                String val = stringQueries.value(data);
+                if (val == null) continue;
                 if (!val.toLowerCase(Locale.ROOT).contains(needle)) continue;
 
                 Address strAddr = data.getAddress();

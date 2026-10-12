@@ -283,3 +283,134 @@ fn defined_strings_and_references_include_nested_structures_and_arrays() {
         std::panic::resume_unwind(panic);
     }
 }
+
+#[test]
+#[serial]
+fn sparse_strings_avoid_whole_object_reads_and_cancel_inside_native_traversal() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("sparse-strings-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("CreateSparseStringFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let expected = json!([
+            {"address": "0x00003000", "value": "ok", "char_length": 2, "byte_length": 8},
+            {"address": "0x00010000", "value": "live", "char_length": 4, "byte_length": 8}
+        ]);
+        assert_eq!(
+            client.list_strings(None, None, None).unwrap()["strings"],
+            expected
+        );
+        assert_eq!(client.find_string("").unwrap()["results"], expected);
+        let references = client.string_refs("live".into()).unwrap();
+        assert_eq!(references["count"], 1);
+        assert_eq!(references["results"][0]["to"], "0x00010002");
+        assert_eq!(references["results"][0]["string_offset"], 2);
+        assert_eq!(client.string_refs("ok".into()).unwrap()["count"], 1);
+        assert_eq!(client.string_refs("?".into()).unwrap()["count"], 0);
+
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.CharDataType;
+public class AddDenseStringArray extends GhidraScript {
+    public void run() throws Exception {
+        var start = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(0x65000000);
+        currentProgram.getMemory().createInitializedBlock("dense_string", start,
+            65536, (byte) 'x', monitor, false);
+        currentProgram.getListing().createData(start, new ArrayDataType(CharDataType.dataType, 65536, 1));
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        client
+            .script_run_source(
+                include_str!("CheckStringValueCancellation.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.CharDataType;
+import ghidra.program.model.data.StructureDataType;
+public class AddSparseStringPadding extends GhidraScript {
+    public void run() throws Exception {
+        int length = 128 * 1024 * 1024;
+        var start = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(0x70000000);
+        currentProgram.getMemory().createUninitializedBlock("padding", start, length - 8, false);
+        currentProgram.getMemory().createInitializedBlock("tail_string", start.add(length - 8),
+            8, (byte) 'x', monitor, false);
+        var sparse = new StructureDataType("SparseStringPadding", length);
+        sparse.replaceAtOffset(length - 8, new ArrayDataType(CharDataType.dataType, 8, 1),
+            8, "text", null);
+        currentProgram.getListing().createData(start, sparse);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        for (wire, args) in [
+            ("list_strings", json!({})),
+            ("find_string", json!({"pattern": "absent"})),
+            ("string_refs", json!({"pattern": "absent"})),
+        ] {
+            let worker = harness().client().unwrap();
+            let search = std::thread::spawn(move || {
+                worker.send_command_with_timeout(
+                    wire,
+                    Some(args),
+                    Some(std::time::Duration::from_secs(10)),
+                )
+            });
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let id = loop {
+                let status = client.status().unwrap();
+                if status["active_job"]["command"] == wire {
+                    break status["active_job"]["id"].as_str().unwrap().to_owned();
+                }
+                assert!(!search.is_finished() && std::time::Instant::now() < deadline);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            };
+            // Allow enumeration to enter native hasNext(), which scans padding
+            // internally and previously checked no monitor until it returned.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            client.cancel_job(Some(&id)).unwrap();
+            assert!(search.join().unwrap().is_err());
+            assert_eq!(
+                client.job_status(Some(&id)).unwrap()["job"]["state"],
+                "cancelled"
+            );
+            assert_eq!(
+                client.find_string_with_limit("live", Some(1)).unwrap()["count"],
+                1
+            );
+        }
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
