@@ -108,6 +108,9 @@ receipt). Status, completion, and snapshot publication share that lock; result
 decoding occurs after releasing it. An in-flight reader may finish from its
 immutable snapshot after eviction. Expiry is applied on controls and completion.
 Per-job cancellation must not cancel the parent script monitor or later jobs.
+Publish cancellation under the scheduler lock, then deliver native monitor
+callbacks outside it: script listeners can wait for job completion. Status reads
+must likewise avoid the monitor lock held during listener delivery.
 Queued cancellation removes jobs immediately; active jobs cancel cooperatively
 via per-job monitors. Connection handlers enqueue without waiting on program
 futures; completed futures use a separate bounded response pool. Neither waiting

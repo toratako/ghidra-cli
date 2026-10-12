@@ -460,3 +460,129 @@ public class DeferBridgeCancellation extends GhidraScript {
         "cancelled"
     );
 }
+
+#[test]
+#[serial]
+fn cancellation_listeners_do_not_block_status_or_program_job_completion() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let worker = harness.client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let entered = directory.path().join("listener-entered");
+    let release = directory.path().join("release-listener");
+    let script_args = vec![
+        entered.to_str().unwrap().to_owned(),
+        release.to_str().unwrap().to_owned(),
+    ];
+    let script = std::thread::spawn(move || {
+        worker.script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.util.task.CancelledListener;
+import java.nio.file.Files;
+import java.nio.file.Path;
+public class WaitForCancellationListener extends GhidraScript {
+    private CancelledListener listener;
+    public void run() throws Exception {
+        Path entered = Path.of(getScriptArgs()[0]);
+        Path release = Path.of(getScriptArgs()[1]);
+        listener = () -> {
+            try {
+                Files.writeString(entered, "entered");
+                long deadline = System.currentTimeMillis() + 15000;
+                while (!Files.exists(release)) {
+                    if (System.currentTimeMillis() >= deadline) {
+                        throw new IllegalStateException("Cancellation listener was not released");
+                    }
+                    Thread.sleep(10);
+                }
+            } catch (Exception error) { throw new IllegalStateException(error); }
+            throw new AssertionError("Cancellation listener assertion");
+        };
+        monitor.addCancelledListener(listener);
+        monitor.setMessage("waiting-for-listener-cancel");
+        long deadline = System.currentTimeMillis() + 30000;
+        while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) Thread.sleep(10);
+        monitor.checkCancelled();
+        throw new IllegalStateException("Cancellation never arrived");
+    }
+}
+"#,
+            &script_args,
+            &[],
+            false,
+        )
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(25);
+    let id = loop {
+        let status = client.status().unwrap();
+        if status["active_job"]["progress_message"] == "waiting-for-listener-cancel" {
+            break status["active_job"]["id"].as_str().unwrap().to_owned();
+        }
+        assert!(!script.is_finished(), "script exited before cancellation");
+        assert!(std::time::Instant::now() < deadline, "{status}");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let cancel_port = harness.port();
+    let cancel_id = id.clone();
+    let cancel = std::thread::spawn(move || {
+        let mut socket = TcpStream::connect(("127.0.0.1", cancel_port)).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(8)))
+            .unwrap();
+        writeln!(
+            socket,
+            "{}",
+            serde_json::json!({"command": "job_cancel", "args": {"job_id": cancel_id}})
+        )
+        .unwrap();
+        let mut socket = BufReader::new(socket);
+        let mut response = String::new();
+        socket.read_line(&mut response).unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+        let remaining = socket.read_line(&mut String::new()).unwrap();
+        (response, remaining)
+    });
+    while !entered.exists() {
+        assert!(std::time::Instant::now() < deadline, "Listener never ran");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // Bound the probe and release the listener before asserting, so the
+    // original deadlock fails without leaving the bridge or worker blocked.
+    let mut socket = TcpStream::connect(("127.0.0.1", harness.port())).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    writeln!(socket, "{{\"command\":\"status\"}}").unwrap();
+    let mut response = String::new();
+    let status = BufReader::new(socket).read_line(&mut response);
+    let completion_deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while !script.is_finished() && std::time::Instant::now() < completion_deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let completed_before_listener_returned = script.is_finished();
+    std::fs::write(&release, "release").unwrap();
+    let (cancellation, remaining) = cancel.join().unwrap();
+    let error = script.join().unwrap().unwrap_err();
+    assert!(error.to_string().contains("Script cancelled"), "{error}");
+    assert_eq!(cancellation["status"], "error", "{cancellation}");
+    assert_eq!(cancellation["message"], "Cancellation listener assertion");
+    assert_eq!(remaining, 0, "Cancellation response socket remained open");
+    status.expect("Status blocked behind a cancellation listener");
+    let status: serde_json::Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(status["status"], "success", "{status}");
+    assert!(
+        completed_before_listener_returned,
+        "Program completion waited for a cancellation listener"
+    );
+    assert_eq!(
+        client.job_status(Some(&id)).unwrap()["job"]["state"],
+        "cancelled"
+    );
+}

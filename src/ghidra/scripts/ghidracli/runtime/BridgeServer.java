@@ -13,7 +13,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -41,6 +43,8 @@ final class BridgeServer {
     private final BooleanSupplier shutdownRequested;
     private final Consumer<String> errors;
     private final Thread acceptor;
+    private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
+    private final Set<Socket> readingClients = ConcurrentHashMap.newKeySet();
 
     BridgeServer(Function<String, BridgeReply> requests, Runnable shutdown,
             BooleanSupplier shutdownRequested, Consumer<String> errors) throws IOException {
@@ -93,8 +97,12 @@ final class BridgeServer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        // Accepted sockets may still be waiting for their request newline.
+        // Interrupting an executor worker does not unblock a socket read.
+        for (Socket client : readingClients) closeClient(client);
         shutdownExecutor(connectionExecutor);
         shutdownExecutor(responseExecutor);
+        for (Socket client : clients) closeClient(client);
     }
 
     private void shutdownExecutor(ExecutorService executor) {
@@ -111,6 +119,8 @@ final class BridgeServer {
         try {
             while (!shutdownRequested.getAsBoolean()) {
                 Socket client = serverSocket.accept();
+                clients.add(client);
+                readingClients.add(client);
                 try {
                     connectionExecutor.execute(() -> serveClient(client));
                 } catch (RejectedExecutionException e) {
@@ -144,8 +154,9 @@ final class BridgeServer {
             BufferedReader in = new BufferedReader(
                 new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
             String line = in.readLine();
+            readingClients.remove(client);
             if (line == null || line.trim().isEmpty()) {
-                client.close();
+                closeClient(client);
                 return;
             }
 
@@ -168,22 +179,16 @@ final class BridgeServer {
                         respondAndClose(client, response);
                     });
                 } catch (RejectedExecutionException e) {
-                    try {
-                        client.close();
-                    } catch (IOException ignored) {
-                        // The client may already have disconnected.
-                    }
+                    closeClient(client);
                 }
             });
         } catch (IOException e) {
-            try {
-                client.close();
-            } catch (IOException ignored) {
-                // Already closed.
-            }
+            closeClient(client);
             if (!shutdownRequested.getAsBoolean()) {
                 errors.accept("Client error: " + e.getMessage());
             }
+        } finally {
+            readingClients.remove(client);
         }
     }
 
@@ -199,6 +204,8 @@ final class BridgeServer {
             if (!shutdownRequested.getAsBoolean()) {
                 errors.accept("Client response error: " + e.getMessage());
             }
+        } finally {
+            clients.remove(client);
         }
     }
 
@@ -211,6 +218,20 @@ final class BridgeServer {
             out.println(gson.toJson(errorResponse(message)));
         } catch (IOException ignored) {
             // The client may already have disconnected.
+        } finally {
+            clients.remove(client);
+            readingClients.remove(client);
+        }
+    }
+
+    private void closeClient(Socket client) {
+        try {
+            client.close();
+        } catch (IOException ignored) {
+            // The client may already have disconnected.
+        } finally {
+            clients.remove(client);
+            readingClients.remove(client);
         }
     }
 

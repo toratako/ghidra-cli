@@ -35,7 +35,7 @@ final class JobRecord {
 
     void requestCancellation() {
         state = "cancel_requested";
-        monitor.requestCancellation();
+        monitor.markCancellationRequested();
     }
 
     void cancelBeforeExecution() {

@@ -31,6 +31,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Observe cancellation during decompiler warning collection.
 - Stream binary exports with bounded reads and cancellation, including readable
   mapped aliases and overlays, while preserving existing outputs on failure.
+- Keep cancellation callbacks outside the scheduler lock, return nonfatal callback
+  errors, and close incomplete request sockets during shutdown.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

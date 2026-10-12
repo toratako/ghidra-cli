@@ -17,7 +17,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 import static ghidracli.protocol.JsonProtocol.errorResponse;
-import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.successResponse;
 
 final class JobScheduler {
@@ -219,6 +218,10 @@ final class JobScheduler {
                 return BridgeReply.deferred(() -> handleJobResult(id));
             }
 
+            if ("job_cancel".equals(command)) {
+                return BridgeReply.immediate(handleJobCancel(args));
+            }
+
             if (isControlCommand(command)) {
                 synchronized (lifecycleLock) {
                     results.expire(System.currentTimeMillis());
@@ -248,6 +251,10 @@ final class JobScheduler {
         } catch (Exception e) {
             return BridgeReply.immediate(
                 errorResponse(e.getMessage()));
+        } catch (Error e) {
+            if (JsonProtocol.isFatalError(e)) throw e;
+            return BridgeReply.immediate(errorResponse(
+                e.getMessage() == null ? e.toString() : e.getMessage()));
         }
     }
 
@@ -327,13 +334,6 @@ final class JobScheduler {
                 return successResponse(handleBridgeInfo());
             case "job_status":
                 return successResponse(handleJobStatus(args));
-            case "job_cancel": {
-                JsonObject result = handleJobCancel(args);
-                if (result.has("error")) {
-                    return errorResponse(result.get("error").getAsString());
-                }
-                return successResponse(result);
-            }
             default:
                 return errorResponse("Unknown control command: " + command);
         }
@@ -403,46 +403,53 @@ final class JobScheduler {
 
     private JsonObject handleJobCancel(JsonObject args) {
         JobRecord target;
-        if (args != null && args.has("job_id") && !args.get("job_id").isJsonNull()) {
-            target = jobs.get(jobId(args));
-        } else {
-            target = activeJob;
+        JsonObject result;
+        synchronized (lifecycleLock) {
+            results.expire(System.currentTimeMillis());
+            if (args != null && args.has("job_id") && !args.get("job_id").isJsonNull()) {
+                target = jobs.get(jobId(args));
+            } else {
+                target = activeJob;
+            }
+
+            if (target == null) {
+                return errorResponse("No matching active or queued job");
+            }
+
+            JobRecord active = activeJob;
+            if (active != null && active.id.equals(target.id)) {
+                target.requestCancellation();
+                result = new JsonObject();
+                result.addProperty("job_id", target.id);
+                result.addProperty("state", target.state());
+                result.addProperty("message", "Cancellation requested; completion is cooperative");
+            } else {
+                ProgramJob queued = findQueuedJob(target.id);
+                if (queued != null && programQueue.remove(queued)) {
+                    target.cancelBeforeExecution();
+                    JsonObject response = errorResponse(target.error());
+                    response.addProperty("job_id", target.id);
+                    retainCompletedJob(target, results.snapshot(response));
+                    queued.completion.complete(response);
+
+                    result = new JsonObject();
+                    result.addProperty("job_id", target.id);
+                    result.addProperty("state", target.state());
+                    result.addProperty("message", target.error());
+                    return successResponse(result);
+                }
+
+                result = new JsonObject();
+                result.addProperty("job_id", target.id);
+                result.addProperty("state", target.state());
+                result.addProperty("message", "Job is no longer cancellable");
+                return successResponse(result);
+            }
         }
-
-        if (target == null) {
-            return errorResult("No matching active or queued job");
-        }
-
-        JobRecord active = activeJob;
-        if (active != null && active.id.equals(target.id)) {
-            target.requestCancellation();
-            JsonObject result = new JsonObject();
-            result.addProperty("job_id", target.id);
-            result.addProperty("state", target.state());
-            result.addProperty("message", "Cancellation requested; completion is cooperative");
-            return result;
-        }
-
-        ProgramJob queued = findQueuedJob(target.id);
-        if (queued != null && programQueue.remove(queued)) {
-            target.cancelBeforeExecution();
-            JsonObject response = errorResponse(target.error());
-            response.addProperty("job_id", target.id);
-            retainCompletedJob(target, results.snapshot(response));
-            queued.completion.complete(response);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("job_id", target.id);
-            result.addProperty("state", target.state());
-            result.addProperty("message", target.error());
-            return result;
-        }
-
-        JsonObject result = new JsonObject();
-        result.addProperty("job_id", target.id);
-        result.addProperty("state", target.state());
-        result.addProperty("message", "Job is no longer cancellable");
-        return result;
+        // Native listeners are arbitrary script callbacks. They must not hold
+        // the scheduler lock needed by controls and program-job completion.
+        target.monitor.requestCancellation();
+        return successResponse(result);
     }
 
     private ProgramJob findQueuedJob(String id) {
