@@ -329,8 +329,14 @@ public final class ProgramSession {
             mon.checkCancelled();
             // HeadlessAnalyzer normally initializes these before its preScript.
             // Script-only startup must register analyzer options on every open.
-            ghidra.app.plugin.core.analysis.AutoAnalysisManager.getAnalysisManager((Program) domObj)
-                .initializeOptions();
+            try {
+                AutoAnalysisManager.getAnalysisManager((Program) domObj).initializeOptions();
+            } catch (StackOverflowError failure) {
+                // Native analyzer probes can recurse through cyclic memory mappings.
+                // Reject this target through the ordinary consumer cleanup.
+                throw new IOException("Ghidra analyzer initialization exhausted the stack for "
+                    + domainFile.getPathname(), failure);
+            }
             mon.checkCancelled();
         } catch (Exception | Error failure) {
             domObj.release(consumer);

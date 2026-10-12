@@ -318,6 +318,66 @@ public class HoldProgramTargetQueue extends GhidraScript {
 
 #[test]
 #[serial]
+fn test_recursive_analyzer_probe_preserves_selection_and_bridge() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let original = client.program_info().unwrap()["path"].clone();
+    let name = format!("cyclic-analyzer-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.database.ProgramDB;
+public class CreateCyclicAnalyzerTarget extends GhidraScript {
+    public void run() throws Exception {
+        var language = currentProgram.getLanguage();
+        var program = new ProgramDB(getScriptArgs()[0], language,
+            language.getDefaultCompilerSpec(), this);
+        try {
+            int transaction = program.startTransaction("cyclic analyzer target");
+            try {
+                var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x5000);
+                program.getMemory().createByteMappedBlock("cycle", address, address, 1, false);
+            } finally { program.endTransaction(transaction, true); }
+            state.getProject().getProjectData().getRootFolder()
+                .createFile(getScriptArgs()[0], program, monitor);
+        } finally { program.release(this); }
+    }
+}
+"#,
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    let target = format!("/{name}");
+    for _ in 0..2 {
+        let error = client.open_program(&target).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Ghidra analyzer initialization exhausted the stack"),
+            "{error}"
+        );
+        assert!(client.ping().unwrap());
+        assert_eq!(client.program_info().unwrap()["path"], original);
+        assert_eq!(
+            client.bridge_info().unwrap()["current_program_path"],
+            original
+        );
+    }
+    // Native deletion refuses an open Program, so success also proves cleanup
+    // released the failed target's consumer and partially initialized manager.
+    client.program_delete(&target).unwrap();
+    client.program_close().unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    assert_eq!(client.program_info().unwrap()["path"], original);
+}
+
+#[test]
+#[serial]
 fn test_handlers_follow_program_switch_and_close() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
