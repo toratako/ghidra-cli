@@ -356,7 +356,38 @@ fn test_function_list_unknown_tag_errors_with_hint() {
     result.assert_failure();
     result.assert_stderr_contains("Did you mean 'tt7_real'?");
 
+    cleanup_tag(harness, "tt7_IIII");
+    tag_json(harness, &["function", "tag", "create", "tt7_IIII"]);
+    let client = harness.client().unwrap();
+    let locale_script = r#"
+import ghidra.app.script.GhidraScript;
+import java.util.Locale;
+public class TagHintLocale extends GhidraScript {
+    public void run() {
+        writer.println(Locale.getDefault().toLanguageTag());
+        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
+    }
+}
+"#;
+    let previous = client
+        .script_run_source(locale_script, &["tr-TR".into()], &[], false)
+        .unwrap();
+    let previous = previous["stdout"].as_str().unwrap().trim().to_owned();
+    let checked = std::panic::catch_unwind(|| {
+        let error = client.tag_get("tt7_iiiX").unwrap_err();
+        assert!(
+            error.to_string().contains("Did you mean 'tt7_IIII'?"),
+            "{error}"
+        );
+    });
+    client
+        .script_run_source(locale_script, &[previous], &[], false)
+        .unwrap();
+    cleanup_tag(harness, "tt7_IIII");
     cleanup_tag(harness, "tt7_real");
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
 }
 
 #[test]

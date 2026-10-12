@@ -7,6 +7,7 @@ import ghidra.program.model.listing.FunctionTag;
 import ghidra.program.model.listing.FunctionTagManager;
 import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.task.TaskMonitor;
 import ghidracli.query.NameSuggestions;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
@@ -14,7 +15,9 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 
 final class TagSupport {
     static final Comparator<FunctionTag> TAG_NAME_ORDER =
@@ -71,17 +74,20 @@ final class TagSupport {
         return null;
     }
 
-    static String tagNotFoundError(String name, FunctionTagManager tm) {
+    static String tagNotFoundError(String name, FunctionTagManager tm, TaskMonitor monitor) {
         StringBuilder msg = new StringBuilder("No tag named '").append(name).append("'");
         List<String> near = new ArrayList<>();
         for (FunctionTag t : tm.getAllFunctionTags()) {
+            if (monitor.isCancelled()) throw new CancellationException("Command cancelled");
             if (t.getName().equalsIgnoreCase(name) && !t.getName().equals(name)) {
                 near.add(t.getName());
             }
         }
         if (near.isEmpty() && name.length() >= 3) {
             for (FunctionTag t : tm.getAllFunctionTags()) {
-                if (NameSuggestions.levenshteinDistance(t.getName().toLowerCase(), name.toLowerCase()) <= 2) {
+                if (monitor.isCancelled()) throw new CancellationException("Command cancelled");
+                if (NameSuggestions.withinDistance(t.getName().toLowerCase(Locale.ROOT),
+                        name.toLowerCase(Locale.ROOT), 2, monitor)) {
                     near.add(t.getName());
                 }
             }

@@ -69,7 +69,7 @@ public final class FunctionCommands {
             FunctionTagManager tm = fm.getFunctionTagManager();
             for (String tagName : tagFilterNames) {
                 FunctionTag tag = tm.getFunctionTag(tagName);
-                if (tag == null) return errorResult(TagSupport.tagNotFoundError(tagName, tm));
+                if (tag == null) return errorResult(TagSupport.tagNotFoundError(tagName, tm, session.monitor()));
                 requiredTags.add(tag);
             }
         }

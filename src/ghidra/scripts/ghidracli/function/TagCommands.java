@@ -68,7 +68,7 @@ public final class TagCommands {
 
         FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
         FunctionTag tag = tm.getFunctionTag(name);
-        if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
+        if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
 
         var usage = TagSupport.tagUsage(session);
         return TagSupport.tagToJson(tag, usage.getOrDefault(tag.getId(), TagSupport.TagUsage.NONE));
@@ -116,7 +116,7 @@ public final class TagCommands {
         try {
             FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
             FunctionTag tag = tm.getFunctionTag(name);
-            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
+            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
 
             // Capture total usage, including external functions, and mapped
             // membership consistent with `function list --tag` in one scan.
@@ -145,7 +145,7 @@ public final class TagCommands {
         try {
             FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
             FunctionTag tag = tm.getFunctionTag(name);
-            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
+            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
             if (tm.getFunctionTag(newName) != null)
                 return errorResult("Tag already exists: '" + newName + "'");
 
@@ -175,7 +175,7 @@ public final class TagCommands {
         try {
             FunctionTagManager tm = session.program().getFunctionManager().getFunctionTagManager();
             FunctionTag tag = tm.getFunctionTag(name);
-            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
+            if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
 
             tag.setComment(comment == null ? "" : comment);
 
@@ -206,7 +206,7 @@ public final class TagCommands {
             for (String name : tagNames) {
                 session.monitor().checkCancelled();
                 if (tm.getFunctionTag(name) == null)
-                    return errorResult(TagSupport.tagNotFoundError(name, tm));
+                    return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
             }
             Set<String> current = new HashSet<>();
             for (FunctionTag t : func.getTags()) current.add(t.getName());
@@ -262,7 +262,7 @@ public final class TagCommands {
             for (String name : tagNames) {
                 session.monitor().checkCancelled();
                 if (tm.getFunctionTag(name) == null)
-                    return errorResult(TagSupport.tagNotFoundError(name, tm));
+                    return errorResult(TagSupport.tagNotFoundError(name, tm, session.monitor()));
             }
 
             JsonArray detached = new JsonArray(), notPresent = new JsonArray();

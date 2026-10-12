@@ -14,6 +14,25 @@ public class QueryTestLocale extends GhidraScript {
 
 #[test]
 #[serial]
+fn name_suggestions_bound_long_names_and_cancel_during_matching() {
+    require_ghidra!();
+    let helper = include_str!("../../src/ghidra/scripts/ghidracli/query/NameSuggestions.java")
+        .replacen("package ghidracli.query;", "", 1)
+        .replacen(
+            "public final class NameSuggestions",
+            "final class NameSuggestions",
+            1,
+        );
+    let source = format!("{helper}\n{}", include_str!("CheckNameSuggestions.java"));
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(&source, &[], &[], false)
+        .expect("bounded suggestion matching and cancellation");
+}
+
+#[test]
+#[serial]
 fn server_list_pages_match_full_rows_and_rust_string_semantics() {
     require_ghidra!();
     let harness = harness();

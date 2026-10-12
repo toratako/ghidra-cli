@@ -21,8 +21,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 
 public final class FunctionQueries {
     private final ProgramSession session;
@@ -224,19 +226,21 @@ public final class FunctionQueries {
             return "Function not found";
         }
 
-        String query = target.toLowerCase();
+        String query = target.toLowerCase(Locale.ROOT);
         List<String> containsMatches = new ArrayList<>();
         List<String> fuzzyMatches = new ArrayList<>();
         FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
 
         while (iter.hasNext()) {
+            if (session.monitor().isCancelled()) throw new CancellationException("Command cancelled");
             Function func = iter.next();
             String name = func.getName();
-            String lname = name.toLowerCase();
+            String lname = name.toLowerCase(Locale.ROOT);
 
             if (lname.contains(query)) {
                 containsMatches.add(name);
-            } else if (query.length() >= 3 && NameSuggestions.levenshteinDistance(lname, query) <= 3) {
+            } else if (query.length() >= 3
+                    && NameSuggestions.withinDistance(lname, query, 3, session.monitor())) {
                 fuzzyMatches.add(name);
             }
         }
