@@ -254,6 +254,14 @@ public final class FunctionCommands {
             if (created == null) {
                 return diagnoseCreateFunctionFailure(addr, autoDisassembled, null);
             }
+            if (requestedName != null && !requestedName.isEmpty()) {
+                // Native thunk detection creates through a separate command that
+                // inherits the entry's label instead of the requested name.
+                created.setName(requestedName, SourceType.USER_DEFINED);
+                if (!created.getName().equals(requestedName)) {
+                    return errorResult("Ghidra did not retain the requested function name");
+                }
+            }
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "created");

@@ -76,6 +76,57 @@ fn zero_effects() -> Value {
 
 #[test]
 #[serial]
+fn function_creation_retains_the_requested_name_when_native_creation_detects_a_thunk() {
+    require_ghidra!();
+    with_fixture("x86:LE:32:default", |client, program| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.SourceType;
+public class CreateNamedThunkEntry extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.getMemory().setBytes(toAddr(0x1080),
+            new byte[] {(byte) 0xe9, 0x7b, 0, 0, 0});
+        currentProgram.getSymbolTable().createLabel(toAddr(0x1080), "previous_label",
+            SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let original_target = get(client, "other");
+        let created = client
+            .send_command(
+                "create_function",
+                Some(json!({"address":"0x1080","name":"requested_thunk"})),
+            )
+            .unwrap();
+        assert_eq!(created["name"], "requested_thunk", "{created}");
+        assert_eq!(created["address"], "0x00001080");
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            let detail = client
+                .send_command(
+                    "get_function",
+                    Some(json!({"address":"requested_thunk","with_signature":true})),
+                )
+                .unwrap();
+            assert_eq!(detail["name"], "requested_thunk");
+            assert_eq!(detail["signature_details"]["thunk_function"], "other");
+            assert_eq!(get(client, "other"), original_target);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn function_creation_preserves_another_functions_shared_tail_and_annotations() {
     require_ghidra!();
     with_fixture("x86:LE:32:default", |client, program| {
