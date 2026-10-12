@@ -193,6 +193,7 @@ public final class ScriptCommands {
                         .invoke(bundleHost, locationId);
                 } catch (java.lang.reflect.InvocationTargetException ite) {
                     Throwable cause = ite.getCause() != null ? ite.getCause() : ite;
+                    if (cause instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
                     out.flush();
                     return errorResult("Script failed to build: " + cause.getMessage()
                         + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
@@ -475,7 +476,8 @@ public final class ScriptCommands {
                     File dir = new File(dirObj.toString());
                     if (dir.exists() && dir.isDirectory()) {
                         for (File f : dir.listFiles()) {
-                            if (f.getName().endsWith(".py") || f.getName().endsWith(".java")) {
+                            if (f.isFile()
+                                    && (f.getName().endsWith(".py") || f.getName().endsWith(".java"))) {
                                 JsonObject scriptObj = new JsonObject();
                                 scriptObj.addProperty("name", f.getName());
                                 scriptObj.addProperty("path", f.getAbsolutePath());

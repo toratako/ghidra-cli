@@ -424,6 +424,25 @@ public final class PackagedAudit extends GhidraScript {
         "audit.packaged.PackagedAudit:child:child arg\n"
     );
 
+    let python = child.join("ListableScript.py");
+    fs::write(&python, "print('listable')\n").unwrap();
+    let java_directory = child.join("JavaDirectory.java");
+    let python_directory = child.join("PythonDirectory.py");
+    fs::create_dir(&java_directory).unwrap();
+    fs::create_dir(&python_directory).unwrap();
+    let result = client.script_list().unwrap();
+    let paths: Vec<_> = result["scripts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|script| std::path::Path::new(script["path"].as_str().unwrap()))
+        .filter(|path| path.parent() == Some(child.as_path()))
+        .collect();
+    assert!(paths.contains(&child_path.as_path()), "{paths:?}");
+    assert!(paths.contains(&python.as_path()), "{paths:?}");
+    assert!(!paths.contains(&java_directory.as_path()), "{paths:?}");
+    assert!(!paths.contains(&python_directory.as_path()), "{paths:?}");
+
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .args([
             "--json",
