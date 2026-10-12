@@ -2,6 +2,7 @@ package ghidracli.session;
 
 import ghidra.framework.model.TransactionInfo;
 import ghidra.program.model.listing.Program;
+import ghidracli.protocol.JsonProtocol;
 
 /** An owned transaction entry; only the outermost owner can roll back. */
 public final class ProgramTransaction {
@@ -33,6 +34,8 @@ public final class ProgramTransaction {
             || info.getStatus() == TransactionInfo.Status.NOT_DONE_BUT_ABORTED;
     }
 
+    boolean isEnded() { return ended; }
+
     public void end(boolean commit) {
         if (ended) throw new IllegalStateException("Transaction already ended");
         if (!commit && !ownsCurrentRoot()) {
@@ -43,7 +46,16 @@ public final class ProgramTransaction {
         // If native code leaked a child, abort only our known root entry. Ghidra
         // will finish the rollback once that child's owner closes it; callers
         // must not report a completed rollback while any entry remains active.
-        program.endTransaction(id, commit);
-        ended = true;
+        try {
+            program.endTransaction(id, commit);
+            ended = true;
+        } catch (RuntimeException | Error failure) {
+            if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
+            // Native rollback listeners can throw after Ghidra has already
+            // closed the root. Keep unknown/open roots owned, but never retry
+            // an entry whose native transaction is demonstrably gone.
+            if (program.getCurrentTransactionInfo() == null) ended = true;
+            throw failure;
+        }
     }
 }

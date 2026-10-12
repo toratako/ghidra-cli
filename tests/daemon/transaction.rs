@@ -8,7 +8,10 @@ use serial_test::serial;
 const TRANSACTION_PROBE: &str = r#"
 import com.google.gson.JsonObject;
 import ghidra.app.script.GhidraScript;
+import ghidra.framework.data.DomainObjectAdapterDB;
 import ghidra.framework.model.DomainFile;
+import ghidra.framework.model.TransactionInfo;
+import ghidra.framework.model.TransactionListener;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.FunctionManager;
@@ -49,6 +52,7 @@ public class RequestTransactionProbe extends GhidraScript {
     private int savesToFail;
     private boolean failSaveWithAssertion;
     private boolean cancelAfterSave;
+    private Throwable selectionFailureAfterSave;
     private int saveCalls;
     private int commentWrites;
     private int memoryWrites;
@@ -252,6 +256,10 @@ public class RequestTransactionProbe extends GhidraScript {
                     cancelAfterSave = false;
                     requestMonitor.cancel();
                 }
+                if (method.getName().equals("save") && selectionFailureAfterSave != null) {
+                    openMonitorFailure = selectionFailureAfterSave;
+                    selectionFailureAfterSave = null;
+                }
                 return result;
             });
         Class<?> accessClass = bridgeLoader.loadClass(bridgePackage + "session.ScriptAccess");
@@ -315,7 +323,8 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.PRE_COMMENT, "after-stats-cancellation");
     }
 
-    private void testNonAtomicCancellationDiagnostics() throws Exception {
+    private void testNonAtomicCancellationDiagnostics(boolean failSave) throws Exception {
+        String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
         JsonObject args = new JsonObject();
         args.addProperty("source", """
             import ghidra.app.script.GhidraScript;
@@ -330,13 +339,22 @@ public class RequestTransactionProbe extends GhidraScript {
         com.google.gson.JsonArray scriptArgs = new com.google.gson.JsonArray();
         scriptArgs.add("0x" + address.toString());
         args.add("args", scriptArgs);
+        int previousSaveCalls = saveCalls;
+        savesToFail = failSave ? 1 : 0;
         JsonObject response = command("script_run", args);
         JsonObject detail = failed(response);
+        if (failSave) {
+            saveFailed(response, "error");
+            check(saveCalls == previousSaveCalls + 1 && real.isChanged(),
+                "Cancelled script retried save or lost pending edits");
+            savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+        }
         check(detail != null && detail.has("cancelled") && detail.get("cancelled").getAsBoolean(),
             "Non-atomic failure lost cancellation diagnostics: " + response);
-        check(detail.get("partial_changes_saved").getAsBoolean() && !detail.has("rolled_back"),
-            "Cancelled script did not retain its explicit non-atomic save semantics: " + response);
         requestMonitor.clearCancelled();
+        if (failSave) success(command("program_save", new JsonObject()));
+        else check(detail.get("partial_changes_saved").getAsBoolean() && !detail.has("rolled_back"),
+            "Cancelled script did not retain its explicit non-atomic save semantics: " + response);
         savedComment(CodeUnit.EOL_COMMENT, prior);
         savedComment(CodeUnit.PRE_COMMENT, "cancelled-script-edit");
         // A completed non-atomic save still succeeds if cancellation arrives
@@ -898,6 +916,188 @@ public class RequestTransactionProbe extends GhidraScript {
         }
     }
 
+    private void testSelectorSaveReceipt(String mode) throws Exception {
+        boolean finishAssertion = mode.equals("selector-finish-assertion") || mode.equals("selector-commit-assertion");
+        boolean commitBeforeAssertion = mode.equals("selector-commit-assertion");
+        DomainFile previousFile = real.getDomainFile();
+        DomainFile target = previousFile.copyTo(previousFile.getParent().createFolder("selector-target"), monitor);
+        var previousConsumers = real.getConsumerList();
+        Method targetedExecute = dispatcher.getClass().getDeclaredMethod("execute", String.class,
+            JsonObject.class, String.class);
+        targetedExecute.setAccessible(true);
+        String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+        savesToFail = 1;
+        saveFailed(command("comment_set", comment("pending-before-selector", "PRE")), "success");
+        savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+        int previousSaveCalls = saveCalls;
+        Object targetOwner = new Object();
+        Program heldTarget = null;
+        Integer foreignTransaction = null;
+        TransactionListener transactionListener = null;
+        boolean[] finishAssertionDelivered = { false };
+        if (mode.equals("selector-save-failure") || finishAssertion) {
+            heldTarget = (Program) target.getDomainObject(targetOwner, true, false, monitor);
+            if (mode.equals("selector-save-failure")) {
+                foreignTransaction = heldTarget.startTransaction("test-owned selector target transaction");
+            } else {
+                transactionListener = new TransactionListener() {
+                    private boolean armed;
+                    private TransactionInfo owned;
+                    public void transactionStarted(DomainObjectAdapterDB program, TransactionInfo info) {
+                        armed = "ghidra-cli: comment_set".equals(info.getDescription());
+                        if (armed) owned = info;
+                    }
+                    public void transactionEnded(DomainObjectAdapterDB program) {
+                        if (!armed) return;
+                        armed = false;
+                        var current = program.getCurrentTransactionInfo();
+                        check(commitBeforeAssertion
+                            ? current != null && current.getID() == owned.getID()
+                                && current.getOpenSubTransactions().isEmpty()
+                            : current == null,
+                            "Native finish assertion preceded the expected root state");
+                        check(owned.getStatus() == (commitBeforeAssertion
+                            ? TransactionInfo.Status.COMMITTED : TransactionInfo.Status.ABORTED),
+                            "Native finish assertion followed unexpected transaction status");
+                        finishAssertionDelivered[0] = true;
+                        throw new AssertionError("injected native transaction-ended assertion");
+                    }
+                    public void undoStackChanged(DomainObjectAdapterDB program) {}
+                    public void undoRedoOccurred(DomainObjectAdapterDB program) {}
+                };
+                heldTarget.addTransactionListener(transactionListener);
+            }
+        }
+        cancelAfterSave = mode.equals("selector-save-receipt");
+        if (mode.equals("selector-assertion")) {
+            selectionFailureAfterSave = new AssertionError("injected post-save selector assertion");
+        }
+        JsonObject response = null;
+        Throwable selectorFailure = null;
+        try {
+            response = (JsonObject) targetedExecute.invoke(dispatcher,
+                mode.equals("selector-save-failure") ? "program_save" : "comment_set",
+                comment(commitBeforeAssertion ? "committed-before-finish-assertion" : "must-not-change-target",
+                    commitBeforeAssertion ? "PRE" : "invalid"), target.getPathname());
+        } catch (InvocationTargetException failure) {
+            selectorFailure = failure.getCause();
+        } finally {
+            cancelAfterSave = false;
+            selectionFailureAfterSave = null;
+            openMonitorFailure = null;
+            requestMonitor.clearCancelled();
+            if (transactionListener != null) heldTarget.removeTransactionListener(transactionListener);
+            if (foreignTransaction != null) heldTarget.endTransaction(foreignTransaction, true);
+            if (heldTarget != null) heldTarget.release(targetOwner);
+        }
+        check(saveCalls == previousSaveCalls + 1 && !real.isChanged(),
+            "Selector fixture did not complete its durable save");
+        savedComment(CodeUnit.PRE_COMMENT, "pending-before-selector");
+        if (finishAssertion) {
+            var current = selected.getCurrentTransactionInfo();
+            check(finishAssertionDelivered[0] && (commitBeforeAssertion
+                ? current != null && current.getStatus() == TransactionInfo.Status.COMMITTED
+                    && current.getOpenSubTransactions().isEmpty()
+                : current == null), "Native transaction-ended assertion did not retain expected root state");
+            if (commitBeforeAssertion) {
+                check(selected.isChanged() && "committed-before-finish-assertion".equals(
+                    selected.getListing().getComment(CodeUnit.PRE_COMMENT, address)),
+                    "Failed completion lost committed pending edits");
+                Object reader = new Object();
+                Program saved = (Program) target.getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
+                try {
+                    check(java.util.Objects.equals(previouslySaved, saved.getListing().getComment(CodeUnit.PRE_COMMENT, address)),
+                        "Failed completion implicitly saved target edits");
+                } finally { saved.release(reader); }
+            }
+        }
+        check(selectorFailure == null, "Selector escaped its response boundary after saving: " + selectorFailure);
+        JsonObject detail = failed(response);
+        check(detail.has("partial_changes_saved") && detail.get("partial_changes_saved").getAsBoolean(),
+            "Selector lost completed save receipt: " + response);
+        check(detail.getAsJsonArray("saved_programs").size() == 1
+            && detail.getAsJsonArray("saved_programs").get(0).getAsString().equals(previousFile.getPathname()),
+            "Selector lost saved Program identity: " + response);
+        if (mode.equals("selector-save-receipt") || mode.equals("selector-assertion")) {
+            check(selected != null && selected.getDomainFile().equals(previousFile)
+                && real.getConsumerList().equals(previousConsumers), "Cancelled selector changed selection or consumers");
+            if (mode.equals("selector-save-receipt")) {
+                check(detail.get("cancelled").getAsBoolean(), "Selector lost cancellation: " + response);
+            } else {
+                check(response.get("message").getAsString().contains("injected post-save selector assertion")
+                    && !detail.has("cancelled"), "Selector lost native assertion: " + response);
+            }
+            check(!detail.has("rolled_back") && !detail.has("save_failed"), response.toString());
+        } else {
+            check(selected.getDomainFile().equals(target) && real.getConsumerList().size() == previousConsumers.size() - 1,
+                "Successful selection did not transfer only its own consumer");
+            check(detail.get("program").getAsString().equals(target.getPathname()),
+                "Failure lost selected target identity: " + response);
+            if (mode.equals("selector-save-failure")) {
+                check(detail.get("save_failed").getAsBoolean() && !detail.get("saved").getAsBoolean()
+                    && !detail.has("rolled_back") && detail.has("command_response"), response.toString());
+                success(command("program_save", new JsonObject()));
+            } else if (finishAssertion) {
+                check(detail.get("transaction_failed").getAsBoolean() && !detail.has("rolled_back")
+                    && !detail.has("save_failed") && detail.has("command_response"), response.toString());
+                check(response.get("message").getAsString().contains("injected native transaction-ended assertion"),
+                    "Transaction cleanup lost its native error: " + response);
+                check(detail.getAsJsonObject("command_response").get("status").getAsString()
+                    .equals(commitBeforeAssertion ? "success" : "error"),
+                    "Transaction cleanup lost original command outcome: " + response);
+                if (commitBeforeAssertion) {
+                    // Ghidra clears a committed native root after invoking its
+                    // listeners. Do not invent successful cleanup when that
+                    // callback interrupted it; keep target and pending edits.
+                    JsonObject blocked = (JsonObject) targetedExecute.invoke(dispatcher, "program_info", new JsonObject(),
+                        previousFile.getPathname());
+                    JsonObject blockedDetail = failed(blocked);
+                    check(blockedDetail.get("save_failed").getAsBoolean()
+                        && !blockedDetail.get("saved").getAsBoolean() && !blockedDetail.has("command_response")
+                        && !blockedDetail.has("partial_changes_saved"), blocked.toString());
+                    check(selected.getDomainFile().equals(target) && selected.isChanged()
+                        && "committed-before-finish-assertion".equals(selected.getListing().getComment(CodeUnit.PRE_COMMENT, address)),
+                        "Native incomplete commit lost the selected recovery Program");
+                    return;
+                }
+                // Selection saves before its command transaction starts. A stale
+                // wrapper for the already-ended native root must not block it.
+                success((JsonObject) targetedExecute.invoke(dispatcher, "program_info", new JsonObject(),
+                    previousFile.getPathname()));
+                success((JsonObject) targetedExecute.invoke(dispatcher, "program_info", new JsonObject(),
+                    target.getPathname()));
+            } else {
+                check(detail.get("rolled_back").getAsBoolean() && !detail.has("save_failed"), response.toString());
+            }
+            String expected = commitBeforeAssertion ? "committed-before-finish-assertion" : previouslySaved;
+            check(java.util.Objects.equals(expected, selected.getListing().getComment(CodeUnit.PRE_COMMENT, address)),
+                "Rejected target edit changed copied Program");
+            Object reader = new Object();
+            Program saved = (Program) target.getReadOnlyDomainObject(reader, DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
+            try {
+                check(prior.equals(saved.getListing().getComment(CodeUnit.EOL_COMMENT, address))
+                    && java.util.Objects.equals(expected, saved.getListing().getComment(CodeUnit.PRE_COMMENT, address)),
+                    "Rejected target edit changed persisted Program");
+            } finally { saved.release(reader); }
+        }
+
+        JsonObject rejected = (JsonObject) targetedExecute.invoke(dispatcher, "program_info", new JsonObject(),
+            target.getPathname() + "/absent");
+        JsonObject rejectedDetail = failed(rejected);
+        check(rejectedDetail == null || !rejectedDetail.has("partial_changes_saved"),
+            "Selector inherited prior request save receipt: " + rejected);
+        JsonObject selectedResponse = (JsonObject) targetedExecute.invoke(dispatcher, "program_info", new JsonObject(),
+            target.getPathname());
+        success(selectedResponse);
+        check(selected.getDomainFile().equals(target), "Successful selector did not open target");
+        session.getClass().getMethod("open", DomainFile.class).invoke(session, previousFile);
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, "pending-before-selector");
+        success(command("comment_set", comment("after-selector-cancellation", "POST")));
+        savedComment(CodeUnit.POST_COMMENT, "after-selector-cancellation");
+        target.delete();
+    }
+
     public void run() throws Exception {
         String folderName = getScriptArgs()[0];
         String mode = getScriptArgs()[2];
@@ -914,7 +1114,8 @@ public class RequestTransactionProbe extends GhidraScript {
             switch (mode) {
                 case "late-error": case "late-assertion": case "cancel": case "native-false": testLateFailure(mode); break;
                 case "stats-cancel": testStatsCancellation(); break;
-                case "non-atomic-cancel": testNonAtomicCancellationDiagnostics(); break;
+                case "non-atomic-cancel": case "non-atomic-cancel-save":
+                    testNonAtomicCancellationDiagnostics(mode.equals("non-atomic-cancel-save")); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": case "save-assertion": testSaveRecovery(mode); break;
                 case "description-save": testDescriptionSaveRecovery(); break;
@@ -927,6 +1128,9 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "cancelled-delete-refusal": testCancelledDeletionRefusal(); break;
                 case "cancelled-delete-save": testCancelledDeletionAfterSave(); break;
                 case "failed-open": testFailedOpenReleasesConsumer(); break;
+                case "selector-save-receipt": case "selector-assertion": case "selector-rollback":
+                case "selector-save-failure": case "selector-finish-assertion": case "selector-commit-assertion":
+                    testSelectorSaveReceipt(mode); break;
                 case "preview": testPreviewAfterEdit(); break;
                 default: throw new IllegalArgumentException(mode);
             }
@@ -937,6 +1141,11 @@ public class RequestTransactionProbe extends GhidraScript {
             requestMonitor.clearCancelled();
             try {
                 if (session != null) {
+                    // Cleanup follows the assertions. A failed probe must not
+                    // hide its original error behind a stale native wrapper.
+                    if (mode.equals("selector-finish-assertion") || mode.equals("selector-commit-assertion")) {
+                        command("program_save", new JsonObject());
+                    }
                     Method close = session.getClass().getDeclaredMethod("closeProgram");
                     close.setAccessible(true);
                     close.invoke(session);
@@ -1048,6 +1257,12 @@ fn test_non_atomic_cancelled_script_retains_cancellation_and_saved_changes_diagn
 
 #[test]
 #[serial]
+fn test_non_atomic_cancelled_script_save_failure_keeps_cancellation_and_pending_edits() {
+    run_transaction_probe("non-atomic-cancel-save");
+}
+
+#[test]
+#[serial]
 fn test_native_false_rolls_back_changes_before_the_failure() {
     run_transaction_probe("native-false");
 }
@@ -1140,4 +1355,40 @@ fn test_cancellation_during_save_prevents_deletion_and_restores_selection() {
 #[serial]
 fn test_failed_program_open_releases_its_consumer_and_preserves_selection() {
     run_transaction_probe("failed-open");
+}
+
+#[test]
+#[serial]
+fn test_cancelled_selector_reports_saved_pending_edits_and_preserves_selection() {
+    run_transaction_probe("selector-save-receipt");
+}
+
+#[test]
+#[serial]
+fn test_selector_assertion_reports_saved_pending_edits_and_preserves_selection() {
+    run_transaction_probe("selector-assertion");
+}
+
+#[test]
+#[serial]
+fn test_native_finish_assertion_preserves_prior_saved_receipt_and_command_response() {
+    run_transaction_probe("selector-finish-assertion");
+}
+
+#[test]
+#[serial]
+fn test_native_commit_assertion_retains_pending_edits_and_reports_blocked_selection() {
+    run_transaction_probe("selector-commit-assertion");
+}
+
+#[test]
+#[serial]
+fn test_rejected_target_edit_reports_previous_program_saved_by_selector() {
+    run_transaction_probe("selector-rollback");
+}
+
+#[test]
+#[serial]
+fn test_selector_save_receipt_survives_later_target_save_failure() {
+    run_transaction_probe("selector-save-failure");
 }

@@ -365,16 +365,18 @@ final class CommandDispatcher {
         try {
             session.beginRequest(command, program);
         } catch (ProgramSession.SaveFailure e) {
-            // Selection failed before this request began. Never finish or retry
+            // Selection failed before the command transaction began. Never finish or retry
             // the save of the previous program as though the handler had run.
             return saveFailure(command, null, e);
-        } catch (Exception e) {
+        } catch (Exception | Error e) {
+            if (e instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
             JsonObject detail = JsonProtocol.errorDetail(e);
             if (e instanceof CancelledException || session.monitor().isCancelled()) {
                 if (detail == null) detail = new JsonObject();
                 detail.addProperty("cancelled", true);
                 detail.addProperty("program", session.programPath());
             }
+            detail = savedChanges(detail);
             return errorResponse(JsonProtocol.errorMessage(e), detail);
         }
         JsonObject response = executeCommand(command, args);
@@ -390,7 +392,7 @@ final class CommandDispatcher {
                     ? response.getAsJsonObject("detail") : new JsonObject();
                 if ("analysis_run".equals(command)) detail.addProperty("saved", outcome.saved());
                 if (outcome.rolledBack()) detail.addProperty("rolled_back", true);
-                else if (outcome.saved()) detail.addProperty("partial_changes_saved", true);
+                if (outcome.saved()) detail = savedChanges(detail);
                 if (outcome.cancelled()) detail.addProperty("cancelled", true);
                 // Capture identity on the program lane. A later bridge_info
                 // query could observe another client's program selection.
@@ -404,12 +406,16 @@ final class CommandDispatcher {
             return response;
         } catch (ProgramSession.SaveFailure e) {
             return saveFailure(command, response, e);
-        } catch (Exception e) {
+        } catch (Exception | Error e) {
+            if (e instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
             JsonObject detail = JsonProtocol.errorDetail(e);
             if (detail == null) detail = new JsonObject();
             detail.addProperty("transaction_failed", true);
+            if (session.monitor().isCancelled()) detail.addProperty("cancelled", true);
+            if (session.program() != null) detail.addProperty("program", session.programPath());
             detail.add("command_response", response);
-            return errorResponse("Could not finish command transaction: " + e.getMessage(), detail);
+            detail = savedChanges(detail);
+            return errorResponse("Could not finish command transaction: " + JsonProtocol.errorMessage(e), detail);
         }
     }
 
@@ -418,11 +424,22 @@ final class CommandDispatcher {
         detail.addProperty("saved", false);
         detail.addProperty("save_failed", true);
         detail.addProperty("command", command);
+        if (session.monitor().isCancelled()) detail.addProperty("cancelled", true);
         if (session.program() != null) detail.addProperty("program", session.programPath());
         if (response != null) detail.add("command_response", response);
+        detail = savedChanges(detail);
         return errorResponse("Auto-save failed: " + failure.getMessage()
             + ". Changes may remain in memory. Retry `ghidra-cli program save` for this project/program; "
             + "do not repeat the editing command or stop the bridge before saving.", detail);
+    }
+
+    private JsonObject savedChanges(JsonObject detail) {
+        var savedPrograms = session.savedPrograms();
+        if (savedPrograms.isEmpty()) return detail;
+        if (detail == null) detail = new JsonObject();
+        detail.addProperty("partial_changes_saved", true);
+        detail.add("saved_programs", JsonProtocol.toJsonArray(savedPrograms.toArray(new String[0])));
+        return detail;
     }
 
     private JsonObject executeCommand(String command, JsonObject args) {

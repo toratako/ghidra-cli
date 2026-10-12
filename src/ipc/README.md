@@ -705,12 +705,18 @@ Ordinary failures roll back the request's Program changes and report
 `detail.rolled_back: true`; cancellation adds `detail.cancelled: true`.
 Earlier requests and pending unsaved edits remain intact. The
 [non-atomic exceptions and transaction ownership rules](../ghidra/scripts/ghidracli/README.md#execution-and-ownership)
-are owned by `ProgramSession`. Non-atomic errors report
-`detail.partial_changes_saved: true` when retained Program changes were saved;
-external project/file effects are outside rollback.
+are owned by `ProgramSession`. Errors report `detail.partial_changes_saved: true`
+and `detail.saved_programs` (the saved DomainFile paths) when the request already
+saved Program changes. This includes a selector saving the previous Program
+before the target command starts. It can coexist with `rolled_back` for the
+target Program, `save_failed` for a later save, or `transaction_failed` during
+completion; `detail.program` identifies the affected target, while
+`saved_programs` identifies completed saves.
+External project/file effects are outside rollback.
 
 Ownership failures report `detail.transaction_failed: true`, without claiming
-rollback or saving. A leaked child transaction leaves rollback pending;
+that the target transaction completed rollback or saving. A leaked child
+transaction leaves rollback pending;
 `command_response` is retained for diagnosis. Keep the bridge running and close
 the outstanding transaction through its owning script; recovery scripts remain
 available. Never replay the edit or save while rollback is pending.

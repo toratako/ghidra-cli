@@ -204,6 +204,9 @@ pending edits retained from an earlier save failure. Save errors fail the respon
 retain `command_response` with `save_failed: true`, and keep the program available
 for in-place `program_save` retries. The first save failure in a request is retained
 without an implicit retry during request completion.
+Request save receipts include selection before the command transaction starts.
+Errors identify completed saves with `saved_programs`, including a previous
+Program saved before the target command rolls back or a later save fails.
 Switching/closing save before releasing the session's consumer; failed save/open
 keeps the previous program. Shutdown drains, saves, and releases on the script
 thread. Startup omits `-process`, so `ProgramSession` also owns the initial program.

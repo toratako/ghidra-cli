@@ -28,7 +28,7 @@ public final class ProgramSession {
     private final DecompilerSession decompiler = new DecompilerSession();
     private ProgramTransaction requestTransaction;
     private boolean requestActive;
-    private boolean requestSaved;
+    private final List<String> requestSavedPrograms = new ArrayList<>();
     private boolean atomicRequest;
     private long requestModification;
     private SaveFailure saveFailure;
@@ -135,15 +135,44 @@ public final class ProgramSession {
 
     /** Resolve a job's target before opening its request transaction. */
     public void beginRequest(String command, String requestedProgram) throws Exception {
-        if (requestActive) throw transactionFailure("A program request is already active");
-        monitor().checkCancelled();
-        if (requestedProgram != null) open(findProgram(requestedProgram));
-        monitor().checkCancelled();
-        beginRequest(command);
+        prepareRequest();
+        try {
+            monitor().checkCancelled();
+            if (requestedProgram != null) open(findProgram(requestedProgram), monitor(), false);
+            monitor().checkCancelled();
+            beginCommandTransaction(command);
+        } catch (Exception | Error failure) {
+            requestActive = false;
+            atomicRequest = false;
+            throw failure;
+        }
     }
 
     public void beginRequest(String command) {
+        prepareRequest();
+        try {
+            beginCommandTransaction(command);
+        } catch (RuntimeException | Error failure) {
+            requestActive = false;
+            atomicRequest = false;
+            throw failure;
+        }
+    }
+
+    private void prepareRequest() {
         if (requestActive) throw transactionFailure("A program request is already active");
+        saveFailure = null;
+        requestFailure = null;
+        requestSavedPrograms.clear();
+        // Selection can save the previous Program before a command transaction
+        // exists. Its durable effects still belong to this request's receipt.
+        atomicRequest = false;
+        requestActive = true;
+    }
+
+    public List<String> savedPrograms() { return List.copyOf(requestSavedPrograms); }
+
+    private void beginCommandTransaction(String command) {
         // Atomic by default, including future ordinary commands. These explicit
         // exceptions have analysis, arbitrary-script, project or filesystem effects.
         boolean atomic = switch (command == null ? "" : command) {
@@ -155,18 +184,8 @@ public final class ProgramSession {
             throw transactionFailure("Cannot start an atomic command while another transaction is active. "
                 + "Close the transaction through its owning script, then retry; it has not been ended or modified.");
         }
-        saveFailure = null;
-        requestFailure = null;
-        requestSaved = false;
         atomicRequest = atomic;
-        requestActive = true;
-        try {
-            startRequestTransaction("ghidra-cli: " + command);
-        } catch (RuntimeException failure) {
-            requestActive = false;
-            atomicRequest = false;
-            throw failure;
-        }
+        startRequestTransaction("ghidra-cli: " + command);
     }
 
     private void startRequestTransaction(String description) {
@@ -188,8 +207,11 @@ public final class ProgramSession {
 
     private void endRequestTransaction(boolean commit) {
         if (requestTransaction != null) {
-            requestTransaction.end(commit);
-            requestTransaction = null;
+            try {
+                requestTransaction.end(commit);
+            } finally {
+                if (requestTransaction.isEnded()) requestTransaction = null;
+            }
             if (!commit && program().getCurrentTransactionInfo() != null) {
                 requestFailure = transactionFailure("Rollback is pending an unclosed transaction. "
                     + "Keep the bridge running and close that transaction through its owning script. "
@@ -254,7 +276,9 @@ public final class ProgramSession {
             if (saveFailure != null) throw saveFailure;
             // A rejected edit must not save unrelated, pending edits from an
             // earlier save failure. They remain available for explicit recovery.
-            return new RequestOutcome(!rolledBack && (save() || requestSaved), rolledBack, cancelled);
+            boolean saved = !requestSavedPrograms.isEmpty();
+            if (!rolledBack) saved = save() || saved;
+            return new RequestOutcome(saved, rolledBack, cancelled);
         } finally {
             requestActive = false;
             atomicRequest = false;
@@ -280,7 +304,9 @@ public final class ProgramSession {
             if (program().isChanged()) {
                 throw new IllegalStateException("Program still has unsaved changes");
             }
-            if (requestActive) requestSaved = true;
+            if (requestActive && !requestSavedPrograms.contains(programPath())) {
+                requestSavedPrograms.add(programPath());
+            }
             return true;
         } catch (Exception | Error failure) {
             if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
@@ -314,6 +340,10 @@ public final class ProgramSession {
     }
 
     private void open(DomainFile domainFile, TaskMonitor mon) throws Exception {
+        open(domainFile, mon, true);
+    }
+
+    private void open(DomainFile domainFile, TaskMonitor mon, boolean startTransaction) throws Exception {
         // Program names are stored inside the database and can be identical in
         // different project files (for example after copying a program).
         if (isCurrent(domainFile)) return;
@@ -345,7 +375,7 @@ public final class ProgramSession {
         decompiler.close();
         if (program() != null) program().release(consumer);
         setProgram((Program) domObj);
-        if (requestActive) startRequestTransaction("ghidra-cli: open program");
+        if (requestActive && startTransaction) startRequestTransaction("ghidra-cli: open program");
     }
 
     public void closeProgram() throws Exception {
