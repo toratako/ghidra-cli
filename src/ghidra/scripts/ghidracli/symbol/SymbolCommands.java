@@ -129,7 +129,8 @@ public final class SymbolCommands {
 
     private List<Symbol> symbolsNamed(SymbolTable table, String name) throws CancelledException {
         // Preserve indexed namespace/variable matches, which the address iterator omits.
-        // Then add displayed default thunks and dynamic labels missing from the name index.
+        // Then add generated names missing from the index: thunks/dynamic labels
+        // in address order, followed by default parameters and local variables.
         List<Symbol> matches = new ArrayList<>();
         Set<Long> ids = new HashSet<>();
         SymbolIterator indexed = table.getSymbols(name);
@@ -138,11 +139,12 @@ public final class SymbolCommands {
             Symbol symbol = indexed.next();
             if (symbol.getName().equals(name) && ids.add(symbol.getID())) matches.add(symbol);
         }
-        SymbolIterator symbols = table.getAllSymbols(true);
-        while (symbols.hasNext()) {
-            session.monitor().checkCancelled();
-            Symbol symbol = symbols.next();
-            if (symbol.getName().equals(name) && ids.add(symbol.getID())) matches.add(symbol);
+        for (SymbolIterator symbols : List.of(table.getAllSymbols(true), table.getDefinedSymbols())) {
+            while (symbols.hasNext()) {
+                session.monitor().checkCancelled();
+                Symbol symbol = symbols.next();
+                if (symbol.getName().equals(name) && ids.add(symbol.getID())) matches.add(symbol);
+            }
         }
         return matches;
     }
@@ -456,6 +458,11 @@ public final class SymbolCommands {
                 JsonObject entry = new JsonObject();
                 entry.addProperty("address", AddressCodec.format(s.getAddress()));
                 s.setName(newName, SourceType.USER_DEFINED);
+                // Native variable/external symbols can interpret reserved names
+                // as a request to restore their generated name instead.
+                if (s.isDeleted() || !s.getName().equals(newName)) {
+                    throw new IllegalStateException("Ghidra did not retain the requested symbol name: " + newName);
+                }
                 renamed.add(entry);
             }
 

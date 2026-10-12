@@ -223,6 +223,148 @@ public class ScopedSymbolFixture extends GhidraScript {
 
 #[test]
 #[serial]
+fn symbol_rename_rolls_back_native_generated_name_substitutions() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::deletion::create_symbol_fixture_program();
+    crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(include_str!("RenameIdentityFixture.java"), &[], &[], false)
+            .unwrap();
+        let before = client.symbol_get_by_name("rename_selected").unwrap();
+        let targets = before["symbols"].as_array().unwrap();
+        let label = targets.iter().find(|row| row["type"] == "Label").unwrap();
+        let parameter = targets
+            .iter()
+            .find(|row| row["type"] == "Parameter")
+            .unwrap();
+        let function_before = client
+            .send_command(
+                "get_function",
+                Some(serde_json::json!({"address": "0x1020"})),
+            )
+            .unwrap();
+        // Ghidra substitutes param_1 for param_99 on the first parameter.
+        // The preceding label edit must be rolled back with that substitution.
+        let error = client
+            .symbol_rename_targets(
+                "rename_selected",
+                "param_99",
+                &[label.clone(), parameter.clone()],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("did not retain the requested symbol name"),
+            "{error:#}"
+        );
+        let detail = &error
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap()
+            .detail;
+        assert_eq!(detail["rolled_back"], true);
+        assert!(detail.get("partial_changes_saved").is_none());
+        assert_eq!(
+            client.symbol_get_by_name("rename_selected").unwrap(),
+            before
+        );
+        assert!(client.symbol_get_by_name("param_99").is_err());
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            client.symbol_get_by_name("rename_selected").unwrap(),
+            before
+        );
+        assert_eq!(
+            client
+                .send_command(
+                    "get_function",
+                    Some(serde_json::json!({"address": "0x1020"}))
+                )
+                .unwrap(),
+            function_before
+        );
+
+        client
+            .symbol_rename_targets(
+                "rename_selected",
+                "renamed_parameter",
+                std::slice::from_ref(parameter),
+            )
+            .unwrap();
+        let renamed = client.symbol_get_by_name("renamed_parameter").unwrap();
+        assert_eq!(renamed["symbols"][0]["id"], parameter["id"]);
+        assert_eq!(
+            client.symbol_get_by_name("rename_selected").unwrap()["symbols"],
+            serde_json::json!([label])
+        );
+
+        // Naming a generated label persists it under a fresh native identity.
+        let dynamic = client.symbol_get("0x1030").unwrap()["symbols"][0].clone();
+        client
+            .symbol_rename_targets(
+                dynamic["name"].as_str().unwrap(),
+                "renamed_dynamic",
+                std::slice::from_ref(&dynamic),
+            )
+            .unwrap();
+        assert_eq!(
+            client.symbol_get_by_name("renamed_dynamic").unwrap()["symbols"][0]["address"],
+            "0x00001030"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn symbol_lookup_round_trips_generated_variable_names() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::deletion::create_symbol_fixture_program();
+    crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(include_str!("RenameIdentityFixture.java"), &[], &[], false)
+            .unwrap();
+        let listed = client.symbol_list(None, None, None).unwrap();
+        let generated: Vec<_> = listed["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["namespace"] == "generated_owner" && row["source"] == "DEFAULT")
+            .collect();
+        assert_eq!(generated.len(), 2, "{listed}");
+        let mut renamed = Vec::new();
+        for (index, target) in generated.into_iter().enumerate() {
+            let name = target["name"].as_str().unwrap();
+            let found = client.symbol_get_by_name(name).unwrap();
+            assert!(
+                found["symbols"].as_array().unwrap().contains(target),
+                "{found}"
+            );
+            assert_eq!(client.symbol_get(name).unwrap(), found);
+            if name == "param_1" {
+                // An indexed label with the same name must not hide the parameter.
+                assert_eq!(found["symbols"].as_array().unwrap().len(), 2, "{found}");
+            }
+            let new_name = format!("named_generated_{index}");
+            client
+                .symbol_rename_targets(name, &new_name, std::slice::from_ref(target))
+                .unwrap();
+            let after = client.symbol_get_by_name(&new_name).unwrap();
+            assert_eq!(after["symbols"][0]["id"], target["id"]);
+            renamed.push((new_name, after));
+        }
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        for (name, expected) in renamed {
+            assert_eq!(client.symbol_get_by_name(&name).unwrap(), expected);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn test_duplicate_function_names_rejected_before_mutation() {
     require_ghidra!();
     let harness = harness();
