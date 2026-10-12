@@ -107,7 +107,12 @@ pub fn inspect_home(home: &Path, min: u32, source: &str) -> JavaStatus {
     if home.as_os_str().is_empty() {
         return JavaStatus::NotFound;
     }
-    let java_exe = bin(home, "java");
+    // Standalone launchers can change their working directory after resolving
+    // Java. Keep a caller-relative selection anchored to the caller's directory.
+    let Ok(home) = std::path::absolute(home) else {
+        return JavaStatus::NotFound;
+    };
+    let java_exe = bin(&home, "java");
     if !java_exe.exists() {
         return JavaStatus::NotFound;
     }
@@ -116,24 +121,17 @@ pub fn inspect_home(home: &Path, min: u32, source: &str) -> JavaStatus {
         None => return JavaStatus::NotFound,
     };
 
-    let javac = bin(home, "javac");
+    let javac = bin(&home, "javac");
     let has_compiler = javac.exists() && has_jdk_compiler_module(&java_exe);
 
     if !has_compiler {
-        return JavaStatus::JreNoCompiler {
-            home: home.to_path_buf(),
-            major,
-        };
+        return JavaStatus::JreNoCompiler { home, major };
     }
     if major < min {
-        return JavaStatus::WrongVersion {
-            home: home.to_path_buf(),
-            major,
-            min,
-        };
+        return JavaStatus::WrongVersion { home, major, min };
     }
     JavaStatus::Ok(JdkInfo {
-        home: home.to_path_buf(),
+        home,
         major,
         source: source.to_string(),
     })
@@ -355,6 +353,44 @@ mod tests {
             resolve_jdk(Some(Path::new("")), 21),
             JavaStatus::NotFound
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relative_java_home_stays_usable_after_changing_the_child_directory() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let caller = std::env::current_dir().unwrap();
+        let root = tempfile::Builder::new()
+            .prefix("JDK relative's ")
+            .tempdir_in(&caller)
+            .unwrap();
+        let home = root.path().join("jdk");
+        let java = bin(&home, "java");
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(
+            &java,
+            "#!/bin/sh\necho 'openjdk version \"27\"' >&2\necho 'jdk.compiler@27'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(bin(&home, "javac"), []).unwrap();
+        let alias = root.path().join("selected-jdk");
+        symlink(&home, &alias).unwrap();
+
+        let relative = alias.strip_prefix(&caller).unwrap();
+        let JavaStatus::Ok(info) = inspect_home(relative, 21, "test") else {
+            panic!("the fake full JDK should be accepted");
+        };
+        assert_eq!(info.home, alias, "keep the selected symlink spelling");
+        let other_directory = tempfile::tempdir().unwrap();
+        assert!(Command::new(bin(&info.home, "java"))
+            .current_dir(other_directory.path())
+            .arg("-version")
+            .output()
+            .unwrap()
+            .status
+            .success());
     }
 
     #[cfg(unix)]

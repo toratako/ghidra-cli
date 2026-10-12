@@ -16,6 +16,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Treat incomplete bridge response frames and unexpected shutdown responses as
   unknown outcomes without replaying requests.
 - Preserve P-code operations and projected fields in compact output.
+- Keep relative Java home selections usable when launchers change directories.
 
 ## [0.10.0] - 2026-10-12
 
