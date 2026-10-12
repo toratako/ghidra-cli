@@ -408,6 +408,85 @@ fn parse_address(value: &Value) -> u64 {
 
 #[test]
 #[serial]
+fn memory_read_keeps_the_initialized_prefix_of_partially_backed_mappings() {
+    require_ghidra!();
+    let directory = tempfile::Builder::new()
+        .prefix("ghidra-partial-mappings-")
+        .tempdir()
+        .unwrap();
+    let project = directory.path().join("project");
+    let binary = directory.path().join("source.bin");
+    std::fs::write(&binary, [0x5a; 16]).unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let program = import_oneshot(
+        &project,
+        &binary,
+        &installation,
+        &OneShotImportOptions {
+            language: Some("x86:LE:32:default".to_owned()),
+            loader: Some("BinaryLoader".to_owned()),
+            loader_options: vec![("baseAddr".to_owned(), "0x1000".to_owned())],
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .program;
+    let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    let client = harness.client().unwrap();
+    client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CreatePartialMemoryMappings extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
+        var source = space.getAddress(0x1000);
+        memory.createByteMappedBlock("partial_bytes", space.getAddress(0x2000), source, 32, false);
+        memory.createBitMappedBlock("partial_bits", space.getAddress(0x3000), source, 256, false);
+        memory.createByteMappedBlock("nested_bytes", space.getAddress(0x1800),
+            space.getAddress(0x2000), 32, false);
+        memory.createUninitializedBlock("unknown_source", source.add(16), 16, false);
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    let before = pointer_program_state(&client);
+    for (address, length, expected) in [
+        ("0x1800", 16, "5a".repeat(16)),
+        ("0x2000", 16, "5a".repeat(16)),
+        ("0x3000", 128, "0001000101000100".repeat(16)),
+    ] {
+        let bounded = read_memory(&client, address, length);
+        assert_eq!(bounded["size"], length);
+        assert_eq!(bounded["hex"], expected);
+        assert_eq!(read_memory(&client, address, length * 2), bounded);
+    }
+    assert_eq!(pointer_program_state(&client), before);
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckPartialMappingCancellation.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    for address in ["0x1810", "0x2010", "0x3080"] {
+        assert!(client
+            .send_command("read_memory", Some(json!({"address": address, "size": 1})))
+            .is_err());
+    }
+}
+
+#[test]
+#[serial]
 fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     require_ghidra!();
     let directory = tempfile::Builder::new()
