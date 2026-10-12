@@ -300,6 +300,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/runtime/CommandDispatcher.java"),
     ),
     (
+        "ghidracli/runtime/JobRecord.java",
+        include_str!("../scripts/ghidracli/runtime/JobRecord.java"),
+    ),
+    (
         "ghidracli/runtime/JobResultStore.java",
         include_str!("../scripts/ghidracli/runtime/JobResultStore.java"),
     ),

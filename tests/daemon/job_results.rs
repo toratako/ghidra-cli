@@ -259,7 +259,7 @@ public class CheckJobResultStore extends GhidraScript {
         check(field(type, "retainedBytes").getLong(store) == 0, "oversized result retained");
         // History eviction must remove the lookup and release its retained body too.
         Class<?> schedulerType = loader.loadClass("ghidracli.runtime.JobScheduler");
-        Class<?> recordType = loader.loadClass("ghidracli.runtime.JobScheduler$JobRecord");
+        Class<?> recordType = loader.loadClass("ghidracli.runtime.JobRecord");
         Constructor<?> schedulerConstructor = schedulerType.getDeclaredConstructors()[0];
         schedulerConstructor.setAccessible(true);
         Object scheduler = schedulerConstructor.newInstance(null, null);

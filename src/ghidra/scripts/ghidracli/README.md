@@ -94,7 +94,9 @@ GhidraCliBridge -> BridgeRuntime
 ```
 
 `BridgeServer` owns networking and request/shutdown callbacks. `JobScheduler`
-owns the FIFO (256 jobs), history (1,000 jobs), cancellation, and status snapshots.
+owns the FIFO (256 jobs), history (1,000 jobs), cancellation routing, and status
+snapshots. `JobRecord` owns each job's state transitions, timestamps, and status
+projection; the scheduler keeps its lifecycle lock around those transitions.
 Program requests supply a UUID before submission; duplicate retained IDs are
 rejected before enqueueing. `JobResultStore` retains immutable UTF-8 JSON snapshots
 after transaction/save completion and before response delivery. It limits each

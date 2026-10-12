@@ -56,25 +56,6 @@ final class JobScheduler {
 
     boolean isShutdownComplete() { return shutdownComplete; }
 
-    private static class JobRecord {
-        final String id;
-        final String command;
-        final long enqueuedAt;
-        final JobTaskMonitor monitor = new JobTaskMonitor();
-
-        volatile String state = "queued";
-        volatile long startedAt;
-        volatile long finishedAt;
-        volatile String error;
-        JobResultStore.Entry result;
-
-        JobRecord(String id, String command) {
-            this.id = id;
-            this.command = command;
-            this.enqueuedAt = System.currentTimeMillis();
-        }
-    }
-
     private static class ProgramJob {
         final JobRecord record;
         final JsonObject args;
@@ -106,8 +87,7 @@ final class JobScheduler {
                     job = programQueue.pollFirst();
                     if (job != null) {
                         activeJob = job.record;
-                        job.record.state = "running";
-                        job.record.startedAt = System.currentTimeMillis();
+                        job.record.start();
                     }
                 }
                 if (job != null) {
@@ -157,12 +137,7 @@ final class JobScheduler {
         result.addProperty("selected_program", session.programPath());
         byte[] snapshot = results.snapshot(result);
         synchronized (lifecycleLock) {
-            boolean failed = "error".equals(responseStatus);
-            record.state = (record.monitor.wasCancelRequested() || record.monitor.isCancelled())
-                ? (failed ? "cancelled" : "completed_after_cancel")
-                : (failed ? "failed" : "complete");
-            record.error = failure;
-            record.finishedAt = System.currentTimeMillis();
+            record.finish("error".equals(responseStatus), failure);
             activeJob = null;
             retainCompletedJob(record, snapshot);
         }
@@ -311,7 +286,7 @@ final class JobScheduler {
                 detail.addProperty("result_state", "unknown");
                 return errorResponse("Job was not found; this does not establish that the operation was not executed", detail);
             }
-            result = jobToJson(record, queuePosition(id));
+            result = record.toJson(queuePosition(id));
             if (record.result == null || record.result.body == null) {
                 JsonObject detail = new JsonObject();
                 detail.addProperty("job_id", id);
@@ -419,7 +394,7 @@ final class JobScheduler {
             }
             JsonObject result = new JsonObject();
             result.addProperty("found", true);
-            result.add("job", jobToJson(record, queuePosition(id)));
+            result.add("job", record.toJson(queuePosition(id)));
             return result;
         }
         return handleStatus();
@@ -439,36 +414,32 @@ final class JobScheduler {
 
         JobRecord active = activeJob;
         if (active != null && active.id.equals(target.id)) {
-            target.state = "cancel_requested";
-            target.monitor.requestCancellation();
+            target.requestCancellation();
             JsonObject result = new JsonObject();
             result.addProperty("job_id", target.id);
-            result.addProperty("state", target.state);
+            result.addProperty("state", target.state());
             result.addProperty("message", "Cancellation requested; completion is cooperative");
             return result;
         }
 
         ProgramJob queued = findQueuedJob(target.id);
         if (queued != null && programQueue.remove(queued)) {
-            target.monitor.requestCancellation();
-            target.state = "cancelled";
-            target.finishedAt = System.currentTimeMillis();
-            target.error = "Cancelled before execution";
-            JsonObject response = errorResponse(target.error);
+            target.cancelBeforeExecution();
+            JsonObject response = errorResponse(target.error());
             response.addProperty("job_id", target.id);
             retainCompletedJob(target, results.snapshot(response));
             queued.completion.complete(response);
 
             JsonObject result = new JsonObject();
             result.addProperty("job_id", target.id);
-            result.addProperty("state", target.state);
-            result.addProperty("message", target.error);
+            result.addProperty("state", target.state());
+            result.addProperty("message", target.error());
             return result;
         }
 
         JsonObject result = new JsonObject();
         result.addProperty("job_id", target.id);
-        result.addProperty("state", target.state);
+        result.addProperty("state", target.state());
         result.addProperty("message", "Job is no longer cancellable");
         return result;
     }
@@ -503,7 +474,7 @@ final class JobScheduler {
         if (active == null) {
             result.add("active_job", JsonNull.INSTANCE);
         } else {
-            result.add("active_job", jobToJson(active, -1));
+            result.add("active_job", active.toJson(-1));
         }
 
         if (!includeJobs) return;
@@ -512,7 +483,7 @@ final class JobScheduler {
         int position = 0;
         for (ProgramJob job : programQueue) {
             if (queued.size() >= MAX_STATUS_JOBS) break;
-            queued.add(jobToJson(job.record, position++));
+            queued.add(job.record.toJson(position++));
         }
         result.add("queued_jobs", queued);
 
@@ -521,41 +492,14 @@ final class JobScheduler {
         while (ids.hasNext() && recent.size() < MAX_STATUS_JOBS) {
             JobRecord record = jobs.get(ids.next());
             if (record != null) {
-                recent.add(jobToJson(record, -1));
+                recent.add(record.toJson(-1));
             }
         }
         result.add("recent_jobs", recent);
     }
 
-    private JsonObject jobToJson(JobRecord record, int queuePosition) {
-        JsonObject result = new JsonObject();
-        result.addProperty("id", record.id);
-        result.addProperty("command", record.command);
-        result.addProperty("state", record.state);
-        JsonObject availability = new JsonObject();
-        availability.addProperty("state", "pending");
-        result.add("result", record.result == null ? availability : record.result.status());
-        result.addProperty("enqueued_at_ms", record.enqueuedAt);
-        if (record.startedAt > 0) result.addProperty("started_at_ms", record.startedAt);
-        if (record.finishedAt > 0) result.addProperty("finished_at_ms", record.finishedAt);
-        long end = record.finishedAt > 0 ? record.finishedAt : System.currentTimeMillis();
-        long start = record.startedAt > 0 ? record.startedAt : record.enqueuedAt;
-        result.addProperty("elapsed_ms", Math.max(0, end - start));
-        if (queuePosition >= 0) result.addProperty("queue_position", queuePosition);
-        result.addProperty("cancel_requested", record.monitor.wasCancelRequested()
-            || record.monitor.isCancelled());
-        result.addProperty("cancel_enabled", record.monitor.isCancelEnabled());
-        result.addProperty("progress", record.monitor.getProgress());
-        result.addProperty("maximum", record.monitor.getMaximum());
-        result.addProperty("indeterminate", record.monitor.isIndeterminate());
-        String message = record.monitor.getMessage();
-        if (message != null && !message.isEmpty()) result.addProperty("progress_message", message);
-        if (record.error != null) result.addProperty("error", record.error);
-        return result;
-    }
-
     private void retainCompletedJob(JobRecord record, byte[] snapshot) {
-        record.result = results.retain(snapshot, record.finishedAt);
+        record.result = results.retain(snapshot, record.finishedAt());
         completedJobIds.addLast(record.id);
         while (completedJobIds.size() > JobResultStore.MAX_JOBS) {
             String expired = completedJobIds.pollFirst();
