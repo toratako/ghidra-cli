@@ -287,6 +287,9 @@ with the Program's data organization. It assigns destination categories to new
 definitions and their anonymous dependencies before resolving into the Program.
 References to existing types retain their source identity; explicitly declared
 types resolve within the requested category instead of replacing a same-named root.
+Dependency traversal retains object identities so conflicting declarations at one
+path are rejected before native resolution can merge them. Existing references
+are excluded from that declaration check because their destination may differ.
 
 `TypeDefinitionCommands.handleSetDescription` resolves a registered struct, union,
 or enum, updates only its description, and verifies the native setter's result.

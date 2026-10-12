@@ -191,7 +191,7 @@ public class CheckImportRollbackFixture extends GhidraScript {
 
 #[test]
 #[serial]
-fn type_import_rejects_colliding_tag_and_typedef_definitions_without_changing_users() {
+fn type_import_rejects_colliding_definitions_without_changing_users() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
     type_command(
@@ -214,10 +214,17 @@ fn type_import_rejects_colliding_tag_and_typedef_definitions_without_changing_us
         .map(|path| type_command(&program, &["get", path]).data())
         .collect();
     let before_types: serde_json::Value = type_command(&program, &["list", "--limit", "0"]).data();
-    let code = "struct Fresh { int marker; }; struct Item { long long changed; }; \
+    let namespace_collision = "struct Fresh { int marker; }; struct Item { long long changed; }; \
         typedef int Item; struct Holder { struct Item item; };";
-
-    for category in [None, Some("/Draft")] {
+    for (code, category) in [
+        (namespace_collision, None),
+        (namespace_collision, Some("/Draft")),
+        (
+            "struct Fresh { int marker; }; struct Item { int first; }; \
+             struct Holder { struct Item item; }; struct Item { short second; };",
+            Some("/Draft"),
+        ),
+    ] {
         let mut args = vec!["import-c", "--code", code];
         if let Some(category) = category {
             args.extend(["--category", category]);
@@ -225,7 +232,7 @@ fn type_import_rejects_colliding_tag_and_typedef_definitions_without_changing_us
         let failed = type_command(&program, &args);
         failed
             .assert_failure()
-            .assert_stderr_contains("same type path")
+            .assert_stderr_contains("conflict")
             .assert_stderr_contains("/Item");
         let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
         assert_eq!(error["detail"]["rolled_back"], true, "{error}");

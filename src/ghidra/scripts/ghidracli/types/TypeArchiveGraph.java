@@ -16,13 +16,9 @@ final class TypeArchiveGraph {
     private final Set<String> roots = new TreeSet<>();
 
     TypeArchiveGraph(Collection<DataType> selected, TaskMonitor monitor) throws Exception {
-        Set<DataType> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-        Deque<DataType> pending = new ArrayDeque<>(selected);
         for (DataType type : selected) roots.add(type.getPathName());
-        while (!pending.isEmpty()) {
+        for (DataType type : dependencies(selected, monitor)) {
             monitor.checkCancelled();
-            DataType type = pending.removeFirst();
-            if (!visited.add(type)) continue;
             if (type instanceof MissingBuiltInDataType || type instanceof BadDataType)
                 throw new IllegalArgumentException("Unavailable data type in archive graph: " + type.getPathName());
             // Bitfields are component values rather than registered definitions.
@@ -31,8 +27,23 @@ final class TypeArchiveGraph {
                 types.put(type.getPathName(), type);
                 layouts.put(type.getPathName(), layout(type, monitor));
             }
+        }
+    }
+
+    /** Keep distinct objects even when they currently have the same path. */
+    static List<DataType> dependencies(Collection<DataType> selected, TaskMonitor monitor)
+            throws CancelledException {
+        List<DataType> result = new ArrayList<>();
+        Set<DataType> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<DataType> pending = new ArrayDeque<>(selected);
+        while (!pending.isEmpty()) {
+            monitor.checkCancelled();
+            DataType type = pending.removeFirst();
+            if (!visited.add(type)) continue;
+            result.add(type);
             pending.addAll(children(type, monitor));
         }
+        return result;
     }
 
     static boolean selectable(DataType type) {
@@ -194,7 +205,7 @@ final class TypeArchiveGraph {
         return reusable;
     }
 
-    private static void requireEquivalent(DataType source, DataType existing, TaskMonitor monitor)
+    static void requireEquivalent(DataType source, DataType existing, TaskMonitor monitor)
             throws CancelledException {
         if (!layout(source, monitor).equals(layout(existing, monitor)) || !source.isEquivalent(existing))
             throw conflict(source, existing, "non-equivalent definition");

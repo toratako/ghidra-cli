@@ -7,7 +7,6 @@ import ghidra.app.util.cparser.C.CParserConstants;
 import ghidra.app.util.cparser.C.ParseException;
 import ghidra.app.util.cparser.C.Token;
 import ghidra.app.util.cparser.C.TokenMgrError;
-import ghidra.program.database.data.DataTypeUtilities;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.Composite;
 import ghidra.program.model.data.DataType;
@@ -85,9 +84,13 @@ public final class TypeImportCommands {
             for (DataType type : parsedTypes) {
                 if (definitionsByPath.putIfAbsent(type.getPathName(), type) != null) {
                     throw new IllegalArgumentException(
-                        "C definitions share the same type path: " + type.getPathName());
+                        "C definitions conflict at the same type path: " + type.getPathName());
                 }
             }
+            // CParser can keep an earlier declaration in a field after replacing
+            // the same path in its definition maps. Traverse object identities
+            // before any native resolve can collapse those different definitions.
+            List<DataType> dependencies = TypeArchiveGraph.dependencies(parsedTypes, session.monitor());
 
             CategoryPath lookupPath = CategoryPath.ROOT;
             if (categoryPath != null) {
@@ -99,20 +102,26 @@ public final class TypeImportCommands {
             Set<String> visiblePaths = new HashSet<>();
             for (DataType dt : parsedTypes) {
                 if (isUserFacingDataType(dt)) visiblePaths.add(dt.getPathName());
-                for (DataType contained : DataTypeUtilities.getContainedDataTypes(dt)) {
-                    if (!isDefinition(contained)) continue;
-                    boolean declared = parsedTypes.contains(contained)
-                        || contained.getSourceArchive() == null
-                        || (contained instanceof FunctionDefinition
-                            && definedNames.contains(contained.getName()));
-                    if (!declared) continue;
-                    CategoryPath destination = contained.getCategoryPath();
-                    if (categoryPath != null) {
-                        destination = isUserFacingDataType(contained)
-                            ? lookupPath : new CategoryPath(lookupPath, "functions");
-                    }
-                    definitionPaths.put(contained.getPathName(), destination);
+            }
+            for (DataType contained : dependencies) {
+                session.monitor().checkCancelled();
+                if (!isDefinition(contained)) continue;
+                boolean declared = parsedTypes.contains(contained)
+                    || contained.getSourceArchive() == null
+                    || (contained instanceof FunctionDefinition
+                        && definedNames.contains(contained.getName()));
+                if (!declared) continue;
+                // Existing references may share this path before the imported
+                // declarations move to their requested destination category.
+                DataType previous = definitionsByPath.putIfAbsent(contained.getPathName(), contained);
+                if (previous != null && previous != contained)
+                    TypeArchiveGraph.requireEquivalent(contained, previous, session.monitor());
+                CategoryPath destination = contained.getCategoryPath();
+                if (categoryPath != null) {
+                    destination = isUserFacingDataType(contained)
+                        ? lookupPath : new CategoryPath(lookupPath, "functions");
                 }
+                definitionPaths.put(contained.getPathName(), destination);
             }
 
             Set<DataType> stagedTypes = new HashSet<>();
