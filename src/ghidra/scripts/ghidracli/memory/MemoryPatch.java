@@ -5,11 +5,14 @@ import ghidra.program.database.mem.FileBytes;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.OverlayAddressSpace;
 import ghidra.program.model.data.*;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.mem.MemoryBlockSourceInfo;
 import ghidra.program.model.mem.WrappedMemBuffer;
 import ghidra.program.model.symbol.OffsetReference;
@@ -58,12 +61,21 @@ final class MemoryPatch {
     private void prepare() throws Exception {
         var memory = session.program().getMemory();
         Address end = address.addNoWrap(bytes.length - 1);
-        if (!memory.getAllInitializedAddressSet().contains(address, end)) {
-            throw new IllegalArgumentException("Patch range must be fully mapped and initialized");
-        }
+        AddressSetView initialized = memory.getAllInitializedAddressSet();
         byte[] before = new byte[bytes.length];
-        if (memory.getBytes(address, before) != before.length) {
-            throw new MemoryAccessException("Could not read the complete patch range");
+        if (initialized.contains(address, end)) {
+            if (memory.getBytes(address, before) != before.length) {
+                throw new MemoryAccessException("Could not read the complete patch range");
+            }
+        } else {
+            // Native initialized sets process mapped blocks only once in address
+            // order, omitting readable aliases whose mapped source appears later.
+            // Resolve those bytes iteratively: native reads recurse on mappings
+            // and do not reliably detect byte-mapping cycles.
+            Map<Address, Byte> resolved = new HashMap<>();
+            for (int i = 0; i < before.length; i++) {
+                before[i] = readMappedByte(memory, initialized, address.addNoWrap(i), resolved);
+            }
         }
         for (int i = 0; i < bytes.length;) {
             session.monitor().checkCancelled();
@@ -113,6 +125,47 @@ final class MemoryPatch {
             Address parsedEnd = instruction.getMinAddress().addNoWrap(instruction.getParsedLength() - 1);
             if (changed.intersects(instruction.getMinAddress(), parsedEnd)) include(instruction);
         }
+    }
+
+    private byte readMappedByte(Memory memory, AddressSetView initialized, Address current,
+            Map<Address, Byte> resolved)
+            throws Exception {
+        Set<Address> visited = new HashSet<>();
+        List<Address> path = new ArrayList<>();
+        List<Integer> bits = new ArrayList<>();
+        while (!initialized.contains(current) && !resolved.containsKey(current)) {
+            session.monitor().checkCancelled();
+            MemoryBlock block = memory.getBlock(current);
+            if (block == null || !block.isMapped() || !visited.add(current)) {
+                throw new IllegalArgumentException("Patch range must be fully mapped and initialized");
+            }
+            MemoryBlockSourceInfo source = null;
+            for (var candidate : block.getSourceInfos()) {
+                if (candidate.contains(current)) { source = candidate; break; }
+            }
+            if (source == null || source.getMappedRange().isEmpty()) {
+                throw new IllegalArgumentException("Patch range must be fully mapped and initialized");
+            }
+            long offset = current.subtract(source.getMinAddress());
+            Address mapped = source.getMappedRange().get().getMinAddress();
+            var scheme = source.getByteMappingScheme();
+            path.add(current);
+            if (scheme.isPresent()) {
+                bits.add(-1);
+                current = scheme.get().getMappedSourceAddress(mapped, offset);
+            } else {
+                bits.add((int) (offset % 8));
+                current = mapped.addNoWrap(offset / 8);
+            }
+        }
+        session.monitor().checkCancelled();
+        Byte cached = resolved.get(current);
+        byte value = cached == null ? memory.getByte(current) : cached;
+        for (int i = bits.size() - 1; i >= 0; i--) {
+            if (bits.get(i) >= 0) value = (byte) ((value >>> bits.get(i)) & 1);
+            resolved.put(path.get(i), value);
+        }
+        return value;
     }
 
     private void rejectSharedFileBytes(Map<FileBytes, List<MemoryBlockSourceInfo>> fileSources)

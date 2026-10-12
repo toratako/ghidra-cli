@@ -234,6 +234,101 @@ fn memory_write_rejects_shared_changes_but_allows_noops_and_independent_overlays
 
 #[test]
 #[serial]
+fn memory_write_allows_unchanged_bytes_through_nested_mappings() {
+    fixture("x86:LE:64:default", |client| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class CreateNestedPatchMapping extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        memory.createByteMappedBlock("nested_patch_view",
+            toAddr(0x2000), toAddr(0x3000), 16, false);
+        memory.createBitMappedBlock("nested_patch_bits",
+            toAddr(0x2100), toAddr(0x3001), 8, false);
+        memory.createByteMappedBlock("nested_bit_bytes",
+            toAddr(0x2200), toAddr(0x2100), 8, false);
+        memory.createBitMappedBlock("nested_bits_of_bits",
+            toAddr(0x2300), toAddr(0x2103), 8, false);
+        memory.createByteMappedBlock("cyclic_patch_view",
+            toAddr(0x5000), toAddr(0x5000), 1, false);
+        memory.createByteMappedBlock("shifted_patch_view",
+            toAddr(0x5100), toAddr(0x5101), 8, false);
+        memory.createInitializedBlock("shifted_patch_source",
+            toAddr(0x5108), 1, (byte) 0x5a, monitor, false);
+        memory.createByteMappedBlock("large_shifted_patch_view",
+            toAddr(0x10000), toAddr(0x10001), 16 * 1024, false);
+        memory.createInitializedBlock("large_shifted_patch_source",
+            toAddr(0x14000), 1, (byte) 0x5a, monitor, false);
+        for (int i = 63; i >= 0; i--) {
+            memory.createByteMappedBlock("deep_patch_view_" + i, toAddr(0x6000 + 16 * i),
+                toAddr(i == 63 ? 0x3001 : 0x6000 + 16 * (i + 1)), 1, false);
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let original = read(client, "0x2000", 8);
+        client.memory_write("0x2000", &original).unwrap();
+        for (address, expected) in [
+            ("0x2100", "0000000101000000"),
+            ("0x2200", "0000000101000000"),
+            ("0x2300", "0100000000000000"),
+            ("0x5100", "5a5a5a5a5a5a5a5a"),
+            ("0x6000", "18"),
+        ] {
+            client.memory_write(address, expected).unwrap();
+        }
+        client
+            .memory_write("0x10000", &"5a".repeat(16 * 1024))
+            .unwrap();
+        for (address, hex) in [("0x2008", "00"), ("0x5000", "00")] {
+            let error = client.memory_write(address, hex).unwrap_err();
+            assert!(
+                error.to_string().contains("fully mapped and initialized"),
+                "{error}"
+            );
+        }
+        let error = client.memory_write("0x2000", "ff").unwrap_err();
+        assert!(
+            error.to_string().contains("shared mapped memory"),
+            "{error}"
+        );
+        assert_eq!(read(client, "0x2000", 8), original);
+        assert_eq!(read(client, "0x3000", 8), original);
+        assert_eq!(read(client, "0x1700", 8), original);
+        // Native program-open byte probes recurse on cyclic/deep self mappings.
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class RemoveRecursivePatchMappings extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        for (long address : new long[]{0x5000, 0x10000, 0x14000}) {
+            memory.removeBlock(memory.getBlock(toAddr(address)), monitor);
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        reopen(client);
+        client.memory_write("0x2000", &original).unwrap();
+        assert_eq!(read(client, "0x2000", 8), original);
+    });
+}
+
+#[test]
+#[serial]
 fn memory_write_rejects_shared_file_bytes_and_preserves_alias_metadata() {
     fixture("x86:LE:64:default", |client| {
         client
