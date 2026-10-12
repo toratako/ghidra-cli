@@ -214,8 +214,8 @@ See [common helpers and a test example](common/README.md) when adding tests.
 Cleanup is best effort; forced termination can leave processes/projects behind.
 For slow startup, run `ghidra-cli doctor`; inspect the owning project/process
 before cleaning stale discovery files.
-CLI import/analysis tests currently have a 300s budget that can be tight under load;
-see the [open TODO](../docs/TODO.md). Reducing parallel suites can reduce pressure.
+CLI import/analysis tests currently have a 300s budget that can be tight under load.
+Reducing parallel suites can reduce pressure.
 
 ## Cross-platform changes
 
