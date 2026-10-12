@@ -211,6 +211,11 @@ public final class FunctionCommands {
             if (listing.getInstructionAt(addr) == null) {
                 autoDisassembled = session.disassemble(addr);
                 session.monitor().checkCancelled();
+                // Native disassembly can report success without defining an
+                // instruction. CreateFunctionCmd would accept a one-byte placeholder.
+                if (!autoDisassembled || listing.getInstructionAt(addr) == null) {
+                    return diagnoseCreateFunctionFailure(addr, autoDisassembled, null);
+                }
             }
 
             var body = CreateFunctionCmd.getFunctionBody(session.program(), addr, session.monitor());

@@ -127,6 +127,73 @@ public class CreateNamedThunkEntry extends GhidraScript {
 
 #[test]
 #[serial]
+fn function_creation_rejects_failed_disassembly_without_creating_an_empty_function() {
+    require_ghidra!();
+    with_fixture("x86:LE:32:default", |client, program| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.symbol.SourceType;
+public class CreateUndecodableFunctionEntry extends GhidraScript {
+    public void run() throws Exception {
+        var address = toAddr(0x3000);
+        // A two-byte x86 opcode with no second byte cannot be disassembled.
+        currentProgram.getMemory().createInitializedBlock("undecodable", address,
+            1, (byte) 0x0f, monitor, false);
+        currentProgram.getSymbolTable().createLabel(address, "saved_entry", SourceType.USER_DEFINED);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let error = client
+            .send_command(
+                "create_function",
+                Some(json!({"address":"saved_entry","name":"invalid_entry"})),
+            )
+            .expect_err("A rejected disassembly must not create a function without an instruction");
+        let error = error.downcast_ref::<BridgeCommandError>().unwrap();
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert!(
+            error.to_string().contains("no instruction landed"),
+            "{error:?}"
+        );
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            client
+                .script_run_source(
+                    r#"
+import ghidra.app.script.GhidraScript;
+public class CheckRejectedUndecodableFunctionEntry extends GhidraScript {
+    public void run() throws Exception {
+        var address = toAddr(0x3000);
+        var symbol = currentProgram.getSymbolTable().getPrimarySymbol(address);
+        if (getFunctionAt(address) != null || getInstructionAt(address) != null
+                || currentProgram.getMemory().getByte(address) != 0x0f
+                || symbol == null || !"saved_entry".equals(symbol.getName())) {
+            throw new IllegalStateException("Failed function creation changed saved bytes or their label");
+        }
+    }
+}
+"#,
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn function_creation_preserves_another_functions_shared_tail_and_annotations() {
     require_ghidra!();
     with_fixture("x86:LE:32:default", |client, program| {
