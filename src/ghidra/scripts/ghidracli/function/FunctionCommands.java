@@ -162,6 +162,9 @@ public final class FunctionCommands {
 
             String oldName = func.getName();
             func.setName(newName, SourceType.USER_DEFINED);
+            if (!newName.equals(func.getName())) {
+                throw new IllegalStateException("Ghidra did not retain the requested function name: " + newName);
+            }
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "renamed");

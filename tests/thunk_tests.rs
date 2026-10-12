@@ -299,6 +299,69 @@ fn custom_saved_storage_and_class_this_specialization_follow_native_thunks() {
 
 #[test]
 #[serial]
+fn function_name_edits_reject_native_substitutions_on_thunks_and_externals() {
+    require_ghidra!();
+    with_fixture(|client, program| {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+public class LocateNamedExternalFunction extends GhidraScript {
+    public void run() throws Exception {
+        currentProgram.getExternalManager().getUniqueExternalLocation("library", "outside_target")
+            .setAddress(toAddr(0x5000));
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        set(client, "0x1c00", "dynamic_target");
+        let external = get(client, "outside_target");
+        let external_address = external["address"].as_str().unwrap();
+        let thunk = get(client, "0x1c00");
+        let destination = get(client, "0x1200");
+        for (operation, args, requested) in [
+            (
+                "rename_function",
+                json!({"old_name":"0x1c00", "new_name":"FUN_00001c00"}),
+                "FUN_00001c00",
+            ),
+            (
+                "rename_function",
+                json!({"old_name":external_address, "new_name":"FUN_00001000"}),
+                "FUN_00001000",
+            ),
+            (
+                "function_set_signature",
+                json!({"target":external_address, "signature":"int FUN_00001000(int value)",
+                    "storage":{"parameters":[{"name":"value", "pieces":[{"kind":"register", "register":"EAX"}]}],
+                        "return":[{"kind":"register", "register":"EDX"}]}}),
+                "FUN_00001000",
+            ),
+        ] {
+            let error = client
+                .send_command(operation, Some(args))
+                .expect_err("A successful function name edit must retain the requested name");
+            let error = error.downcast_ref::<BridgeCommandError>().unwrap();
+            assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+            assert!(error.to_string().contains(requested), "{error:?}");
+            assert_eq!(get(client, "0x1c00"), thunk);
+            assert_eq!(get(client, external_address), external);
+            assert_eq!(get(client, "0x1200"), destination);
+        }
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(get(client, "0x1c00"), thunk);
+        assert_eq!(get(client, external_address), external);
+        assert_eq!(get(client, "0x1200"), destination);
+    });
+}
+
+#[test]
+#[serial]
 fn external_destinations_are_allowed_and_invalid_edges_roll_back_without_wrong_target_edits() {
     require_ghidra!();
     with_fixture(|client, program| {

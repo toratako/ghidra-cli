@@ -139,6 +139,9 @@ final class FunctionStorage {
         if (definition != null) {
             function.setVarArgs(variadic);
             if (!function.getName().equals(definition.getName())) function.setName(definition.getName(), SourceType.USER_DEFINED);
+            if (!function.getName().equals(definition.getName())) {
+                throw new IllegalStateException("Ghidra did not retain the requested function name: " + definition.getName());
+            }
         }
         session.monitor().checkCancelled();
         Parameter[] actual = function.getParameters();
