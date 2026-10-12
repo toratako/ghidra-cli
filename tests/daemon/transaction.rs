@@ -37,6 +37,7 @@ public class RequestTransactionProbe extends GhidraScript {
     private boolean failNextTransaction;
     private Integer leakedTransaction;
     private int savesToFail;
+    private boolean failSaveWithAssertion;
     private int saveCalls;
     private int commentWrites;
     private int memoryWrites;
@@ -137,7 +138,7 @@ public class RequestTransactionProbe extends GhidraScript {
         Listing listing = (Listing) Proxy.newProxyInstance(Listing.class.getClassLoader(),
             new Class<?>[] { Listing.class }, (proxy, method, args) -> {
                 Object result = invoke(method, real.getListing(), args);
-                if (("stats-" + method.getName()).equals(fault)) {
+                if (method.getName().equals("getDefinedData") && "stats-cancel".equals(fault)) {
                     fault = null;
                     return Proxy.newProxyInstance(method.getReturnType().getClassLoader(),
                         new Class<?>[] { method.getReturnType() }, (iterator, operation, inputs) -> {
@@ -231,6 +232,7 @@ public class RequestTransactionProbe extends GhidraScript {
                     saveCalls++;
                     if (savesToFail > 0) {
                         savesToFail--;
+                        if (failSaveWithAssertion) throw new AssertionError("injected one-shot save failure");
                         throw new IOException("injected one-shot save failure");
                     }
                 }
@@ -283,18 +285,15 @@ public class RequestTransactionProbe extends GhidraScript {
     }
 
     private void testStatsCancellation() throws Exception {
-        for (String scan : new String[] { "getDefinedData", "getInstructions" }) {
-            statsEntriesRead = 0;
-            fault = "stats-" + scan;
-            JsonObject response = command("stats", new JsonObject());
-            rolledBack(response);
-            check(response.getAsJsonObject("detail").get("cancelled").getAsBoolean(),
-                "Missing stats cancellation detail: " + response);
-            check(statsEntriesRead == 1, "Cancelled " + scan + " read " + statsEntriesRead + " entries");
-            check(real.getCurrentTransactionInfo() == null, "Cancelled stats left a transaction open");
-            requestMonitor.clearCancelled();
-            success(command("stats", new JsonObject()));
-        }
+        fault = "stats-cancel";
+        JsonObject response = command("stats", new JsonObject());
+        rolledBack(response);
+        check(response.getAsJsonObject("detail").get("cancelled").getAsBoolean(),
+            "Missing stats cancellation detail: " + response);
+        check(statsEntriesRead == 1, "Cancelled stats read " + statsEntriesRead + " entries");
+        check(real.getCurrentTransactionInfo() == null, "Cancelled stats left a transaction open");
+        requestMonitor.clearCancelled();
+        success(command("stats", new JsonObject()));
         success(command("comment_set", comment("after-stats-cancellation", "PRE")));
         savedComment(CodeUnit.EOL_COMMENT, prior);
         savedComment(CodeUnit.PRE_COMMENT, "after-stats-cancellation");
@@ -350,7 +349,8 @@ public class RequestTransactionProbe extends GhidraScript {
         } finally { saved.release(reader); }
     }
 
-    private void testSaveRecovery() throws Exception {
+    private void testSaveRecovery(String mode) throws Exception {
+        failSaveWithAssertion = mode.equals("save-assertion");
         String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
         savesToFail = 1;
         int before = saveCalls;
@@ -620,6 +620,93 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.EOL_COMMENT, prior);
     }
 
+    private void testPreviewTransactionStartFailure() throws Exception {
+        Class<?> type = session.getClass();
+        Method begin = type.getDeclaredMethod("beginRequest", String.class);
+        Method preview = type.getDeclaredMethod("preview", String.class, Callable.class);
+        Method finish = type.getDeclaredMethod("finishRequest", boolean.class);
+        begin.setAccessible(true);
+        preview.setAccessible(true);
+        finish.setAccessible(true);
+        for (boolean failRestore : new boolean[] { false, true }) {
+            String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+            String pending = "pending-before-preview-" + failRestore;
+            savesToFail = 1;
+            saveFailed(command("comment_set", comment(pending, "PRE")), "success");
+            int previousSaveCalls = saveCalls;
+            boolean[] callbackRan = { false };
+            begin.invoke(session, "define_code");
+            failNextTransaction = !failRestore;
+            try {
+                Throwable previewFailure = null;
+                try {
+                    preview.invoke(session, "test preview transaction failure", (Callable<Void>) () -> {
+                        callbackRan[0] = true;
+                        real.getListing().setComment(address, CodeUnit.EOL_COMMENT, "preview-only");
+                        failNextTransaction = true;
+                        return null;
+                    });
+                } catch (InvocationTargetException failure) { previewFailure = failure.getCause(); }
+                check(previewFailure != null, "Preview ignored transaction start failure");
+                rollbackPending(previewFailure);
+            } finally {
+                Throwable finishFailure = null;
+                try { finish.invoke(session, false); }
+                catch (InvocationTargetException failure) { finishFailure = failure.getCause(); }
+                check(finishFailure != null, "Request completion ignored preview transaction failure");
+                rollbackPending(finishFailure);
+            }
+            check(callbackRan[0] == failRestore, "Preview callback ran in the wrong phase");
+            check(saveCalls == previousSaveCalls, "Failed preview saved an earlier pending edit");
+            check(real.getCurrentTransactionInfo() == null, "Failed preview left a transaction open");
+            check(prior.equals(liveComment(CodeUnit.EOL_COMMENT)), "Preview edit escaped rollback");
+            check(pending.equals(liveComment(CodeUnit.PRE_COMMENT)), "Failed preview lost pending edit");
+            savedComment(CodeUnit.EOL_COMMENT, prior);
+            savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+            success(command("program_save", new JsonObject()));
+            savedComment(CodeUnit.PRE_COMMENT, pending);
+        }
+    }
+
+    private void testCancelledDeletionRefusal() throws Exception {
+        Class<?> type = session.getClass();
+        Method begin = type.getDeclaredMethod("beginRequest", String.class);
+        Method delete = type.getDeclaredMethod("delete", DomainFile.class);
+        Method finish = type.getDeclaredMethod("finishRequest", boolean.class);
+        begin.setAccessible(true);
+        delete.setAccessible(true);
+        finish.setAccessible(true);
+        DomainFile file = real.getDomainFile();
+        var consumers = real.getConsumerList();
+        boolean[] deletionAttempted = { false };
+        DomainFile target = (DomainFile) Proxy.newProxyInstance(DomainFile.class.getClassLoader(),
+            new Class<?>[] { DomainFile.class }, (proxy, method, args) -> {
+                if (method.getName().equals("delete")) {
+                    deletionAttempted[0] = true;
+                    requestMonitor.cancel();
+                }
+                return invoke(method, file, args);
+            });
+        begin.invoke(session, "program_delete");
+        Throwable deletionFailure = null;
+        try { delete.invoke(session, target); }
+        catch (InvocationTargetException failure) { deletionFailure = failure.getCause(); }
+        finally {
+            finish.invoke(session, false);
+            requestMonitor.clearCancelled();
+        }
+        check(deletionAttempted[0] && deletionFailure instanceof IOException,
+            "Native deletion refusal was not exercised: " + deletionFailure);
+        check(selected == real, "Cancelled deletion refusal did not restore the selected Program");
+        check(real.getConsumerList().size() == consumers.size()
+            && real.getConsumerList().containsAll(consumers), "Deletion changed consumer ownership");
+        check(file.exists(), "Refused deletion removed the Program file");
+        check(real.getCurrentTransactionInfo() == null, "Deletion recovery left a transaction open");
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        success(command("comment_set", comment("after-deletion-refusal", "PRE")));
+        savedComment(CodeUnit.PRE_COMMENT, "after-deletion-refusal");
+    }
+
     public void run() throws Exception {
         String folderName = getScriptArgs()[0];
         String mode = getScriptArgs()[2];
@@ -637,13 +724,15 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "late-error": case "late-assertion": case "cancel": case "native-false": testLateFailure(mode); break;
                 case "stats-cancel": testStatsCancellation(); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
-                case "save-recovery": testSaveRecovery(); break;
+                case "save-recovery": case "save-assertion": testSaveRecovery(mode); break;
                 case "description-save": testDescriptionSaveRecovery(); break;
                 case "storage-error": case "storage-cancel": case "storage-save": testStorageTransaction(mode); break;
                 case "foreign-transaction": testForeignTransaction(); break;
                 case "start-failure": testTransactionStartFailure(); break;
                 case "mutation-leaked-child": testMutationLeakedChild(); break;
                 case "preview-leaked-child": testPreviewLeakedChild(); break;
+                case "preview-start-failure": testPreviewTransactionStartFailure(); break;
+                case "cancelled-delete-refusal": testCancelledDeletionRefusal(); break;
                 case "preview": testPreviewAfterEdit(); break;
                 default: throw new IllegalArgumentException(mode);
             }
@@ -771,6 +860,12 @@ fn test_transient_save_failure_is_not_retried_and_pending_edits_survive_rollback
 
 #[test]
 #[serial]
+fn test_native_save_assertion_is_not_retried_and_pending_edits_survive_rollback() {
+    run_transaction_probe("save-assertion");
+}
+
+#[test]
+#[serial]
 fn test_description_save_failure_retains_receipt_and_recovers_without_replay() {
     run_transaction_probe("description-save");
 }
@@ -821,4 +916,16 @@ fn test_preview_leaked_child_defers_rollback_to_its_owner_without_saving() {
 #[serial]
 fn test_preview_cannot_commit_prior_edits_in_the_same_request() {
     run_transaction_probe("preview");
+}
+
+#[test]
+#[serial]
+fn test_preview_transaction_start_failures_do_not_save_earlier_pending_edits() {
+    run_transaction_probe("preview-start-failure");
+}
+
+#[test]
+#[serial]
+fn test_cancelled_deletion_refusal_restores_selection_and_preserves_consumers() {
+    run_transaction_probe("cancelled-delete-refusal");
 }

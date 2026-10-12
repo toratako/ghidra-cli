@@ -37,7 +37,7 @@ public final class ProgramSession {
 
     /** Saving failed after transaction completion; edits must not be replayed. */
     public static final class SaveFailure extends Exception {
-        SaveFailure(Exception cause) { super(cause.getMessage(), cause); }
+        SaveFailure(Throwable cause) { super(cause.getMessage(), cause); }
     }
 
     public ProgramSession(ScriptAccess script) {
@@ -163,14 +163,24 @@ public final class ProgramSession {
         } catch (RuntimeException failure) {
             requestActive = false;
             atomicRequest = false;
-            throw transactionFailure("Could not start command transaction: " + failure.getMessage());
+            throw failure;
         }
     }
 
     private void startRequestTransaction(String description) {
         if (program() != null) {
-            requestTransaction = transaction(description);
-            requestModification = program().getModificationNumber();
+            try {
+                requestTransaction = transaction(description);
+                requestModification = program().getModificationNumber();
+            } catch (RuntimeException | Error failure) {
+                if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
+                // Preview can end its untouched request transaction before
+                // starting or restoring another. A failed start must not let
+                // completion save pending edits from an earlier request.
+                requestFailure = transactionFailure("Could not start command transaction: "
+                    + failure.getMessage());
+                throw requestFailure;
+            }
         }
     }
 
@@ -212,7 +222,7 @@ public final class ProgramSession {
         endRequestTransaction(false);
         // Keep ownership visible to request cleanup if the native preview leaks
         // an additional transaction and cannot be rolled back immediately.
-        requestTransaction = transaction(description);
+        startRequestTransaction(description);
         try {
             return operation.call();
         } finally {
@@ -269,7 +279,8 @@ public final class ProgramSession {
                 throw new IllegalStateException("Program still has unsaved changes");
             }
             return true;
-        } catch (Exception failure) {
+        } catch (Exception | Error failure) {
+            if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
             SaveFailure error = failure instanceof SaveFailure
                 ? (SaveFailure) failure : new SaveFailure(failure);
             if (requestActive) saveFailure = error;
@@ -296,10 +307,13 @@ public final class ProgramSession {
 
     /** Save before switching; keep the old program if saving or opening fails. */
     public void open(DomainFile domainFile) throws Exception {
+        open(domainFile, monitor());
+    }
+
+    private void open(DomainFile domainFile, TaskMonitor mon) throws Exception {
         // Program names are stored inside the database and can be identical in
         // different project files (for example after copying a program).
         if (isCurrent(domainFile)) return;
-        TaskMonitor mon = monitor();
         mon.checkCancelled();
         save();
         mon.checkCancelled();
@@ -345,7 +359,9 @@ public final class ProgramSession {
             // our selection when Ghidra refuses to delete the closed file.
             if (wasCurrent) {
                 try {
-                    open(file);
+                    // Restoring the selection is failure cleanup, even when
+                    // cancellation arrived during the refused deletion.
+                    open(file, TaskMonitor.DUMMY);
                 } catch (Exception reopenFailure) {
                     throw new IOException(failure.getMessage() + "; failed to reopen "
                         + file.getPathname() + ": " + reopenFailure.getMessage(), failure);
