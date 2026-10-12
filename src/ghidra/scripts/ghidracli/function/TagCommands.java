@@ -3,9 +3,9 @@ package ghidracli.function;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionTag;
 import ghidra.program.model.listing.FunctionTagManager;
+import ghidra.util.exception.CancelledException;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
 import java.util.ArrayList;
@@ -30,7 +30,7 @@ public final class TagCommands {
         this.functionQueries = functionQueries;
     }
 
-    public JsonObject handleTagList(JsonObject args) {
+    public JsonObject handleTagList(JsonObject args) throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
         int limit = getNonnegativeIntArg(args, "limit", 0);
         String funcTarget = getArgString(args, "function");
@@ -48,10 +48,12 @@ public final class TagCommands {
         // Sort BEFORE applying limit, or --limit N truncates by creation order.
         all.sort(TagSupport.TAG_NAME_ORDER);
 
+        var usage = TagSupport.tagUsage(session);
         JsonArray tags = new JsonArray();
         for (FunctionTag t : all) {
+            session.monitor().checkCancelled();
             if (limit > 0 && tags.size() >= limit) break;
-            tags.add(TagSupport.tagToJson(t, tm));
+            tags.add(TagSupport.tagToJson(t, usage.getOrDefault(t.getId(), TagSupport.TagUsage.NONE)));
         }
         JsonObject result = new JsonObject();
         result.add("tags", tags);
@@ -59,7 +61,7 @@ public final class TagCommands {
         return result;
     }
 
-    public JsonObject handleTagGet(JsonObject args) {
+    public JsonObject handleTagGet(JsonObject args) throws CancelledException {
         if (session.program() == null) return errorResult("No program loaded");
         String name = getArgString(args, "name");
         if (name == null || name.isEmpty()) return errorResult("Tag name required");
@@ -68,7 +70,8 @@ public final class TagCommands {
         FunctionTag tag = tm.getFunctionTag(name);
         if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
 
-        return TagSupport.tagToJson(tag, tm);
+        var usage = TagSupport.tagUsage(session);
+        return TagSupport.tagToJson(tag, usage.getOrDefault(tag.getId(), TagSupport.TagUsage.NONE));
     }
 
     public JsonObject handleTagCreate(JsonObject args) {
@@ -115,25 +118,17 @@ public final class TagCommands {
             FunctionTag tag = tm.getFunctionTag(name);
             if (tag == null) return errorResult(TagSupport.tagNotFoundError(name, tm));
 
-            // Capture BOTH counts before delete: use_count is Ghidra's raw number
-            // (may include external functions); functions_affected is the
-            // non-external membership consistent with `function list --tag`.
-            int useCount = tm.getUseCount(tag);
-            int functionsAffected = 0;
-            if (useCount > 0) {
-                FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
-                while (iter.hasNext()) {
-                    if (iter.next().getTags().contains(tag)) functionsAffected++;
-                }
-            }
+            // Capture total usage, including external functions, and mapped
+            // membership consistent with `function list --tag` in one scan.
+            var usage = TagSupport.tagUsage(session).getOrDefault(tag.getId(), TagSupport.TagUsage.NONE);
 
             tag.delete();                 // global: detaches from ALL functions
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "deleted");
             result.addProperty("name", name);
-            result.addProperty("use_count", useCount);
-            result.addProperty("functions_affected", functionsAffected);
+            result.addProperty("use_count", usage.useCount());
+            result.addProperty("functions_affected", usage.functionsAffected());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to delete tag: " + e.getMessage());
@@ -157,14 +152,14 @@ public final class TagCommands {
             String err = TagSupport.validateTagName(newName);
             if (err != null) return errorResult(err);
 
-            int useCount = tm.getUseCount(tag);
+            var usage = TagSupport.tagUsage(session).getOrDefault(tag.getId(), TagSupport.TagUsage.NONE);
             tag.setName(newName);         // global rename; functions store the id
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "renamed");
             result.addProperty("old_name", name);
             result.addProperty("new_name", newName);
-            result.addProperty("use_count", useCount);
+            result.addProperty("use_count", usage.useCount());
             return result;
         } catch (Exception e) {
             return errorResult("Failed to rename tag: " + e.getMessage());

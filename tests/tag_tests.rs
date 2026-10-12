@@ -542,6 +542,107 @@ fn test_tag_set_comment_and_clear() {
 
 #[test]
 #[serial]
+fn tag_metadata_edits_preserve_usage_counts_for_mapped_external_and_unmapped_functions() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("tag-counts-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("fixtures/thunk/CreateThunkFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let command = |name: &str, args| client.send_command(name, Some(args)).unwrap();
+        command("tag_create", serde_json::json!({"name":"review"}));
+        for target in ["source", "dynamic_target", "outside_target"] {
+            command(
+                "tag_attach",
+                serde_json::json!({"function":target,"tags":["review"]}),
+            );
+        }
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.symbol.SourceType;
+public class WarmTagUsageCache extends GhidraScript {
+    public void run() throws Exception {
+        var address = toAddr(0x3000);
+        currentProgram.getFunctionManager().createFunction("unmapped_tagged", address,
+            new AddressSet(address, address), SourceType.USER_DEFINED).addTag("review");
+        var manager = currentProgram.getFunctionManager().getFunctionTagManager();
+        var tag = manager.getFunctionTag("review");
+        if (manager.getUseCount(tag) != 4) {
+            throw new IllegalStateException("Native fixture must have four tag memberships");
+        }
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let renamed = command(
+            "tag_rename",
+            serde_json::json!({"name":"review","new_name":"renamed"}),
+        );
+        assert_eq!(renamed["use_count"], 4);
+        let assert_count = |expected| {
+            assert_eq!(client.tag_get("renamed").unwrap()["use_count"], expected);
+            let listed = client.tag_list(None, Some("source")).unwrap();
+            assert_eq!(listed["tags"][0]["use_count"], expected, "{listed}");
+        };
+        assert_count(4);
+        command(
+            "tag_set_comment",
+            serde_json::json!({"name":"renamed","comment":"checked"}),
+        );
+        assert_count(4);
+        command(
+            "tag_detach",
+            serde_json::json!({"function":"dynamic_target","tags":["renamed"]}),
+        );
+        assert_count(3);
+        command(
+            "tag_attach",
+            serde_json::json!({"function":"dynamic_target","tags":["renamed"]}),
+        );
+        assert_count(4);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_count(4);
+
+        command(
+            "tag_rename",
+            serde_json::json!({"name":"renamed","new_name":"finished"}),
+        );
+        let deleted = command("tag_delete", serde_json::json!({"name":"finished"}));
+        assert_eq!(deleted["use_count"], 4, "{deleted}");
+        assert_eq!(deleted["functions_affected"], 2, "{deleted}");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        for target in [
+            "source",
+            "dynamic_target",
+            "outside_target",
+            "unmapped_tagged",
+        ] {
+            assert_eq!(
+                client.tag_list(None, Some(target)).unwrap()["tags"],
+                serde_json::json!([]),
+                "Deleted tag remained on {target}"
+            );
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn test_tag_delete_reports_counts_then_get_errors() {
     require_ghidra!();
     let harness = harness();
