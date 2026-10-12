@@ -9,21 +9,7 @@ Unfinished work only; code and module READMEs describe implemented behavior.
 - Distinct binary hashes must not silently share mutable project state.
 - Persist provenance needed to reproduce or validate generated artifacts: binary identity, project/program, Ghidra/tool version, and script identity where applicable.
 
-## 1. Fresh-process verification
-
-For analysis/writes, add reusable `project verify` or equivalent: reopen the project
-in a fresh Ghidra process and check project/program/binary identity plus caller invariants
-(e.g. minimum function/symbol counts). Distinguish verification from execution
-failure; unverifiable work cannot be complete. Publish artifacts atomically with
-partial/failure counts and consistent structured lifecycle/result envelopes.
-
-Acceptance:
-
-- a deliberately invalid/unreopenable project fails verification;
-- a valid analyzed fixture passes after process restart;
-- write workflows can call the same primitive before reporting durable success.
-
-## 2. Server-side query and streaming
+## 1. Server-side query and streaming
 
 Extend the [conservative list-query implementation](../src/query/README.md)
 only as workloads justify the added query semantics and wire state.
@@ -50,7 +36,7 @@ a complete server scan.
 Add a structured per-function JSONL export that can optionally include decompile output, addresses, signature/calling convention, direct calls/references, p-code/basic blocks, elapsed time, and per-function failures. Reuse one `DecompInterface` per executor/program. Explicitly distinguish direct
 call edges from incomplete indirect-call/reference coverage.
 
-## 3. Transactional bulk apply
+## 2. Transactional bulk apply
 
 For bulk rename/comment/type/signature/patch operations add:
 
@@ -59,10 +45,10 @@ For bulk rename/comment/type/signature/patch operations add:
 - idempotency/provenance metadata;
 - bounded/staged transactions where practical;
 - rollback or explicit backup restoration;
-- save plus fresh-process verification;
+- save;
 - result counts and invariant checks.
 
-## 4. Protocol capabilities
+## 3. Protocol capabilities
 
 Extend `bridge_info` into a versioned capability contract covering protocol version, Ghidra/Java versions, command/features, job control, script/bundle support, streaming/frame limits, server-side query support, and current project/program identity.
 
@@ -70,13 +56,11 @@ Report capability mismatches explicitly; never silently fall back to different s
 
 ## Build order
 
-1. [Fresh-process verification](#1-fresh-process-verification).
-2. [Protocol capability contract](#4-protocol-capabilities) needed by query/streaming work.
-3. [Server-side query/streaming and structured bulk export](#2-server-side-query-and-streaming).
-4. [Transactional bulk apply](#3-transactional-bulk-apply).
+1. [Protocol capability contract](#3-protocol-capabilities) needed by query/streaming work.
+2. [Server-side query/streaming and structured bulk export](#1-server-side-query-and-streaming).
+3. [Transactional bulk apply](#2-transactional-bulk-apply).
 
 ## Open design questions
 
-- Which verification invariants are universal versus profile-specific.
 - Whether cancelled analysis preserves partial analyzer results or always requires quarantine/retry.
 - Whether same-project read parallelism is worth the complexity after streaming/server-side queries and cross-project parallelism exist.
