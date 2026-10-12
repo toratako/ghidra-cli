@@ -3,8 +3,14 @@ import ghidra.app.script.GhidraScript;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.FunctionDefinition;
+import ghidra.program.model.data.FunctionDefinitionDataType;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.ParameterDefinitionImpl;
 import ghidra.program.model.data.Pointer;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.TypeDef;
+import ghidra.program.model.data.TypedefDataType;
 import ghidra.program.model.pcode.DataTypeSymbol;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
@@ -35,6 +41,51 @@ public class CheckCallSignatureFixture extends GhidraScript {
 
     public void run() throws Exception {
         switch (getScriptArgs()[0]) {
+            case "native-twin-reuse": {
+                var manager = currentProgram.getDataTypeManager();
+                var original = manager.getDataType("/Recovered/Profile");
+                var alternate = manager.addDataType(new StructureDataType(new CategoryPath("/Alternate"),
+                    "Profile", 4, manager), null);
+                var definition = new FunctionDefinitionDataType("tmpname", manager);
+                definition.setReturnType(IntegerDataType.dataType);
+                definition.setCallingConvention("__cdecl");
+                definition.setArguments(new ParameterDefinitionImpl("entry", alternate, null));
+                var space = HighFunction.findOverrideSpace(getFunctionAt(toAddr(0x1000)));
+                new DataTypeSymbol(definition, "prt", HighFunctionDBUtil.AUTO_CAT).writeSymbol(
+                    currentProgram.getSymbolTable(), toAddr(0x1012), space, manager, false);
+                var reused = override(0x1012);
+                require(reused != null && ((FunctionDefinition) reused.getDataType())
+                    .getArguments()[0].getDataType().equals(original),
+                    "The fixture no longer demonstrates native same-layout type identity reuse");
+                require(reused.getSymbol().delete(), "Could not remove the native reproduction marker");
+                break;
+            }
+            case "retain": {
+                var saved = override(0x1005);
+                require(saved != null, "The call-site override to reuse is missing");
+                var manager = currentProgram.getDataTypeManager();
+                var alias = manager.addDataType(new TypedefDataType(new CategoryPath("/Recovered"),
+                    "SiteCallback", new PointerDataType(saved.getDataType(), manager), manager), null);
+                currentProgram.getListing().createData(toAddr(0x1800), alias);
+                break;
+            }
+            case "retained": {
+                var manager = currentProgram.getDataTypeManager();
+                var alias = manager.getDataType("/Recovered/SiteCallback");
+                require(alias instanceof TypeDef, "The reused callback typedef was deleted");
+                var prototype = pointee(((TypeDef) alias).getDataType());
+                require(prototype instanceof FunctionDefinition, "The reused callback prototype was lost");
+                require(manager.contains(prototype), "The reused callback prototype is no longer registered");
+                var function = (FunctionDefinition) prototype;
+                require("int".equals(function.getReturnType().getName())
+                        && function.getArguments().length == 1
+                        && "value".equals(function.getArguments()[0].getName()),
+                    "The reused callback prototype changed");
+                var data = currentProgram.getListing().getDataAt(toAddr(0x1800));
+                require(data != null && alias.equals(data.getDataType()),
+                    "The applied callback pointer was deleted or changed");
+                break;
+            }
             case "shared": {
                 var first = override(0x1005);
                 var second = override(0x1012);

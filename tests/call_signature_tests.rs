@@ -214,6 +214,76 @@ fn direct_overrides_affect_only_selected_calls_and_preserve_shared_saved_types()
 
 #[test]
 #[serial]
+fn replacing_and_clearing_overrides_preserves_reused_callback_types_and_data() {
+    require_ghidra!();
+    fixture(|client, program| {
+        set(client, "caller", "0x1005", "int original(int value)");
+        check(client, &["retain"]);
+        let original_types = type_inventory(client);
+        set(client, "caller", "0x1005", "char *replacement(int value)");
+        check(client, &["retained"]);
+        clear(client, "caller", "0x1005");
+        check(client, &["retained"]);
+
+        // Reusing the same saved type must also preserve it when the last marker is cleared.
+        set(client, "caller", "0x1005", "int original(int value)");
+        clear(client, "caller", "0x1005");
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            assert!(get(client, "caller", "0x1005")["override"].is_null());
+            check(client, &["retained"]);
+            let after = type_inventory(client);
+            for (path, original) in original_types.as_object().unwrap() {
+                assert_eq!(&after[path], original, "Reused type changed: {path}");
+            }
+        }
+    });
+}
+
+#[test]
+#[serial]
+fn native_equivalent_override_reuse_cannot_replace_explicit_type_bindings() {
+    require_ghidra!();
+    fixture(|client, program| {
+        let mut args = json!({
+            "target":"caller", "at":"0x1005", "signature":"int observed(Profile entry)",
+            "type_bindings":[{"name":"Profile","path":"/Recovered/Profile"}],
+        });
+        let original = run(client, "function_call_signature_set", args.clone());
+        assert_eq!(
+            original["after"]["params"][0]["type_path"],
+            "/Recovered/Profile"
+        );
+        check(client, &["native-twin-reuse"]);
+        for signature in [
+            "int observed(Profile entry)",
+            "int observed(int (*visit)(Profile *entry))",
+        ] {
+            args["signature"] = json!(signature);
+            run(client, "function_call_signature_set", args.clone());
+            let before = get(client, "caller", "0x1005");
+            let original_types = type_inventory(client);
+            let mut replacement = args.clone();
+            replacement["type_bindings"][0]["path"] = json!("/Alternate/Profile");
+            rejected(client, replacement, "selected type identities");
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(program).unwrap();
+                }
+                assert_eq!(get(client, "caller", "0x1005"), before);
+                assert!(get(client, "caller", "0x1012")["override"].is_null());
+                assert_eq!(type_inventory(client), original_types);
+            }
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn nested_and_bound_callbacks_preserve_type_identity_and_reject_partial_replacement() {
     require_ghidra!();
     fixture(|client, program| {

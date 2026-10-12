@@ -5,9 +5,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.data.Array;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.data.ParameterDefinition;
+import ghidra.program.model.data.Pointer;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionSignature;
 import ghidra.program.model.listing.Instruction;
@@ -22,6 +25,7 @@ import ghidra.util.exception.CancelledException;
 import ghidracli.listing.InstructionFlow;
 import ghidracli.query.AddressCodec;
 import ghidracli.session.ProgramSession;
+import ghidracli.types.TypeUseMatcher;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -92,7 +96,7 @@ public final class FunctionCallSignatureCommands {
             definition.setName("tmpname");
             JsonElement before = describe(previous);
             JsonObject after = describeSignature(definition);
-            boolean changed = previous == null || !before.equals(after);
+            boolean changed = previous == null || !sameSignature(definition, previous.signature());
             if (changed) {
                 removeMarker(previous);
                 Namespace space = HighFunction.findCreateOverrideSpace(site.caller());
@@ -110,6 +114,12 @@ public final class FunctionCallSignatureCommands {
                     throw new IllegalStateException("Written call-site signature could not be read back");
                 }
                 after = describeSignature(saved.signature());
+                // Native hash reuse accepts layout-equivalent types with the
+                // same display name even when their registered paths differ.
+                if (!sameSignature(definition, saved.signature())) {
+                    throw new IllegalStateException("Ghidra did not retain the requested call-site signature "
+                        + "or selected type identities");
+                }
             }
             JsonObject result = context(site);
             result.addProperty("status", "call_signature_set");
@@ -192,8 +202,51 @@ public final class FunctionCallSignatureCommands {
     private void cleanup(Saved saved) throws CancelledException {
         if (saved == null || saved.type() == null) return;
         session.monitor().checkCancelled();
+        // Native cleanup only checks override markers. Removing a prototype that
+        // backs a callback pointer also deletes its dependent types and applied data.
+        if (!saved.type().getDataType().getParents().isEmpty()) return;
         // Cleanup scans all override symbols before deleting their shared type.
         saved.type().cleanupUnusedOverride();
+    }
+
+    private boolean sameSignature(FunctionSignature expected, FunctionSignature actual)
+            throws CancelledException {
+        session.monitor().checkCancelled();
+        if (actual == null || !describeSignature(expected).equals(describeSignature(actual))
+                || !sameDeclaredType(expected.getReturnType(), actual.getReturnType())) return false;
+        ParameterDefinition[] wanted = expected.getArguments();
+        ParameterDefinition[] saved = actual.getArguments();
+        for (int index = 0; index < wanted.length; ++index) {
+            if (!sameDeclaredType(wanted[index].getDataType(), saved[index].getDataType())) return false;
+        }
+        return true;
+    }
+
+    private boolean sameDeclaredType(DataType expected, DataType actual) throws CancelledException {
+        session.monitor().checkCancelled();
+        var manager = session.program().getDataTypeManager();
+        DataType registered = manager.getDataType(expected.getDataTypePath());
+        // Parsed clones retain named type identities even while the declaration
+        // and newly constructed pointer/callback wrappers remain detached.
+        if (registered != null && expected.getUniversalID() != null
+                && expected.getUniversalID().equals(registered.getUniversalID())) {
+            return new TypeUseMatcher(session, registered).sameType(actual);
+        }
+        if (expected instanceof Pointer wanted && actual instanceof Pointer saved) {
+            DataType pointee = wanted.getDataType();
+            DataType savedPointee = saved.getDataType();
+            return wanted.getLength() == saved.getLength() && (pointee == null || savedPointee == null
+                ? pointee == savedPointee : sameDeclaredType(pointee, savedPointee));
+        }
+        if (expected instanceof Array wanted && actual instanceof Array saved) {
+            return wanted.getNumElements() == saved.getNumElements()
+                && wanted.getElementLength() == saved.getElementLength()
+                && sameDeclaredType(wanted.getDataType(), saved.getDataType());
+        }
+        if (expected instanceof FunctionDefinition wanted && actual instanceof FunctionDefinition saved) {
+            return sameSignature(wanted, saved);
+        }
+        return expected.getPathName().equals(actual.getPathName()) && expected.isEquivalent(actual);
     }
 
     private JsonObject context(Site site) {
