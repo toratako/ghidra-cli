@@ -102,11 +102,7 @@ fn c_decompile_diagnostics(
     if let Some(query) = query {
         if let Some(fields) = &query.fields {
             // A projection without code produces JSON even with --format c.
-            if query
-                .select_fields(std::slice::from_ref(value), fields)?
-                .iter()
-                .any(|row| row.get("code").is_none())
-            {
+            if value.get("code").is_none() || !fields.keeps("code") {
                 return Ok(String::new());
             }
         }

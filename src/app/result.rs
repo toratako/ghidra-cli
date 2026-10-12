@@ -237,15 +237,12 @@ impl CommandOutput {
                         .filter_map(|node| node["id"].as_str())
                         .collect();
                     let edges = value["edges"]
-                        .as_array()
-                        .context("Missing graph edges")?
-                        .iter()
-                        .filter(|edge| edge["from"].as_str().is_some_and(|id| ids.contains(id)))
-                        .cloned()
-                        .collect::<Vec<_>>();
+                        .as_array_mut()
+                        .context("Missing graph edges")?;
+                    edges.retain(|edge| edge["from"].as_str().is_some_and(|id| ids.contains(id)));
+                    let edge_count = edges.len();
                     value["node_count"] = json!(nodes.len());
-                    value["edge_count"] = json!(edges.len());
-                    value["edges"] = Value::Array(edges);
+                    value["edge_count"] = json!(edge_count);
                     value["nodes"] = Value::Array(project_rows(nodes, query)?);
                     value
                 }
@@ -281,7 +278,7 @@ fn select(value: Value, query: Option<&Query>) -> anyhow::Result<Vec<Value>> {
 fn project_rows(rows: Vec<Value>, query: Option<&Query>) -> anyhow::Result<Vec<Value>> {
     Ok(
         match query.and_then(|query| query.fields.as_ref().map(|fields| (query, fields))) {
-            Some((query, fields)) => query.select_fields(&rows, fields)?,
+            Some((query, fields)) => query.select_fields(rows, fields)?,
             None => rows,
         },
     )
@@ -355,6 +352,43 @@ mod tests {
             serde_json::to_value(result).unwrap(),
             json!({
                 "data": 0, "meta": {"address": "ram:0x1000", "offset": 0, "limit": null}
+            })
+        );
+    }
+
+    #[test]
+    fn graph_selection_preserves_outgoing_edge_order_before_node_projection() {
+        let value = json!({
+            "nodes": [
+                {"id": "a", "name": "first"},
+                {"id": "b", "name": "selected"},
+                {"id": "c", "name": "last"}
+            ],
+            "edges": [
+                {"from": "b", "to": "c", "evidence": [{"address": "0x1000"}]},
+                {"from": "a", "to": "b"},
+                {"from": "b", "to": "a", "evidence": [{"address": "0x1004"}]}
+            ],
+            "node_count": 3,
+            "edge_count": 3
+        });
+        let query = Query {
+            fields: Some(FieldSelector::include(vec!["name".into()])),
+            offset: Some(1),
+            limit: Some(1),
+            ..Query::default()
+        };
+        let result = CommandOutput::prepare(value, ResultShape::Graph, Some(&query), None).unwrap();
+        assert_eq!(
+            result.data,
+            json!({
+                "nodes": [{"name": "selected"}],
+                "edges": [
+                    {"from": "b", "to": "c", "evidence": [{"address": "0x1000"}]},
+                    {"from": "b", "to": "a", "evidence": [{"address": "0x1004"}]}
+                ],
+                "node_count": 1,
+                "edge_count": 2
             })
         );
     }

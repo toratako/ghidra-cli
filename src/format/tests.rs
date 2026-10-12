@@ -269,7 +269,7 @@ fn decompile_field_projection_controls_annotations_and_code_fallback() {
     use crate::query::{FieldSelector, Query};
 
     let code = "return 1;\n";
-    let rows = [json!({
+    let rows = vec![json!({
         "code": code,
         "name": "example",
         "line_addresses": [{"line": 1, "addresses": ["0x1004"]}]
@@ -277,7 +277,7 @@ fn decompile_field_projection_controls_annotations_and_code_fallback() {
     let query = Query::default();
     let plain = query
         .select_fields(
-            &rows,
+            rows.clone(),
             &FieldSelector::exclude(vec!["line_addresses".into()]),
         )
         .unwrap();
@@ -287,7 +287,7 @@ fn decompile_field_projection_controls_annotations_and_code_fallback() {
         assert!(!output.contains("0x1004"));
     }
     let without_code = query
-        .select_fields(&rows, &FieldSelector::exclude(vec!["code".into()]))
+        .select_fields(rows, &FieldSelector::exclude(vec!["code".into()]))
         .unwrap();
     let output = DefaultFormatter
         .format(&without_code, OutputFormat::C)

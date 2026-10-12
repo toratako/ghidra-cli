@@ -62,7 +62,7 @@ impl Query {
         }
 
         let selected = if let Some(fields) = &self.fields {
-            self.select_fields(&paginated, fields)?
+            self.select_fields(paginated, fields)?
         } else {
             paginated
         };
@@ -97,38 +97,26 @@ impl Query {
 
     pub(crate) fn select_fields(
         &self,
-        data: &[JsonValue],
+        mut data: Vec<JsonValue>,
         selector: &FieldSelector,
     ) -> Result<Vec<JsonValue>> {
-        let mut result = Vec::new();
-
-        for item in data {
+        for item in &mut data {
             if let JsonValue::Object(map) = item {
-                let mut new_map = serde_json::Map::new();
-
                 if let Some(include) = &selector.include {
+                    let mut selected = serde_json::Map::new();
                     for field in include {
-                        if let Some(value) = map.get(field) {
-                            new_map.insert(field.clone(), value.clone());
+                        if let Some(value) = map.remove(field) {
+                            selected.insert(field.clone(), value);
                         }
                     }
-                } else if let Some(exclude) = &selector.exclude {
-                    for (key, value) in map {
-                        if !exclude.contains(key) {
-                            new_map.insert(key.clone(), value.clone());
-                        }
-                    }
-                } else {
-                    new_map = map.clone();
+                    *map = selected;
+                } else if selector.exclude.is_some() {
+                    map.retain(|key, _| selector.keeps(key));
                 }
-
-                result.push(JsonValue::Object(new_map));
-            } else {
-                result.push(item.clone());
             }
         }
 
-        Ok(result)
+        Ok(data)
     }
 
     fn apply_sort(rows: &mut [JsonValue], sort_keys: &[SortKey]) {
@@ -216,6 +204,16 @@ pub struct FieldSelector {
 }
 
 impl FieldSelector {
+    pub(crate) fn keeps(&self, field: &str) -> bool {
+        if let Some(include) = &self.include {
+            include.iter().any(|name| name == field)
+        } else if let Some(exclude) = &self.exclude {
+            !exclude.iter().any(|name| name == field)
+        } else {
+            true
+        }
+    }
+
     pub fn include(fields: Vec<String>) -> Self {
         Self {
             include: Some(fields),
@@ -436,6 +434,35 @@ mod tests {
         query.limit = Some(0);
         query.offset = Some(2);
         assert_eq!(query.apply_pagination(rows(5)).len(), 3);
+    }
+
+    #[test]
+    fn projection_preserves_nested_values_and_non_object_rows() {
+        let nested = serde_json::json!({"evidence": [1, {"text": "解析結果"}]});
+        let data = vec![
+            serde_json::json!({"name": "item", "nested": nested, "ignored": true}),
+            serde_json::json!({"name": "other", "ignored": false}),
+            serde_json::json!([{"name": "inside an array"}]),
+            serde_json::json!(7),
+            JsonValue::Null,
+        ];
+        let expected = serde_json::json!([
+            {"nested": nested},
+            {},
+            [{"name": "inside an array"}],
+            7,
+            null
+        ]);
+        for fields in [
+            FieldSelector::include(vec!["nested".into(), "nested".into(), "missing".into()]),
+            FieldSelector::exclude(vec!["name".into(), "ignored".into(), "missing".into()]),
+        ] {
+            let query = Query {
+                fields: Some(fields),
+                ..Query::default()
+            };
+            assert_eq!(query.apply(data.clone()).unwrap(), expected);
+        }
     }
 
     #[test]
