@@ -14,3 +14,7 @@ without waiving `--expect-rows` minimums.
 Stdin source must declare exactly one top-level public class extending
 `GhidraScript`. Ghidra uses the file script's parent directory as its source bundle,
 including supporting source files there.
+
+Finish all work before a stdin script returns: its temporary bundle is uninstalled
+and its compiled files are removed afterward. Write artifacts to explicit output
+paths outside the temporary source directory.

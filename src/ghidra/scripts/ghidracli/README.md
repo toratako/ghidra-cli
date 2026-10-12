@@ -614,6 +614,12 @@ File and stdin Java sources share JDK declaration parsing for their qualified
 class name. Keep the source's immediate parent as its explicitly selected bundle;
 derive package names from the parser, not directory names or regex matching.
 File declarations are parsed after the bundle build to preserve compile diagnostics.
+`ScriptCommands` owns the source directory and bundle created for each stdin
+invocation. It uninstalls that exact bundle, removes its compiled files and host
+registration, then deletes the owned source and empty directory after execution.
+File-script bundles and script-created outputs retain their existing ownership.
+Cleanup failures preserve the execution result and report remaining paths;
+replaced registrations or bundle locations must never be removed as ours.
 
 Decompiler parameters use `LocalSymbolMap.getParamSymbol(i)` order; `getSymbols()`
 is hash-ordered. All native decompiler callers share checked `timeout_secs` with

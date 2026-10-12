@@ -19,6 +19,8 @@ import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -31,6 +33,7 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import org.osgi.framework.Bundle;
+import org.osgi.framework.wiring.FrameworkWiring;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -47,15 +50,44 @@ public final class ScriptCommands {
     }
 
     public JsonObject handleScriptRun(JsonObject args) {
+        InlineScript temporary = new InlineScript();
+        JsonObject result;
+        try {
+            result = runScript(args, temporary);
+        } catch (RuntimeException | Error failure) {
+            try {
+                JsonObject cleanup = temporary.cleanup();
+                if (cleanup != null) failure.addSuppressed(new IOException(cleanup.toString()));
+            } catch (Error cleanupFailure) {
+                if (failure instanceof Error error && JsonProtocol.isFatalError(error)) {
+                    if (cleanupFailure != failure) failure.addSuppressed(cleanupFailure);
+                } else {
+                    cleanupFailure.addSuppressed(failure);
+                    throw cleanupFailure;
+                }
+            }
+            throw failure;
+        }
+        JsonObject cleanup = temporary.cleanup();
+        if (cleanup != null) {
+            String message = "Inline script cleanup failed: " + cleanup.get("cause").getAsString();
+            if (result.has("error")) message = result.get("error").getAsString() + "; " + message;
+            result.addProperty("error", message);
+            result.add("cleanup_error", cleanup);
+        }
+        return result;
+    }
+
+    private JsonObject runScript(JsonObject args, InlineScript temporary) {
         String scriptPath = getArgString(args, "path");
         String inlineSource = getArgString(args, "source");
         if ((scriptPath == null || scriptPath.isEmpty()) && (inlineSource == null || inlineSource.isEmpty())) {
             return errorResult("Script path or inline source required");
         }
         ArtifactManifest.validateExpectations(args);
+        String[] scriptArgs = getArgStringArray(args, "args");
 
         File scriptFile;
-        File tempDir = null;
         String declaredClassName = null;
         if (inlineSource != null && !inlineSource.isEmpty()) {
             // Stdin-sourced one-offs (`ghidra-cli script run -`): stage the source into a
@@ -66,8 +98,9 @@ public final class ScriptCommands {
             try {
                 declaredClassName = javaClassName(inlineSource, true);
                 String simpleName = declaredClassName.substring(declaredClassName.lastIndexOf('.') + 1);
-                tempDir = java.nio.file.Files.createTempDirectory("ghidra-cli-stdin-script").toFile();
-                scriptFile = new File(tempDir, simpleName + ".java");
+                temporary.directory = Files.createTempDirectory("ghidra-cli-stdin-script");
+                scriptFile = temporary.directory.resolve(simpleName + ".java").toFile();
+                temporary.source = scriptFile.toPath();
                 try (FileWriter fw = new FileWriter(scriptFile)) {
                     fw.write(inlineSource);
                 }
@@ -85,9 +118,6 @@ public final class ScriptCommands {
             scriptFile = new File(scriptPath).getAbsoluteFile();
             if (!scriptFile.exists()) return errorResult("Script not found: " + scriptFile.getPath());
         }
-        final File cleanupTempDir = tempDir;
-
-        String[] scriptArgs = getArgStringArray(args, "args");
         ResourceFile source = new ResourceFile(scriptFile);
         ResourceFile sourceDir = source.getParentFile();
 
@@ -121,8 +151,12 @@ public final class ScriptCommands {
             if (bundle == null) {
                 // enabled=true: matches how Ghidra's own script manager registers
                 // a directory a user actually wants to run scripts from.
+                if (temporary.directory != null) temporary.host = bundleHost;
                 bundle = bhClass.getMethod("add", ResourceFile.class, boolean.class, boolean.class)
                     .invoke(bundleHost, sourceDir, true, true);
+                if (temporary.directory != null && bundle != null) {
+                    temporary.bundle = bundle;
+                }
             }
             if (bundle == null) {
                 return errorResult("Failed to register script bundle for " + sourceDir.getAbsolutePath());
@@ -179,6 +213,7 @@ public final class ScriptCommands {
                         + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
                 }
                 Bundle osgiBundle = (Bundle) rawOsgiBundle;
+                if (temporary.bundle == bundle) temporary.capture(osgiBundle);
                 // The source's parent is our exact bundle root, so Ghidra's
                 // path-based classNameForScript omits any declared package.
                 // Parse file sources after building to retain Ghidra's compile
@@ -189,8 +224,10 @@ public final class ScriptCommands {
                 try {
                     loadedClass = osgiBundle.loadClass(className);
                 } catch (ClassNotFoundException cnfe) {
+                    out.flush();
                     return errorResult("The class could not be found. It must be the public "
-                        + "class of the .java file: " + cnfe.getMessage());
+                        + "class of the .java file: " + cnfe.getMessage()
+                        + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
                 }
                 if (!GhidraScript.class.isAssignableFrom(loadedClass)) {
                     return errorResult("Loaded class " + className + " does not extend GhidraScript");
@@ -237,8 +274,12 @@ public final class ScriptCommands {
             return err;
         } catch (Exception e) {
             // Preserve any output the script produced before it threw.
+            Throwable cause = e instanceof java.lang.reflect.InvocationTargetException
+                && e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
             out.flush();
-            JsonObject err = errorResult("Script threw: " + e.getMessage());
+            JsonObject err = errorResult("Script threw: "
+                + (cause.getMessage() == null ? cause.toString() : cause.getMessage()));
             err.addProperty("stdout", buffer.toString());
             return err;
         } catch (Error e) {
@@ -248,10 +289,105 @@ public final class ScriptCommands {
                 + (e.getMessage() == null ? e.toString() : e.getMessage()));
             err.addProperty("stdout", buffer.toString());
             return err;
-        } finally {
-            if (cleanupTempDir != null) {
-                scriptFile.delete();
-                cleanupTempDir.delete();
+        }
+    }
+
+    /** Owns only the source and bundle created for this inline invocation. */
+    private static final class InlineScript {
+        Path directory;
+        Path source;
+        Path compiledDirectory;
+        Object host;
+        Object bundle;
+        Bundle osgi;
+        FrameworkWiring wiring;
+
+        void capture(Bundle activated) {
+            osgi = activated;
+            var context = activated.getBundleContext();
+            if (context != null) wiring = context.getBundle(0).adapt(FrameworkWiring.class);
+        }
+
+        JsonObject cleanup() {
+            if (directory == null) return null;
+            try {
+                if (bundle == null && host != null
+                        && host.getClass().getMethod("getGhidraBundle", ResourceFile.class)
+                            .invoke(host, new ResourceFile(directory.toFile())) != null) {
+                    throw new IOException("Temporary script bundle registration ownership could not be confirmed");
+                }
+                if (bundle != null) {
+                    Class<?> type = bundle.getClass();
+                    ResourceFile sourceDir = new ResourceFile(directory.toFile());
+                    Class<?> hostType = host.getClass();
+                    Object registered = hostType.getMethod("getGhidraBundle", ResourceFile.class)
+                        .invoke(host, sourceDir);
+                    if (registered != null && registered != bundle) {
+                        throw new IOException("Temporary script bundle registration changed ownership");
+                    }
+                    Path compiledRoot = (Path) type.getMethod("getCompiledBundlesDir").invoke(null);
+                    String hash = (String) type.getMethod("sourceDirHash", ResourceFile.class)
+                        .invoke(null, sourceDir);
+                    compiledDirectory = compiledRoot.resolve(hash);
+                    Bundle current = (Bundle) type.getMethod("getOSGiBundle").invoke(bundle);
+                    if (osgi != null && current != null && current != osgi) {
+                        throw new IOException("Temporary script bundle location changed ownership");
+                    }
+                    if (osgi == null && current != null) capture(current);
+                    if (osgi != null) {
+                        // Native clean() uninstalls dependent bundles as well.
+                        // Stop only our bundle first so it cannot touch host-owned bundles.
+                        if (osgi.getState() != Bundle.UNINSTALLED) osgi.uninstall();
+                        if (osgi.getState() != Bundle.UNINSTALLED) {
+                            throw new IOException("Temporary script bundle remains installed");
+                        }
+                        if (wiring != null && wiring.getRemovalPendingBundles().contains(osgi)) {
+                            throw new IOException("Temporary script bundle remains wired to an installed bundle");
+                        }
+                    }
+                    // clean() resolves by location again, so never call it on a replacement.
+                    if (type.getMethod("getOSGiBundle").invoke(bundle) != null) {
+                        throw new IOException("Temporary script bundle location changed ownership");
+                    }
+                    registered = hostType.getMethod("getGhidraBundle", ResourceFile.class)
+                        .invoke(host, sourceDir);
+                    if (registered != null && registered != bundle) {
+                        throw new IOException("Temporary script bundle registration changed ownership");
+                    }
+                    type.getMethod("clean").invoke(bundle);
+                    // Ghidra's clean() catches its own I/O failures.
+                    if (!Files.notExists(compiledDirectory, LinkOption.NOFOLLOW_LINKS)) {
+                        throw new IOException("Temporary compiled bundle remains: " + compiledDirectory);
+                    }
+                    if (registered == bundle) {
+                        hostType.getMethod("remove", ResourceFile.class).invoke(host, sourceDir);
+                        if (hostType.getMethod("getGhidraBundle", ResourceFile.class)
+                                .invoke(host, sourceDir) != null) {
+                            throw new IOException("Temporary script directory remains registered");
+                        }
+                    }
+                }
+                if (source != null) Files.deleteIfExists(source);
+                // Outputs created by the script are not owned by this cleanup.
+                Files.deleteIfExists(directory);
+                return null;
+            } catch (Exception | Error failure) {
+                Throwable cause = failure instanceof java.lang.reflect.InvocationTargetException
+                    && failure.getCause() != null ? failure.getCause() : failure;
+                if (cause instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
+                JsonObject detail = new JsonObject();
+                detail.addProperty("stage", "script.cleanup");
+                detail.addProperty("cause", cause.toString());
+                detail.addProperty("source_directory", directory.toString());
+                if (compiledDirectory != null) detail.addProperty("compiled_directory", compiledDirectory.toString());
+                JsonArray remaining = new JsonArray();
+                if (!Files.notExists(directory, LinkOption.NOFOLLOW_LINKS)) remaining.add(directory.toString());
+                if (compiledDirectory != null
+                        && !Files.notExists(compiledDirectory, LinkOption.NOFOLLOW_LINKS)) {
+                    remaining.add(compiledDirectory.toString());
+                }
+                detail.add("remaining_paths", remaining);
+                return detail;
             }
         }
     }
