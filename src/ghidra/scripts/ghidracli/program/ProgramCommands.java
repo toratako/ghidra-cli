@@ -9,7 +9,6 @@ import ghidra.framework.model.ProjectData;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.listing.DataIterator;
 import ghidra.program.model.listing.FunctionManager;
-import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
@@ -365,13 +364,8 @@ public final class ProgramCommands {
 
             int dataTypeCount = dtm.getDataTypeCount(false);
 
-            int instructionCount = 0;
-            InstructionIterator instrIter = listing.getInstructions(true);
-            while (instrIter.hasNext()) {
-                session.monitor().checkCancelled();
-                instrIter.next();
-                instructionCount++;
-            }
+            session.monitor().checkCancelled();
+            long instructionCount = listing.getNumInstructions();
 
             JsonObject stats = new JsonObject();
             stats.addProperty("functions", functionCount);

@@ -190,6 +190,39 @@ fn test_stats_has_all_fields() {
         stats.memory_blocks,
         blocks["blocks"].as_array().unwrap().len()
     );
+    let instruction_count = harness
+        .client()
+        .unwrap()
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+public class CountStatsInstructions extends GhidraScript {
+    public void run() throws Exception {
+        long count = 0;
+        var instructions = currentProgram.getListing().getInstructions(true);
+        while (instructions.hasNext()) {
+            monitor.checkCancelled();
+            instructions.next();
+            count++;
+        }
+        println(Long.toString(count));
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert_eq!(
+        obj["instructions"].as_u64().unwrap(),
+        instruction_count["stdout"]
+            .as_str()
+            .unwrap()
+            .trim()
+            .parse::<u64>()
+            .unwrap()
+    );
 
     // Verify key fields exist
     for key in &["functions", "strings", "symbols"] {
