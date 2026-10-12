@@ -160,10 +160,10 @@ are strings. Other native types use Ghidra's string representation and are not
 settable. Defaults/descriptions can be null for unregistered saved options.
 `analysis_option_set` takes string `name` and string `value`, parses the value
 using the existing option type, saves without analyzing, and returns the option
-with `status: "set"`. Integers are decimal, floats must be finite, booleans are
-true/false, enums must match a choice exactly, and file paths must be absolute
-because the JVM's working directory can differ from the caller's. List queries
-run in Rust; get/set output only supports projection and format controls.
+with `status: "set"`. Integers are decimal or `0x` hexadecimal, floats must be
+finite, booleans are true/false, enums must match a choice exactly, and file paths
+must be absolute because the JVM's working directory can differ from the caller's.
+List queries run in Rust; get/set output only supports projection and format controls.
 
 `program_context_list` returns `{registers, count}` with processor-context
 register rows `{name, bit_length}`, sorted by name. `program_context_get` takes
