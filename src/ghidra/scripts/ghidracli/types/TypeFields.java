@@ -89,8 +89,22 @@ final class TypeFields {
         }
     }
 
+    /** Native packing and alignment use int arithmetic and can wrap the composite size. */
+    static void verifySize(Composite type) {
+        int size = type.isZeroLength() ? 0 : type.getLength();
+        if (size < 0)
+            throw new IllegalArgumentException("Composite size exceeds its supported range in " + type.getPathName());
+        for (DataTypeComponent field : type.getDefinedComponents()) {
+            if (field.getOffset() < 0 || field.getLength() < 0
+                    || (long) field.getOffset() + field.getLength() > size)
+                throw new IllegalArgumentException("Composite field exceeds its supported size in "
+                    + type.getPathName());
+        }
+    }
+
     /** Count implicit filler and overlapping components without native int overflow. */
     static void verifyComponentCount(Structure struct) {
+        verifySize(struct);
         if (struct.isPackingEnabled()) return;
         long count = 0;
         long end = 0;

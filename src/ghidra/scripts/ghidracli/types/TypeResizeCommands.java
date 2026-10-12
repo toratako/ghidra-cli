@@ -134,6 +134,7 @@ public final class TypeResizeCommands {
                     insertedType, insertedDefinedIndex);
             }
             if (target instanceof Structure) TypeFields.verifyComponentCount((Structure) target);
+            else if (target instanceof Composite) TypeFields.verifySize((Composite) target);
         }
     }
 
@@ -327,6 +328,7 @@ public final class TypeResizeCommands {
                 }
                 if (composite instanceof Structure)
                     TypeFields.verifyComponentCount((Structure) composite);
+                else TypeFields.verifySize(composite);
             } else if (type instanceof Array) {
                 Array array = (Array) type;
                 long length = (long) count * array.getElementLength();

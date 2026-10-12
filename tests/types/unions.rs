@@ -22,6 +22,77 @@ fn set(program: &str, name: &str, ordinal: &str, attributes: &[&str]) -> GhidraR
 
 #[test]
 #[serial]
+fn union_edits_reject_packed_alignment_size_overflow_without_saving_a_corrupt_layout() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreatePackedUnionOverflow extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        for (String name : new String[] { "PackedUnionAppend", "PackedUnionSet" }) {
+            var union = new UnionDataType(CategoryPath.ROOT, name, dtm);
+            union.setPackingEnabled(true);
+            union.add(new ArrayDataType(ByteDataType.dataType, Integer.MAX_VALUE, -1, dtm), "bytes", "keep");
+            if (name.equals("PackedUnionSet")) union.add(ByteDataType.dataType, "tag", "keep tag");
+            var saved = dtm.addDataType(union, null);
+            if (saved.getLength() != Integer.MAX_VALUE)
+                throw new IllegalStateException("Fixture must fill the supported union size");
+        }
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+        for (name, command) in [
+            (
+                "PackedUnionAppend",
+                vec![
+                    "field",
+                    "append",
+                    "PackedUnionAppend",
+                    "--name",
+                    "word",
+                    "--type",
+                    "word",
+                ],
+            ),
+            (
+                "PackedUnionSet",
+                vec![
+                    "field",
+                    "set",
+                    "PackedUnionSet",
+                    "--field",
+                    "tag",
+                    "--type",
+                    "word",
+                ],
+            ),
+        ] {
+            let before = definition(&program, name);
+            let failed = type_command(&program, &command);
+            failed
+                .assert_failure()
+                .assert_stderr_contains("Composite size exceeds its supported range");
+            let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            client.program_close().unwrap();
+            assert_eq!(definition(&program, name), before);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn union_creation_member_edits_and_deletions_persist() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

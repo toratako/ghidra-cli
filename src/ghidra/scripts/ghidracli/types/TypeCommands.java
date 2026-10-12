@@ -426,6 +426,7 @@ public final class TypeCommands {
             }
             if (!fieldName.equals(expected.getFieldName()))
                 return errorResult("Ghidra did not preserve the requested field name");
+            TypeFields.verifyComponentCount(staged);
             // Preserve existing components and their per-field default settings.
             int sizeBefore = StructureFields.length(struct);
             TypeResizeCommands.PropagationSnapshot propagation =

@@ -207,6 +207,75 @@ fn append_rejects_ambiguous_or_normalized_field_names_without_changing_the_layou
 
 #[test]
 #[serial]
+fn append_rejects_packed_structure_size_overflow_without_saving_a_corrupt_layout() {
+    require_ghidra!();
+    let program = super::create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+        .script_run_source(
+            r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreatePackedAppendOverflow extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var structure = new StructureDataType("PackedAppendOverflow", 0, dtm);
+        structure.setPackingEnabled(true);
+        structure.add(new ArrayDataType(ByteDataType.dataType, Integer.MAX_VALUE - 1, -1, dtm), "bytes", "keep");
+        var saved = dtm.addDataType(structure, null);
+        if (saved.getLength() != Integer.MAX_VALUE - 1)
+            throw new IllegalStateException("Fixture must leave one byte below the supported structure size");
+    }
+}
+"#,
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+        let appended = success(super::type_command(
+            &program,
+            &[
+                "field",
+                "append",
+                "PackedAppendOverflow",
+                "--name",
+                "tail",
+                "--type",
+                "byte",
+            ],
+        ));
+        assert_eq!(appended["size_after"], i32::MAX);
+        let before = super::type_command(&program, &["get", "PackedAppendOverflow"]);
+        before.assert_success();
+        let before: Value = before.data();
+        let failed = super::type_command(
+            &program,
+            &[
+                "field",
+                "append",
+                "PackedAppendOverflow",
+                "--name",
+                "extra",
+                "--type",
+                "byte",
+            ],
+        );
+        failed
+            .assert_failure()
+            .assert_stderr_contains("Composite size exceeds its supported range");
+        let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        let saved = super::type_command(&program, &["get", "PackedAppendOverflow"]);
+        saved.assert_success();
+        assert_eq!(saved.data::<Value>(), before);
+    });
+}
+
+#[test]
+#[serial]
 fn shrinking_a_field_rejects_padding_component_count_overflow() {
     require_ghidra!();
     let program = super::create_type_edit_program("x86:LE:32:default");

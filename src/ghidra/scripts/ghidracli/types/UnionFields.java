@@ -66,6 +66,7 @@ final class UnionFields {
         Union staged = (Union) union.copy(union.getDataTypeManager());
         DataTypeComponent field = staged.add(type, size == null ? type.getLength() : size, name, null);
         verifyField(field, name, size);
+        TypeFields.verifySize(staged);
         int beforeSize = length(union);
         TypeResizeCommands.PropagationSnapshot propagation = length(staged) != beforeSize
                 || staged.getAlignment() != union.getAlignment()
@@ -103,6 +104,7 @@ final class UnionFields {
                 effectiveName, effectiveComment);
         }
         verifyField(staged.getComponent(ordinal), effectiveName, size);
+        TypeFields.verifySize(staged);
         if (before.equals(describe(staged.getComponent(ordinal))) && beforeSize == length(staged))
             return TypeFields.result(union, beforeSize, length(union), before, before, "unchanged");
 
