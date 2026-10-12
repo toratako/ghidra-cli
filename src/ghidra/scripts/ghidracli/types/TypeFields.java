@@ -17,7 +17,7 @@ final class TypeFields {
     private static String selector(JsonObject args) {
         String selected = null;
         for (String key : new String[] { "offset", "ordinal", "field" }) {
-            if (JsonProtocol.getArgString(args, key) == null) continue;
+            if (args == null || !args.has(key) || args.get(key).isJsonNull()) continue;
             if (selected != null)
                 throw new IllegalArgumentException("Exactly one of offset, ordinal, or field is required");
             selected = key;

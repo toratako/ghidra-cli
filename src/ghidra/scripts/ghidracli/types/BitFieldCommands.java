@@ -46,7 +46,8 @@ public final class BitFieldCommands {
     }
 
     private static int requiredInteger(JsonObject args, String name) {
-        if (getArgString(args, name) == null) throw new IllegalArgumentException(name + " required");
+        if (args == null || !args.has(name) || args.get(name).isJsonNull())
+            throw new IllegalArgumentException(name + " required");
         return getNonnegativeIntArg(args, name, 0);
     }
 }

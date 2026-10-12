@@ -23,7 +23,8 @@ final class BitFields {
     private BitFields() {}
 
     static Integer bitSize(JsonObject args) {
-        return getArgString(args, "bit_size") == null ? null : getNonnegativeIntArg(args, "bit_size", 0);
+        return args == null || !args.has("bit_size") || args.get("bit_size").isJsonNull()
+            ? null : getNonnegativeIntArg(args, "bit_size", 0);
     }
 
     static JsonObject set(Structure struct, DataTypeComponent field, String name, DataType base,

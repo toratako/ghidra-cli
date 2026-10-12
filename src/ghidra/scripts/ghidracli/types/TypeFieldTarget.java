@@ -22,7 +22,7 @@ public final class TypeFieldTarget {
         Composite type = (Composite) target;
         String selector = null;
         for (String key : new String[] { "field", "offset", "ordinal" }) {
-            if (JsonProtocol.getArgString(args, key) == null) continue;
+            if (args == null || !args.has(key) || args.get(key).isJsonNull()) continue;
             if (selector != null) {
                 throw new IllegalArgumentException("Exactly one of field, offset, or ordinal is required");
             }

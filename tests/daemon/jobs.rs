@@ -38,6 +38,30 @@ fn test_bridge_job_status_is_available_when_idle() {
 
 #[test]
 #[serial]
+fn malformed_command_cannot_start_shutdown() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let mut socket = TcpStream::connect(("127.0.0.1", harness.port())).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    writeln!(socket, "{{\"command\":[\"shutdown_wait\"]}}").unwrap();
+    let mut response = String::new();
+    BufReader::new(socket).read_line(&mut response).unwrap();
+    let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(response["status"], "error", "{response}");
+    assert_eq!(response["message"], "command must be a nonempty string");
+    let client = harness.client().unwrap();
+    assert_eq!(client.status().unwrap()["bridge_state"], "running");
+    client.stats().unwrap();
+}
+
+#[test]
+#[serial]
 fn test_control_plane_stays_responsive_while_program_job_runs() {
     require_ghidra!();
 

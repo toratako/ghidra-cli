@@ -190,6 +190,10 @@ final class JobScheduler {
     BridgeReply handleRequest(String line) {
         try {
             JsonObject req = JsonParser.parseString(line).getAsJsonObject();
+            if (req.has("command") && (!req.get("command").isJsonPrimitive()
+                    || !req.getAsJsonPrimitive("command").isString())) {
+                return BridgeReply.immediate(errorResponse("command must be a nonempty string"));
+            }
             String command = req.has("command") ? req.get("command").getAsString() : null;
             JsonObject args = req.has("args") && !req.get("args").isJsonNull()
                 ? req.getAsJsonObject("args") : new JsonObject();

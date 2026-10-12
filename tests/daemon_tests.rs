@@ -28,6 +28,8 @@ mod lifecycle;
 mod output;
 #[path = "daemon/program_session.rs"]
 mod program_session;
+#[path = "daemon/protocol.rs"]
+mod protocol;
 #[path = "daemon/rebase.rs"]
 mod rebase;
 #[path = "daemon/transaction.rs"]

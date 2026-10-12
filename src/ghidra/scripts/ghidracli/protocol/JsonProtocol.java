@@ -66,12 +66,11 @@ public final class JsonProtocol {
 
     public static String getArgString(JsonObject args, String key) {
         if (args == null || !args.has(key) || args.get(key).isJsonNull()) return null;
-        return args.get(key).getAsString();
-    }
-
-    public static int getArgInt(JsonObject args, String key, int defaultVal) {
-        if (args == null || !args.has(key) || args.get(key).isJsonNull()) return defaultVal;
-        return args.get(key).getAsInt();
+        JsonElement value = args.get(key);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(key + " must be a string");
+        }
+        return value.getAsString();
     }
 
     /** Checked nonnegative int; omitted/null values retain the command's default. */
@@ -120,14 +119,27 @@ public final class JsonProtocol {
 
     public static boolean getArgBool(JsonObject args, String key, boolean defaultVal) {
         if (args == null || !args.has(key) || args.get(key).isJsonNull()) return defaultVal;
-        return args.get(key).getAsBoolean();
+        JsonElement value = args.get(key);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+            throw new IllegalArgumentException(key + " must be a boolean");
+        }
+        return value.getAsBoolean();
     }
 
     public static String[] getArgStringArray(JsonObject args, String key) {
-        if (args == null || !args.has(key) || !args.get(key).isJsonArray()) return new String[0];
+        if (args == null || !args.has(key) || args.get(key).isJsonNull()) return new String[0];
+        if (!args.get(key).isJsonArray()) {
+            throw new IllegalArgumentException(key + " must be an array of strings");
+        }
         JsonArray arr = args.getAsJsonArray(key);
         String[] out = new String[arr.size()];
-        for (int i = 0; i < arr.size(); i++) out[i] = arr.get(i).getAsString();
+        for (int i = 0; i < arr.size(); i++) {
+            JsonElement value = arr.get(i);
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(key + " must be an array of strings");
+            }
+            out[i] = value.getAsString();
+        }
         return out;
     }
 

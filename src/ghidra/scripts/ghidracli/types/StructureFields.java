@@ -27,14 +27,9 @@ public final class StructureFields {
     }
 
     static int offset(JsonObject args) {
-        String value = JsonProtocol.getArgString(args, "offset");
-        if (value == null) throw new IllegalArgumentException("Offset is required");
-        boolean hex = value.startsWith("0x") || value.startsWith("0X");
-        String digits = hex ? value.substring(2) : value;
-        if (!digits.matches(hex ? "[0-9a-fA-F]+" : "[0-9]+"))
-            throw new IllegalArgumentException("Offset must be a nonnegative decimal or 0x hexadecimal integer");
-        try { return Integer.parseInt(digits, hex ? 16 : 10); }
-        catch (NumberFormatException e) { throw new IllegalArgumentException("Offset exceeds 2147483647"); }
+        if (args == null || !args.has("offset") || args.get("offset").isJsonNull())
+            throw new IllegalArgumentException("Offset is required");
+        return JsonProtocol.getNonnegativeIntArg(args, "offset", 0);
     }
 
     static Integer size(JsonObject args) {
