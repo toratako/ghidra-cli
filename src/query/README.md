@@ -150,4 +150,4 @@ and `default_limit` does not apply. Use `disassemble` for subsequent reads.
   selection, batch output, and cancellation followed by a fresh request.
 
 Deferred features and their reasons are in the
-[server-side query plan](../../docs/PLAN.md#4-server-side-query-and-streaming).
+[server-side query plan](../../docs/PLAN.md#2-server-side-query-and-streaming).
