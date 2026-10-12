@@ -28,6 +28,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Read nested strings without allocating their entire aggregate, retain only
   readable string values, and observe cancellation during string traversal.
 - Report the actual conflicting code/data unit when defining data.
+- Observe cancellation during decompiler warning collection.
 - Reject symbol and namespace edits when `--where` fails on any candidate,
   instead of silently excluding that candidate from the selection.
 - Protect unselected thunks from cascading function deletion, and retain complete

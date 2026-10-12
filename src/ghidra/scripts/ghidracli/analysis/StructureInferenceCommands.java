@@ -72,7 +72,7 @@ public final class StructureInferenceCommands {
             JsonObject result = FunctionVariables.context(function);
             result.add("variable", FunctionVariables.describe(selected.symbol()));
             result.add("structure", structure == null ? JsonNull.INSTANCE : describe(structure));
-            result.add("warnings", DecompileWarnings.collect(decompiled.results()));
+            result.add("warnings", DecompileWarnings.collect(decompiled.results(), session.monitor()));
             if (withAccesses) addAccesses(result, helper, maxAccesses);
             session.monitor().checkCancelled();
             if (session.program().getModificationNumber() != modification) {

@@ -102,7 +102,7 @@ final class DecompileScan {
                 continue;
             }
             session.monitor().checkCancelled();
-            JsonArray diagnostics = DecompileWarnings.collect(results);
+            JsonArray diagnostics = DecompileWarnings.collect(results, session.monitor());
             session.monitor().checkCancelled();
             if (!diagnostics.isEmpty()) {
                 JsonObject entry = context(function);

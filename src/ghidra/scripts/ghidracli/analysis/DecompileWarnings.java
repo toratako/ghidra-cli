@@ -9,9 +9,10 @@ import ghidra.app.decompiler.ClangNode;
 import ghidra.app.decompiler.ClangToken;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
+import ghidra.util.exception.CancelledException;
+import ghidra.util.task.TaskMonitor;
 import ghidracli.query.AddressCodec;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.ArrayDeque;
 import java.util.regex.Pattern;
 
 /** Diagnostics from a completed decompilation, without changing its C text. */
@@ -21,7 +22,8 @@ final class DecompileWarnings {
 
     private DecompileWarnings() {}
 
-    static JsonArray collect(DecompileResults results) {
+    static JsonArray collect(DecompileResults results, TaskMonitor monitor) throws CancelledException {
+        monitor.checkCancelled();
         JsonArray warnings = new JsonArray();
         String diagnostic = results.getErrorMessage();
         if (diagnostic != null && !diagnostic.isBlank()) {
@@ -29,13 +31,22 @@ final class DecompileWarnings {
         }
         if (results.getCCodeMarkup() == null) return warnings;
 
-        List<ClangNode> tokens = new ArrayList<>();
-        results.getCCodeMarkup().flatten(tokens);
+        ArrayDeque<ClangNode> pending = new ArrayDeque<>();
+        pending.push(results.getCCodeMarkup());
         StringBuilder comment = new StringBuilder();
         Address address = null;
         boolean lineComment = false;
         boolean inComment = false;
-        for (ClangNode node : tokens) {
+        while (!pending.isEmpty()) {
+            monitor.checkCancelled();
+            ClangNode node = pending.pop();
+            if (!(node instanceof ClangToken)) {
+                for (int i = node.numChildren() - 1; i >= 0; i--) {
+                    monitor.checkCancelled();
+                    pending.push(node.Child(i));
+                }
+                continue;
+            }
             if (node instanceof ClangCommentToken token) {
                 String text = token.getText();
                 if (!inComment && (text.startsWith("/*") || text.startsWith("//"))) {
@@ -67,6 +78,7 @@ final class DecompileWarnings {
                 }
             }
         }
+        monitor.checkCancelled();
         addComment(warnings, comment, address);
         return warnings;
     }

@@ -76,7 +76,7 @@ public final class DecompileCommands {
             if (getArgBool(args, "with_addresses", false)) {
                 result.add("line_addresses", DecompileAddresses.collect(results, session));
             }
-            result.add("warnings", DecompileWarnings.collect(results));
+            result.add("warnings", DecompileWarnings.collect(results, session.monitor()));
             HighFunction highFunc = results.getHighFunction();
             if (highFunc == null) {
                 result.add("basic_block_count", JsonNull.INSTANCE);
@@ -98,6 +98,7 @@ public final class DecompileCommands {
                     if (withParams) {
                         JsonArray params = new JsonArray();
                         for (int i = 0; i < lsm.getNumParams(); i++) {
+                            session.monitor().checkCancelled();
                             ghidra.program.model.pcode.HighSymbol sym = lsm.getParamSymbol(i);
                             JsonObject paramObj = new JsonObject();
                             paramObj.addProperty("name", sym.getName());

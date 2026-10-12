@@ -90,7 +90,7 @@ public final class PcodeCommands {
                 }
                 HighPcodeModel model = HighPcodeModel.build(highFunction, session.monitor());
                 return new HighPcodeOutput(session, model, limits)
-                    .render(func, DecompileWarnings.collect(results));
+                    .render(func, DecompileWarnings.collect(results, session.monitor()));
             } else {
                 InstructionIterator instructions =
                     session.program().getListing().getInstructions(func.getBody(), true);
