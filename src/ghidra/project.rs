@@ -9,11 +9,10 @@ pub(crate) struct ProjectPaths {
 
 impl ProjectPaths {
     pub fn new(project: &Path) -> Option<Self> {
-        let name = project.file_name()?.to_string_lossy();
-        let parent = project.parent()?;
+        let project = project.parent()?.join(project.file_name()?);
         Some(Self {
-            descriptor: parent.join(format!("{name}.gpr")),
-            data: parent.join(format!("{name}.rep")),
+            descriptor: project.with_added_extension("gpr"),
+            data: project.with_added_extension("rep"),
         })
     }
 
@@ -31,22 +30,61 @@ impl ProjectPaths {
 }
 
 pub(crate) fn list_projects(directory: &Path) -> std::io::Result<Vec<String>> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
     let mut projects = std::collections::BTreeSet::new();
-    if directory.exists() {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else { continue };
-            if entry.path().is_dir() {
-                if let Some(name) = name.strip_suffix(".rep") {
-                    projects.insert(name.to_owned());
-                }
-            } else if entry.path().is_file() {
-                if let Some(name) = name.strip_suffix(".gpr") {
-                    projects.insert(name.to_owned());
-                }
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if entry.path().is_dir() {
+            if let Some(name) = name.strip_suffix(".rep") {
+                projects.insert(name.to_owned());
+            }
+        } else if entry.path().is_file() {
+            if let Some(name) = name.strip_suffix(".gpr") {
+                projects.insert(name.to_owned());
             }
         }
     }
     Ok(projects.into_iter().collect())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    // APFS rejects invalid UTF-8 filenames, so creating this fixture requires Linux.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn artifact_names_preserve_os_bytes() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp
+            .path()
+            .join(std::ffi::OsString::from_vec(b"project\xff".to_vec()));
+        let paths = ProjectPaths::new(&project).unwrap();
+        assert_eq!(paths.descriptor, project.with_added_extension("gpr"));
+        assert_eq!(paths.data, project.with_added_extension("rep"));
+        std::fs::write(temp.path().join("project\u{fffd}.gpr"), []).unwrap();
+        assert!(!paths.exists());
+        std::fs::write(project.with_added_extension("gpr"), []).unwrap();
+        assert!(paths.exists());
+    }
+
+    #[test]
+    fn project_listing_preserves_directory_read_errors() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("projects");
+        assert!(list_projects(&directory).unwrap().is_empty());
+        std::os::unix::fs::symlink("projects", &directory).unwrap();
+        let expected = std::fs::read_dir(&directory).unwrap_err();
+        let error = list_projects(&directory).unwrap_err();
+        assert_eq!(error.kind(), expected.kind());
+        assert_eq!(error.raw_os_error(), expected.raw_os_error());
+    }
 }
