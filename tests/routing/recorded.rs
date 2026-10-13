@@ -48,6 +48,22 @@ impl Session {
         if args["text"] == "test-lost-response" {
             return Reply::Disconnect;
         }
+        if args["text"] == "test-unidentified-error" {
+            return Reply::Send(json!({
+                "status": "error", "selected_program": "C", "message": "Edit failed"
+            }));
+        }
+        if args["text"] == "test-malformed-detail" {
+            return Reply::Send(json!({
+                "status": "error", "job_id": request["job_id"],
+                "selected_program": self.program, "message": "Edit failed", "detail": []
+            }));
+        }
+        if args["text"] == "test-unobserved-success" {
+            return Reply::Send(json!({
+                "status": "success", "job_id": request["job_id"], "data": {"changed": true}
+            }));
+        }
         if args["text"] == "test-rollback" {
             return Reply::Send(
                 json!({"status": "error", "job_id": request["job_id"], "selected_program": self.has_current_program.then_some(&self.program), "message": "Edit rejected", "detail": {"rolled_back": true, "program": self.program}}),

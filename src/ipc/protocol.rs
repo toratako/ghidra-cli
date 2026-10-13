@@ -31,11 +31,11 @@ pub struct BridgeResponse<T = serde_json::Value> {
     pub data: Option<T>,
     #[serde(default)]
     pub message: Option<String>,
-    /// Structured detail attached to an error response (e.g. the containing
+    /// Structured object attached to an error response (e.g. the containing
     /// function's name/entry/size on a "function already exists" error, or the
     /// conflicting data unit's type/range on a "listing define-data" conflict). Absent
     /// on success responses and on errors that carry only a message.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_detail")]
     pub detail: Option<serde_json::Value>,
 }
 
@@ -44,6 +44,14 @@ where
     D: serde::Deserializer<'de>,
 {
     Option::<String>::deserialize(deserializer).map(Some)
+}
+
+fn deserialize_detail<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<serde_json::Map<String, serde_json::Value>>::deserialize(deserializer)
+        .map(|detail| detail.map(serde_json::Value::Object))
 }
 
 /// An error surfaced by the bridge that carries structured detail alongside its

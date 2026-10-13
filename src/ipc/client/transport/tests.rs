@@ -3,6 +3,33 @@ use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 
+fn exchange_response(
+    command: &str,
+    selection: &crate::ipc::client::ProgramSelection,
+    response: impl FnOnce(&serde_json::Value) -> serde_json::Value + Send + 'static,
+) -> (anyhow::Result<serde_json::Value>, serde_json::Value) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port())
+        .with_program("/previous")
+        .with_selection(selection.clone());
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(&stream).read_line(&mut line).unwrap();
+        let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+        writeln!(stream, "{}", response(&request)).unwrap();
+        (listener, request)
+    });
+    let result = client.send_command_with_timeout(command, None, Some(Duration::from_secs(2)));
+    let (listener, request) = server.join().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    (result, request)
+}
+
 #[test]
 fn targeted_requests_track_executed_selection_but_controls_do_not_change_it() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -494,51 +521,151 @@ fn shutdown_reply_is_only_accepted_for_shutdown_wait() {
 }
 
 #[test]
-fn program_response_identity_is_checked_without_exposing_it_in_normal_data() {
-    for identity in ["matching", "different", "missing"] {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let client = BridgeClient::new(listener.local_addr().unwrap().port());
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut line = String::new();
-            BufReader::new(&stream).read_line(&mut line).unwrap();
-            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
-            let id = request["job_id"].as_str().unwrap().to_owned();
-            uuid::Uuid::parse_str(&id).unwrap();
-            let mut response = serde_json::json!({"status": "success", "data": {"changed": true}});
-            match identity {
-                "matching" => response["job_id"] = serde_json::json!(id),
-                "different" => {
-                    response["job_id"] = serde_json::json!(uuid::Uuid::new_v4().to_string())
+fn program_response_identity_is_checked_before_observing_selection() {
+    for status in ["success", "error"] {
+        for identity in ["matching", "different", "missing"] {
+            let selection = crate::ipc::client::ProgramSelection::default();
+            selection.record(Some("/previous".to_owned()));
+            let (result, request) = exchange_response("open_program", &selection, move |request| {
+                let mut response = serde_json::json!({
+                    "status": status,
+                    "selected_program": "/opened",
+                    "data": {"changed": true},
+                });
+                if status == "error" {
+                    response["message"] = serde_json::json!("Operation failed");
+                    response["detail"] = serde_json::json!({"rolled_back": true});
                 }
-                _ => {}
+                match identity {
+                    "matching" => response["job_id"] = request["job_id"].clone(),
+                    "different" => {
+                        response["job_id"] = serde_json::json!(uuid::Uuid::new_v4().to_string())
+                    }
+                    _ => {}
+                }
+                response
+            });
+            let sent_id = request["job_id"].as_str().unwrap();
+            uuid::Uuid::parse_str(sent_id).unwrap();
+            if identity == "matching" {
+                if status == "success" {
+                    assert_eq!(result.unwrap(), serde_json::json!({"changed": true}));
+                } else {
+                    let error = result.unwrap_err();
+                    let command_error = error
+                        .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+                        .unwrap();
+                    assert_eq!(command_error.message, "Operation failed");
+                    assert_eq!(command_error.detail["rolled_back"], true);
+                    assert!(error
+                        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+                        .is_none());
+                    assert!(error
+                        .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                        .is_none());
+                }
+                assert_eq!(selection.observed(), Some(Some("/opened".to_owned())));
+            } else {
+                let error = result.unwrap_err();
+                assert!(error
+                    .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+                    .is_some());
+                assert_eq!(
+                    error
+                        .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                        .unwrap()
+                        .id,
+                    sent_id
+                );
+                assert_eq!(selection.observed(), Some(Some("/previous".to_owned())));
             }
-            writeln!(stream, "{response}").unwrap();
-            (listener, id)
+        }
+    }
+}
+
+#[test]
+fn successful_program_reply_requires_a_selection_receipt() {
+    let selection = crate::ipc::client::ProgramSelection::default();
+    selection.record(Some("/previous".to_owned()));
+    let (result, request) = exchange_response("open_program", &selection, |request| {
+        serde_json::json!({
+            "status": "success", "job_id": request["job_id"], "data": {"opened": true}
+        })
+    });
+    let error = result.unwrap_err();
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+        .is_some());
+    assert_eq!(
+        error
+            .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+            .unwrap()
+            .id,
+        request["job_id"]
+    );
+    assert!(error.root_cause().to_string().contains("selected_program"));
+    assert_eq!(selection.observed(), Some(Some("/previous".to_owned())));
+}
+
+#[test]
+fn unexecuted_program_errors_preserve_selection_without_unknown_outcome() {
+    for accepted in [false, true] {
+        let selection = crate::ipc::client::ProgramSelection::default();
+        selection.record(Some("/previous".to_owned()));
+        let (result, _) = exchange_response("open_program", &selection, move |request| {
+            let mut response = serde_json::json!({
+                "status": "error",
+                "message": if accepted { "Cancelled before execution" } else { "Queue full" },
+            });
+            if accepted {
+                response["job_id"] = request["job_id"].clone();
+                response["detail"] = serde_json::Value::Null;
+            }
+            response
         });
-        let result =
-            client.send_command_with_timeout("comment_set", None, Some(Duration::from_secs(5)));
-        let (listener, sent_id) = server.join().unwrap();
-        if identity == "matching" {
-            assert_eq!(result.unwrap(), serde_json::json!({"changed": true}));
-        } else {
+        let error = result.unwrap_err();
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+            .is_none());
+        assert!(error
+            .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+            .is_none());
+        assert_eq!(selection.observed(), Some(Some("/previous".to_owned())));
+    }
+}
+
+#[test]
+fn invalid_error_detail_is_unknown_before_dispatch_or_selection_update() {
+    for command in ["comment_set", "job_cancel"] {
+        for detail in [serde_json::json!(true), serde_json::json!([])] {
+            let selection = crate::ipc::client::ProgramSelection::default();
+            selection.record(Some("/previous".to_owned()));
+            let (result, request) = exchange_response(command, &selection, move |request| {
+                let mut response = serde_json::json!({
+                    "status": "error", "message": "Operation failed", "detail": detail,
+                });
+                if let Some(id) = request.get("job_id") {
+                    response["job_id"] = id.clone();
+                    response["selected_program"] = serde_json::json!("/opened");
+                }
+                response
+            });
             let error = result.unwrap_err();
             assert!(error
                 .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
                 .is_some());
+            assert!(error.downcast_ref::<serde_json::Error>().is_some());
+            assert!(error
+                .downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+                .is_none());
             assert_eq!(
                 error
                     .downcast_ref::<crate::ipc::protocol::BridgeJob>()
-                    .unwrap()
-                    .id,
-                sent_id
+                    .map(|job| job.id.as_str()),
+                request.get("job_id").and_then(serde_json::Value::as_str)
             );
+            assert_eq!(selection.observed(), Some(Some("/previous".to_owned())));
         }
-        listener.set_nonblocking(true).unwrap();
-        assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
     }
 }
 

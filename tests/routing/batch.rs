@@ -287,6 +287,47 @@ fn lost_batch_response_stops_nested_and_outer_execution_and_names_the_project() 
 }
 
 #[test]
+fn invalid_job_responses_stop_continued_batches_and_preserve_recovery_identity() {
+    for marker in [
+        "test-unidentified-error",
+        "test-malformed-detail",
+        "test-unobserved-success",
+    ] {
+        let bridge = RecordedBridge::new();
+        std::fs::write(
+            bridge.root.path().join("batch.txt"),
+            format!(
+                "comment set 0x1000 --text {marker} --program B\ncomment set 0x1001 --text must-not-run\n"
+            ),
+        )
+        .unwrap();
+        let (report, diagnostic) =
+            failed_report(&bridge, &["batch", "batch.txt", "--on-error", "continue"]);
+        assert_eq!(diagnostic["exit_code"], 1, "{marker}: {diagnostic}");
+        assert_eq!(report["commands_executed"], 1);
+        assert_eq!(report["not_executed"], 1);
+        assert_eq!(report["outcome_unknown"], true);
+        assert_eq!(report["recovery"]["action"], "retrieve_result");
+
+        let requests = bridge.requests.lock().unwrap();
+        let mutations: Vec<_> = requests
+            .iter()
+            .filter(|request| request["command"] == "comment_set")
+            .collect();
+        assert_eq!(mutations.len(), 1, "{marker}: {requests:?}");
+        assert_eq!(mutations[0]["args"]["text"], marker);
+        assert_eq!(mutations[0]["program"], "B");
+        assert_eq!(
+            report["results"][0]["detail"]["job_id"],
+            mutations[0]["job_id"]
+        );
+        let argv: Vec<String> = serde_json::from_value(report["recovery"]["argv"].clone()).unwrap();
+        assert_eq!(&argv[1..3], ["job", "result"]);
+        assert_eq!(argv[3], mutations[0]["job_id"].as_str().unwrap());
+    }
+}
+
+#[test]
 fn batch_save_recovery_uses_the_failed_saves_project() {
     let outer = RecordedBridge::new();
     let other = RecordedBridge::with_info(json!({"test_save_failure": true}));

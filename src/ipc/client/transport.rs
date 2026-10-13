@@ -175,10 +175,19 @@ impl BridgeClient {
                 response.status != "shutdown" || command == "shutdown_wait",
                 "Unexpected shutdown response to '{command}'"
             );
-            if response.job_id.is_some() || (job_id.is_some() && response.status == "success") {
+            if response.job_id.is_some()
+                || (job_id.is_some()
+                    && (response.status == "success" || response.selected_program.is_some()))
+            {
                 anyhow::ensure!(
                     response.job_id == job_id,
                     "Bridge response job ID does not match the sent request"
+                );
+            }
+            if job_id.is_some() && response.status == "success" {
+                anyhow::ensure!(
+                    response.selected_program.is_some(),
+                    "Bridge program success response does not report selected_program"
                 );
             }
             Ok(response)
@@ -216,12 +225,12 @@ impl BridgeClient {
                     .message
                     .unwrap_or_else(|| "Unknown error".to_string());
                 match response.detail {
-                    Some(detail) if !detail.is_null() => Err(BridgeCommandError {
+                    Some(detail) => Err(BridgeCommandError {
                         message: msg,
                         detail,
                     }
                     .into()),
-                    _ => anyhow::bail!("{}", msg),
+                    None => anyhow::bail!("{}", msg),
                 }
             }
             "shutdown" => Ok(json!({"status": "shutdown"})),

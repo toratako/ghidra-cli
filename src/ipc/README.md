@@ -99,10 +99,12 @@ Admission failures, queued cancellations, and controls omit it. Rust retains the
 distinction between absent and null to update batch selection from the actual
 response, without a later control snapshot. The field is internal routing metadata
 and is omitted from ordinary CLI output.
+Program success without this field, or a selection observation without the
+matching job ID, is an unknown outcome.
 
 Response `data` and `message` are optional. The CLI unwraps the response and
 chooses its output format; the bridge always sends compact JSON. `success`
-unwraps to `data` or `{}`; `error` retains message and structured detail;
+unwraps to `data` or `{}`; `error` retains message and optional object-valued `detail`;
 `shutdown` becomes `{"status":"shutdown"}` and is accepted only for `shutdown_wait`.
 Other statuses are protocol errors.
 
