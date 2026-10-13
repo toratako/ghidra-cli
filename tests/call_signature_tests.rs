@@ -125,19 +125,7 @@ fn floating_declarations_preserve_exact_bound_types_and_reject_native_narrowing(
     fixture(|client, program| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.Float10DataType;
-import ghidra.program.model.data.TypedefDataType;
-public class CreateExtendedFloatingType extends GhidraScript {
-    public void run() throws Exception {
-        var manager = currentProgram.getDataTypeManager();
-        manager.addDataType(new TypedefDataType(new CategoryPath("/Recovered"),
-            "ExtendedFloat", Float10DataType.dataType, manager), null);
-    }
-}
-"#,
+                include_str!("fixtures/call_signatures/CreateExtendedFloatingType.java"),
                 &[],
                 &[],
                 false,
@@ -238,43 +226,7 @@ public class CreateExtendedFloatingType extends GhidraScript {
         assert_eq!(recovered["after"]["return"]["type"], "double");
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.FunctionDefinition;
-import ghidra.program.model.data.Pointer;
-import ghidra.program.model.pcode.HighFunction;
-import ghidra.program.model.pcode.HighFunctionDBUtil;
-public class CheckExtendedFloatingCallback extends GhidraScript {
-    public void run() throws Exception {
-        var callee = getFunctionAt(toAddr(0x1100));
-        var returned = callee.getReturn().getFormalDataType();
-        if (returned.getLength() != 10 || !returned.getPathName().equals("/Recovered/ExtendedFloat")) {
-            throw new IllegalStateException("Bound function return type changed");
-        }
-        for (var parameter : callee.getParameters()) {
-            if (!parameter.getName().equals("value")) continue;
-            var type = parameter.getFormalDataType();
-            if (type.getLength() != 10 || !type.getPathName().equals("/Recovered/ExtendedFloat")) {
-                throw new IllegalStateException("Bound function parameter type changed");
-            }
-        }
-        var caller = getFunctionAt(toAddr(0x1000));
-        var space = HighFunction.findOverrideSpace(caller);
-        for (var symbol : currentProgram.getSymbolTable().getSymbols(toAddr(0x1005))) {
-            if (!space.equals(symbol.getParentNamespace()) || !symbol.getName().startsWith("prt_")) continue;
-            var signature = (FunctionDefinition) HighFunctionDBUtil.readOverride(symbol).getDataType();
-            var callback = (FunctionDefinition) ((Pointer) signature.getArguments()[0].getDataType()).getDataType();
-            if (callback.getReturnType().getLength() != 10
-                    || !callback.getReturnType().getPathName().equals("/Recovered/ExtendedFloat")
-                    || !callback.getArguments()[0].getDataType().getName().equals("float")) {
-                throw new IllegalStateException("Bound callback floating types changed");
-            }
-            return;
-        }
-        throw new IllegalStateException("Missing call signature override");
-    }
-}
-"#,
+                include_str!("fixtures/call_signatures/CheckExtendedFloatingCallback.java"),
                 &[],
                 &[],
                 false,
@@ -637,18 +589,7 @@ fn stale_overrides_survive_body_reownership_and_can_be_cleared_after_code_remova
         let previous = set(client, "caller", "0x1005", "int original(int value)")["after"].clone();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class ReownCallSite extends GhidraScript {
-    public void run() throws Exception {
-        getFunctionAt(toAddr(0x1000)).setBody(new AddressSet(toAddr(0x1000), toAddr(0x1004)));
-        currentProgram.getFunctionManager().createFunction("new_owner", toAddr(0x1005),
-            new AddressSet(toAddr(0x1005), toAddr(0x101a)), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("fixtures/call_signatures/ReownCallSite.java"),
                 &[],
                 &[],
                 false,
@@ -664,14 +605,7 @@ public class ReownCallSite extends GhidraScript {
         assert_eq!(get(client, "caller", "0x1005")["override"], previous);
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class RemoveOverriddenCall extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getListing().clearCodeUnits(toAddr(0x1005), toAddr(0x1009), false);
-    }
-}
-"#,
+                include_str!("fixtures/call_signatures/RemoveOverriddenCall.java"),
                 &[],
                 &[],
                 false,

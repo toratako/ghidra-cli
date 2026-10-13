@@ -98,26 +98,7 @@ fn type_import_parse_failure_restores_types_and_applied_data_after_reopen() {
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.EndianSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class ApplyImportRollbackFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/Existing");
-        var component = structure.getComponent(0);
-        component.setComment("saved field comment");
-        FormatSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        EndianSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), EndianSettingsDefinition.BIG);
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createInitializedBlock("data", address, 32, (byte) 0, monitor, false);
-        var data = currentProgram.getListing().createData(address, structure);
-        FormatSettingsDefinition.DEF.setChoice(data.getComponent(0), FormatSettingsDefinition.BINARY);
-        EndianSettingsDefinition.DEF.setChoice(data.getComponent(0), EndianSettingsDefinition.LITTLE);
-    }
-}
-"#,
+            include_str!("../fixtures/types/ApplyImportRollbackFixture.java"),
             &[],
             &[],
             false,
@@ -152,33 +133,7 @@ public class ApplyImportRollbackFixture extends GhidraScript {
             assert_eq!(after.data::<serde_json::Value>(), before);
             client
                 .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.EndianSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class CheckImportRollbackFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/Existing");
-        if (structure.getLength() != 8 || structure.getNumComponents() != 2)
-            throw new IllegalStateException("Existing structure layout changed");
-        var component = structure.getComponent(0);
-        if (!"value".equals(component.getFieldName()) || !"tail".equals(structure.getComponent(1).getFieldName())
-                || !"saved field comment".equals(component.getComment()))
-            throw new IllegalStateException("Existing structure metadata changed");
-        if (FormatSettingsDefinition.DEF.getChoice(component.getDefaultSettings()) != FormatSettingsDefinition.DECIMAL
-                || EndianSettingsDefinition.DEF.getChoice(component.getDefaultSettings()) != EndianSettingsDefinition.BIG)
-            throw new IllegalStateException("Existing field settings changed");
-        var data = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
-        if (data == null || data.getLength() != 8 || !data.getDataType().equals(structure)
-                || !"value".equals(data.getComponent(0).getFieldName()))
-            throw new IllegalStateException("Applied structure data changed");
-        if (FormatSettingsDefinition.DEF.getChoice(data.getComponent(0)) != FormatSettingsDefinition.BINARY
-                || EndianSettingsDefinition.DEF.getChoice(data.getComponent(0)) != EndianSettingsDefinition.LITTLE)
-            throw new IllegalStateException("Applied field settings changed");
-    }
-}
-"#,
+                    include_str!("../fixtures/types/CheckImportRollbackFixture.java"),
                     &[],
                     &[],
                     false,
@@ -261,24 +216,14 @@ fn type_import_rejects_truncated_existing_applications_without_saving_changes() 
     )
     .assert_success();
     let client = harness().client().unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateConstrainedImportApplication extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var imported = dtm.getDataType("/Imported");
-        var holder = new StructureDataType(CategoryPath.ROOT, "ConstrainedHolder", 8, dtm);
-        holder.replaceAtOffset(0, dtm.getDataType("/Embedded"), 4, "child", null);
-        holder.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", "keep");
-        dtm.addDataType(holder, null);
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createInitializedBlock("data", address, 32, (byte) 0, monitor, false);
-        currentProgram.getListing().createData(address, imported);
-        currentProgram.getListing().createData(address.add(4), DWordDataType.dataType);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateConstrainedImportApplication.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let paths = ["/Imported", "/Embedded", "/ConstrainedHolder"];
     let before: Vec<serde_json::Value> = paths
         .iter()
@@ -303,19 +248,7 @@ public class CreateConstrainedImportApplication extends GhidraScript {
         type_command(&program, &["get", "Fresh"]).assert_failure();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class CheckConstrainedImportApplication extends GhidraScript {
-    public void run() throws Exception {
-        var listing = currentProgram.getListing();
-        var data = listing.getDefinedDataAt(toAddr(0x1000));
-        var neighbor = listing.getDefinedDataAt(toAddr(0x1004));
-        if (data == null || data.getLength() != 4 || data.getDataType().getLength() != 4
-                || neighbor == null || neighbor.getLength() != 4)
-            throw new IllegalStateException("Import changed constrained applied data");
-    }
-}
-"#,
+                include_str!("../fixtures/types/CheckConstrainedImportApplication.java"),
                 &[],
                 &[],
                 false,
@@ -343,21 +276,14 @@ fn type_import_propagates_multiple_replacements_through_existing_parents() {
     )
     .assert_success();
     let client = harness().client().unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class ApplyMultiReplacement extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createInitializedBlock("data", address, 64, (byte) 0, monitor, false);
-        currentProgram.getListing().createData(address,
-            currentProgram.getDataTypeManager().getDataType("/Wrapper"));
-        currentProgram.getListing().createData(address.add(32),
-            currentProgram.getDataTypeManager().getDataType("/MorphHolder"));
-        currentProgram.getListing().createData(address.add(48),
-            currentProgram.getDataTypeManager().getDataType("/Morph"));
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/ApplyMultiReplacement.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     type_command(
         &program,
         &[
@@ -370,30 +296,14 @@ public class ApplyMultiReplacement extends GhidraScript {
     .assert_success();
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Structure;
-import ghidra.program.model.data.Union;
-public class CheckMultiReplacement extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var holder = (Structure) dtm.getDataType("/Holder");
-        var wrapper = (Structure) dtm.getDataType("/Wrapper");
-        var applied = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
-        if (holder.getLength() != 16 || !"left".equals(holder.getComponent(0).getFieldName())
-                || !"right".equals(holder.getComponent(1).getFieldName())
-                || wrapper.getComponent(1).getOffset() != 16 || applied == null
-                || applied.getLength() != wrapper.getLength()
-                || applied.getComponent(0).getLength() != 16)
-            throw new IllegalStateException("Import did not propagate complete replacement layouts");
-        var morph = dtm.getDataType("/Morph");
-        if (!(morph instanceof Union)
-                || ((Structure) dtm.getDataType("/MorphHolder")).getComponent(0).getDataType() != morph
-                || currentProgram.getListing().getDefinedDataAt(toAddr(0x1030)).getDataType() != morph)
-            throw new IllegalStateException("Import did not preserve uses of a replacement type identity");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CheckMultiReplacement.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 
@@ -604,22 +514,7 @@ fn type_import_rejects_native_clipped_bitfields_without_changing_saved_definitio
         }
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateExistingOverwideDependency extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var existing = new StructureDataType(new CategoryPath("/Source"), "ExistingOverwide", 0, dtm);
-        existing.setPackingEnabled(true);
-        existing.addBitField(UnsignedIntegerDataType.dataType, 64, "bits", null);
-        var stored = dtm.addDataType(existing, null);
-        var parent = new StructureDataType("ExistingContainer", 0, dtm);
-        parent.add(stored, "value", null);
-        dtm.addDataType(parent, null);
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateExistingOverwideDependency.java"),
                 &[],
                 &[],
                 false,
@@ -824,42 +719,7 @@ fn type_import_tagged_references_preserve_existing_definitions_and_applied_data(
     )
     .assert_success();
     let client = harness().client().unwrap();
-    let fixture = r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CheckTaggedImportReferences extends GhidraScript {
-    public void run() throws Exception {
-        var manager = currentProgram.getDataTypeManager();
-        var record = (Structure) manager.getDataType("/Existing/Record");
-        var payload = manager.getDataType("/Existing/Payload");
-        var status = manager.getDataType("/Existing/Status");
-        var address = toAddr(0x1000);
-        if (getScriptArgs()[0].equals("setup")) {
-            currentProgram.getMemory().createInitializedBlock("data", address, 64, (byte) 0, monitor, false);
-            var applied = currentProgram.getListing().createData(address, record);
-            FormatSettingsDefinition.DEF.setChoice(applied.getComponent(0), FormatSettingsDefinition.DECIMAL);
-            return;
-        }
-        var pointer = (Pointer) ((TypeDef) manager.getDataType("/Draft/RecordPtr")).getDataType();
-        var holder = (Structure) manager.getDataType("/Draft/Holder");
-        if (pointer.getDataType() != record
-                || ((TypeDef) manager.getDataType("/Draft/PayloadAlias")).getDataType() != payload
-                || ((TypeDef) manager.getDataType("/Draft/StatusAlias")).getDataType() != status
-                || holder.getComponent(0).getDataType() != record
-                || holder.getComponent(1).getDataType() != payload
-                || holder.getComponent(2).getDataType() != status)
-            throw new IllegalStateException("Tagged references did not retain registered identities");
-        for (String name : new String[] { "Record", "Payload", "Status" })
-            if (manager.getDataType("/Draft/" + name) != null || manager.getDataType("/" + name) != null)
-                throw new IllegalStateException("Tagged reference created a replacement definition: " + name);
-        var applied = currentProgram.getListing().getDefinedDataAt(address);
-        if (applied == null || applied.getDataType() != record || applied.getLength() != 8
-                || FormatSettingsDefinition.DEF.getChoice(applied.getComponent(0)) != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Tagged reference changed existing applied data");
-    }
-}
-"#;
+    let fixture = include_str!("../fixtures/types/CheckTaggedImportReferences.java");
     client
         .script_run_source(fixture, &["setup".into()], &[], false)
         .unwrap();

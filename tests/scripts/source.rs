@@ -28,7 +28,11 @@ fn inline_script_bundles_are_released_on_success_failure_and_cancellation() {
         .tempdir()
         .unwrap();
     let inspector = directory.path().join("InlineLifecycleInspector.java");
-    fs::write(&inspector, include_str!("../fixtures/scripts/InlineLifecycleInspector.java")).unwrap();
+    fs::write(
+        &inspector,
+        include_str!("../fixtures/scripts/InlineLifecycleInspector.java"),
+    )
+    .unwrap();
     let before = inline_lifecycle(&client, &inspector);
     let source = include_str!("../fixtures/scripts/InlineLifetimeProbe.java");
     for round in 0..2 {
@@ -80,7 +84,11 @@ fn inline_cleanup_failure_preserves_script_output_and_original_error() {
     let client = harness().client().unwrap();
     let directory = tempfile::tempdir().unwrap();
     let inspector = directory.path().join("InlineLifecycleInspector.java");
-    fs::write(&inspector, include_str!("../fixtures/scripts/InlineLifecycleInspector.java")).unwrap();
+    fs::write(
+        &inspector,
+        include_str!("../fixtures/scripts/InlineLifecycleInspector.java"),
+    )
+    .unwrap();
     let before = inline_lifecycle(&client, &inspector);
     for mode in ["leftover", "throw-leftover"] {
         let error = client
@@ -134,7 +142,11 @@ fn inline_cleanup_preserves_replacement_bundle_ownership() {
     let client = harness().client().unwrap();
     let directory = tempfile::tempdir().unwrap();
     let inspector = directory.path().join("InlineLifecycleInspector.java");
-    fs::write(&inspector, include_str!("../fixtures/scripts/InlineLifecycleInspector.java")).unwrap();
+    fs::write(
+        &inspector,
+        include_str!("../fixtures/scripts/InlineLifecycleInspector.java"),
+    )
+    .unwrap();
     let recovery = directory.path().join("InlineLifetimeReplacement.java");
     let source = include_str!("../fixtures/scripts/InlineLifetimeReplacement.java");
     fs::write(&recovery, source).unwrap();
@@ -183,9 +195,17 @@ fn inline_registration_callback_failure_reports_unconfirmed_ownership() {
     let client = harness().client().unwrap();
     let directory = tempfile::tempdir().unwrap();
     let inspector = directory.path().join("InlineLifecycleInspector.java");
-    fs::write(&inspector, include_str!("../fixtures/scripts/InlineLifecycleInspector.java")).unwrap();
+    fs::write(
+        &inspector,
+        include_str!("../fixtures/scripts/InlineLifecycleInspector.java"),
+    )
+    .unwrap();
     let recovery = directory.path().join("InlineLifetimeReplacement.java");
-    fs::write(&recovery, include_str!("../fixtures/scripts/InlineLifetimeReplacement.java")).unwrap();
+    fs::write(
+        &recovery,
+        include_str!("../fixtures/scripts/InlineLifetimeReplacement.java"),
+    )
+    .unwrap();
     let metadata = directory.path().join("registration.json");
     let before = inline_lifecycle(&client, &inspector);
     client

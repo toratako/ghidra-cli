@@ -141,20 +141,14 @@ fn test_symbol_targets_revalidate_every_member_and_namespace() {
     let client = harness.client().unwrap();
     let addresses = get_function_addresses(harness, test_project(), TEST_PROGRAM, 2);
     let name = format!("guarded_symbol_{}", std::process::id());
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.*;
-public class ScopedSymbolFixture extends GhidraScript {
-    public void run() throws Exception {
-        String[] a = getScriptArgs();
-        SymbolTable st = currentProgram.getSymbolTable();
-        for (int i = 0; i < 2; i++) {
-            Namespace ns = st.createNameSpace(currentProgram.getGlobalNamespace(), a[1] + i, SourceType.USER_DEFINED);
-            st.createLabel(toAddr(a[0]), a[1], ns, SourceType.USER_DEFINED);
-        }
-    }
-}
-"#, &[addresses[0].clone(), name.clone()], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/symbols/ScopedSymbolFixture.java"),
+            &[addresses[0].clone(), name.clone()],
+            &[],
+            false,
+        )
+        .unwrap();
     let snapshot = client.symbol_get(&name).unwrap()["symbols"]
         .as_array()
         .unwrap()
@@ -229,7 +223,12 @@ fn symbol_rename_rolls_back_native_generated_name_substitutions() {
     let program = super::deletion::create_symbol_fixture_program();
     crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-            .script_run_source(include_str!("../fixtures/symbols/RenameIdentityFixture.java"), &[], &[], false)
+            .script_run_source(
+                include_str!("../fixtures/symbols/RenameIdentityFixture.java"),
+                &[],
+                &[],
+                false,
+            )
             .unwrap();
         let before = client.symbol_get_by_name("rename_selected").unwrap();
         let targets = before["symbols"].as_array().unwrap();
@@ -324,7 +323,12 @@ fn symbol_lookup_round_trips_generated_variable_names() {
     let program = super::deletion::create_symbol_fixture_program();
     crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-            .script_run_source(include_str!("../fixtures/symbols/RenameIdentityFixture.java"), &[], &[], false)
+            .script_run_source(
+                include_str!("../fixtures/symbols/RenameIdentityFixture.java"),
+                &[],
+                &[],
+                false,
+            )
             .unwrap();
         let listed = client.symbol_list(None, None, None).unwrap();
         let generated: Vec<_> = listed["symbols"]
@@ -372,27 +376,7 @@ fn generated_external_names_resolve_the_exact_reference_target() {
     crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.RefType;
-import ghidra.program.model.symbol.SourceType;
-public class GeneratedExternalNames extends GhidraScript {
-    public void run() throws Exception {
-        var external = currentProgram.getExternalManager();
-        var function = external.addExtFunction("generated_library", null,
-            toAddr(0x2000), SourceType.DEFAULT);
-        var label = external.addExtLocation("generated_library", null,
-            toAddr(0x3000), SourceType.DEFAULT);
-        var references = currentProgram.getReferenceManager();
-        references.addExternalReference(toAddr(0x1000), 0, function,
-            SourceType.USER_DEFINED, RefType.UNCONDITIONAL_CALL);
-        references.addExternalReference(toAddr(0x1001), 0, label,
-            SourceType.USER_DEFINED, RefType.DATA);
-        currentProgram.getSymbolTable().createLabel(toAddr(0x1040),
-            function.getSymbol().getName(), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/GeneratedExternalNames.java"),
                 &[],
                 &[],
                 false,
@@ -534,26 +518,18 @@ fn test_duplicate_function_names_rejected_before_mutation() {
         })
         .collect();
     let duplicate = format!("duplicate_function_{}", std::process::id());
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.*;
-import ghidra.program.model.listing.*;
-public class DuplicateFunctionFixture extends GhidraScript {
-    public void run() throws Exception {
-        String[] a = getScriptArgs();
-        for (int i = 0; i < 2; i++) {
-            Function f = getFunctionAt(toAddr(a[i]));
-            if (!f.getParentNamespace().isGlobal()) throw new IllegalStateException("fixture must be global");
-        }
-        for (int i = 0; i < 2; i++) {
-            Function f = getFunctionAt(toAddr(a[i]));
-            Namespace ns = currentProgram.getSymbolTable().createNameSpace(currentProgram.getGlobalNamespace(), a[2] + i, SourceType.USER_DEFINED);
-            f.setParentNamespace(ns);
-            f.setName(a[2], SourceType.USER_DEFINED);
-        }
-    }
-}
-"#, &[addresses[0].clone(), addresses[1].clone(), duplicate.clone()], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/symbols/DuplicateFunctionFixture.java"),
+            &[
+                addresses[0].clone(),
+                addresses[1].clone(),
+                duplicate.clone(),
+            ],
+            &[],
+            false,
+        )
+        .unwrap();
     let selected_before: Vec<serde_json::Value> = addresses
         .iter()
         .map(|address| {
@@ -592,19 +568,7 @@ public class DuplicateFunctionFixture extends GhidraScript {
     client.send_command("rename_function", Some(serde_json::json!({"old_name":duplicate,"new_name":before[0]["name"],"address":addresses[0]}))).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.*;
-public class RestoreFunctionFixture extends GhidraScript {
-    public void run() throws Exception {
-        String[] a = getScriptArgs();
-        for (int i = 0; i < 2; i++) {
-            getFunctionAt(toAddr(a[i])).setParentNamespace(currentProgram.getGlobalNamespace());
-            getFunctionAt(toAddr(a[i])).setName(a[i+2], SourceType.USER_DEFINED);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/symbols/RestoreFunctionFixture.java"),
             &[
                 addresses[0].clone(),
                 addresses[1].clone(),

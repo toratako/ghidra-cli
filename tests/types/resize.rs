@@ -206,31 +206,14 @@ fn resize_preserves_explicit_fields_bitfields_zero_length_boundaries_and_setting
     let program = create_type_edit_program("x86:LE:64:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateResizeFields extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var tail = new StructureDataType(CategoryPath.ROOT, "Tail", 16, dtm);
-        tail.setDescription("recovered header");
-        tail.replaceAtOffset(0, DWordDataType.dataType, 4, "value", "saved value");
-        tail.replaceAtOffset(4, Undefined4DataType.dataType, 4, "unknown", "explicit undefined");
-        tail.insertAtOffset(12, new ArrayDataType(ByteDataType.dataType, 0, 1), 0, "boundary", "zero length");
-        var saved = (Structure) dtm.addDataType(tail, null);
-        FormatSettingsDefinition.DEF.setChoice(saved.getComponentAt(0).getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        EndianSettingsDefinition.DEF.setChoice(saved.getComponentAt(0).getDefaultSettings(), EndianSettingsDefinition.BIG);
-        var flags = new StructureDataType(CategoryPath.ROOT, "Flags", 12, dtm);
-        flags.insertBitFieldAt(6, 2, 4, UnsignedShortDataType.dataType, 8, "bits", "spans bytes");
-        dtm.addDataType(flags, null);
-        var packed = new StructureDataType(CategoryPath.ROOT, "Packed", 0, dtm);
-        packed.setPackingEnabled(true);
-        packed.add(DWordDataType.dataType, "value", null);
-        dtm.addDataType(packed, null);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateResizeFields.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let before = definition(&program, "Tail");
     let resized = resize(&program, "/Tail", 12);
     assert_eq!(resized["status"], "resized");
@@ -267,20 +250,7 @@ public class CreateResizeFields extends GhidraScript {
     assert_eq!(definition(&program, "Tail"), expanded);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CheckResizeFieldSettings extends GhidraScript {
-    public void run() throws Exception {
-        var tail = (Structure) currentProgram.getDataTypeManager().getDataType("/Tail");
-        var settings = tail.getComponentAt(0).getDefaultSettings();
-        if (FormatSettingsDefinition.DEF.getChoice(settings) != FormatSettingsDefinition.DECIMAL
-                || EndianSettingsDefinition.DEF.getChoice(settings) != EndianSettingsDefinition.BIG)
-            throw new IllegalStateException("Field settings were lost");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckResizeFieldSettings.java"),
             &[],
             &[],
             false,
@@ -318,19 +288,7 @@ fn resize_zero_is_logical_and_wire_sizes_are_checked_before_mutation() {
     }
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateResizeComponentOverflow extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var bits = new StructureDataType(CategoryPath.ROOT, "BitCount", 1, dtm);
-        bits.insertBitFieldAt(0, 1, 0, ByteDataType.dataType, 2, "low", null);
-        bits.insertBitFieldAt(0, 1, 2, ByteDataType.dataType, 2, "high", null);
-        dtm.addDataType(bits, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateResizeComponentOverflow.java"),
             &[],
             &[],
             false,
@@ -350,50 +308,14 @@ fn resize_propagates_complete_layouts_through_parents_typedefs_arrays_and_listin
     let program = create_type_edit_program("x86:LE:64:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateResizePropagation extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var child = new StructureDataType(CategoryPath.ROOT, "Child", 4, dtm);
-        child.replaceAtOffset(0, WordDataType.dataType, 2, "value", "keep");
-        var saved = dtm.addDataType(child, null);
-        var alias = dtm.addDataType(new TypedefDataType("ChildAlias", saved), null);
-        var array = dtm.addDataType(new ArrayDataType(alias, 3, 4), null);
-        var holder = new StructureDataType(CategoryPath.ROOT, "Holder", 40, dtm);
-        holder.replaceAtOffset(0, alias, 4, "child", null);
-        holder.replaceAtOffset(8, array, 12, "array", null);
-        holder.replaceAtOffset(36, DWordDataType.dataType, 4, "tail", "keep tail");
-        var registeredHolder = dtm.addDataType(holder, null);
-        var packed = new StructureDataType(CategoryPath.ROOT, "PackedHolder", 0, dtm);
-        packed.setPackingEnabled(true);
-        packed.add(saved, "child", null);
-        packed.add(ByteDataType.dataType, "tag", "moves with packing");
-        var registeredPacked = dtm.addDataType(packed, null);
-        var union = new UnionDataType("UnionHolder");
-        union.add(saved, "child", null);
-        union.add(QWordDataType.dataType, "wide", null);
-        dtm.addDataType(union, null);
-        var nested = dtm.addDataType(new ArrayDataType(new ArrayDataType(alias, 2, 4), 2, 8), null);
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createInitializedBlock("data", address, 512, (byte) 0, monitor, false);
-        var listing = currentProgram.getListing();
-        listing.createData(address, registeredHolder);
-        listing.createData(toAddr(0x1080), registeredPacked);
-        listing.createData(toAddr(0x1100), nested);
-        listing.createData(toAddr(0x1180), alias);
-        FormatSettingsDefinition.DEF.setChoice(listing.getDefinedDataAt(toAddr(0x1180)).getComponent(0), FormatSettingsDefinition.DECIMAL);
-        FormatSettingsDefinition.DEF.setChoice(((Structure) registeredHolder).getComponentAt(36).getDefaultSettings(), FormatSettingsDefinition.BINARY);
-        var aligned = new StructureDataType(CategoryPath.ROOT, "Aligned", 4, dtm);
-        aligned.setExplicitMinimumAlignment(8);
-        aligned.replaceAtOffset(0, WordDataType.dataType, 2, "value", null);
-        var registeredAligned = dtm.addDataType(aligned, null);
-        dtm.addDataType(new TypedefDataType("AlignedArray", new ArrayDataType(registeredAligned, 2, 8)), null);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateResizePropagation.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     for size in [8, 2] {
         resize(&program, "Child", size);
         assert_eq!(
@@ -415,32 +337,14 @@ public class CreateResizePropagation extends GhidraScript {
         );
         client.program_close().unwrap();
         client.open_program(&program).unwrap();
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CheckResizePropagation extends GhidraScript {
-    public void run() throws Exception {
-        int size = Integer.parseInt(getScriptArgs()[0]);
-        var listing = currentProgram.getListing();
-        int[] addresses = { 0x1000, 0x1080, 0x1100, 0x1180 };
-        int[] lengths = { 40, size + 1, size * 4, size };
-        for (int i = 0; i < addresses.length; i++) {
-            var data = listing.getDefinedDataAt(toAddr(addresses[i]));
-            if (data == null || data.getLength() != lengths[i] || data.getNumComponents() < 0)
-                throw new IllegalStateException("Incomplete data at " + addresses[i]);
-        }
-        var nested = listing.getDefinedDataAt(toAddr(0x1100));
-        if (nested.getComponent(1).getComponent(1).getMinAddress().getOffset() != 0x1100 + 3 * size)
-            throw new IllegalStateException("Nested array stride did not propagate");
-        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
-        if (FormatSettingsDefinition.DEF.getChoice(holder.getComponentAt(36).getDefaultSettings()) != FormatSettingsDefinition.BINARY)
-            throw new IllegalStateException("Parent field settings were lost");
-        if (FormatSettingsDefinition.DEF.getChoice(listing.getDefinedDataAt(toAddr(0x1180)).getComponent(0)) != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Applied component settings were lost");
-    }
-}
-"#, &[size.to_string()], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CheckResizePropagation.java"),
+                &[size.to_string()],
+                &[],
+                false,
+            )
+            .unwrap();
     }
     resize(&program, "Aligned", 12);
     // Ghidra uses the nonpacked structure's exact length as its array stride,
@@ -456,52 +360,14 @@ fn resize_rejects_incomplete_embeddings_and_applications_with_durable_rollback()
     let program = create_type_edit_program("x86:LE:64:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateResizeConflicts extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (String name : new String[] { "Embedded", "MemoryEdge", "DataNeighbor", "InstructionNeighbor", "Overflow", "AppliedEmpty", "AppliedSettings", "ArraySettings" }) {
-            var child = new StructureDataType(CategoryPath.ROOT, name, 4, dtm);
-            if (name.equals("ArraySettings")) child.replaceAtOffset(0, WordDataType.dataType, 2, "value", null);
-            var saved = dtm.addDataType(child, null);
-            if (name.equals("Embedded")) {
-                var parent = new StructureDataType(CategoryPath.ROOT, "ConstrainedHolder", 8, dtm);
-                parent.replaceAtOffset(0, saved, 4, "child", null);
-                parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", "do not consume");
-                dtm.addDataType(parent, null);
-            } else if (name.equals("Overflow")) {
-                dtm.addDataType(new ArrayDataType(saved, 536870911, 4), null);
-            } else {
-                int address = name.equals("MemoryEdge") ? 0x1000 : name.equals("DataNeighbor") ? 0x2000
-                    : name.equals("InstructionNeighbor") ? 0x3000 : name.equals("AppliedSettings") ? 0x5000
-                    : name.equals("ArraySettings") ? 0x6000 : 0x4000;
-                currentProgram.getMemory().createInitializedBlock(name, toAddr(address), name.equals("MemoryEdge") ? 6 : 32, (byte) 0x90, monitor, false);
-                var listing = currentProgram.getListing();
-                if (name.equals("AppliedSettings")) {
-                    var packed = new StructureDataType(CategoryPath.ROOT, "SettingsHolder", 0, dtm);
-                    packed.setPackingEnabled(true);
-                    packed.add(saved, "child", null);
-                    packed.add(ByteDataType.dataType, "tag", null);
-                    var data = listing.createData(toAddr(address), dtm.addDataType(packed, null));
-                    FormatSettingsDefinition.DEF.setChoice(data.getComponent(1), FormatSettingsDefinition.BINARY);
-                } else if (name.equals("ArraySettings")) {
-                    var data = listing.createData(toAddr(address), new ArrayDataType(saved, 2, 4));
-                    FormatSettingsDefinition.DEF.setChoice(data.getComponent(1).getComponent(0), FormatSettingsDefinition.DECIMAL);
-                } else {
-                    listing.createData(toAddr(address), saved);
-                }
-                if (name.equals("DataNeighbor"))
-                    currentProgram.getListing().createData(toAddr(address + 6), Undefined4DataType.dataType);
-                if (name.equals("InstructionNeighbor")) disassemble(toAddr(address + 6));
-            }
-        }
-    }
-}
-
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateResizeConflicts.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let before = success(type_command(&program, &["list", "--limit", "0"]));
     let holder = definition(&program, "ConstrainedHolder");
     for (name, size) in [
@@ -521,31 +387,14 @@ public class CreateResizeConflicts extends GhidraScript {
             before
         );
         assert_eq!(definition(&program, "ConstrainedHolder"), holder);
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-public class CheckResizeConflictRollback extends GhidraScript {
-    public void run() throws Exception {
-        var listing = currentProgram.getListing();
-        for (int address : new int[] { 0x1000, 0x2000, 0x3000, 0x4000 }) {
-            var data = listing.getDefinedDataAt(toAddr(address));
-            if (data == null || data.getLength() != 4 || data.getDataType().getLength() != 4)
-                throw new IllegalStateException("Applied data changed after rollback at " + address);
-        }
-        var neighbor = listing.getDefinedDataAt(toAddr(0x2006));
-        if (neighbor == null || neighbor.getLength() != 4)
-            throw new IllegalStateException("Following defined data was lost");
-        if (listing.getInstructionAt(toAddr(0x3006)) == null)
-            throw new IllegalStateException("Following instruction was lost");
-        var packed = listing.getDefinedDataAt(toAddr(0x5000));
-        if (packed.getLength() != 5 || FormatSettingsDefinition.DEF.getChoice(packed.getComponent(1)) != FormatSettingsDefinition.BINARY)
-            throw new IllegalStateException("Packed applied component settings changed");
-        var array = listing.getDefinedDataAt(toAddr(0x6000));
-        if (array.getLength() != 8 || FormatSettingsDefinition.DEF.getChoice(array.getComponent(1).getComponent(0)) != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Array component settings changed");
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CheckResizeConflictRollback.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     }
     client.open_program(TEST_PROGRAM).unwrap();
 }
@@ -557,20 +406,14 @@ fn field_growth_rejects_truncated_parent_embedding() {
     let program = create_type_edit_program("x86:LE:64:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateFieldGrowthConflict extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var child = dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "GrowingChild", 4, dtm), null);
-        var parent = new StructureDataType(CategoryPath.ROOT, "ConstrainedParent", 8, dtm);
-        parent.replaceAtOffset(0, child, 4, "child", null);
-        parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", null);
-        dtm.addDataType(parent, null);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateFieldGrowthConflict.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let child = definition(&program, "GrowingChild");
     let parent = definition(&program, "ConstrainedParent");
     for args in [

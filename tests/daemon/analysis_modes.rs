@@ -4,80 +4,12 @@ use ghidra_cli::ipc::{client::BridgeClient, protocol::BridgeCommandError};
 use serde_json::{json, Value};
 use serial_test::serial;
 
-const CREATE_FIXTURE: &str = r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateAnalysisModesFixture extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID("x86:LE:32:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("analysis modes fixture");
-            try {
-                for (int i = 1; i <= 4; i++) {
-                    var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(i * 0x1000);
-                    program.getMemory().createInitializedBlock("text_" + i, start,
-                        0x100, (byte) 0, monitor, false);
-                    program.getMemory().setBytes(start,
-                        "The quick brown fox\0".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-                }
-                program.getMemory().createInitializedBlock("overlay",
-                    program.getAddressFactory().getDefaultAddressSpace().getAddress(0x6000),
-                    0x100, (byte) 0, monitor, true);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#;
+const CREATE_FIXTURE: &str = include_str!("../fixtures/daemon/CreateAnalysisModesFixture.java");
 
 // The public native queue APIs make work/cancellation deterministic without
 // production test hooks or timing a large analyzer. The actual string analyzer
 // distinguishes reanalysis seeds from an empty queue and from full analysis.
-const QUEUE_ANALYSIS: &str = r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
-import ghidra.app.services.AbstractAnalyzer;
-import ghidra.app.services.AnalysisPriority;
-import ghidra.app.services.AnalyzerType;
-import ghidra.app.util.importer.MessageLog;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.listing.CodeUnit;
-import ghidra.program.model.listing.Program;
-import ghidra.util.task.TaskMonitor;
-public class QueueAnalysisModesFixture extends GhidraScript {
-    public void run() {
-        String mode = getScriptArgs()[0];
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var manager = AutoAnalysisManager.getAnalysisManager(currentProgram);
-        manager.blockAdded(new AddressSet(space.getAddress(0x2000), space.getAddress(0x20ff)));
-        if (mode.equals("native")) return;
-        var analyzer = new AbstractAnalyzer("CLI Analysis Mode Probe", "Deterministic native analysis work",
-                AnalyzerType.BYTE_ANALYZER) {
-            { setPriority(AnalysisPriority.HIGHEST_PRIORITY); }
-            public boolean added(Program program, AddressSetView set, TaskMonitor taskMonitor, MessageLog log) {
-                if (mode.equals("cancel")) {
-                    program.getListing().setComment(space.getAddress(0x1000), CodeUnit.EOL_COMMENT, "saved-partial-analysis");
-                    taskMonitor.cancel();
-                    return false;
-                }
-                program.getListing().setComment(space.getAddress(0x3000), CodeUnit.EOL_COMMENT, "derived-analysis");
-                // Enqueue fresh native work while draining this pass. Its seed
-                // is outside both the CLI range and the earlier pending range.
-                manager.blockAdded(new AddressSet(space.getAddress(0x3000), space.getAddress(0x30ff)));
-                return true;
-            }
-        };
-        manager.scheduleOneTimeAnalysis(analyzer, new AddressSet(space.getAddress(0x1000)));
-    }
-}
-"#;
+const QUEUE_ANALYSIS: &str = include_str!("../fixtures/daemon/QueueAnalysisModesFixture.java");
 
 fn create_fixture(client: &BridgeClient) -> String {
     let name = format!("analysis-modes-{}", uuid::Uuid::new_v4());

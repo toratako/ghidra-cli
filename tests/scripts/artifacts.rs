@@ -116,16 +116,7 @@ fn test_script_failure_diagnostics() {
     let marker = format!("diagnostics-{}", uuid::Uuid::new_v4());
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class FailWithOutput extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getOptions("DiagnosticTest").setString("marker", getScriptArgs()[0]);
-        println("before failure");
-        throw new IllegalStateException("intentional diagnostic failure");
-    }
-}
-"#,
+            include_str!("../fixtures/scripts/FailWithOutput.java"),
             &[marker],
             &[],
             false,
@@ -145,12 +136,7 @@ public class FailWithOutput extends GhidraScript {
     let missing = directory.path().join("missing.jsonl");
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class MissingArtifactOutput extends GhidraScript {
-    public void run() { println("artifact diagnostic output"); }
-}
-"#,
+            include_str!("../fixtures/scripts/MissingArtifactOutput.java"),
             &[],
             &[serde_json::json!({"path":missing})],
             false,
@@ -178,12 +164,7 @@ fn test_artifact_checksum_read_failure_fails_validation() {
     let client = harness().client().unwrap();
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class UnreadableArtifact extends GhidraScript {
-    public void run() { println("checksum read diagnostic"); }
-}
-"#,
+            include_str!("../fixtures/scripts/UnreadableArtifact.java"),
             &[],
             &[serde_json::json!({"path": "/proc/self/mem"})],
             true,
@@ -210,16 +191,7 @@ fn test_artifact_row_bounds_are_checked_before_script_execution() {
     let client = harness().client().unwrap();
     let work = tempfile::tempdir().unwrap();
     let artifact = work.path().join("rows.jsonl");
-    let source = r#"
-import ghidra.app.script.GhidraScript;
-import java.nio.file.Files;
-import java.nio.file.Path;
-public class WriteOneArtifactRow extends GhidraScript {
-    public void run() throws Exception {
-        Files.writeString(Path.of(getScriptArgs()[0]), "{}\n");
-    }
-}
-"#;
+    let source = include_str!("../fixtures/scripts/WriteOneArtifactRow.java");
     let args = [artifact.to_str().unwrap().to_owned()];
     for minimum in [
         serde_json::json!(9223372036854775808_u64),
@@ -283,16 +255,7 @@ fn test_script_assertion_reports_saved_edit_and_bridge_remains_usable() {
     let marker = format!("assertion-{}", uuid::Uuid::new_v4());
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class FailWithAssertion extends GhidraScript {
-    public void run() {
-        currentProgram.getOptions("DiagnosticTest").setString("assertion_marker", getScriptArgs()[0]);
-        println("before assertion");
-        throw new AssertionError("intentional script assertion");
-    }
-}
-"#,
+            include_str!("../fixtures/scripts/FailWithAssertion.java"),
             std::slice::from_ref(&marker),
             &[],
             false,
@@ -316,14 +279,7 @@ public class FailWithAssertion extends GhidraScript {
     client.open_program(TEST_PROGRAM).unwrap();
     let result = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class ReadAssertionMarker extends GhidraScript {
-    public void run() {
-        println(currentProgram.getOptions("DiagnosticTest").getString("assertion_marker", "missing"));
-    }
-}
-"#,
+            include_str!("../fixtures/scripts/ReadAssertionMarker.java"),
             &[],
             &[],
             false,
@@ -342,16 +298,7 @@ fn test_malformed_artifact_expectations_fail_before_script_execution() {
     let client = harness().client().unwrap();
     let work = tempfile::tempdir().unwrap();
     let artifact = work.path().join("unexpected.txt");
-    let source = r#"
-import ghidra.app.script.GhidraScript;
-import java.nio.file.Files;
-import java.nio.file.Path;
-public class WriteOnRun extends GhidraScript {
-    public void run() throws Exception {
-        Files.writeString(Path.of(getScriptArgs()[0]), "ran");
-    }
-}
-"#;
+    let source = include_str!("../fixtures/scripts/WriteOnRun.java");
     for (expect, message) in [
         (serde_json::json!(null), "expect must be an array"),
         (
@@ -409,16 +356,7 @@ fn test_invalid_allow_empty_fails_before_script_execution() {
         .send_command(
             "script_run",
             Some(serde_json::json!({
-                "source": r#"
-import ghidra.app.script.GhidraScript;
-import java.nio.file.Files;
-import java.nio.file.Path;
-public class WriteBeforeArtifactValidation extends GhidraScript {
-    public void run() throws Exception {
-        Files.writeString(Path.of(getScriptArgs()[0]), "ran");
-    }
-}
-"#,
+                "source": include_str!("../fixtures/scripts/WriteBeforeArtifactValidation.java"),
                 "args": [artifact],
                 "expect": [{"path": artifact}],
                 "allow_empty": "true",

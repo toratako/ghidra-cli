@@ -105,54 +105,7 @@ fn check_pointer_layout(language: &str, pointer_size: usize, big_endian: bool, h
     }
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreatePointerTargets extends GhidraScript {
-    public void run() throws Exception {
-        String[] args = getScriptArgs();
-        String[] names = {"outside_range_target", "high_address_target", "odd_address_target"};
-        var namespace = currentProgram.getSymbolTable().createNameSpace(null,
-            "pointer_fixture", SourceType.USER_DEFINED);
-        for (int i = 0; i < args.length; i++) {
-            var address = currentProgram.getAddressFactory().getDefaultAddressSpace()
-                .getAddress(Long.parseUnsignedLong(args[i], 16));
-            var block = currentProgram.getMemory().createInitializedBlock(names[i],
-                address, 4, (byte) 0, monitor, false);
-            block.setExecute(true);
-            var thumbMode = currentProgram.getRegister("TMode");
-            if (thumbMode != null) {
-                currentProgram.getProgramContext().setValue(thumbMode, address,
-                    address.add(3), java.math.BigInteger.ONE);
-            }
-            var function = currentProgram.getFunctionManager().createFunction(names[i], address,
-                new AddressSet(address, address.add(3)), SourceType.USER_DEFINED);
-            if (i == 1) function.setParentNamespace(namespace);
-        }
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var functions = currentProgram.getFunctionManager();
-        var target = functions.getFunctionAt(space.getAddress(Long.parseUnsignedLong(args[1], 16)));
-        for (int i = 1; i >= 0; i--) {
-            var address = space.getAddress(0x5000 + i * 0x10);
-            var name = i == 0 ? "first_thunk" : "second_thunk";
-            var block = currentProgram.getMemory().createInitializedBlock(name,
-                address, 4, (byte) 0, monitor, false);
-            block.setExecute(true);
-            var thunk = functions.createFunction(name, namespace, address,
-                new AddressSet(address, address.add(3)), SourceType.USER_DEFINED);
-            thunk.setThunkedFunction(target);
-            target = thunk;
-        }
-        currentProgram.getSymbolTable().createLabel(space.getAddress(0x1000),
-            "table_data", namespace, SourceType.USER_DEFINED);
-        currentProgram.getMemory().createUninitializedBlock("uninitialized_data",
-            space.getAddress(0x6000), 4, false);
-        currentProgram.getSymbolTable().createLabel(space.getAddress(0x6000),
-            "uninitialized_data", namespace, SourceType.USER_DEFINED);
-    }
-}
-"#,
+            include_str!("fixtures/memory/CreatePointerTargets.java"),
             &target_addresses,
             &[],
             false,
@@ -281,38 +234,7 @@ public class CreatePointerTargets extends GhidraScript {
 fn check_overlay_pointers(client: &BridgeClient, thumb: bool) {
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateOverlayPointerTargets extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var base = space.getAddress(0x2000);
-        memory.createInitializedBlock("base_code", base, 4, (byte) 0, monitor, false);
-        currentProgram.getFunctionManager().createFunction("base_target", base,
-            new AddressSet(base, base.add(3)), SourceType.USER_DEFINED);
-        var overlay = memory.createInitializedBlock("overlay", space.getAddress(0x1000),
-            0x1004, (byte) 0, monitor, true);
-        var start = overlay.getStart();
-        var thumbMode = currentProgram.getRegister("TMode");
-        byte modeBit = (byte) (thumbMode == null ? 0 : 1);
-        memory.setBytes(start, new byte[] {modeBit, 0x20, 0, 0,
-            (byte) (0x30 | modeBit), (byte) 0xda, 9, 7});
-        var target = start.add(0x1000);
-        if (thumbMode != null) {
-            currentProgram.getProgramContext().setValue(thumbMode, target,
-                target.add(3), java.math.BigInteger.ONE);
-            var oddOverlay = memory.createInitializedBlock("odd_overlay", base.add(1),
-                4, (byte) 0, monitor, true);
-            memory.setBytes(oddOverlay.getStart(), new byte[] {1, 0x20, 0, 0});
-        }
-        currentProgram.getFunctionManager().createFunction("overlay_target", target,
-            new AddressSet(target, target.add(3)), SourceType.USER_DEFINED);
-    }
-}
-"#,
+            include_str!("fixtures/memory/CreateOverlayPointerTargets.java"),
             &[],
             &[],
             false,
@@ -369,14 +291,7 @@ public class CreateOverlayPointerTargets extends GhidraScript {
 fn pointer_program_state(client: &BridgeClient) -> String {
     let result = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class ReadPointerProgramState extends GhidraScript {
-    public void run() {
-        println("program-state=" + currentProgram.getModificationNumber() + ":" + currentProgram.isChanged());
-    }
-}
-"#,
+            include_str!("fixtures/memory/ReadPointerProgramState.java"),
             &[],
             &[],
             false,
@@ -438,44 +353,7 @@ fn memory_read_resolves_deep_self_mappings_without_native_recursion() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CreateRecursiveReadMappings extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        memory.createByteMappedBlock("self_shifted", toAddr(0x10000),
-            toAddr(0x10001), 16 * 1024, false);
-        memory.createInitializedBlock("shifted_source", toAddr(0x14000),
-            1, (byte) 0x5a, monitor, false);
-        memory.createByteMappedBlock("cycle", toAddr(0x20000), toAddr(0x20000), 1, false);
-        memory.createInitializedBlock("before_cycle", toAddr(0x1ffff),
-            1, (byte) 0x24, monitor, false);
-        memory.createByteMappedBlock("large_self_shifted", toAddr(0x1000000),
-            toAddr(0x1000001), 16 * 1024 * 1024, false);
-        memory.createInitializedBlock("large_shifted_source", toAddr(0x2000000),
-            1, (byte) 0x5a, monitor, false);
-        memory.createInitializedBlock("bit_source", toAddr(0x4000000),
-            1, (byte) 0x5a, monitor, false);
-        memory.createBitMappedBlock("inner_bits", toAddr(0x6000000), toAddr(0x4000000), 8, false);
-        memory.createBitMappedBlock("outer_bits", toAddr(0x5000000), toAddr(0x6000003), 8, false);
-        for (int i = 0; i < 3; i++) {
-            long start = 0x3000000 + i * 0x100000;
-            memory.createByteMappedBlock("mixed_deep_" + i, toAddr(start),
-                toAddr(start + 1), 65552, false);
-            memory.createByteMappedBlock("mixed_tail_" + i, toAddr(start + 65552),
-                toAddr(i == 2 ? start : 0x5000000 + i * 7), 1, false);
-        }
-        memory.createByteMappedBlock("sparse_shift", toAddr(0x7000000), toAddr(0x7000002), 4, false);
-        memory.createInitializedBlock("sparse_seed", toAddr(0x7000004), 1, (byte) 0x6b, monitor, false);
-        memory.createByteMappedBlock("wide_shift", toAddr(0x7100000), toAddr(0x7100002), 4, false);
-        memory.createInitializedBlock("wide_seed", toAddr(0x7100004),
-            new java.io.ByteArrayInputStream(new byte[]{0x6c, 0x6d}), 2, monitor, false);
-        memory.createInitializedBlock("back_seed", toAddr(0x7200000),
-            new java.io.ByteArrayInputStream(new byte[]{0x6e, 0x6f}), 2, monitor, false);
-        memory.createByteMappedBlock("back_shift", toAddr(0x7200002), toAddr(0x7200000), 4, false);
-    }
-}
-"#,
+            include_str!("fixtures/memory/CreateRecursiveReadMappings.java"),
             &[],
             &[],
             false,
@@ -563,35 +441,7 @@ fn memory_read_keeps_the_initialized_prefix_of_partially_backed_mappings() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CreatePartialMemoryMappings extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var source = space.getAddress(0x1000);
-        memory.createByteMappedBlock("partial_bytes", space.getAddress(0x2000), source, 32, false);
-        memory.createBitMappedBlock("partial_bits", space.getAddress(0x3000), source, 256, false);
-        memory.createByteMappedBlock("nested_bytes", space.getAddress(0x1800),
-            space.getAddress(0x2000), 32, false);
-        memory.createUninitializedBlock("unknown_source", source.add(16), 16, false);
-        memory.createInitializedBlock("chunk_source", space.getAddress(0x10000),
-            0xc000, (byte) 0xee, monitor, false);
-        memory.setBytes(space.getAddress(0x13ffe), new byte[]{0x12, 0x34, 0x56, 0x78});
-        memory.createByteMappedBlock("chunk_alias", space.getAddress(0x30000),
-            space.getAddress(0x10000), 0xc000, false);
-        memory.createByteMappedBlock("chunk_nested", space.getAddress(0x20000),
-            space.getAddress(0x30000), 0xc000, false);
-        var header = memory.createInitializedBlock("headers",
-            ghidra.program.model.address.AddressSpace.OTHER_SPACE.getAddress(0),
-            new java.io.ByteArrayInputStream(new byte[]{(byte) 0xca, (byte) 0xfe}),
-            2, monitor, true).getStart();
-        memory.createByteMappedBlock("loaded_header_view", space.getAddress(0x40000), header, 2, false);
-        createData(space.getAddress(0x1800), new ghidra.program.model.data.ArrayDataType(
-            ghidra.program.model.data.CharDataType.dataType, 16, 1));
-    }
-}
-"#,
+            include_str!("fixtures/memory/CreatePartialMemoryMappings.java"),
             &[],
             &[],
             false,
@@ -744,54 +594,14 @@ fn mapped_address_tables_and_instruction_bytes_use_readable_ranges() {
     .program;
     let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
     let client = harness.client().unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.app.cmd.disassemble.DisassembleCommand;
-public class CreateMappedNativeReaders extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        memory.createInitializedBlock("targets", toAddr(0x3000), 0x40, (byte) 0xee, monitor, false);
-        memory.createByteMappedBlock("tables_alias", toAddr(0x2000), toAddr(0x1000), 12, false);
-        memory.createByteMappedBlock("tables_nested", toAddr(0x1800), toAddr(0x2000), 12, false);
-        memory.createByteMappedBlock("tables_cycle", toAddr(0x4000), toAddr(0x4000), 12, false);
-        memory.createInitializedBlock("code", toAddr(0x5000),
-            new java.io.ByteArrayInputStream(new byte[]{(byte) 0x90, (byte) 0xc3}), 2, monitor, false);
-        memory.createByteMappedBlock("code_alias", toAddr(0x6000), toAddr(0x5000), 2, false);
-        memory.createByteMappedBlock("code_nested", toAddr(0x5500), toAddr(0x6000), 2, false);
-        var command = new DisassembleCommand(toAddr(0x6000), null, true);
-        command.enableCodeAnalysis(false);
-        if (!command.applyTo(currentProgram, monitor))
-            throw new IllegalStateException("Cannot decode mapped fixture instructions");
-        // Native disassembly omits nested aliases from its initialized set.
-        // Place already decoded instructions to exercise the listing reader.
-        for (int i = 0; i < 2; i++) {
-            var instruction = currentProgram.getListing().getInstructionAt(toAddr(0x6000 + i));
-            currentProgram.getListing().createInstruction(toAddr(0x5500 + i),
-                instruction.getPrototype(),
-                new ghidra.program.model.mem.DumbMemBufferImpl(memory, toAddr(0x5500 + i)),
-                instruction, 0);
-        }
-        memory.getBlock(toAddr(0x5500)).setExecute(true);
-        memory.createInitializedBlock("caller", toAddr(0x7000),
-            new java.io.ByteArrayInputStream(new byte[]{(byte) 0xe8, (byte) 0xfb,
-                (byte) 0xe4, (byte) 0xff, (byte) 0xff}), 5, monitor, false);
-        var call = new DisassembleCommand(toAddr(0x7000), null, false);
-        call.enableCodeAnalysis(false);
-        if (!call.applyTo(currentProgram, monitor)) throw new IllegalStateException("Cannot define caller");
-        memory.createInitializedBlock("shifted_seed", toAddr(0x8000), 1, (byte) 0xc3, monitor, false);
-        memory.createByteMappedBlock("shifted_table", toAddr(0x8001), toAddr(0x8000), 16 * 1024, false);
-        memory.createInitializedBlock("shifted_target", toAddr(0xc3c3c3c3L), 16, (byte) 0xee, monitor, false);
-        var ret = currentProgram.getListing().getInstructionAt(toAddr(0x6001));
-        currentProgram.getListing().createInstruction(toAddr(0xc000), ret.getPrototype(),
-            new ghidra.program.model.mem.ByteMemBufferImpl(memory, toAddr(0xc000),
-                new byte[]{(byte) 0xc3}, false), ret, 0);
-        memory.createInitializedBlock("string_seed", toAddr(0xd000), 1, (byte) 0, monitor, false);
-        memory.createByteMappedBlock("shifted_string", toAddr(0xd001), toAddr(0xd000), 16 * 1024, false);
-        currentProgram.getListing().createData(toAddr(0x11000),
-            ghidra.program.model.data.ByteDataType.dataType, 1);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("fixtures/memory/CreateMappedNativeReaders.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let before = pointer_program_state(&client);
     let code = client.disasm("0x5500", Some(2)).unwrap();
     assert_eq!(code["instructions"][0]["bytes"], "90");
@@ -963,15 +773,7 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     );
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CreateReadChunkBoundary extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getMemory().createInitializedBlock("read_chunk_boundary",
-            toAddr(0xa000), 16 * 1024, (byte) 0x42, monitor, false);
-    }
-}
-"#,
+            include_str!("fixtures/memory/CreateReadChunkBoundary.java"),
             &[],
             &[],
             false,

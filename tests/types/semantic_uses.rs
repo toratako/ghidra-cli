@@ -399,17 +399,7 @@ fn semantic_field_uses_distinguish_union_members_and_neighboring_bitfields() {
             .client()
             .unwrap()
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class SemanticTypeUsesCapabilities extends GhidraScript {
-    public void run() {
-        try {
-            Class.forName("ghidra.app.decompiler.ClangBitFieldToken");
-            println("true");
-        } catch (ClassNotFoundException unsupported) { println("false"); }
-    }
-}
-"#,
+                include_str!("../fixtures/types/SemanticTypeUsesCapabilities.java"),
                 &[],
                 &[],
                 false,

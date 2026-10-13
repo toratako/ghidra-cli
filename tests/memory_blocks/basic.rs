@@ -4,34 +4,7 @@ use ghidra_cli::ipc::{client::BridgeClient, protocol::BridgeCommandError};
 use serde_json::{json, Value};
 use serial_test::serial;
 
-const CREATE_FIXTURE: &str = r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.model.symbol.SourceType;
-import ghidra.program.util.DefaultLanguageService;
-
-public class CreateBlockBasicsFixture extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID(getScriptArgs()[1]));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("block basics fixture");
-            try {
-                var space = program.getAddressFactory().getDefaultAddressSpace();
-                program.getMemory().createInitializedBlock("seed", space.getAddress(0x100),
-                    16, (byte) 0x17, monitor, false);
-                program.getSymbolTable().createLabel(space.getAddress(0x2000),
-                    "block_start_symbol", SourceType.USER_DEFINED);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#;
+const CREATE_FIXTURE: &str = include_str!("../fixtures/memory/CreateBlockBasicsFixture.java");
 
 fn with_fixture(language: &str, check: impl FnOnce(&DaemonTestHarness, &BridgeClient, &str)) {
     let harness = harness();
@@ -236,19 +209,7 @@ fn create_distinguishes_unknown_memory_from_fill_and_persists_block_attributes()
         // initialized source bytes. Only genuinely unknown storage is unreadable.
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class CreateBlockReadAliases extends GhidraScript {
-    public void run() throws Exception {
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var memory = currentProgram.getMemory();
-        memory.createByteMappedBlock("byte_alias", space.getAddress(0x6000),
-            space.getAddress(0x5000), 16, false);
-        memory.createBitMappedBlock("bit_alias", space.getAddress(0x7000),
-            space.getAddress(0x5000), 8, false);
-    }
-}
-"#,
+                include_str!("../fixtures/memory/CreateBlockReadAliases.java"),
                 &[],
                 &[],
                 false,
@@ -498,24 +459,7 @@ fn creation_validation_and_collisions_leave_memory_and_overlay_spaces_unchanged(
         }
 
         // A map comparison alone would miss an empty space leaked on failed creation.
-        const CHECK_SPACES: &str = r#"
-import ghidra.app.script.GhidraScript;
-public class CheckBlockSpaces extends GhidraScript {
-    public void run() throws Exception {
-        var factory = currentProgram.getAddressFactory();
-        int overlays = 0;
-        for (var space : factory.getAddressSpaces()) {
-            if (space.isOverlaySpace()) {
-                overlays++;
-                if (!space.getName().equals("bank1"))
-                    throw new IllegalStateException("Unexpected overlay: " + space.getName());
-            }
-        }
-        if (overlays != 1 || factory.getAddressSpace("overflow_bank") != null)
-            throw new IllegalStateException("Failed creation leaked an address space");
-    }
-}
-"#;
+        const CHECK_SPACES: &str = include_str!("../fixtures/memory/CheckBlockSpaces.java");
         client
             .script_run_source(CHECK_SPACES, &[], &[], false)
             .unwrap();
@@ -540,174 +484,7 @@ fn block_creation_and_compound_edits_roll_back_after_native_mutations() {
         // transaction while the surrounding script retains its own session.
         client
             .script_run_source(
-                r#"
-import com.google.gson.JsonObject;
-import ghidra.app.script.GhidraScript;
-import ghidra.framework.model.DomainFile;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.mem.Memory;
-import ghidra.util.task.TaskMonitor;
-import ghidra.util.task.TaskMonitorAdapter;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
-
-public class BlockCreateRollbackProbe extends GhidraScript {
-    private Program selected;
-    private boolean nativeCreationObserved;
-    private String editFault;
-    private boolean read, write, execute, isVolatile;
-    private final TaskMonitorAdapter requestMonitor = new TaskMonitorAdapter(true);
-    private void require(boolean condition, String message) {
-        if (!condition) throw new IllegalStateException(message);
-    }
-    private void checkAbsent(Program program) throws Exception {
-        require(program.getAddressFactory().getAddressSpace("late_bank") == null,
-            "Cancelled creation retained its new overlay space");
-        require(program.getMemory().getBlocks().length == 1,
-            "Cancelled creation retained a block");
-        var seed = program.getMemory().getBlock("seed");
-        require(seed != null && seed.isRead() == read && seed.isWrite() == write
-            && seed.isExecute() == execute && seed.isVolatile() == isVolatile
-            && seed.getSize() == 16
-            && program.getMemory().getByte(seed.getStart()) == (byte) 0x17,
-            "Cancellation changed existing memory");
-    }
-    public void run() throws Exception {
-        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
-        DomainFile file = currentProgram.getDomainFile().copyTo(folder, monitor);
-        Object owner = new Object();
-        Program real = (Program) file.getDomainObject(owner, true, false, monitor);
-        var original = real.getMemory().getBlock("seed");
-        read = original.isRead(); write = original.isWrite();
-        execute = original.isExecute(); isVolatile = original.isVolatile();
-        Object session = null;
-        try {
-            Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
-                .walk(frames -> frames.map(StackWalker.StackFrame::getDeclaringClass)
-                    .filter(type -> type.getSimpleName().equals("ScriptCommands")
-                        && type.getPackageName().equals("ghidracli.script")).findFirst().orElseThrow());
-            var loader = caller.getClassLoader();
-            String prefix = caller.getPackageName()
-                .substring(0, caller.getPackageName().lastIndexOf('.') + 1);
-
-            Memory memory = (Memory) Proxy.newProxyInstance(Memory.class.getClassLoader(),
-                new Class<?>[]{Memory.class}, (proxy, method, args) -> {
-                    Object result;
-                    try { result = method.invoke(real.getMemory(), args); }
-                    catch (InvocationTargetException error) { throw error.getCause(); }
-                    if (method.getName().equals("createInitializedBlock")) {
-                        var space = real.getAddressFactory().getAddressSpace("late_bank");
-                        require(space != null && space.isOverlaySpace(),
-                            "Cancellation preceded native overlay creation");
-                        var address = space.getAddressInThisSpaceOnly(0x2000);
-                        var block = real.getMemory().getBlock(address);
-                        require(block != null && block.getSize() == 16
-                            && block.getStart().equals(address)
-                            && real.getMemory().getByte(address) == (byte) 0x5a,
-                            "Cancellation preceded native initialized block creation");
-                        nativeCreationObserved = true;
-                        requestMonitor.cancel();
-                    }
-                    if (editFault != null && method.getName().equals("getBlock")
-                            && result instanceof ghidra.program.model.mem.MemoryBlock block) {
-                        var blockClass = ghidra.program.model.mem.MemoryBlock.class;
-                        return Proxy.newProxyInstance(blockClass.getClassLoader(),
-                            new Class<?>[]{blockClass}, (blockProxy, blockMethod, blockArgs) -> {
-                                Object value;
-                                try { value = blockMethod.invoke(block, blockArgs); }
-                                catch (InvocationTargetException error) { throw error.getCause(); }
-                                if (blockMethod.getName().equals("setVolatile")) {
-                                    require(block.getName().equals(".edited") && block.isExecute()
-                                        && !block.isRead() && !block.isWrite()
-                                        && block.isVolatile() != isVolatile,
-                                        "Fault preceded compound native edits");
-                                    String mode = editFault;
-                                    editFault = null;
-                                    if (mode.equals("cancel")) requestMonitor.cancel();
-                                    else throw new IllegalStateException("injected error after compound edits");
-                                }
-                                return value;
-                            });
-                    }
-                    return result;
-                });
-            selected = (Program) Proxy.newProxyInstance(Program.class.getClassLoader(),
-                new Class<?>[]{Program.class}, (proxy, method, args) -> {
-                    if (method.getName().equals("getMemory")) return memory;
-                    try { return method.invoke(real, args); }
-                    catch (InvocationTargetException error) { throw error.getCause(); }
-                });
-            var accessClass = loader.loadClass(prefix + "session.ScriptAccess");
-            Object access = Proxy.newProxyInstance(loader, new Class<?>[]{accessClass}, (proxy, method, args) -> {
-                switch (method.getName()) {
-                    case "program": return selected;
-                    case "setProgram": selected = (Program) args[0]; return null;
-                    case "state": return state;
-                    case "monitor": return requestMonitor;
-                    case "logError": printerr((String) args[0]); return null;
-                    default: throw new UnsupportedOperationException(method.getName());
-                }
-            });
-            var sessionClass = loader.loadClass(prefix + "session.ProgramSession");
-            var sessionConstructor = sessionClass.getDeclaredConstructor(accessClass);
-            sessionConstructor.setAccessible(true);
-            session = sessionConstructor.newInstance(access);
-            var dispatcherClass = loader.loadClass(prefix + "runtime.CommandDispatcher");
-            var dispatcherConstructor = dispatcherClass.getDeclaredConstructor(sessionClass);
-            dispatcherConstructor.setAccessible(true);
-            Object dispatcher = dispatcherConstructor.newInstance(session);
-            var execute = dispatcherClass.getDeclaredMethod("execute", String.class, JsonObject.class);
-            execute.setAccessible(true);
-            var args = new JsonObject();
-            args.addProperty("name", ".late_block");
-            args.addProperty("start", "ram:0x2000");
-            args.addProperty("size", 16);
-            args.addProperty("fill", 0x5a);
-            args.addProperty("permissions", "rw");
-            args.addProperty("overlay", "late_bank");
-            var response = (JsonObject) execute.invoke(dispatcher, "memory_block_create", args);
-            require(nativeCreationObserved, "Test did not reach native overlay/block creation");
-            require(response.get("status").getAsString().equals("error"), response.toString());
-            var detail = response.getAsJsonObject("detail");
-            require(detail.get("cancelled").getAsBoolean(), response.toString());
-            require(detail.get("rolled_back").getAsBoolean(), response.toString());
-            require(!detail.has("partial_changes_saved"), response.toString());
-            requestMonitor.clearCancelled();
-            checkAbsent(real);
-            for (String mode : new String[]{"error", "cancel"}) {
-                editFault = mode;
-                var edit = new JsonObject();
-                edit.addProperty("block_start", "0x100");
-                edit.addProperty("name", ".edited");
-                edit.addProperty("permissions", "x");
-                edit.addProperty("volatile", !isVolatile);
-                var failed = (JsonObject) execute.invoke(dispatcher, "memory_block_set", edit);
-                require(editFault == null, "Test did not reach compound native edits");
-                require(failed.get("status").getAsString().equals("error"), failed.toString());
-                var failure = failed.getAsJsonObject("detail");
-                require(failure.get("rolled_back").getAsBoolean(), failed.toString());
-                if (mode.equals("cancel")) require(failure.get("cancelled").getAsBoolean(), failed.toString());
-                requestMonitor.clearCancelled();
-                checkAbsent(real);
-            }
-            Object reader = new Object();
-            Program saved = (Program) file.getReadOnlyDomainObject(reader,
-                DomainFile.DEFAULT_VERSION, TaskMonitor.DUMMY);
-            try { checkAbsent(saved); }
-            finally { saved.release(reader); }
-        } finally {
-            requestMonitor.clearCancelled();
-            try {
-                if (session != null) {
-                    var close = session.getClass().getDeclaredMethod("closeProgram");
-                    close.setAccessible(true);
-                    close.invoke(session);
-                }
-            } finally { real.release(owner); }
-        }
-    }
-}
-"#,
+                include_str!("../fixtures/memory/BlockCreateRollbackProbe.java"),
                 std::slice::from_ref(&folder),
                 &[],
                 false,
@@ -718,16 +495,7 @@ public class BlockCreateRollbackProbe extends GhidraScript {
         assert_eq!(client.memory_block_list().unwrap(), before);
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class CheckReopenedCancelledOverlay extends GhidraScript {
-    public void run() throws Exception {
-        if (currentProgram.getAddressFactory().getAddressSpace("late_bank") != null
-                || currentProgram.getMemory().getBlocks().length != 1)
-            throw new IllegalStateException("Cancelled overlay/block reappeared after reopen");
-    }
-}
-"#,
+                include_str!("../fixtures/memory/CheckReopenedCancelledOverlay.java"),
                 &[],
                 &[],
                 false,
@@ -768,18 +536,7 @@ fn block_sizes_count_bytes_in_word_and_segmented_spaces_and_starts_round_trip() 
             assert_eq!(renamed["before"], created["after"]);
             assert_eq!(renamed["after"]["start"], created["after"]["start"]);
             assert_eq!(renamed["after"]["end"], created["after"]["end"]);
-            const CHECK_BYTES: &str = r#"
-import ghidra.app.script.GhidraScript;
-public class CheckBlockByteSize extends GhidraScript {
-    public void run() throws Exception {
-        var block = currentProgram.getMemory().getBlock(".renamed_odd");
-        long start = Long.parseLong(getScriptArgs()[0], 16);
-        if (block == null || block.getStart().getOffset() != start
-                || block.getEnd().getOffset() != start + 2 || block.getSize() != 3)
-            throw new IllegalStateException("Block creation did not preserve byte offsets and size");
-    }
-}
-"#;
+            const CHECK_BYTES: &str = include_str!("../fixtures/memory/CheckBlockByteSize.java");
             client
                 .script_run_source(CHECK_BYTES, &[expected_offset.into()], &[], false)
                 .unwrap();
@@ -799,25 +556,8 @@ public class CheckBlockByteSize extends GhidraScript {
 fn creating_backing_memory_preserves_existing_mapped_data() {
     require_ghidra!();
     with_fixture("x86:LE:64:default", |_, client, program| {
-        const CHECK_MAPPED_POINTER: &str = r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.PointerDataType;
-public class CheckCreationMappedPointer extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        var address = toAddr(0x3000);
-        if (getScriptArgs()[0].equals("create")) {
-            memory.createByteMappedBlock("unbacked_view", address, toAddr(0x4000), 8, false);
-            currentProgram.getListing().createData(address,
-                new PointerDataType(null, 8, currentProgram.getDataTypeManager()));
-        }
-        var data = currentProgram.getListing().getDefinedDataAt(address);
-        if (data == null || data.getValue() != null
-                || currentProgram.getReferenceManager().getReferencesFrom(address).length != 0)
-            throw new IllegalStateException("Unbacked mapped pointer changed");
-    }
-}
-"#;
+        const CHECK_MAPPED_POINTER: &str =
+            include_str!("../fixtures/memory/CheckCreationMappedPointer.java");
         client
             .script_run_source(CHECK_MAPPED_POINTER, &["create".into()], &[], false)
             .unwrap();

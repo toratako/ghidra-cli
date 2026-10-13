@@ -199,22 +199,7 @@ fn test_active_script_cancel_does_not_cancel_next_job() {
     let script_args = vec![address.clone(), marker.clone()];
     let script = std::thread::spawn(move || {
         worker.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class WaitForBridgeCancel extends GhidraScript {
-    public void run() throws Exception {
-        setEOLComment(toAddr(getScriptArgs()[0]), getScriptArgs()[1]);
-        println(getScriptArgs()[1]);
-        monitor.setMessage("waiting-for-bridge-cancel");
-        long deadline = System.currentTimeMillis() + 30000;
-        while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        monitor.checkCancelled();
-        throw new IllegalStateException("Cancellation never arrived");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/WaitForBridgeCancel.java"),
             &script_args,
             &[],
             false,
@@ -257,15 +242,7 @@ public class WaitForBridgeCancel extends GhidraScript {
 
     let next = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckFreshBridgeMonitor extends GhidraScript {
-    public void run() throws Exception {
-        monitor.checkCancelled();
-        println("fresh-monitor:" + currentProgram.getName());
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CheckFreshBridgeMonitor.java"),
             &[],
             &[],
             false,
@@ -314,22 +291,7 @@ fn test_shutdown_wait_drains_full_queue_before_reply() {
     let script_release = release.to_str().unwrap().to_owned();
     let script = std::thread::spawn(move || {
         worker.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class HoldQueueForShutdown extends GhidraScript {
-    public void run() throws Exception {
-        java.io.File release = new java.io.File(getScriptArgs()[0]);
-        monitor.setMessage("holding-queue-for-shutdown");
-        long deadline = System.currentTimeMillis() + 60000;
-        while (!release.exists()) {
-            if (System.currentTimeMillis() > deadline) {
-                throw new IllegalStateException("Queue was not released");
-            }
-            Thread.sleep(10);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/HoldQueueForShutdown.java"),
             &[script_release],
             &[],
             false,
@@ -432,24 +394,7 @@ fn test_cancel_requested_while_temporarily_disabled_is_delivered_when_reenabled(
     let script_args = vec![release.to_str().unwrap().to_owned()];
     let script = std::thread::spawn(move || {
         worker.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import java.nio.file.Files;
-import java.nio.file.Path;
-public class DeferBridgeCancellation extends GhidraScript {
-    public void run() throws Exception {
-        monitor.setCancelEnabled(false);
-        monitor.setMessage("waiting-with-cancel-disabled");
-        long deadline = System.currentTimeMillis() + 30000;
-        while (!Files.exists(Path.of(getScriptArgs()[0])) && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        monitor.setCancelEnabled(true);
-        monitor.checkCancelled();
-        throw new IllegalStateException("Cancellation was discarded");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/DeferBridgeCancellation.java"),
             &script_args,
             &[],
             false,
@@ -505,38 +450,7 @@ fn cancellation_listeners_do_not_block_status_or_program_job_completion() {
     ];
     let script = std::thread::spawn(move || {
         worker.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.util.task.CancelledListener;
-import java.nio.file.Files;
-import java.nio.file.Path;
-public class WaitForCancellationListener extends GhidraScript {
-    private CancelledListener listener;
-    public void run() throws Exception {
-        Path entered = Path.of(getScriptArgs()[0]);
-        Path release = Path.of(getScriptArgs()[1]);
-        listener = () -> {
-            try {
-                Files.writeString(entered, "entered");
-                long deadline = System.currentTimeMillis() + 15000;
-                while (!Files.exists(release)) {
-                    if (System.currentTimeMillis() >= deadline) {
-                        throw new IllegalStateException("Cancellation listener was not released");
-                    }
-                    Thread.sleep(10);
-                }
-            } catch (Exception error) { throw new IllegalStateException(error); }
-            throw new AssertionError("Cancellation listener assertion");
-        };
-        monitor.addCancelledListener(listener);
-        monitor.setMessage("waiting-for-listener-cancel");
-        long deadline = System.currentTimeMillis() + 30000;
-        while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) Thread.sleep(10);
-        monitor.checkCancelled();
-        throw new IllegalStateException("Cancellation never arrived");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/WaitForCancellationListener.java"),
             &script_args,
             &[],
             false,

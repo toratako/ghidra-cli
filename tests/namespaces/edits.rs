@@ -12,7 +12,12 @@ fn namespace(client: &BridgeClient, path: &str) -> Value {
 
 fn state(client: &BridgeClient) -> Value {
     let result = client
-        .script_run_source(include_str!("../fixtures/namespaces/ReadNamespaceEditState.java"), &[], &[], false)
+        .script_run_source(
+            include_str!("../fixtures/namespaces/ReadNamespaceEditState.java"),
+            &[],
+            &[],
+            false,
+        )
         .unwrap();
     serde_json::from_str(result["stdout"].as_str().unwrap().trim()).unwrap()
 }
@@ -107,18 +112,7 @@ fn namespace_delete_requires_empty_or_explicit_recursion_and_reports_all_removed
         move_symbol(client, &symbol(client, "first_label"), Some("app::Widget"));
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.IntegerDataType;
-import ghidra.program.model.listing.LocalVariableImpl;
-import ghidra.program.model.symbol.SourceType;
-public class AddNamespaceLocal extends GhidraScript {
-    public void run() throws Exception {
-        getFunctionAt(toAddr(0x1040)).addLocalVariable(new LocalVariableImpl("scratch",
-            IntegerDataType.dataType, -4, currentProgram), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/namespaces/AddNamespaceLocal.java"),
                 &[],
                 &[],
                 false,
@@ -258,7 +252,12 @@ fn namespace_id_selection_recovers_native_path_ambiguity_without_editing_its_twi
     require_ghidra!();
     with_fixture(|client, program| {
         client
-            .script_run_source(include_str!("../fixtures/namespaces/CreateNamespacePaths.java"), &[], &[], false)
+            .script_run_source(
+                include_str!("../fixtures/namespaces/CreateNamespacePaths.java"),
+                &[],
+                &[],
+                false,
+            )
             .unwrap();
         let all = client.send_command("namespace_list", None).unwrap();
         let flat = all["namespaces"]
@@ -298,19 +297,14 @@ fn namespace_id_selection_recovers_native_path_ambiguity_without_editing_its_twi
         assert_eq!(symbol(client, "flat_marker")["namespace"], "flat");
         assert_eq!(symbol(client, "nested_marker")["namespace"], "a::b");
         // A pre-existing ambiguous pair can move together without creating a new collision.
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CreateAmbiguousNamespaceSubtree extends GhidraScript {
-    public void run() throws Exception {
-        var table = currentProgram.getSymbolTable();
-        var root = table.createNameSpace(currentProgram.getGlobalNamespace(), "tree", SourceType.USER_DEFINED);
-        table.createNameSpace(root, "x::y", SourceType.USER_DEFINED);
-        var x = table.createNameSpace(root, "x", SourceType.USER_DEFINED);
-        table.createNameSpace(x, "y", SourceType.USER_DEFINED);
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/namespaces/CreateAmbiguousNamespaceSubtree.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         let before_ids = ids(&client.send_command("namespace_list", None).unwrap()["namespaces"]);
         command(program, &["namespace", "rename", "tree", "renamed_tree"]);
         command(
@@ -419,27 +413,7 @@ fn recursive_namespace_deletion_rejects_thunk_cascades_outside_the_selected_tree
         move_symbol(client, &symbol(client, "plain"), Some("app"));
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateNamespaceThunks extends GhidraScript {
-    public void run() throws Exception {
-        var manager = currentProgram.getFunctionManager();
-        var target = getFunctionAt(toAddr(0x1050));
-        var inside = manager.createFunction("inside_thunk", toAddr(0x1060),
-            new AddressSet(toAddr(0x1060)), SourceType.USER_DEFINED);
-        inside.setParentNamespace(target.getParentNamespace());
-        inside.setThunkedFunction(target);
-        var outside = manager.createFunction("outside_thunk", toAddr(0x1070),
-            new AddressSet(toAddr(0x1070)), SourceType.USER_DEFINED);
-        outside.setThunkedFunction(inside);
-        var indirect = manager.createFunction("indirect_thunk", toAddr(0x1080),
-            new AddressSet(toAddr(0x1080)), SourceType.USER_DEFINED);
-        indirect.setThunkedFunction(outside);
-    }
-}
-"#,
+                include_str!("../fixtures/namespaces/CreateNamespaceThunks.java"),
                 &[],
                 &[],
                 false,
@@ -501,18 +475,7 @@ fn class_namespace_edits_preserve_native_method_abi_and_existing_datatypes() {
         let moved = move_symbol(client, &symbol(client, "method"), Some("app::Widget"));
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateClassDefaultThunk extends GhidraScript {
-    public void run() throws Exception {
-        var thunk = currentProgram.getFunctionManager().createFunction(null, toAddr(0x1060),
-            new AddressSet(toAddr(0x1060)), SourceType.DEFAULT);
-        thunk.setThunkedFunction(getFunctionAt(toAddr(0x1040)));
-    }
-}
-"#,
+                include_str!("../fixtures/namespaces/CreateClassDefaultThunk.java"),
                 &[],
                 &[],
                 false,

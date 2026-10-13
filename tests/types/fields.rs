@@ -66,34 +66,16 @@ fn rejected_unchanged(name: &str, before: &Value, result: GhidraResult, message:
 fn assert_saved_field_settings(name: &str, offsets: &[&str]) {
     let mut args = vec![name.to_owned()];
     args.extend(offsets.iter().map(|offset| (*offset).to_owned()));
-    harness().client().unwrap().script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.framework.model.DomainFile;
-import ghidra.program.model.data.EndianSettingsDefinition;
-import ghidra.program.model.data.Structure;
-import ghidra.program.model.listing.Program;
-public class CheckSavedFieldSettings extends GhidraScript {
-    public void run() throws Exception {
-        Object consumer = new Object();
-        Program saved = (Program) currentProgram.getDomainFile()
-            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
-        try {
-            String[] args = getScriptArgs();
-            var structure = (Structure) saved.getDataTypeManager().getDataType("/" + args[0]);
-            for (int i = 1; i < args.length; i++) {
-                var settings = structure.getComponentAt(Integer.parseInt(args[i])).getDefaultSettings();
-                if (FormatSettingsDefinition.DEF.getChoice(settings) != FormatSettingsDefinition.DECIMAL)
-                    throw new IllegalStateException("Lost field format at " + args[i]);
-                if (EndianSettingsDefinition.DEF.getChoice(settings) != EndianSettingsDefinition.BIG)
-                    throw new IllegalStateException("Lost field byte order at " + args[i]);
-            }
-        } finally {
-            saved.release(consumer);
-        }
-    }
-}
-"#, &args, &[], false).unwrap();
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/types/CheckSavedFieldSettings.java"),
+            &args,
+            &[],
+            false,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -101,33 +83,16 @@ public class CheckSavedFieldSettings extends GhidraScript {
 fn field_edits_preserve_saved_component_settings() {
     require_ghidra!();
     let prefix = format!("Settings_{}", unique_suffix());
-    harness().client().unwrap().script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateFieldSettings extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (boolean packed : new boolean[] { false, true }) {
-            String name = getScriptArgs()[0] + (packed ? "Packed" : "Unpacked");
-            var structure = new StructureDataType(CategoryPath.ROOT, name, packed ? 0 : 24, dtm);
-            if (packed) {
-                structure.setPackingEnabled(true);
-                structure.add(DWordDataType.dataType, "head", null);
-                structure.add(DWordDataType.dataType, "tail", null);
-            } else {
-                structure.replaceAtOffset(0, DWordDataType.dataType, 4, "head", null);
-                structure.replaceAtOffset(16, DWordDataType.dataType, 4, "tail", null);
-            }
-            var saved = (Structure) dtm.addDataType(structure, null);
-            for (var component : saved.getDefinedComponents()) {
-                FormatSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-                EndianSettingsDefinition.DEF.setChoice(component.getDefaultSettings(), EndianSettingsDefinition.BIG);
-            }
-        }
-    }
-}
-"#, std::slice::from_ref(&prefix), &[], false).unwrap();
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/types/CreateFieldSettings.java"),
+            std::slice::from_ref(&prefix),
+            &[],
+            false,
+        )
+        .unwrap();
 
     for (suffix, tail) in [("Packed", "4"), ("Unpacked", "16")] {
         let name = format!("{prefix}{suffix}");
@@ -213,27 +178,13 @@ fn append_rejects_packed_structure_size_overflow_without_saving_a_corrupt_layout
     let client = harness().client().unwrap();
     super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-        .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreatePackedAppendOverflow extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = new StructureDataType("PackedAppendOverflow", 0, dtm);
-        structure.setPackingEnabled(true);
-        structure.add(new ArrayDataType(ByteDataType.dataType, Integer.MAX_VALUE - 1, -1, dtm), "bytes", "keep");
-        var saved = dtm.addDataType(structure, null);
-        if (saved.getLength() != Integer.MAX_VALUE - 1)
-            throw new IllegalStateException("Fixture must leave one byte below the supported structure size");
-    }
-}
-"#,
-            &[],
-            &[],
-            false,
-        )
-        .unwrap();
+            .script_run_source(
+                include_str!("../fixtures/types/CreatePackedAppendOverflow.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         let appended = success(super::type_command(
             &program,
             &[
@@ -283,23 +234,7 @@ fn shrinking_a_field_rejects_padding_component_count_overflow() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateFieldShrinkCountFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = new StructureDataType("ShrinkCountFields", 8, dtm);
-        structure.insertBitFieldAt(0, 1, 0, UnsignedIntegerDataType.dataType, 3, "first", null);
-        structure.insertBitFieldAt(0, 1, 3, UnsignedIntegerDataType.dataType, 3, "second", null);
-        structure.replaceAtOffset(4, DWordDataType.dataType, 4, "word", "keep");
-        structure.growStructure(Integer.MAX_VALUE - 8);
-        var saved = (Structure) dtm.addDataType(structure, null);
-        if (saved.getNumComponents() != Integer.MAX_VALUE - 2)
-            throw new IllegalStateException("Fixture component count is invalid");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateFieldShrinkCountFixture.java"),
             &[],
             &[],
             false,
@@ -326,21 +261,7 @@ public class CreateFieldShrinkCountFixture extends GhidraScript {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckFieldShrinkCountFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/ShrinkCountFields");
-        var fields = structure.getDefinedComponents();
-        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE - 2
-                || fields.length != 3 || fields[2].getOrdinal() != 5 || fields[2].getOffset() != 4
-                || fields[2].getLength() != 4 || !"word".equals(fields[2].getFieldName())
-                || !"keep".equals(fields[2].getComment()))
-            throw new IllegalStateException("Overflow rejection changed the saved structure");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckFieldShrinkCountFixture.java"),
             &[],
             &[],
             false,
@@ -868,24 +789,7 @@ fn duplicate_field_names_require_an_ordinal_or_offset() {
         .client()
         .unwrap()
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateDuplicateFields extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        String prefix = getScriptArgs()[0];
-        var structure = new StructureDataType(CategoryPath.ROOT, prefix + "Struct", 0, dtm);
-        structure.add(ByteDataType.dataType, "same", null);
-        structure.add(ByteDataType.dataType, "same", null);
-        dtm.addDataType(structure, null);
-        var union = new UnionDataType(CategoryPath.ROOT, prefix + "Union", dtm);
-        union.add(ByteDataType.dataType, "same", null);
-        union.add(WordDataType.dataType, "same", null);
-        dtm.addDataType(union, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateDuplicateFields.java"),
             std::slice::from_ref(&prefix),
             &[],
             false,
@@ -913,34 +817,7 @@ fn packed_layout_and_bitfield_or_zero_length_targets_are_guarded() {
         .client()
         .unwrap()
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.ArrayDataType;
-import ghidra.program.model.data.ByteDataType;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.IntegerDataType;
-import ghidra.program.model.data.StructureDataType;
-import ghidra.program.model.data.UnsignedIntegerDataType;
-public class CreateSpecialFieldFixtures extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        String prefix = getScriptArgs()[0];
-        var packed = new StructureDataType(CategoryPath.ROOT, prefix + "Packed", 0, dtm);
-        packed.setPackingEnabled(true);
-        packed.add(ByteDataType.dataType, "tag", "tag comment");
-        packed.add(IntegerDataType.dataType, "value", "value comment");
-        dtm.addDataType(packed, null);
-        var bits = new StructureDataType(CategoryPath.ROOT, prefix + "Bits", 0, dtm);
-        bits.addBitField(UnsignedIntegerDataType.dataType, 3, "flags", "bit comment");
-        dtm.addDataType(bits, null);
-        var zero = new StructureDataType(CategoryPath.ROOT, prefix + "Zero", 0, dtm);
-        zero.add(ByteDataType.dataType, "start", null);
-        zero.add(new ArrayDataType(ByteDataType.dataType, 0, -1, dtm), "zero", "empty");
-        zero.add(ByteDataType.dataType, "end", null);
-        dtm.addDataType(zero, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateSpecialFieldFixtures.java"),
             std::slice::from_ref(&prefix),
             &[],
             false,
@@ -1059,23 +936,7 @@ fn huge_sparse_type_get_rejects_allocation_and_keeps_the_bridge_and_database_hea
     super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateSparseTypeGetFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (int length : new int[] { Integer.MAX_VALUE, 8 }) {
-            String name = length == 8 ? "SmallSparseGet" : "HugeSparseGet";
-            var structure = new StructureDataType(name, length, dtm);
-            structure.replaceAtOffset(length - 4, DWordDataType.dataType, 4, "tail", "keep");
-            var saved = (Structure) dtm.addDataType(structure, null);
-            if (saved.getNumComponents() != length - 3)
-                throw new IllegalStateException("Unexpected sparse component count");
-        }
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateSparseTypeGetFixture.java"),
                 &[],
                 &[],
                 false,
@@ -1111,26 +972,12 @@ public class CreateSparseTypeGetFixture extends GhidraScript {
         client.open_program(&program).unwrap();
         assert_eq!(client.type_get("SmallSparseGet").unwrap(), small);
         client
-        .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckSparseTypeGetFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/HugeSparseGet");
-        var fields = structure.getDefinedComponents();
-        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE - 3
-                || fields.length != 1 || fields[0].getOffset() != Integer.MAX_VALUE - 4
-                || fields[0].getLength() != 4 || !"tail".equals(fields[0].getFieldName())
-                || !"keep".equals(fields[0].getComment()))
-            throw new IllegalStateException("Type inspection changed the saved sparse structure");
-    }
-}
-"#,
-            &[],
-            &[],
-            false,
-        )
-        .unwrap();
+            .script_run_source(
+                include_str!("../fixtures/types/CheckSparseTypeGetFixture.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     });
 }

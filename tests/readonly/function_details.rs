@@ -151,14 +151,16 @@ fn frame_details(program: &str, target: &str) -> Value {
 }
 
 fn signature_program_state() -> String {
-    let result = harness().client().unwrap().script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class ReadSignatureProgramState extends GhidraScript {
-    public void run() {
-        println("program-state=" + currentProgram.getModificationNumber() + ":" + currentProgram.isChanged());
-    }
-}
-"#, &[], &[], false).unwrap();
+    let result = harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/readonly/ReadSignatureProgramState.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     result["stdout"]
         .as_str()
         .unwrap()

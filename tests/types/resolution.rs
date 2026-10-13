@@ -34,36 +34,7 @@ fn create_language_program(language: &str) -> String {
         .client()
         .unwrap()
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.FunctionDefinitionDataType;
-import ghidra.program.model.data.StructureDataType;
-import ghidra.program.model.data.VoidDataType;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateTypeResolutionProgram extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID(getScriptArgs()[1]));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("type resolution fixture");
-            try {
-                var dtm = program.getDataTypeManager();
-                var hook = new FunctionDefinitionDataType(new CategoryPath("/Recovered"), "Hook", dtm);
-                hook.setReturnType(VoidDataType.dataType);
-                dtm.addDataType(hook, null);
-                dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "Holder", 0, dtm), null);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateTypeResolutionProgram.java"),
             &[program.clone(), language.to_string()],
             &[],
             false,
@@ -119,20 +90,7 @@ fn arrays_and_pointers_use_the_selected_program_width() {
         let client = harness().client().unwrap();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Array;
-import ghidra.program.model.data.Structure;
-public class CheckArrayDimensions extends GhidraScript {
-    public void run() throws Exception {
-        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
-        var outer = (Array) holder.getComponent(1).getDataType();
-        var inner = (Array) outer.getDataType();
-        if (outer.getNumElements() != 2 || inner.getNumElements() != 3)
-            throw new IllegalStateException("Array dimensions were reversed");
-    }
-}
-"#,
+                include_str!("../fixtures/types/CheckArrayDimensions.java"),
                 &[],
                 &[],
                 false,
@@ -221,20 +179,7 @@ fn ambiguous_short_names_report_sorted_paths_and_exact_paths_remain_usable() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.StructureDataType;
-public class CreateAmbiguousTypes extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        String[] paths = { "/zeta", "/", "/alpha" };
-        for (int i = 0; i < paths.length; i++)
-            dtm.addDataType(new StructureDataType(new CategoryPath(paths[i]), "Shared", i + 1, dtm), null);
-    }
-}
-
-"#,
+            include_str!("../fixtures/types/CreateAmbiguousTypes.java"),
             &[],
             &[],
             false,
@@ -326,19 +271,7 @@ fn program_types_take_precedence_over_builtins_and_alias_spellings() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.StructureDataType;
-public class CreateBuiltinShadows extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var category = new CategoryPath("/Shadows");
-        dtm.addDataType(new StructureDataType(category, "uint32_t", 7, dtm), null);
-        dtm.addDataType(new StructureDataType(category, "byte", 3, dtm), null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateBuiltinShadows.java"),
             &[],
             &[],
             false,
@@ -400,21 +333,7 @@ fn rejected_force_define_data_preserves_instructions_and_data() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.DWordDataType;
-public class PrepareDefineDataMemory extends GhidraScript {
-    public void run() throws Exception {
-        var memory = currentProgram.getMemory();
-        memory.createInitializedBlock("first", toAddr(0x1000), 8, (byte) 0xc3, monitor, false);
-        memory.createInitializedBlock("after_gap", toAddr(0x1010), 8, (byte) 0, monitor, false);
-        memory.createInitializedBlock("last", toAddr(0xfffffff0L), 16, (byte) 0, monitor, false);
-        disassemble(toAddr(0x1000));
-        createData(toAddr(0x1004), DWordDataType.dataType);
-        createData(toAddr(0xfffffffcL), DWordDataType.dataType);
-    }
-}
-"#,
+            include_str!("../fixtures/types/PrepareDefineDataMemory.java"),
             &[],
             &[],
             false,
@@ -440,21 +359,7 @@ public class PrepareDefineDataMemory extends GhidraScript {
         );
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class CheckDefineDataPreservation extends GhidraScript {
-    public void run() throws Exception {
-        if (getInstructionAt(toAddr(0x1000)) == null)
-            throw new IllegalStateException("Rejected apply removed instruction");
-        for (long address : new long[] { 0x1004, 0xfffffffcL }) {
-            var data = getDataAt(toAddr(address));
-            if (data == null || !data.isDefined() || data.getLength() != 4
-                    || !data.getDataType().getName().equals("dword"))
-                throw new IllegalStateException("Rejected apply removed data");
-        }
-    }
-}
-"#,
+                include_str!("../fixtures/types/CheckDefineDataPreservation.java"),
                 &[],
                 &[],
                 false,
@@ -545,18 +450,7 @@ fn append_field_size_is_honored_or_rejected_before_changing_the_structure() {
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Structure;
-import ghidra.docking.settings.FormatSettingsDefinition;
-public class SetAnchorFormat extends GhidraScript {
-    public void run() throws Exception {
-        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
-        FormatSettingsDefinition.DEF.setChoice(holder.getComponent(0).getDefaultSettings(),
-            FormatSettingsDefinition.DECIMAL);
-    }
-}
-"#,
+            include_str!("../fixtures/types/SetAnchorFormat.java"),
             &[],
             &[],
             false,
@@ -571,19 +465,7 @@ public class SetAnchorFormat extends GhidraScript {
     .assert_success();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Structure;
-import ghidra.docking.settings.FormatSettingsDefinition;
-public class CheckAnchorFormat extends GhidraScript {
-    public void run() throws Exception {
-        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/Holder");
-        if (FormatSettingsDefinition.DEF.getChoice(holder.getComponent(0).getDefaultSettings())
-                != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Append discarded an existing field's format setting");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckAnchorFormat.java"),
             &[],
             &[],
             false,
@@ -622,19 +504,7 @@ fn exact_registered_path_wins_over_pointer_expression() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateExpressionNamedType extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase", 1, dtm), null);
-        dtm.addDataType(new StructureDataType(CategoryPath.ROOT, "ExprBase *", 3, dtm), null);
-        dtm.addDataType(new StructureDataType(CategoryPath.ROOT,
-            "DeepLiteral" + "*".repeat(129), 5, dtm), null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateExpressionNamedType.java"),
             &[],
             &[],
             false,

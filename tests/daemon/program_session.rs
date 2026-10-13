@@ -10,29 +10,7 @@ use std::time::{Duration, Instant};
 fn assert_saved_comment(client: &ghidra_cli::ipc::client::BridgeClient, address: &str, text: &str) {
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.framework.model.DomainFile;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.listing.CodeUnit;
-public class CheckAutoSavedComment extends GhidraScript {
-    public void run() throws Exception {
-        if (currentProgram.isChanged()) throw new IllegalStateException("Program is still dirty");
-        Object consumer = new Object();
-        Program saved = (Program) currentProgram.getDomainFile()
-            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
-        try {
-            String actual = saved.getListing().getComment(CodeUnit.EOL_COMMENT,
-                saved.getAddressFactory().getAddress(getScriptArgs()[0]));
-            if (!getScriptArgs()[1].equals(actual)) {
-                throw new IllegalStateException("Saved comment differs: " + actual);
-            }
-        } finally {
-            saved.release(consumer);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CheckAutoSavedComment.java"),
             &[address.to_owned(), text.to_owned()],
             &[],
             false,
@@ -51,25 +29,7 @@ fn test_program_list_excludes_archives_at_every_depth() {
     let name = format!("mixed-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.DataTypeArchiveDB;
-public class CreateMixedProjectFiles extends GhidraScript {
-    public void run() throws Exception {
-        var root = state.getProject().getProjectData().getRootFolder();
-        String name = getScriptArgs()[0];
-        var folder = root.createFolder(name);
-        for (var parent : new ghidra.framework.model.DomainFolder[] { root, folder }) {
-            Object consumer = new Object();
-            var archive = new DataTypeArchiveDB(parent, name + ".gdt", consumer);
-            archive.release(consumer);
-            if (parent.getFile(name + ".gdt") == null)
-                throw new IllegalStateException("Archive fixture was not saved");
-        }
-        currentProgram.getDomainFile().copyTo(folder, monitor).setName("copy");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CreateMixedProjectFiles.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -161,17 +121,7 @@ fn test_queued_requests_keep_their_program_target() {
     let folder = format!("request-targets-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CopyRequestTargetPrograms extends GhidraScript {
-    public void run() throws Exception {
-        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
-        for (String child : new String[] { "first", "second" }) {
-            currentProgram.getDomainFile().copyTo(folder.createFolder(child), monitor).setName("same-name");
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CopyRequestTargetPrograms.java"),
             std::slice::from_ref(&folder),
             &[],
             false,
@@ -189,23 +139,7 @@ public class CopyRequestTargetPrograms extends GhidraScript {
     let worker = harness.client().unwrap();
     let blocker = std::thread::spawn(move || {
         worker.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class HoldProgramTargetQueue extends GhidraScript {
-    public void run() throws Exception {
-        var release = new java.io.File(getScriptArgs()[0]);
-        monitor.setMessage("holding-program-target-queue");
-        long deadline = System.currentTimeMillis() + 30000;
-        while (!release.exists()) {
-            monitor.checkCancelled();
-            if (System.currentTimeMillis() > deadline) {
-                throw new IllegalStateException("Program target queue was not released");
-            }
-            Thread.sleep(10);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/HoldProgramTargetQueue.java"),
             &[script_release],
             &[],
             false,
@@ -327,26 +261,7 @@ fn test_recursive_analyzer_probe_preserves_selection_and_bridge() {
     let name = format!("cyclic-analyzer-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-public class CreateCyclicAnalyzerTarget extends GhidraScript {
-    public void run() throws Exception {
-        var language = currentProgram.getLanguage();
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int transaction = program.startTransaction("cyclic analyzer target");
-            try {
-                var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x5000);
-                program.getMemory().createByteMappedBlock("cycle", address, address, 1, false);
-            } finally { program.endTransaction(transaction, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CreateCyclicAnalyzerTarget.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -393,16 +308,14 @@ fn test_handlers_follow_program_switch_and_close() {
         initial_count
     );
     let folder = format!("switch-{}", uuid::Uuid::new_v4());
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class CopyBridgeProgram extends GhidraScript {
-    public void run() throws Exception {
-        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
-        currentProgram.getDomainFile().copyTo(folder, monitor).setName("alternate");
-        currentProgram.getDomainFile().copyTo(folder.createFolder("deeper"), monitor).setName("alternate");
-    }
-}
-"#, std::slice::from_ref(&folder), &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/daemon/CopyBridgeProgram.java"),
+            std::slice::from_ref(&folder),
+            &[],
+            false,
+        )
+        .unwrap();
     let alternate = format!("/{folder}/alternate");
     let deeper_alternate = format!("/{folder}/deeper/alternate");
     client.open_program(&alternate).unwrap();
@@ -529,15 +442,14 @@ fn test_program_list_analysis_flag_uses_live_and_saved_options() {
     let harness = start_daemon();
     let client = harness.client().unwrap();
     let folder = format!("analysis-flags-{}", uuid::Uuid::new_v4());
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class CopyAnalysisFlagProgram extends GhidraScript {
-    public void run() throws Exception {
-        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
-        currentProgram.getDomainFile().copyTo(folder, monitor);
-    }
-}
-"#, std::slice::from_ref(&folder), &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/daemon/CopyAnalysisFlagProgram.java"),
+            std::slice::from_ref(&folder),
+            &[],
+            false,
+        )
+        .unwrap();
     let copied = format!("/{folder}/{TEST_PROGRAM}");
     for (flag, expected) in [
         ("false", serde_json::json!(false)),
@@ -546,19 +458,14 @@ public class CopyAnalysisFlagProgram extends GhidraScript {
         ("true", serde_json::json!(true)),
     ] {
         client.open_program(&copied).unwrap();
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.listing.Program;
-public class SetAnalysisFlagForMetadata extends GhidraScript {
-    public void run() throws Exception {
-        var options = currentProgram.getOptions(Program.PROGRAM_INFO);
-        options.removeOption(Program.ANALYZED_OPTION_NAME);
-        String flag = getScriptArgs()[0];
-        if (flag.equals("invalid")) options.setString(Program.ANALYZED_OPTION_NAME, "unknown");
-        else if (!flag.equals("missing")) options.setBoolean(Program.ANALYZED_OPTION_NAME, Boolean.parseBoolean(flag));
-    }
-}
-"#, &[flag.to_owned()], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/daemon/SetAnalysisFlagForMetadata.java"),
+                &[flag.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
         for current in [true, false] {
             if !current {
                 client.open_program(TEST_PROGRAM).unwrap();
@@ -590,15 +497,7 @@ fn test_failed_script_saves_partial_changes() {
     let text = format!("failed-script-autosave-{}", uuid::Uuid::new_v4());
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class EditThenFailAutoSave extends GhidraScript {
-    public void run() throws Exception {
-        setEOLComment(toAddr(getScriptArgs()[0]), getScriptArgs()[1]);
-        throw new IllegalStateException("intentional failure after editing");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/EditThenFailAutoSave.java"),
             &[address.to_owned(), text.clone()],
             &[],
             false,
@@ -636,15 +535,7 @@ fn test_save_failure_preserves_program_and_does_not_replay_edit() {
     let folder = format!("failed-target-switch-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CopyFailedSwitchTarget extends GhidraScript {
-    public void run() throws Exception {
-        var folder = state.getProject().getProjectData().getRootFolder().createFolder(getScriptArgs()[0]);
-        currentProgram.getDomainFile().copyTo(folder, monitor);
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CopyFailedSwitchTarget.java"),
             std::slice::from_ref(&folder),
             &[],
             false,
@@ -657,17 +548,7 @@ public class CopyFailedSwitchTarget extends GhidraScript {
     // but a durable save cannot acquire the program lock.
     let error = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class PreventAutoSave extends GhidraScript {
-    public void run() throws Exception {
-        var options = currentProgram.getOptions("AutoSaveTest");
-        String key = getScriptArgs()[0];
-        options.setInt(key, options.getInt(key, 0) + 1);
-        println(Integer.toString(currentProgram.startTransaction("deliberately left open")));
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/PreventAutoSave.java"),
             std::slice::from_ref(&key),
             &[],
             false,
@@ -773,15 +654,14 @@ public class PreventAutoSave extends GhidraScript {
         "success"
     );
 
-    let repaired = client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class AllowAutoSave extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
-        println("edit-count:" + currentProgram.getOptions("AutoSaveTest").getInt(getScriptArgs()[1], 0));
-    }
-}
-"#, &[transaction, key.clone()], &[], false).unwrap();
+    let repaired = client
+        .script_run_source(
+            include_str!("../fixtures/daemon/AllowAutoSave.java"),
+            &[transaction, key.clone()],
+            &[],
+            false,
+        )
+        .unwrap();
     assert!(repaired["stdout"]
         .as_str()
         .unwrap()
@@ -798,14 +678,16 @@ public class AllowAutoSave extends GhidraScript {
     client.program_delete(&target_path).unwrap();
     drop(harness);
     let restarted = start_daemon();
-    let saved = restarted.client().unwrap().script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class CheckRecoveredShutdownEdit extends GhidraScript {
-    public void run() throws Exception {
-        println("edit-count:" + currentProgram.getOptions("AutoSaveTest").getInt(getScriptArgs()[0], 0));
-    }
-}
-"#, &[key], &[], false).unwrap();
+    let saved = restarted
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/daemon/CheckRecoveredShutdownEdit.java"),
+            &[key],
+            &[],
+            false,
+        )
+        .unwrap();
     assert!(
         saved["stdout"].as_str().unwrap().contains("edit-count:1"),
         "{saved}"

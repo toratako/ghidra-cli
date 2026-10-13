@@ -210,7 +210,12 @@ fn uses_preserve_type_identity_wrappers_and_database_signature_provenance() {
             );
             // Read-only DB probe also verifies cancellation after scanning has begun.
             client
-                .script_run_source(include_str!("../fixtures/types/CheckTypeUsesReadOnly.java"), &[], &[], false)
+                .script_run_source(
+                    include_str!("../fixtures/types/CheckTypeUsesReadOnly.java"),
+                    &[],
+                    &[],
+                    false,
+                )
                 .unwrap();
             client.program_close().unwrap();
             assert_eq!(uses(&program, "/Recovered/Widget", &["--limit", "0"]), all);

@@ -58,23 +58,7 @@ fn storage_partial_edits_preserve_saved_abi_and_replace_parameters_atomically() 
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.FunctionDefinitionDataType;
-import ghidra.program.model.data.CharDataType;
-import ghidra.program.model.pcode.HighFunctionDBUtil;
-import ghidra.program.model.symbol.SourceType;
-public class StorageMetadataFixture extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1100));
-        function.getParameter(1).setComment("preserved parameter comment");
-        function.getParameter(1).getSymbol().setSource(SourceType.IMPORTED);
-        var signature = new FunctionDefinitionDataType("local_override");
-        signature.setReturnType(CharDataType.dataType);
-        HighFunctionDBUtil.writeOverride(function, function.getEntryPoint(), signature);
-    }
-}
-"#,
+            include_str!("../fixtures/types/StorageMetadataFixture.java"),
             &[],
             &[],
             false,
@@ -109,20 +93,14 @@ public class StorageMetadataFixture extends GhidraScript {
         before["calling_convention"]
     );
     assert_eq!(function("custom"), unrelated);
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class InspectStorageMetadata extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1100));
-        var parameter = function.getParameter(1);
-        if (!"preserved parameter comment".equals(parameter.getComment())
-            || parameter.getSource() != SourceType.IMPORTED || function.getLocalVariables().length != 3
-            || function.getStackPurgeSize() != 4 || function.getStackFrame().getReturnAddressOffset() != 8)
-            throw new IllegalStateException("Partial edit changed unrelated metadata");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/InspectStorageMetadata.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     assert_eq!(
         client
             .send_command("function_call_signature_get", Some(override_args))
@@ -240,18 +218,7 @@ fn storage_complete_signatures_follow_native_endian_register_and_float_rules() {
         client.open_program(&program).unwrap();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateStorageFunction extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x1000);
-        currentProgram.getFunctionManager().createFunction("entry", address,
-            new AddressSet(address, address), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateStorageFunction.java"),
                 &[],
                 &[],
                 false,
@@ -330,17 +297,12 @@ public class CreateStorageFunction extends GhidraScript {
             float_size.parse::<i32>().unwrap()
         );
         // Inspect native offsets independently of the bridge encoder.
-        let native = client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class InspectStorageOffset extends GhidraScript {
-    public void run() throws Exception {
-        var storage = getFunctionAt(toAddr(0x1000)).getReturn().getVariableStorage();
-        if (storage.getRegisterOffset(currentProgram.getRegister(getScriptArgs()[0])) != 0
-            || storage.getRegisterOffset(currentProgram.getRegister(getScriptArgs()[1])) != 4)
-            throw new IllegalStateException("Native byte order differs from requested value offsets");
-    }
-}
-"#, &[first.into(), second.into()], &[], false);
+        let native = client.script_run_source(
+            include_str!("../fixtures/types/InspectStorageOffset.java"),
+            &[first.into(), second.into()],
+            &[],
+            false,
+        );
         native.unwrap();
         assert_rejected(
             &program,
@@ -467,25 +429,14 @@ fn storage_piece_order_changes_native_decompilation_and_survives_reopen() {
     let client = harness().client().unwrap();
     let program = create_type_edit_program("x86:LE:32:default");
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateStorageCodeFixture extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x1000);
-        var block = currentProgram.getMemory().createInitializedBlock("code", address, 16, (byte)0, monitor, false);
-        block.setExecute(true);
-        // mov eax,0x11223344; mov edx,0x55667788; ret
-        currentProgram.getMemory().setBytes(address, new byte[] {
-            (byte)0xb8, 0x44, 0x33, 0x22, 0x11, (byte)0xba, (byte)0x88, 0x77, 0x66, 0x55, (byte)0xc3
-        });
-        disassemble(address);
-        currentProgram.getFunctionManager().createFunction("entry", address,
-            new AddressSet(address, address.add(10)), SourceType.USER_DEFINED);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateStorageCodeFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     command(
         &program,
         &[
@@ -553,21 +504,7 @@ fn memory_mapped_register_storage_keeps_register_pieces_after_reopen() {
     common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateMemoryMappedStorageFunction extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x1000);
-        currentProgram.getFunctionManager().createFunction("entry", address,
-            new AddressSet(address), SourceType.USER_DEFINED);
-        var register = currentProgram.getRegister("W0");
-        if (!register.getAddress().isMemoryAddress())
-            throw new IllegalStateException("Fixture requires a memory-mapped ABI register");
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateMemoryMappedStorageFunction.java"),
                 &[],
                 &[],
                 false,
@@ -607,20 +544,7 @@ public class CreateMemoryMappedStorageFunction extends GhidraScript {
         let receipt = edit.data::<Value>();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class CheckMemoryMappedNativeStorage extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        if (!function.getReturn().getVariableStorage().getRegisters().stream()
-                .map(register -> register.getName()).toList().equals(java.util.List.of("W1", "W0"))
-            || !function.getParameter(0).getVariableStorage().isRegisterStorage()
-            || !function.getParameter(1).getVariableStorage().getRegisters().stream()
-                .map(register -> register.getName()).toList().equals(java.util.List.of("W3", "W2")))
-            throw new IllegalStateException("Native storage did not retain the ABI registers");
-    }
-}
-"#,
+                include_str!("../fixtures/types/CheckMemoryMappedNativeStorage.java"),
                 &[],
                 &[],
                 false,

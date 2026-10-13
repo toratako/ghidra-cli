@@ -1,16 +1,7 @@
 use super::*;
 use serde_json::{json, Value};
 
-const LOCALE_SCRIPT: &str = r#"
-import ghidra.app.script.GhidraScript;
-import java.util.Locale;
-public class QueryTestLocale extends GhidraScript {
-    public void run() {
-        writer.println(Locale.getDefault().toLanguageTag());
-        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
-    }
-}
-"#;
+const LOCALE_SCRIPT: &str = include_str!("../fixtures/readonly/QueryTestLocale.java");
 
 #[test]
 #[serial]
@@ -23,7 +14,10 @@ fn name_suggestions_bound_long_names_and_cancel_during_matching() {
             "final class NameSuggestions",
             1,
         );
-    let source = format!("{helper}\n{}", include_str!("../fixtures/readonly/CheckNameSuggestions.java"));
+    let source = format!(
+        "{helper}\n{}",
+        include_str!("../fixtures/readonly/CheckNameSuggestions.java")
+    );
     harness()
         .client()
         .unwrap()

@@ -149,36 +149,14 @@ fn analysis_completion_flags_survive_import_reanalysis_and_cancellation() {
     assert_flag("skipped-raw", serde_json::json!(true));
 
     let prepare = |flag: &str, cancel: bool| {
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
-import ghidra.app.services.AbstractAnalyzer;
-import ghidra.app.services.AnalysisPriority;
-import ghidra.app.services.AnalyzerType;
-import ghidra.app.util.importer.MessageLog;
-import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.listing.Program;
-import ghidra.util.task.TaskMonitor;
-public class PrepareAnalysisCompletionTest extends GhidraScript {
-    public void run() throws Exception {
-        var options = currentProgram.getOptions(Program.PROGRAM_INFO);
-        options.removeOption(Program.ANALYZED_OPTION_NAME);
-        String flag = getScriptArgs()[0];
-        if (!flag.equals("missing")) options.setBoolean(Program.ANALYZED_OPTION_NAME, Boolean.parseBoolean(flag));
-        if (Boolean.parseBoolean(getScriptArgs()[1])) {
-            var analyzer = new AbstractAnalyzer("Cancel Completion Test", "Cancel analysis deterministically", AnalyzerType.BYTE_ANALYZER) {
-                { setPriority(AnalysisPriority.HIGHEST_PRIORITY); }
-                public boolean added(Program program, AddressSetView set, TaskMonitor taskMonitor, MessageLog log) {
-                    taskMonitor.cancel();
-                    return false;
-                }
-            };
-            AutoAnalysisManager.getAnalysisManager(currentProgram)
-                .scheduleOneTimeAnalysis(analyzer, currentProgram.getMemory());
-        }
-    }
-}
-"#, &[flag.to_owned(), cancel.to_string()], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/bootstrap/PrepareAnalysisCompletionTest.java"),
+                &[flag.to_owned(), cancel.to_string()],
+                &[],
+                false,
+            )
+            .unwrap();
     };
     prepare("false", false);
     assert_flag("skipped-raw", serde_json::json!(false));

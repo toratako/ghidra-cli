@@ -74,21 +74,7 @@ fn temporary_program_cleanup_restores_selection_and_preserves_test_panics() -> a
     let program = "temporary-fixture";
     for should_panic in [false, true] {
         client.script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-public class CreateTemporaryProgram extends GhidraScript {
-    public void run() throws Exception {
-        var language = currentProgram.getLanguage();
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("fixtures/runtime/CreateTemporaryProgram.java"),
             &[program.to_owned()],
             &[],
             false,

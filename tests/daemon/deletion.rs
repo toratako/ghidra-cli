@@ -39,21 +39,7 @@ fn test_program_delete_rejects_archives_without_changing_selection() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.DataTypeArchiveDB;
-public class CreateDeletionArchives extends GhidraScript {
-    public void run() throws Exception {
-        var root = state.getProject().getProjectData().getRootFolder();
-        var folder = root.createFolder("archives");
-        for (var parent : new ghidra.framework.model.DomainFolder[] { root, folder }) {
-            Object consumer = new Object();
-            var archive = new DataTypeArchiveDB(parent, "types.gdt", consumer);
-            archive.release(consumer);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CreateDeletionArchives.java"),
             &[],
             &[],
             false,
@@ -82,20 +68,7 @@ public class CreateDeletionArchives extends GhidraScript {
     client.open_program(TEST_PROGRAM).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.DataTypeArchiveDB;
-public class CheckDeletionArchives extends GhidraScript {
-    public void run() throws Exception {
-        var project = state.getProject().getProjectData();
-        for (String path : new String[] { "/types.gdt", "/archives/types.gdt" }) {
-            var file = project.getFile(path);
-            if (file == null || !DataTypeArchiveDB.class.isAssignableFrom(file.getDomainObjectClass()))
-                throw new IllegalStateException("Deletion changed the archive: " + path);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CheckDeletionArchives.java"),
             &[],
             &[],
             false,
@@ -113,17 +86,7 @@ fn test_program_delete_current_closed_and_missing() {
     let pid = ghidra_cli::ghidra::bridge::read_pid_file(&project).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CopyDeletionTargets extends GhidraScript {
-    public void run() throws Exception {
-        var root = state.getProject().getProjectData().getRootFolder();
-        var folder = root.createFolder("copies");
-        currentProgram.getDomainFile().copyTo(folder, monitor).setName("closed");
-        currentProgram.getDomainFile().copyTo(folder, monitor).setName("later");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CopyDeletionTargets.java"),
             &[],
             &[],
             false,
@@ -137,17 +100,7 @@ public class CopyDeletionTargets extends GhidraScript {
     assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckDeletedCopy extends GhidraScript {
-    public void run() throws Exception {
-        if (!currentProgram.getDomainFile().getPathname().equals("/" + getScriptArgs()[0]))
-            throw new IllegalStateException("Deletion changed the selected file");
-        if (state.getProject().getProjectData().getFile("/copies/closed") != null)
-            throw new IllegalStateException("Deleted file still exists");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CheckDeletedCopy.java"),
             &[TEST_PROGRAM.to_owned()],
             &[],
             false,
@@ -219,12 +172,7 @@ fn test_program_delete_preserves_other_consumers_and_works_in_batch() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class HoldDeletionTarget extends GhidraScript {
-    public void run() { currentProgram.addConsumer(currentProgram); }
-}
-"#,
+            include_str!("../fixtures/daemon/HoldDeletionTarget.java"),
             &[],
             &[],
             false,
@@ -234,16 +182,7 @@ public class HoldDeletionTarget extends GhidraScript {
     // Release the test's own reference before asserting the deletion result.
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class ReleaseDeletionTarget extends GhidraScript {
-    public void run() {
-        if (!currentProgram.getConsumerList().contains(currentProgram))
-            throw new IllegalStateException("Deletion released another consumer");
-        currentProgram.release(currentProgram);
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/ReleaseDeletionTarget.java"),
             &[],
             &[],
             false,

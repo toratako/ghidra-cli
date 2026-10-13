@@ -39,80 +39,7 @@ fn explicit_addresses_and_exact_names_preserve_targets() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.app.cmd.disassemble.DisassembleCommand;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateAddressFixture extends GhidraScript {
-    public void run() throws Exception {
-        var space = currentProgram.getAddressFactory().getDefaultAddressSpace();
-        var memory = currentProgram.getMemory();
-        var functions = currentProgram.getFunctionManager();
-        String[] names = {"add", "dead", "12345", "FUN_00001400", "malformed_target",
-            "literal_add", "literal_dead", "literal_digits"};
-        long[] offsets = {0x1000, 0x1100, 0x1200, 0x1400, 0x1500, 0xadd, 0xdead, 0x12345};
-        for (int i = 0; i < names.length; i++) {
-            var address = space.getAddress(offsets[i]);
-            if (!memory.contains(address)) {
-                memory.createInitializedBlock(names[i], address, 1, (byte) 0xc3, monitor, false);
-            }
-            memory.getBlock(address).setExecute(true);
-            int length = i < 2 ? 6 : 1;
-            if (i < 2) {
-                // A real x86 CALL to the next named function, followed by RET.
-                memory.setBytes(address, new byte[] {(byte) 0xe8, (byte) 0xfb, 0, 0, 0, (byte) 0xc3});
-            }
-            if (!new DisassembleCommand(address, null, false).applyTo(currentProgram, monitor)) {
-                throw new IllegalStateException("Disassembly failed for " + names[i]);
-            }
-            if (i < 2) new DisassembleCommand(address.add(5), null, false).applyTo(currentProgram, monitor);
-            functions.createFunction(names[i], address,
-                new AddressSet(address, address.add(length - 1)), SourceType.USER_DEFINED);
-        }
-        var symbols = currentProgram.getSymbolTable();
-        symbols.createLabel(space.getAddress(0x1000), "ambiguous", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1100), "ambiguous", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1000), "entry_alias", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1005), "interior_label", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1005), "FUN_00001400", SourceType.USER_DEFINED);
-        for (int i = 0; i < 2; i++) {
-            var namespace = symbols.createNameSpace(null, "scope" + i, SourceType.USER_DEFINED);
-            var address = space.getAddress(0x1300 + i * 0x10);
-            functions.createFunction("ambiguous", namespace, address,
-                new AddressSet(address, address), SourceType.USER_DEFINED);
-        }
-        for (String name : new String[] {"0x", "0X", "0xnothex", "0x1000junk"}) {
-            symbols.createLabel(space.getAddress(0x1500), name, SourceType.USER_DEFINED);
-        }
-        var scope = symbols.getNamespace("scope0", null);
-        symbols.createLabel(space.getAddress(0x1601), "handler<ns::Item>", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1602), "scoped<ns::Item>", scope, SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1603), "scope0::collision", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1604), "collision", scope, SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1605), "scope0", scope, SourceType.USER_DEFINED);
-        var external = currentProgram.getExternalManager().addExtFunction("lookup", "lookup_external",
-            null, SourceType.IMPORTED).getFunction();
-        var thunkEntry = space.getAddress(0x1606);
-        var thunk = functions.createFunction("lookup_thunk", thunkEntry,
-            new AddressSet(thunkEntry), SourceType.USER_DEFINED);
-        thunk.setThunkedFunction(external);
-        symbols.createLabel(space.getAddress(0x1607), "0xentry", scope, SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1608), "handler<ns::0xItem>", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x1609), "scope0::0xcollision", SourceType.USER_DEFINED);
-        symbols.createLabel(space.getAddress(0x160a), "0xcollision", scope, SourceType.USER_DEFINED);
-        currentProgram.getReferenceManager().addMemoryReference(space.getAddress(0x1500),
-            space.getAddress(0x1610), ghidra.program.model.symbol.RefType.DATA,
-            SourceType.USER_DEFINED, 0);
-        var generatedOwner = functions.createFunction("generated_owner", space.getAddress(0x1620),
-            new AddressSet(space.getAddress(0x1620)), SourceType.USER_DEFINED);
-        generatedOwner.addParameter(new ghidra.program.model.listing.ParameterImpl(null,
-            ghidra.program.model.data.IntegerDataType.dataType, currentProgram), SourceType.DEFAULT);
-        generatedOwner.addLocalVariable(new ghidra.program.model.listing.LocalVariableImpl(null,
-            ghidra.program.model.data.IntegerDataType.dataType, -4, currentProgram), SourceType.DEFAULT);
-    }
-}
-"#,
+            include_str!("fixtures/address/CreateAddressFixture.java"),
             &[],
             &[],
             false,
@@ -573,18 +500,14 @@ fn check_address_only_ipc(client: &BridgeClient) {
         2
     );
     // Failed define_data must also leave the listing undefined, not just retain bytes.
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class VerifyAddressFailures extends GhidraScript {
-    public void run() {
-        var address = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(0x1600);
-        if (currentProgram.getListing().getDefinedDataAt(address) != null
-                || currentProgram.getListing().getInstructionAt(address) != null) {
-            throw new IllegalStateException("Rejected address changed listing");
-        }
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("fixtures/address/VerifyAddressFailures.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
 }
 
 fn check_mutation_targets(client: &BridgeClient, harness: &common::DaemonTestHarness) {
@@ -644,121 +567,4 @@ fn check_address_codec(client: &BridgeClient) {
         .expect("address codec invariants");
 }
 
-const CODEC_CHECKS: &str = r#"
-public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
-    private void require(boolean value, String message) {
-        if (!value) throw new IllegalStateException(message);
-    }
-
-    private void roundtrip(ghidra.program.model.address.AddressFactory factory,
-            ghidra.program.model.address.Address address) {
-        String text = AddressCodec.format(address);
-        var parsed = AddressCodec.parseCanonical(factory, text);
-        require(address.equals(parsed), "Address roundtrip failed: " + text);
-        require(address.getAddressSpace().equals(parsed.getAddressSpace()), "Lost address space: " + text);
-        require(address.getOffset() == parsed.getOffset(), "Lost byte offset: " + text);
-        require(address.getAddressableWordOffset() == parsed.getAddressableWordOffset(), "Lost word offset: " + text);
-    }
-
-    public void run() throws Exception {
-        var ram = new ghidra.program.model.address.GenericAddressSpace("ram", 64,
-            ghidra.program.model.address.AddressSpace.TYPE_RAM, 0);
-        var word = new ghidra.program.model.address.GenericAddressSpace("word", 24, 2,
-            ghidra.program.model.address.AddressSpace.TYPE_RAM, 1);
-        word.setShowSpaceName(true);
-        var wide = new ghidra.program.model.address.GenericAddressSpace("wide", 63, 2,
-            ghidra.program.model.address.AddressSpace.TYPE_RAM, 3);
-        wide.setShowSpaceName(true);
-        var signedWord = new ghidra.program.model.address.GenericAddressSpace("signed_word", 63, 2,
-            ghidra.program.model.address.AddressSpace.TYPE_CONSTANT, 4);
-        var factory = new ghidra.program.model.address.DefaultAddressFactory(
-            new ghidra.program.model.address.AddressSpace[] {ram, word, wide, signedWord}, ram);
-        for (long offset : new long[] {0, 0x401000, Long.MIN_VALUE, -1L}) {
-            roundtrip(factory, ram.getAddress(offset));
-        }
-        for (long offset : new long[] {0x2000, 0x2001, 0x1ffffff}) {
-            roundtrip(factory, word.getAddress(offset));
-        }
-        for (long offset : new long[] {Long.MIN_VALUE, -1L}) roundtrip(factory, wide.getAddress(offset));
-        for (long offset : new long[] {Long.MIN_VALUE, -3, -1, 1, Long.MAX_VALUE}) {
-            roundtrip(factory, signedWord.getAddress(offset));
-        }
-        for (String input : new String[] {"signed_word:0x8000000000000000",
-                "signed_word:0xbfffffffffffffff.1"}) {
-            try {
-                AddressCodec.parse(factory, input);
-                throw new AssertionError("Signed word overflow silently wrapped: " + input);
-            } catch (IllegalArgumentException expected) {
-                // Negative word offsets must fit in the signed byte-offset range.
-            }
-        }
-        require(AddressCodec.format(null) == null, "Null address must stay null");
-        require(AddressCodec.format(ghidra.program.model.address.Address.NO_ADDRESS) == null,
-            "NO_ADDRESS must not become an input address");
-        var programFactory = currentProgram.getAddressFactory();
-        roundtrip(programFactory, programFactory.getStackSpace().getAddress(-16));
-        roundtrip(programFactory, programFactory.getAddressSpace("join").getAddress(1));
-        var block = currentProgram.getMemory().createInitializedBlock("codec_overlay",
-            programFactory.getDefaultAddressSpace().getAddress(0x1800), 4, (byte) 0, monitor, true);
-        roundtrip(programFactory, block.getStart());
-        var outsideOverlayBlock = AddressCodec.parse(programFactory, "codec_overlay:0x1000");
-        require(outsideOverlayBlock.getAddressSpace().equals(block.getStart().getAddressSpace()),
-            "Overlay address must not substitute the physical space outside its block");
-        roundtrip(programFactory, outsideOverlayBlock);
-        for (String name : new String[] {"0xbank", "0x1234"}) {
-            var hexNamedBlock = currentProgram.getMemory().createInitializedBlock(name,
-                programFactory.getDefaultAddressSpace().getAddress(0x1900), 4, (byte) 0, monitor, true);
-            roundtrip(programFactory, hexNamedBlock.getStart());
-        }
-        var segmented = new ghidra.program.model.address.SegmentedAddressSpace("segmented", 2);
-        var segmentedFactory = new ghidra.program.model.address.DefaultAddressFactory(
-            new ghidra.program.model.address.AddressSpace[] {segmented}, segmented);
-        var address = segmented.getAddress(0x1234, 5);
-        String text = AddressCodec.format(address);
-        require(text.equals("segmented:0x1234:0x0005"), "Segmented format: " + text);
-        roundtrip(segmentedFactory, address);
-        try {
-            AddressCodec.parseCanonical(segmentedFactory, "0x1234:0x0005");
-            throw new AssertionError("Canonical endpoint inferred an unnamed segment");
-        } catch (IllegalArgumentException expected) {
-            // clear endpoints require the space name even in the default space.
-        }
-        for (String input : new String[] {text, "0X1234:0X0005", "segmented:0x1234:0x0005"}) {
-            var parsed = (ghidra.program.model.address.SegmentedAddress) AddressCodec.parse(segmentedFactory, input);
-            require(parsed != null && parsed.getSegment() == 0x1234 && parsed.getSegmentOffset() == 5,
-                "Lost original segment/offset: " + input);
-        }
-        var numericSpace = new ghidra.program.model.address.GenericAddressSpace("0x1234", 32,
-            ghidra.program.model.address.AddressSpace.TYPE_RAM, 6);
-        var ambiguousFactory = new ghidra.program.model.address.DefaultAddressFactory(
-            new ghidra.program.model.address.AddressSpace[] {segmented, numericSpace}, segmented);
-        roundtrip(ambiguousFactory, address);
-        roundtrip(ambiguousFactory, numericSpace.getAddress(5));
-        require(AddressCodec.parse(ambiguousFactory, "0x1234:0x0005").getAddressSpace().equals(numericSpace),
-            "Registered numeric-looking address space must take precedence over an unnamed segment");
-        for (String input : new String[] {"1000", "ram:1000", "FUN_00401000", "0x", "0xxyz",
-                "0x10000000000000000", "0x1234:0005", "1234:0x0005", "segmented:1234:0005"}) {
-            try {
-                require(AddressCodec.parse(segmentedFactory, input) == null,
-                    "Accepted invalid explicit address: " + input);
-            } catch (IllegalArgumentException expected) {
-                // Parsers may report malformed tokens either as null or an input error.
-            }
-        }
-        var narrow = new ghidra.program.model.address.GenericAddressSpace("narrow", 32,
-            ghidra.program.model.address.AddressSpace.TYPE_RAM, 5);
-        var mixedFactory = new ghidra.program.model.address.DefaultAddressFactory(
-            new ghidra.program.model.address.AddressSpace[] {narrow, ram}, narrow);
-        for (String input : new String[] {"0x100000000", "0xffffffffffffffff"}) {
-            try {
-                require(AddressCodec.parse(mixedFactory, input) == null,
-                    "Address overflow silently changed the default space or recovered its sign: " + input);
-            } catch (IllegalArgumentException expected) {
-                // A larger secondary space cannot rescue overflow in the default space.
-            }
-        }
-        require(AddressCodec.parse(mixedFactory, "ram:0xffffffffffffffff").getOffset() == -1L,
-            "Explicit secondary 64-bit address must remain valid");
-    }
-}
-"#;
+const CODEC_CHECKS: &str = include_str!("fixtures/address/CheckAddressCodec.java");

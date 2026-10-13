@@ -174,13 +174,7 @@ fn official_jar_runs_detached_with_native_tools_and_durable_project_operations()
     let script = runtime.root.path().join("PersistJarComment.java");
     std::fs::write(
         &script,
-        r#"import ghidra.app.script.GhidraScript;
-public class PersistJarComment extends GhidraScript {
-    public void run() throws Exception {
-        setEOLComment(toAddr(getScriptArgs()[0]), "standalone JAR persisted comment");
-    }
-}
-"#,
+        include_str!("fixtures/runtime/PersistJarComment.java"),
     )
     .unwrap();
     runtime.run(

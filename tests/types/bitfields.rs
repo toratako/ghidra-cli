@@ -79,22 +79,7 @@ fn fixture(program: &str) {
     client.open_program(program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateBitEditFixtures extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var bits = new StructureDataType("Bits", 12, dtm);
-        bits.replaceAtOffset(8, DWordDataType.dataType, 4, "tail", "keep tail");
-        dtm.addDataType(bits, null);
-        var enumeration = new EnumDataType(CategoryPath.ROOT, "FlagsEnum", 4, dtm);
-        enumeration.add("flag", 1);
-        dtm.addDataType(enumeration, null);
-        dtm.addDataType(new TypedefDataType(CategoryPath.ROOT, "Word", UnsignedIntegerDataType.dataType, dtm), null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateBitEditFixtures.java"),
             &[],
             &[],
             false,
@@ -111,28 +96,7 @@ fn bitfield_growth_checks_parent_and_applied_data_before_saving() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateBitfieldGrowthCases extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (String name : new String[] { "EmbeddedBits", "EdgeBits", "FreeBits" }) {
-            var child = dtm.addDataType(new StructureDataType(name, 4, dtm), null);
-            if (name.equals("EmbeddedBits")) {
-                var parent = new StructureDataType("BitsParent", 8, dtm);
-                parent.replaceAtOffset(0, child, 4, "child", null);
-                parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", "keep");
-                dtm.addDataType(parent, null);
-            } else if (name.equals("EdgeBits")) {
-                currentProgram.getMemory().createInitializedBlock("edge", toAddr(0x1000),
-                    6, (byte) 0, monitor, false);
-                currentProgram.getListing().createData(toAddr(0x1000), child);
-            }
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateBitfieldGrowthCases.java"),
             &[],
             &[],
             false,
@@ -161,16 +125,7 @@ public class CreateBitfieldGrowthCases extends GhidraScript {
     }
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckBitfieldGrowthRollback extends GhidraScript {
-    public void run() throws Exception {
-        var data = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
-        if (data == null || data.getLength() != 4 || data.getDataType().getLength() != 4)
-            throw new IllegalStateException("Bitfield growth left incomplete applied data");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckBitfieldGrowthRollback.java"),
             &[],
             &[],
             false,
@@ -201,42 +156,7 @@ fn bitfield_growth_preserves_existing_applied_settings_when_inserting_before_fie
         client.open_program(&program).unwrap();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateBitfieldInsertionSettings extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var child = new StructureDataType("GrowingBits", 4, dtm);
-        child.replaceAtOffset(2, WordDataType.dataType, 2, "tail", "retained field");
-        var saved = dtm.addDataType(child, null);
-        var holder = new StructureDataType("BitSettingsHolder", 32, dtm);
-        holder.replaceAtOffset(4, saved, 4, "first", null);
-        holder.replaceAtOffset(16, saved, 4, "second", null);
-        currentProgram.getMemory().createInitializedBlock("data", toAddr(0x1000),
-            128, (byte) 0, monitor, false);
-        var listing = currentProgram.getListing();
-        var direct = listing.createData(toAddr(0x1000), saved);
-        var savedHolder = (Structure) dtm.addDataType(holder, null);
-        var nested = listing.createData(toAddr(0x1040), savedHolder);
-        FormatSettingsDefinition.DEF.setChoice(direct.getComponent(2), FormatSettingsDefinition.DECIMAL);
-        FormatSettingsDefinition.DEF.setChoice(nested.getComponent(savedHolder.getComponentAt(4).getOrdinal())
-            .getComponent(2), FormatSettingsDefinition.BINARY);
-        FormatSettingsDefinition.DEF.setChoice(nested.getComponent(savedHolder.getComponentAt(16).getOrdinal())
-            .getComponent(2), FormatSettingsDefinition.OCTAL);
-        var guarded = saved.copy(dtm);
-        guarded.setName("GuardedBits");
-        guarded = dtm.addDataType(guarded, null);
-        var packed = new StructureDataType("GuardedBitHolder", 0, dtm);
-        packed.setPackingEnabled(true);
-        packed.add(guarded, "child", null);
-        packed.add(ByteDataType.dataType, "tag", null);
-        var guardedData = listing.createData(toAddr(0x1060), dtm.addDataType(packed, null));
-        FormatSettingsDefinition.DEF.setChoice(guardedData.getComponent(1), FormatSettingsDefinition.BINARY);
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateBitfieldInsertionSettings.java"),
                 &[],
                 &[],
                 false,
@@ -278,35 +198,7 @@ public class CreateBitfieldInsertionSettings extends GhidraScript {
         client.open_program(&program).unwrap();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class CheckBitfieldInsertionSettings extends GhidraScript {
-    public void run() throws Exception {
-        var type = (Structure) currentProgram.getDataTypeManager().getDataType("/GrowingBits");
-        var holder = (Structure) currentProgram.getDataTypeManager().getDataType("/BitSettingsHolder");
-        var tail = type.getDefinedComponents()[1];
-        var direct = currentProgram.getListing().getDefinedDataAt(toAddr(0x1000));
-        var nested = currentProgram.getListing().getDefinedDataAt(toAddr(0x1040));
-        if (type.getLength() != 8 || direct.getLength() != 8 || nested.getLength() != 32
-                || tail.getOffset() != 2 || tail.getLength() != 2
-                || holder.getComponentAt(4).getLength() != 8
-                || holder.getComponentAt(16).getLength() != 8)
-            throw new IllegalStateException("Incomplete bitfield insertion layout");
-        if (FormatSettingsDefinition.DEF.getChoice(direct.getComponent(tail.getOrdinal())) != FormatSettingsDefinition.DECIMAL
-                || FormatSettingsDefinition.DEF.getChoice(nested.getComponent(holder.getComponentAt(4).getOrdinal())
-                    .getComponent(tail.getOrdinal())) != FormatSettingsDefinition.BINARY
-                || FormatSettingsDefinition.DEF.getChoice(nested.getComponent(holder.getComponentAt(16).getOrdinal())
-                    .getComponent(tail.getOrdinal())) != FormatSettingsDefinition.OCTAL)
-            throw new IllegalStateException("Insertion changed retained applied settings");
-        var guarded = currentProgram.getListing().getDefinedDataAt(toAddr(0x1060));
-        if (guarded.getLength() != 5 || guarded.getComponent(1).getMinAddress().getOffset() != 0x1064
-                || FormatSettingsDefinition.DEF.getChoice(guarded.getComponent(1)) != FormatSettingsDefinition.BINARY)
-            throw new IllegalStateException("Rejected insertion moved a packed field or its settings");
-    }
-}
-"#,
+                include_str!("../fixtures/types/CheckBitfieldInsertionSettings.java"),
                 &[],
                 &[],
                 false,
@@ -380,19 +272,14 @@ fn explicit_bitfields_keep_program_endian_locations_across_edits_and_reopen() {
             field(&definition(&program, "Bits"), "low"),
             field(&before, "low")
         );
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class SetBitEditSettings extends GhidraScript {
-    public void run() throws Exception {
-        var bits = (Structure) currentProgram.getDataTypeManager().getDataType("/Bits");
-        for (var field : bits.getDefinedComponents())
-            if (field.getFieldName() != null)
-                FormatSettingsDefinition.DEF.setChoice(field.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/SetBitEditSettings.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         let before_base_edit = definition(&program, "Bits");
         set(&program, "Bits", "cross", &["--type", "uint8_t"])
             .assert_failure()
@@ -418,20 +305,14 @@ public class SetBitEditSettings extends GhidraScript {
         assert_eq!(definition(&program, "Bits"), saved);
         client.program_close().unwrap();
         assert_eq!(definition(&program, "Bits"), saved);
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class CheckBitEditSettings extends GhidraScript {
-    public void run() throws Exception {
-        var bits = (Structure) currentProgram.getDataTypeManager().getDataType("/Bits");
-        for (var field : bits.getDefinedComponents())
-            if (field.getFieldName() != null && FormatSettingsDefinition.DEF.getChoice(field.getDefaultSettings())
-                    != FormatSettingsDefinition.DECIMAL)
-                throw new IllegalStateException("Lost setting: " + field.getFieldName());
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CheckBitEditSettings.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         let cleared = success(type_command(
             &program,
             &["field", "clear", "Bits", "--field", "low"],
@@ -661,23 +542,14 @@ fn packed_and_zero_width_bitfields_allow_metadata_and_native_deletion() {
     let program = create_type_edit_program("x86:LE:32:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreatePackedBitEditFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var packed = new StructureDataType("PackedBits", 0, dtm);
-        packed.setPackingEnabled(true);
-        packed.addBitField(UnsignedIntegerDataType.dataType, 3, "first", "keep");
-        packed.addBitField(UnsignedIntegerDataType.dataType, 0, null, "boundary");
-        packed.addBitField(UnsignedIntegerDataType.dataType, 4, "last", null);
-        var saved = (Structure) dtm.addDataType(packed, null);
-        FormatSettingsDefinition.DEF.setChoice(saved.getComponent(0).getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreatePackedBitEditFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     let before = definition(&program, "PackedBits");
     success(set(
         &program,
@@ -729,19 +601,7 @@ public class CreatePackedBitEditFixture extends GhidraScript {
     assert_eq!(definition(&program, "PackedBits"), after);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class CheckPackedBitEditSettings extends GhidraScript {
-    public void run() throws Exception {
-        var packed = (Structure) currentProgram.getDataTypeManager().getDataType("/PackedBits");
-        if (FormatSettingsDefinition.DEF.getChoice(packed.getComponent(0).getDefaultSettings())
-                != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Lost packed bit-field settings");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckPackedBitEditSettings.java"),
             &[],
             &[],
             false,
@@ -766,25 +626,14 @@ fn bitfield_edits_preserve_explicit_settings_without_materializing_inherited_def
     let program = create_type_edit_program("x86:LE:32:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateInheritedBitSettings extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var word = dtm.addDataType(new TypedefDataType(CategoryPath.ROOT, "DecimalWord", UnsignedIntegerDataType.dataType, dtm), null);
-        var other = dtm.addDataType(new TypedefDataType(CategoryPath.ROOT, "OtherWord", UnsignedIntegerDataType.dataType, dtm), null);
-        FormatSettingsDefinition.DEF.setChoice(word.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        FormatSettingsDefinition.DEF.setChoice(other.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        var structure = new StructureDataType("InheritedBits", 4, dtm);
-        structure.insertBitFieldAt(0, 4, 0, word, 3, "inherited", null);
-        structure.insertBitFieldAt(0, 4, 4, word, 3, "explicit", null);
-        var saved = (Structure) dtm.addDataType(structure, null);
-        FormatSettingsDefinition.DEF.setChoice(saved.getComponent(1).getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateInheritedBitSettings.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     success(set(
         &program,
         "InheritedBits",
@@ -799,26 +648,14 @@ public class CreateInheritedBitSettings extends GhidraScript {
     ));
     client.program_close().unwrap();
     definition(&program, "InheritedBits");
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class ChangeInheritedBitDefault extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = (Structure) dtm.getDataType("/InheritedBits");
-        var inherited = structure.getComponent(0).getDefaultSettings();
-        var explicit = structure.getComponent(1).getDefaultSettings();
-        if (inherited.getNames().length != 0 || explicit.getNames().length == 0)
-            throw new IllegalStateException("Changed explicit setting keys");
-        FormatSettingsDefinition.DEF.setChoice(dtm.getDataType("/DecimalWord").getDefaultSettings(), FormatSettingsDefinition.HEX);
-        if (FormatSettingsDefinition.DEF.getChoice(inherited) != FormatSettingsDefinition.HEX)
-            throw new IllegalStateException("Lost inherited default after width edit");
-        if (FormatSettingsDefinition.DEF.getChoice(explicit) != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Lost explicit override after width edit");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/ChangeInheritedBitDefault.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     success(set(
         &program,
         "InheritedBits",
@@ -827,21 +664,14 @@ public class ChangeInheritedBitDefault extends GhidraScript {
     ));
     client.program_close().unwrap();
     definition(&program, "InheritedBits");
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.Structure;
-public class CheckNewBitBaseDefaults extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/InheritedBits");
-        var inherited = structure.getComponent(0).getDefaultSettings();
-        if (inherited.getNames().length != 0)
-            throw new IllegalStateException("Old inherited default became explicit after base edit");
-        if (FormatSettingsDefinition.DEF.getChoice(inherited) != FormatSettingsDefinition.DECIMAL)
-            throw new IllegalStateException("Replacement base defaults were not inherited");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CheckNewBitBaseDefaults.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 
@@ -854,18 +684,7 @@ fn bitfield_insertion_rejects_existing_offsets_that_overflow_native_bit_ordering
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateLargeBitOffsetFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = new StructureDataType("HugeBits", 0x10000004, dtm);
-        structure.replaceAtOffset(0x10000000, DWordDataType.dataType, 4, "tail", "keep");
-        dtm.addDataType(structure, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateLargeBitOffsetFixture.java"),
             &[],
             &[],
             false,
@@ -888,19 +707,14 @@ public class CreateLargeBitOffsetFixture extends GhidraScript {
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
     // Query defined components directly: enumerating hundreds of millions of padding rows is unnecessary.
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Structure;
-public class CheckLargeBitOffsetFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/HugeBits");
-        var fields = structure.getDefinedComponents();
-        if (structure.getLength() != 0x10000004 || fields.length != 1 || fields[0].getOffset() != 0x10000000
-                || !"tail".equals(fields[0].getFieldName()) || !"keep".equals(fields[0].getComment()))
-            throw new IllegalStateException("Large structure changed after rejected insertion");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CheckLargeBitOffsetFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 
@@ -913,21 +727,7 @@ fn existing_zero_width_bitfields_at_the_structure_end_can_be_cleared() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateEndZeroBitFixtures extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (boolean empty : new boolean[] { true, false }) {
-            var structure = new StructureDataType(empty ? "EmptyZeroBits" : "EndZeroBits", 0, dtm);
-            if (!empty) structure.add(DWordDataType.dataType, "word", "keep");
-            structure.addBitField(UnsignedIntegerDataType.dataType, 0, null, "boundary");
-            dtm.addDataType(structure, null);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateEndZeroBitFixtures.java"),
             &[],
             &[],
             false,
@@ -969,20 +769,7 @@ fn shared_byte_insertion_rejects_native_component_count_overflow() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateMaximumBitComponentFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = new StructureDataType("MaximumBits", Integer.MAX_VALUE, dtm);
-        structure.insertBitFieldAt(0, 1, 0, UnsignedIntegerDataType.dataType, 3, "first", "keep");
-        var saved = (Structure) dtm.addDataType(structure, null);
-        if (saved.getNumComponents() != Integer.MAX_VALUE)
-            throw new IllegalStateException("Fixture component count is invalid");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateMaximumBitComponentFixture.java"),
             &[],
             &[],
             false,
@@ -1005,21 +792,14 @@ public class CreateMaximumBitComponentFixture extends GhidraScript {
     );
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckMaximumBitComponentFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/MaximumBits");
-        var fields = structure.getDefinedComponents();
-        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE
-                || fields.length != 1 || fields[0].getOrdinal() != 0 || fields[0].getOffset() != 0
-                || !"first".equals(fields[0].getFieldName())
-                || ((BitFieldDataType) fields[0].getDataType()).getBitSize() != 3)
-            throw new IllegalStateException("Overflow rejection changed the saved structure");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CheckMaximumBitComponentFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
 }
 
@@ -1032,23 +812,7 @@ fn removing_a_wide_bitfield_rejects_padding_component_count_overflow() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateBitRemovalCountFixture extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var structure = new StructureDataType("RemovalCountBits", 4, dtm);
-        structure.insertBitFieldAt(0, 4, 0, UnsignedIntegerDataType.dataType, 3, "first", null);
-        structure.insertBitFieldAt(0, 4, 3, UnsignedIntegerDataType.dataType, 3, "second", null);
-        structure.insertBitFieldAt(0, 4, 7, UnsignedIntegerDataType.dataType, 25, "wide", "keep");
-        structure.growStructure(Integer.MAX_VALUE - 4);
-        var saved = (Structure) dtm.addDataType(structure, null);
-        if (saved.getNumComponents() != Integer.MAX_VALUE - 1)
-            throw new IllegalStateException("Fixture component count is invalid");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateBitRemovalCountFixture.java"),
             &[],
             &[],
             false,
@@ -1071,21 +835,14 @@ public class CreateBitRemovalCountFixture extends GhidraScript {
         );
         client.program_close().unwrap();
         client.open_program(&program).unwrap();
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckBitRemovalCountFixture extends GhidraScript {
-    public void run() throws Exception {
-        var structure = (Structure) currentProgram.getDataTypeManager().getDataType("/RemovalCountBits");
-        var fields = structure.getDefinedComponents();
-        if (structure.getLength() != Integer.MAX_VALUE || structure.getNumComponents() != Integer.MAX_VALUE - 1
-                || fields.length != 3 || fields[2].getOrdinal() != 2 || fields[2].getOffset() != 0
-                || !"wide".equals(fields[2].getFieldName()) || !"keep".equals(fields[2].getComment())
-                || ((BitFieldDataType) fields[2].getDataType()).getBitSize() != 25)
-            throw new IllegalStateException("Removal overflow rejection changed the saved structure");
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CheckBitRemovalCountFixture.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     }
     client.open_program(TEST_PROGRAM).unwrap();
 }

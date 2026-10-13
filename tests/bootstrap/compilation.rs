@@ -15,19 +15,7 @@ fn configured_jdk_launches_when_path_java_is_broken() {
         .unwrap();
     let marker = root.path().join("path-java-invoked");
     let source = root.path().join("java.rs");
-    std::fs::write(
-        &source,
-        r#"fn main() {
-    // launch.bat probes java.exe -version before using it for LaunchSupport.
-    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("-version")) {
-        return;
-    }
-    std::fs::write(std::env::var_os("GHIDRA_CLI_TEST_PATH_JAVA_MARKER").unwrap(), b"called").unwrap();
-    std::process::exit(1);
-}
-"#,
-    )
-    .unwrap();
+    std::fs::write(&source, include_str!("../fixtures/bootstrap/path_java.rs")).unwrap();
     let compiler = Command::new("rustc")
         .arg(&source)
         .arg("-o")

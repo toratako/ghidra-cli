@@ -17,19 +17,16 @@ fn create_program(bits: u32) -> String {
         ],
     )
     .assert_success();
-    harness().client().unwrap().script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateSignatureSpellingFixture extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createInitializedBlock("code", address, 16, (byte) 0, monitor, false);
-        currentProgram.getFunctionManager().createFunction("lookup", address,
-            new AddressSet(address, address.add(15)), SourceType.USER_DEFINED);
-    }
-}
-"#, &[], &[], false).unwrap();
+    harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/types/CreateSignatureSpellingFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     program
 }
 
@@ -123,16 +120,7 @@ fn signature_edits_retain_comments_on_named_parameters_after_reordering_and_reop
         set_signature(&program, "int lookup(int keep, int change)").assert_success();
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class AnnotateSignatureParameters extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        for (var parameter : function.getParameters())
-            parameter.setComment("retain " + parameter.getName());
-    }
-}
-"#,
+                include_str!("../fixtures/types/AnnotateSignatureParameters.java"),
                 &[],
                 &[],
                 false,
@@ -151,23 +139,14 @@ public class AnnotateSignatureParameters extends GhidraScript {
                 client.open_program(&program).unwrap();
             }
             assert_eq!(function(), after);
-            client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class CheckSignatureParameterComments extends GhidraScript {
-    public void run() throws Exception {
-        var parameters = getFunctionAt(toAddr(0x1000)).getParameters();
-        for (var parameter : parameters) {
-            String expected = parameter.getName().equals("added") ? null : "retain " + parameter.getName();
-            if (!java.util.Objects.equals(expected, parameter.getComment()))
-                throw new IllegalStateException("Lost comment for " + parameter.getName()
-                    + ": " + parameter.getComment());
-        }
-        if (!parameters[0].getDataType().getName().equals("char *")
-                || !parameters[1].getName().equals("added") || !parameters[2].getName().equals("keep"))
-            throw new IllegalStateException("Signature parameter update was not applied");
-    }
-}
-"#, &[], &[], false).unwrap();
+            client
+                .script_run_source(
+                    include_str!("../fixtures/types/CheckSignatureParameterComments.java"),
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
         }
     });
 }
@@ -451,33 +430,14 @@ fn adjacent_pointer_return_names_preserve_types_after_reopen() {
             client.program_close().unwrap();
             client.open_program(&program).unwrap();
             assert_eq!(function(), before);
-            client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.DataType;
-import ghidra.program.model.data.Pointer;
-public class CheckSignaturePointerTypes extends GhidraScript {
-    private void checkPointer(DataType type, int depth) {
-        for (int i = 0; i < depth; i++) {
-            if (!(type instanceof Pointer) || type.getLength() != currentProgram.getDefaultPointerSize())
-                throw new IllegalStateException("Wrong pointer type or target width: " + type);
-            type = ((Pointer) type).getDataType();
-        }
-        if (!type.equals(currentProgram.getDataTypeManager().getDataType("/Recovered/Entry")))
-            throw new IllegalStateException("Wrong pointee: " + type);
-    }
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        if (!"lookup".equals(function.getName()) || function.getParameterCount() != 2)
-            throw new IllegalStateException("Function name or parameters changed");
-        checkPointer(function.getReturnType(), Integer.parseInt(getScriptArgs()[0]));
-        checkPointer(function.getParameter(0).getDataType(), 1);
-        if (!"entry".equals(function.getParameter(0).getName())
-                || !"index".equals(function.getParameter(1).getName())
-                || !"int".equals(function.getParameter(1).getDataType().getName()))
-            throw new IllegalStateException("Parameter name or type changed");
-    }
-}
-"#, &[depth.to_string()], &[], false).unwrap();
+            client
+                .script_run_source(
+                    include_str!("../fixtures/types/CheckSignaturePointerTypes.java"),
+                    &[depth.to_string()],
+                    &[],
+                    false,
+                )
+                .unwrap();
         }
     }
     client.open_program(TEST_PROGRAM).unwrap();
@@ -613,35 +573,14 @@ fn test_function_set_signature_rolls_back_native_application_failure() {
     let harness = harness();
     let client = harness.client().unwrap();
     let program = format!("signature-{}", uuid::Uuid::new_v4());
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.model.symbol.SourceType;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateSignatureTestProgram extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID("x86:LE:64:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("signature fixture");
-            try {
-                var address = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
-                program.getMemory().createInitializedBlock("code", address, 16, (byte) 0, monitor, false);
-                var function = program.getFunctionManager().createFunction("signature_target", address,
-                    new AddressSet(address, address.add(15)), SourceType.USER_DEFINED);
-                program.getSymbolTable().createLabel(address.add(1), "collision", function,
-                    SourceType.USER_DEFINED);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#, std::slice::from_ref(&program), &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateSignatureTestProgram.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
 
     let set_signature = |signature: &str| {
         ghidra(harness)

@@ -49,24 +49,13 @@ fn inferred_parameter_edits_preserve_partially_saved_parameter_metadata() {
         client.open_program(&program).unwrap();
         assert_eq!(state(), after);
         client
-        .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CheckVariableParameterMetadata extends GhidraScript {
-    public void run() throws Exception {
-        var parameter = getFunctionAt(toAddr(0x10a0)).getParameter(0);
-        if (!"buffer".equals(parameter.getName()) || parameter.getSource() != SourceType.USER_DEFINED
-                || !"retain partially saved parameter".equals(parameter.getComment()))
-            throw new IllegalStateException("Variable edit replaced existing parameter metadata");
-    }
-}
-"#,
-            &[],
-            &[],
-            false,
-        )
-        .unwrap();
+            .script_run_source(
+                include_str!("../fixtures/types/CheckVariableParameterMetadata.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     });
 }
 
@@ -88,24 +77,7 @@ fn variable_edits_preserve_hidden_saved_locals_unless_the_symbol_is_a_locked_mer
         super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
             client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.IntegerDataType;
-import ghidra.program.model.data.Undefined4DataType;
-import ghidra.program.model.listing.LocalVariableImpl;
-import ghidra.program.model.symbol.SourceType;
-public class AddNumberedVariableGroup extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        var type = Boolean.parseBoolean(getScriptArgs()[0])
-            ? IntegerDataType.dataType : Undefined4DataType.dataType;
-        function.addLocalVariable(new LocalVariableImpl("value", type,
-            -8, currentProgram), SourceType.USER_DEFINED);
-        function.addLocalVariable(new LocalVariableImpl("value$1", 0x18, type,
-            currentProgram.getRegister("EAX"), currentProgram), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                    include_str!("../fixtures/types/AddNumberedVariableGroup.java"),
                     &[locked.to_string()],
                     &[],
                     false,
@@ -114,23 +86,7 @@ public class AddNumberedVariableGroup extends GhidraScript {
             let saved_state = |name: &str| {
                 client
                     .script_run_source(
-                        r#"
-import ghidra.app.script.GhidraScript;
-public class CheckNumberedVariableState extends GhidraScript {
-    public void run() throws Exception {
-        var locals = getFunctionAt(toAddr(0x1000)).getLocalVariables();
-        var names = java.util.Arrays.stream(locals).map(local -> local.getName())
-            .collect(java.util.stream.Collectors.toSet());
-        String name = getScriptArgs()[0];
-        if (locals.length != 2 || !names.equals(java.util.Set.of(name, name + "$1")))
-            throw new IllegalStateException("Unexpected numbered local names: " + names);
-        for (var local : locals) {
-            if (!getScriptArgs()[1].equals(local.getDataType().getName()))
-                throw new IllegalStateException("Numbered local type was changed");
-        }
-    }
-}
-"#,
+                        include_str!("../fixtures/types/CheckNumberedVariableState.java"),
                         &[
                             name.into(),
                             if locked { "int" } else { "undefined4" }.into(),
@@ -223,23 +179,7 @@ fn variable_resize_preserves_neighboring_saved_locals_for_saved_and_inferred_tar
         };
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.IntegerDataType;
-import ghidra.program.model.listing.LocalVariableImpl;
-import ghidra.program.model.symbol.SourceType;
-public class AddVariableResizeNeighbor extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        for (var local : function.getLocalVariables()) {
-            if (!"guarded".equals(local.getName()) || local.getStackOffset() != -8)
-                throw new IllegalStateException("Unexpected stack-local layout");
-        }
-        function.addLocalVariable(new LocalVariableImpl("kept_neighbor", IntegerDataType.dataType,
-            -4, currentProgram), SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/types/AddVariableResizeNeighbor.java"),
                 &[],
                 &[],
                 false,
@@ -274,17 +214,7 @@ public class AddVariableResizeNeighbor extends GhidraScript {
         assert_eq!(state(), before);
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class RemoveVariableResizeNeighbor extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1000));
-        for (var local : function.getLocalVariables()) {
-            if ("kept_neighbor".equals(local.getName())) function.removeVariable(local);
-        }
-    }
-}
-"#,
+                include_str!("../fixtures/types/RemoveVariableResizeNeighbor.java"),
                 &[],
                 &[],
                 false,
@@ -590,15 +520,7 @@ fn function_variables_read_inferred_definitions_and_persist_selected_edits() {
     // before an intervening program edit.
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.listing.CommentType;
-public class ChangeVariableSelectionRevision extends GhidraScript {
-    public void run() {
-        currentProgram.getListing().setComment(toAddr(0x1000), CommentType.EOL, "revision changed");
-    }
-}
-"#,
+            include_str!("../fixtures/types/ChangeVariableSelectionRevision.java"),
             &[],
             &[],
             false,

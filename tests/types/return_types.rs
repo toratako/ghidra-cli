@@ -61,18 +61,7 @@ fn return_edits_reject_native_function_type_coercion_and_preserve_saved_inputs()
     common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.FunctionDefinitionDataType;
-import ghidra.program.model.data.IntegerDataType;
-public class CreateReturnCallbackType extends GhidraScript {
-    public void run() throws Exception {
-        var callback = new FunctionDefinitionDataType("ReturnCallback");
-        callback.setReturnType(IntegerDataType.dataType);
-        currentProgram.getDataTypeManager().addDataType(callback, null);
-    }
-}
-"#,
+                include_str!("../fixtures/types/CreateReturnCallbackType.java"),
                 &[],
                 &[],
                 false,
@@ -192,18 +181,14 @@ fn inferred_parameters_survive_return_edits_and_reopen_with_types_still_inferred
         client.open_program(&program).unwrap();
         assert_eq!(function(&program, effective), after);
         if saved_count == 1 {
-            client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CheckPartiallySavedParameter extends GhidraScript {
-    public void run() throws Exception {
-        var parameter = getFunctionAt(toAddr(0x10a0)).getParameter(0);
-        if (!"buffer".equals(parameter.getName()) || parameter.getSource() != SourceType.USER_DEFINED
-                || !"retain partially saved parameter".equals(parameter.getComment()))
-            throw new IllegalStateException("Return edit replaced existing parameter metadata");
-    }
-}
-"#, &[], &[], false).unwrap();
+            client
+                .script_run_source(
+                    include_str!("../fixtures/types/CheckPartiallySavedParameter.java"),
+                    &[],
+                    &[],
+                    false,
+                )
+                .unwrap();
         }
         let recovered = decompile(effective);
         assert_eq!(recovered["params"][0]["type"], "int *", "{recovered}");
@@ -279,14 +264,14 @@ fn defined_custom_external_and_hidden_return_signatures_keep_explicit_parameters
         )
         .unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class AnnotateReturnTypeFixture extends GhidraScript {
-    public void run() throws Exception {
-        getFunctionAt(toAddr(0x1100)).getParameter(0).setComment("retain explicit parameter comment");
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/AnnotateReturnTypeFixture.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
 
     // These functions have no instructions: explicit declarations must not require decompilation.
     for (target, ty) in [
@@ -357,16 +342,7 @@ public class AnnotateReturnTypeFixture extends GhidraScript {
     assert_eq!(function(&program, "indirect"), restored);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckReturnTypeParameterComment extends GhidraScript {
-    public void run() throws Exception {
-        var parameter = getFunctionAt(toAddr(0x1100)).getParameter(0);
-        if (!"retain explicit parameter comment".equals(parameter.getComment()))
-            throw new IllegalStateException("Return edit lost explicit parameter comment");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckReturnTypeParameterComment.java"),
             &[],
             &[],
             false,

@@ -81,18 +81,7 @@ fn function_creation_retains_the_requested_name_when_native_creation_detects_a_t
     with_fixture("x86:LE:32:default", |client, program| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CreateNamedThunkEntry extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getMemory().setBytes(toAddr(0x1080),
-            new byte[] {(byte) 0xe9, 0x7b, 0, 0, 0});
-        currentProgram.getSymbolTable().createLabel(toAddr(0x1080), "previous_label",
-            SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("fixtures/function_body/CreateNamedThunkEntry.java"),
                 &[],
                 &[],
                 false,
@@ -132,19 +121,7 @@ fn function_creation_rejects_failed_disassembly_without_creating_an_empty_functi
     with_fixture("x86:LE:32:default", |client, program| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CreateUndecodableFunctionEntry extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x3000);
-        // A two-byte x86 opcode with no second byte cannot be disassembled.
-        currentProgram.getMemory().createInitializedBlock("undecodable", address,
-            1, (byte) 0x0f, monitor, false);
-        currentProgram.getSymbolTable().createLabel(address, "saved_entry", SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("fixtures/function_body/CreateUndecodableFunctionEntry.java"),
                 &[],
                 &[],
                 false,
@@ -169,20 +146,9 @@ public class CreateUndecodableFunctionEntry extends GhidraScript {
             }
             client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-public class CheckRejectedUndecodableFunctionEntry extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x3000);
-        var symbol = currentProgram.getSymbolTable().getPrimarySymbol(address);
-        if (getFunctionAt(address) != null || getInstructionAt(address) != null
-                || currentProgram.getMemory().getByte(address) != 0x0f
-                || symbol == null || !"saved_entry".equals(symbol.getName())) {
-            throw new IllegalStateException("Failed function creation changed saved bytes or their label");
-        }
-    }
-}
-"#,
+                    include_str!(
+                        "fixtures/function_body/CheckRejectedUndecodableFunctionEntry.java"
+                    ),
                     &[],
                     &[],
                     false,
@@ -234,16 +200,7 @@ fn function_creation_preserves_another_functions_shared_tail_and_annotations() {
                 .is_err());
             client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-public class CheckRejectedFunctionEntry extends GhidraScript {
-    public void run() {
-        if (getInstructionAt(toAddr(0x1008)) != null) {
-            throw new IllegalStateException("Automatic disassembly escaped the rejected request");
-        }
-    }
-}
-"#,
+                    include_str!("fixtures/function_body/CheckRejectedFunctionEntry.java"),
                     &[],
                     &[],
                     false,

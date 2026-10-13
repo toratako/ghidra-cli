@@ -37,7 +37,12 @@ fn verify(project: &Path) -> anyhow::Result<()> {
         common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     let client = harness.client()?;
     assert_eq!(client.list_programs()?["count"], 2);
-    client.script_run_source(include_str!("../fixtures/project/VerifyArchiveFixture.java"), &[], &[], false)?;
+    client.script_run_source(
+        include_str!("../fixtures/project/VerifyArchiveFixture.java"),
+        &[],
+        &[],
+        false,
+    )?;
     drop(harness);
     Ok(())
 }
@@ -309,14 +314,7 @@ fn gar_conflicts_preserve_live_bridge_and_save_failure_remains_recoverable() -> 
     }
     let transaction = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class BlockArchiveSave extends GhidraScript {
-    public void run() throws Exception {
-        println(Integer.toString(currentProgram.startTransaction("hold archive save")));
-    }
-}
-"#,
+            include_str!("../fixtures/project/BlockArchiveSave.java"),
             &[],
             &[],
             false,
@@ -331,12 +329,12 @@ public class BlockArchiveSave extends GhidraScript {
         .trim()
         .to_owned();
     let failed = archive(&project, &gar)?;
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class ReleaseArchiveSave extends GhidraScript {
-    public void run() throws Exception { currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true); }
-}
-"#, &[transaction], &[], false)?;
+    client.script_run_source(
+        include_str!("../fixtures/project/ReleaseArchiveSave.java"),
+        &[transaction],
+        &[],
+        false,
+    )?;
     assert!(!failed.status.success());
     let error: Value = serde_json::from_slice(&failed.stderr)?;
     assert_eq!(error["detail"]["save_failed"], true);
@@ -497,28 +495,15 @@ fn gar_reports_unavailable_external_link_targets_without_following_them() -> any
     common::fixture::copy_analyzed_project(&external)?;
     let harness =
         common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
-    harness.client()?.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.framework.data.DefaultProjectData;
-import ghidra.framework.model.DomainFile;
-import ghidra.framework.model.DomainFolder;
-import ghidra.framework.model.ProjectLocator;
-import java.nio.file.Path;
-public class CreateExternalGarLink extends GhidraScript {
-    public void run() throws Exception {
-        Path path = Path.of(getScriptArgs()[0]);
-        // Only read the link source; writable open would race the removal below
-        // with Ghidra's asynchronous database cleanup after close().
-        var external = new DefaultProjectData(new ProjectLocator(path.getParent().toString(), path.getFileName().toString()), false, false);
-        try {
-            var file = external.getRootFolder().getFile(getScriptArgs()[1]);
-            var destination = state.getProject().getProjectData().getRootFolder().createFolder("external");
-            try { DomainFile.class.getMethod("copyToAsLink", DomainFolder.class, boolean.class).invoke(file, destination, false); }
-            catch (NoSuchMethodException olderGhidra) { DomainFile.class.getMethod("copyToAsLink", DomainFolder.class).invoke(file, destination); }
-        } finally { external.close(); }
-    }
-}
-"#, &[external.to_string_lossy().into_owned(), common::FIXTURE_PROGRAM.into()], &[], false)?;
+    harness.client()?.script_run_source(
+        include_str!("../fixtures/project/CreateExternalGarLink.java"),
+        &[
+            external.to_string_lossy().into_owned(),
+            common::FIXTURE_PROGRAM.into(),
+        ],
+        &[],
+        false,
+    )?;
     std::fs::remove_dir_all(external.with_added_extension("rep"))?;
     std::fs::remove_file(external.with_added_extension("gpr"))?;
     let gar = root.path().join("links.gar");

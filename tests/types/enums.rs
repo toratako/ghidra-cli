@@ -84,20 +84,7 @@ fn enum_member_deletion_preserves_same_valued_names_and_saved_metadata() {
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Enum;
-public class SetEnumMetadata extends GhidraScript {
-    public void run() throws Exception {
-        var type = (Enum) currentProgram.getDataTypeManager().getDataType("/Mode");
-        type.setDescription("recovered mode");
-        type.remove("Keep");
-        type.add("Keep", 1, "alias remains");
-        type.remove("Negative");
-        type.add("Negative", -1, "signed member");
-    }
-}
-"#,
+            include_str!("../fixtures/types/SetEnumMetadata.java"),
             &[],
             &[],
             false,
@@ -140,19 +127,7 @@ public class SetEnumMetadata extends GhidraScript {
     assert_eq!(definition(&program, "Mode"), remaining);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.Enum;
-public class CheckEnumMetadata extends GhidraScript {
-    public void run() throws Exception {
-        var type = (Enum) currentProgram.getDataTypeManager().getDataType("/Mode");
-        if (!type.getDescription().equals("recovered mode") || type.getLength() != 8
-                || !type.getComment("Keep").equals("alias remains")
-                || !type.getComment("Negative").equals("signed member"))
-            throw new IllegalStateException("Enum metadata changed during deletion");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckEnumMetadata.java"),
             &[],
             &[],
             false,

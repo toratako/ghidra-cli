@@ -20,23 +20,7 @@ fn test_signed_char_alias_preserves_signedness_on_unsigned_char_abi() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.CharDataType;
-import ghidra.program.model.data.Structure;
-public class CheckSignedCharAlias extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        if (dtm.getDataOrganization().isSignedChar())
-            throw new IllegalStateException("Fixture must use unsigned plain char");
-        var holder = (Structure) dtm.getDataType("/Holder");
-        var signed = (CharDataType) holder.getComponent(0).getDataType();
-        var plain = (CharDataType) holder.getComponent(1).getDataType();
-        if (!signed.isSigned() || plain.isSigned())
-            throw new IllegalStateException("Explicit signed char lost its signedness");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckSignedCharAlias.java"),
             &[],
             &[],
             false,
@@ -90,26 +74,7 @@ fn test_type_delete_removes_registered_arrays_and_pointers() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.ArrayDataType;
-import ghidra.program.model.data.ByteDataType;
-import ghidra.program.model.data.CharDataType;
-import ghidra.program.model.data.DWordDataType;
-import ghidra.program.model.data.PointerDataType;
-import ghidra.program.model.data.UnsignedIntegerDataType;
-public class RegisterTypesForDeletion extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (int count : new int[] { 4, 5 })
-            dtm.addDataType(new ArrayDataType(ByteDataType.dataType, count, -1, dtm), null);
-        dtm.addDataType(new PointerDataType(ByteDataType.dataType, dtm), null);
-        dtm.addDataType(new PointerDataType(CharDataType.dataType, dtm), null);
-        dtm.addDataType(UnsignedIntegerDataType.dataType, null);
-        dtm.addDataType(DWordDataType.dataType, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/RegisterTypesForDeletion.java"),
             &[],
             &[],
             false,

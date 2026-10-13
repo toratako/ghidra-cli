@@ -1,0 +1,10 @@
+
+import ghidra.app.script.GhidraScript;
+public class CheckBlockLifecycleFixture extends GhidraScript {
+    /* CHECK_STATE */
+    public void run() throws Exception {
+        require(!currentProgram.isChanged(), "Request did not save");
+        checkState(currentProgram, Long.parseUnsignedLong(getScriptArgs()[0], 16),
+            Boolean.parseBoolean(getScriptArgs()[1]));
+    }
+}

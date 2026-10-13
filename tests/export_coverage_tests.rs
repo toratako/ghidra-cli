@@ -45,27 +45,7 @@ fn export_reports_artifacts_and_format_limits() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.DWordDataType;
-import ghidra.program.model.symbol.SourceType;
-public class DefineExportCoverageFixture extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getMemory().getBlock(toAddr(0x1000)).setWrite(true);
-        createData(toAddr(0x1010), DWordDataType.dataType);
-        createLabel(toAddr(0x1010), "referenced_value", true);
-        createData(toAddr(0x1014), DWordDataType.dataType);
-        createLabel(toAddr(0x1014), "unreferenced_value", true);
-        if (!disassemble(toAddr(0x1000))) {
-            throw new IllegalStateException("Could not disassemble fixture");
-        }
-        var function = createFunction(toAddr(0x1000), "read_global");
-        function.setReturnType(DWordDataType.dataType, SourceType.USER_DEFINED);
-        currentProgram.getMemory().createUninitializedBlock("uninitialized",
-            toAddr(0x2000), 32, false);
-    }
-}
-"#,
+            include_str!("fixtures/export/DefineExportCoverageFixture.java"),
             &[],
             &[],
             false,
@@ -109,16 +89,7 @@ public class DefineExportCoverageFixture extends GhidraScript {
 
     let raw_path = directory.path().join("memory.bin");
     std::fs::write(&raw_path, "previous binary export").unwrap();
-    const SET_LOCALE: &str = r#"
-import ghidra.app.script.GhidraScript;
-import java.util.Locale;
-public class ExportTestLocale extends GhidraScript {
-    public void run() {
-        println(Locale.getDefault().toLanguageTag());
-        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
-    }
-}
-"#;
+    const SET_LOCALE: &str = include_str!("fixtures/export/ExportTestLocale.java");
     let previous = client
         .script_run_source(SET_LOCALE, &["tr-TR".to_owned()], &[], false)
         .unwrap();
@@ -193,33 +164,7 @@ public class ExportTestLocale extends GhidraScript {
     // Cross a stream buffer boundary and finish at the address-space maximum.
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CreateBinaryExportTail extends GhidraScript {
-    public void run() throws Exception {
-        byte[] tail = new byte[65543];
-        for (int i = 0; i < tail.length; i++) tail[i] = (byte) (i * 17);
-        currentProgram.getMemory().createInitializedBlock("stream_tail",
-            toAddr(0xfffefff9L), new java.io.ByteArrayInputStream(tail),
-            tail.length, monitor, false);
-        currentProgram.getMemory().createByteMappedBlock("initialized_alias",
-            toAddr(0x3000), toAddr(0x1010), 4, false);
-        currentProgram.getMemory().createByteMappedBlock("nested_alias",
-            toAddr(0x2800), toAddr(0x3000), 4, false);
-        currentProgram.getMemory().createBitMappedBlock("nested_bits",
-            toAddr(0x2810), toAddr(0x3000), 8, false);
-        currentProgram.getMemory().createByteMappedBlock("nested_skipped_bytes",
-            toAddr(0x2820), toAddr(0x3000), 2,
-            new ghidra.program.database.mem.ByteMappingScheme(1, 2), false);
-        currentProgram.getMemory().createByteMappedBlock("nested_partial",
-            toAddr(0x2830), toAddr(0x3000), 8, false);
-        byte[] overlay = {0x11, 0x22, 0x33};
-        currentProgram.getMemory().createInitializedBlock("export_overlay",
-            toAddr(0x4000), new java.io.ByteArrayInputStream(overlay),
-            overlay.length, monitor, true);
-    }
-}
-"#,
+            include_str!("fixtures/export/CreateBinaryExportTail.java"),
             &[],
             &[],
             false,

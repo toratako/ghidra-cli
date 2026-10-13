@@ -47,14 +47,7 @@ fn unicode_requests_responses_and_saved_edits_ignore_jvm_default_charset() {
     let client = ghidra_cli::ipc::client::BridgeClient::new(port);
     let charset = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckBridgeCharset extends GhidraScript {
-    public void run() {
-        println(java.nio.charset.Charset.defaultCharset().name());
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/CheckBridgeCharset.java"),
             &[],
             &[],
             false,

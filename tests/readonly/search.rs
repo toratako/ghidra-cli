@@ -14,39 +14,14 @@ fn test_instruction_queries_on_x86_and_aarch64_without_functions() {
         ("AARCH64:LE:64:v8A", "1f2003d51f2003d5c0035fd6", "0x1008"),
     ] {
         let name = format!("instruction-fixture-{}", uuid::Uuid::new_v4());
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.app.cmd.disassemble.DisassembleCommand;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateInstructionSearchFixture extends GhidraScript {
-    public void run() throws Exception {
-        String[] args = getScriptArgs();
-        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID(args[1]));
-        var program = new ProgramDB(args[0], language, language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("instruction fixture");
-            try {
-                byte[] bytes = new byte[32];
-                for (int i = 0; i < args[2].length() / 2; i++) {
-                    bytes[i] = (byte) Integer.parseInt(args[2].substring(i * 2, i * 2 + 2), 16);
-                }
-                var start = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000);
-                program.getMemory().createInitializedBlock("code", start,
-                    new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false).setExecute(true);
-                int[] offsets = args[1].startsWith("x86") ? new int[]{0, 3, 4} : new int[]{0, 4, 8};
-                for (int offset : offsets) {
-                    if (!new DisassembleCommand(start.add(offset), null, false).applyTo(program, monitor)) {
-                        throw new IllegalStateException("Could not disassemble fixture at " + offset);
-                    }
-                }
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder().createFile(args[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#, &[name.clone(), language.to_owned(), hex.to_owned()], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/readonly/CreateInstructionSearchFixture.java"),
+                &[name.clone(), language.to_owned(), hex.to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
         client.open_program(&name).unwrap();
         let checked = std::panic::catch_unwind(|| {
             let disasm = client.disasm_range("0x1000", last, Some(0)).unwrap();
@@ -290,51 +265,16 @@ fn test_string_refs_match_string_values_independent_of_locale() {
     ];
     let mut fixture_args = vec![name.clone()];
     fixture_args.extend(values.iter().map(|value| value.to_string()));
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.data.StringDataType;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.model.symbol.RefType;
-import ghidra.program.model.symbol.SourceType;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateStringRefsFixture extends GhidraScript {
-    public void run() throws Exception {
-        String[] args = getScriptArgs();
-        var language = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID("x86:LE:64:default"));
-        var program = new ProgramDB(args[0], language, language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("string refs fixture");
-            try {
-                var space = program.getAddressFactory().getDefaultAddressSpace();
-                var from = space.getAddress(0x1000);
-                program.getMemory().createInitializedBlock("references", from, 0x10, (byte) 0, monitor, false);
-                for (int i = 1; i < args.length; i++) {
-                    var address = space.getAddress(0x2000 + i * 0x100);
-                    byte[] bytes = (args[i] + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    program.getMemory().createInitializedBlock("string" + i, address,
-                        new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
-                    program.getListing().createData(address, StringDataType.dataType, bytes.length);
-                    program.getReferenceManager().addMemoryReference(from.add(i), address,
-                        RefType.DATA, SourceType.USER_DEFINED, 0);
-                }
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder().createFile(args[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#, &fixture_args, &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/readonly/CreateStringRefsFixture.java"),
+            &fixture_args,
+            &[],
+            false,
+        )
+        .unwrap();
     client.open_program(&name).unwrap();
-    const LOCALE_SCRIPT: &str = r#"
-import ghidra.app.script.GhidraScript;
-import java.util.Locale;
-public class StringRefsTestLocale extends GhidraScript {
-    public void run() {
-        writer.println(Locale.getDefault().toLanguageTag());
-        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
-    }
-}
-"#;
+    const LOCALE_SCRIPT: &str = include_str!("../fixtures/readonly/StringRefsTestLocale.java");
     let previous = client
         .script_run_source(LOCALE_SCRIPT, &["tr-TR".into()], &[], false)
         .unwrap();
@@ -383,47 +323,7 @@ fn test_find_text_encodings_and_defined_string_boundary() {
     let name = format!("search-window-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateSearchWindowFixture extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID("x86:LE:64:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("search fixture");
-            try {
-                var space = program.getAddressFactory().getDefaultAddressSpace();
-                String[] hex = {
-                    "50617373776f726400", // undefined Password
-                    "50617373776f726400", // defined Password
-                    "5261774f6e6c7900",   // undefined RawOnly
-                    "e697a5e69cac",       // 日本, UTF-8
-                    "e5652c67",           // 日本, UTF-16LE
-                    "65e5672c",           // 日本, UTF-16BE
-                    "93fa967b",           // 日本, Shift_JIS
-                    "6161616161",         // overlapping aa matches
-                    "58".repeat(300)      // no implicit extraction window
-                };
-                for (int i = 0; i < hex.length; i++) {
-                    byte[] bytes = java.util.HexFormat.of().parseHex(hex[i]);
-                    var address = space.getAddress(0x1000 + i * 0x1000);
-                    program.getMemory().createInitializedBlock("raw" + i, address,
-                        new java.io.ByteArrayInputStream(bytes), bytes.length, monitor, false);
-                    if (i == 1) program.getListing().createData(address,
-                        ghidra.program.model.data.StringDataType.dataType, bytes.length);
-                }
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/CreateSearchWindowFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -502,32 +402,7 @@ fn exact_search_continues_after_address_space_maximum() {
     let name = format!("search-spaces-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateSearchSpacesFixture extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID("x86:LE:32:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("search spaces fixture");
-            try {
-                var space = program.getAddressFactory().getDefaultAddressSpace();
-                program.getMemory().createInitializedBlock("end", space.getMaxAddress(),
-                    1, (byte) 'X', monitor, false);
-                program.getMemory().createInitializedBlock("later", space.getAddress(0x1000),
-                    1, (byte) 'X', monitor, true);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/CreateSearchSpacesFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,

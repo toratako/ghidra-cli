@@ -65,16 +65,18 @@ fn move_symbol(client: &BridgeClient, target: &Value, namespace: Option<&str>) -
 }
 
 fn reference_state(client: &BridgeClient) -> String {
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class ReadNamespaceReference extends GhidraScript {
-    public void run() {
-        var reference = currentProgram.getReferenceManager().getReference(toAddr(0x1000), toAddr(0x1010), 0);
-        println(reference.getSymbolID() + ":" + reference.getFromAddress() + ":" + reference.getToAddress()
-            + ":" + reference.getReferenceType() + ":" + reference.getSource() + ":" + reference.isPrimary());
-    }
-}
-"#, &[], &[], false).unwrap()["stdout"].as_str().unwrap().trim().to_owned()
+    client
+        .script_run_source(
+            include_str!("fixtures/namespaces/ReadNamespaceReference.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap()["stdout"]
+        .as_str()
+        .unwrap()
+        .trim()
+        .to_owned()
 }
 
 #[test]

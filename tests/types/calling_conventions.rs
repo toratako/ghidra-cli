@@ -43,25 +43,14 @@ fn convention_edits_reject_native_removal_of_explicit_parameters_atomically() {
         )
         .unwrap();
     common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.IntegerDataType;
-import ghidra.program.model.data.PointerDataType;
-import ghidra.program.model.listing.ParameterImpl;
-import ghidra.program.model.listing.Function.FunctionUpdateType;
-import ghidra.program.model.symbol.SourceType;
-public class CreateExplicitThisParameter extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1100));
-        function.replaceParameters(FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS, false,
-            SourceType.USER_DEFINED,
-            new ParameterImpl("this", new PointerDataType(IntegerDataType.dataType), currentProgram),
-            new ParameterImpl("count", IntegerDataType.dataType, currentProgram));
-        function.getParameter(0).setComment("saved explicit object");
-        function.getParameter(1).setComment("saved count");
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CreateExplicitThisParameter.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         let before = function("plain");
         let failed = command(&program, "plain", "__thiscall");
         failed.assert_failure();
@@ -82,17 +71,7 @@ public class CreateExplicitThisParameter extends GhidraScript {
             assert_eq!(function("plain"), before);
             client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-public class CheckExplicitThisParameterComments extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1100));
-        if (!"saved explicit object".equals(function.getParameter(0).getComment())
-                || !"saved count".equals(function.getParameter(1).getComment()))
-            throw new IllegalStateException("Convention edit lost parameter comments");
-    }
-}
-"#,
+                    include_str!("../fixtures/types/CheckExplicitThisParameterComments.java"),
                     &[],
                     &[],
                     false,
@@ -122,15 +101,7 @@ public class CheckExplicitThisParameterComments extends GhidraScript {
         assert_eq!(function("plain"), before);
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class RenameExplicitObjectParameter extends GhidraScript {
-    public void run() throws Exception {
-        getFunctionAt(toAddr(0x1100)).getParameter(0).setName("object", SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/types/RenameExplicitObjectParameter.java"),
                 &[],
                 &[],
                 false,
@@ -148,17 +119,14 @@ public class RenameExplicitObjectParameter extends GhidraScript {
         client.program_close().unwrap();
         client.open_program(&program).unwrap();
         assert_eq!(function("plain"), thiscall);
-        client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-public class CheckThiscallFormalParameterComments extends GhidraScript {
-    public void run() throws Exception {
-        var function = getFunctionAt(toAddr(0x1100));
-        if (!"saved explicit object".equals(function.getParameter(1).getComment())
-                || !"saved count".equals(function.getParameter(2).getComment()))
-            throw new IllegalStateException("Convention edit lost retained formal parameter comments");
-    }
-}
-"#, &[], &[], false).unwrap();
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CheckThiscallFormalParameterComments.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
     });
 }
 

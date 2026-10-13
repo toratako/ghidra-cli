@@ -304,15 +304,7 @@ fn function_name_edits_reject_native_substitutions_on_thunks_and_externals() {
     with_fixture(|client, program| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-public class LocateNamedExternalFunction extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getExternalManager().getUniqueExternalLocation("library", "outside_target")
-            .setAddress(toAddr(0x5000));
-    }
-}
-"#,
+                include_str!("fixtures/thunk/LocateNamedExternalFunction.java"),
                 &[],
                 &[],
                 false,

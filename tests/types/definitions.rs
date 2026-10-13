@@ -28,44 +28,7 @@ fn description_fixture() -> String {
     let program = create_type_edit_program("x86:LE:64:default");
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateDescriptionTypes extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var path = new CategoryPath("/Descriptions");
-        var node = new StructureDataType(path, "Node", 8, dtm);
-        node.replaceAtOffset(0, DWordDataType.dataType, 4, "value", "field comment");
-        node.setDescription("original node");
-        var savedNode = dtm.addDataType(node, null);
-        var choice = new UnionDataType(path, "Choice", dtm);
-        choice.add(savedNode, "node", "nested type");
-        choice.add(new PointerDataType(savedNode, dtm), "link", "shared target");
-        choice.setDescription("original union");
-        var savedChoice = dtm.addDataType(choice, null);
-        var mode = new EnumDataType(path, "Mode", 4, dtm);
-        mode.add("Read", 1, "member comment");
-        mode.add("Write", 2);
-        mode.setDescription("original enum");
-        var savedMode = dtm.addDataType(mode, null);
-        var holder = new StructureDataType(path, "Holder", 0, dtm);
-        holder.add(new PointerDataType(savedNode, dtm), "link", "pointer");
-        holder.add(new ArrayDataType(savedNode, 2, -1, dtm), "nodes", "array");
-        holder.add(savedChoice, "choice", "union");
-        holder.add(savedMode, "mode", "enum");
-        var savedHolder = dtm.addDataType(holder, null);
-        var address = toAddr(0x1000);
-        currentProgram.getMemory().createUninitializedBlock("data", address, 256, false);
-        currentProgram.getListing().createData(address, savedHolder);
-        dtm.addDataType(new TypedefDataType(path, "Alias", savedNode, dtm), null);
-        dtm.addDataType(new FunctionDefinitionDataType(path, "Callback", dtm), null);
-        var other = new StructureDataType(new CategoryPath("/Other"), "Node", 4, dtm);
-        other.setDescription("other node");
-        dtm.addDataType(other, null);
-    }
-}
-"#,
+        include_str!("../fixtures/types/CreateDescriptionTypes.java"),
         &[],
     );
     program
@@ -123,27 +86,7 @@ fn descriptions_update_clear_and_preserve_saved_layout_identity_and_uses() {
     reopen(&program);
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckDescriptionUses extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var node = dtm.getDataType("/Descriptions/Node");
-        var choice = (Union) dtm.getDataType("/Descriptions/Choice");
-        var holder = (Structure) dtm.getDataType("/Descriptions/Holder");
-        if (((Pointer) holder.getComponent(0).getDataType()).getDataType() != node
-                || ((Array) holder.getComponent(1).getDataType()).getDataType() != node
-                || holder.getComponent(2).getDataType() != choice
-                || holder.getComponent(3).getDataType() != dtm.getDataType("/Descriptions/Mode")
-                || choice.getComponent(0).getDataType() != node
-                || ((Pointer) choice.getComponent(1).getDataType()).getDataType() != node
-                || ((TypeDef) dtm.getDataType("/Descriptions/Alias")).getBaseDataType() != node
-                || currentProgram.getListing().getDataAt(toAddr(0x1000)).getDataType() != holder)
-            throw new IllegalStateException("Description edit changed registered type uses");
-    }
-}
-"#,
+        include_str!("../fixtures/types/CheckDescriptionUses.java"),
         &[],
     );
     harness()
@@ -277,64 +220,7 @@ fn clone_composites_preserves_saved_layout_settings_and_shared_external_dependen
     let archive_path = archive_dir.path().join("Recovered.gdt");
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-import java.io.File;
-public class CreateCloneDefinitions extends GhidraScript {
-    public void run() throws Exception {
-        var archive = FileDataTypeManager.createFileArchive(new File(getScriptArgs()[0]),
-            currentProgram.getLanguageID(), currentProgram.getCompilerSpec().getCompilerSpecID());
-        try {
-            int tx = archive.startTransaction("Fixture definitions");
-            try {
-                var path = new CategoryPath("/Source");
-                var payload = (Structure) archive.addDataType(new StructureDataType(path, "Payload", 4, archive), null);
-                payload.replaceAtOffset(0, DWordDataType.dataType, 4, "value", "shared payload");
-                var node = (Structure) archive.addDataType(new StructureDataType(path, "Node", 24, archive), null);
-                node.setDescription("recovered node");
-                node.replaceAtOffset(0, payload, 4, "payload", "shared definition");
-                node.replaceAtOffset(8, new PointerDataType(node, archive), 8, "next", "original self reference");
-                node.insertBitFieldAt(16, 1, 0, UnsignedIntegerDataType.dataType, 3, "mode", "mode bits");
-                node.insertBitFieldAt(16, 1, 3, UnsignedIntegerDataType.dataType, 2, null, "unnamed bits");
-                node.replaceAtOffset(20, DWordDataType.dataType, 4, "tail", "tail comment");
-                for (boolean packed : new boolean[] { false, true }) {
-                    String name = packed ? "PackedUnion" : "Union";
-                    var union = new UnionDataType(path, name, archive);
-                    union.setDescription("union description");
-                    if (packed) {
-                        union.setExplicitPackingValue(2);
-                        union.setExplicitMinimumAlignment(16);
-                    }
-                    union.add(payload, "payload", "shared union dependency");
-                    union.add(QWordDataType.dataType, null, "unnamed member");
-                    union.addBitField(UnsignedIntegerDataType.dataType, 3, "flags", "union bits");
-                    archive.addDataType(union, null);
-                }
-                var packed = new StructureDataType(path, "Packed", 0, archive);
-                packed.setDescription("packed description");
-                packed.setExplicitPackingValue(2);
-                packed.setExplicitMinimumAlignment(16);
-                packed.add(ByteDataType.dataType, "tag", "tag comment");
-                packed.add(payload, "payload", "shared packed dependency");
-                packed.addBitField(UnsignedIntegerDataType.dataType, 3, "flags", "packed bits");
-                archive.addDataType(packed, null);
-            } finally { archive.endTransaction(tx, true); }
-            archive.save();
-            var dtm = currentProgram.getDataTypeManager();
-            for (String name : new String[] { "Node", "Packed", "Union", "PackedUnion" }) {
-                var registered = (Composite) dtm.addDataType(archive.getDataType("/Source/" + name), null);
-                for (var field : registered.getDefinedComponents()) {
-                    if (field.getDataType().getSettingsDefinitions().length == 0) continue;
-                    FormatSettingsDefinition.DEF.setChoice(field.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-                    EndianSettingsDefinition.DEF.setChoice(field.getDefaultSettings(), EndianSettingsDefinition.BIG);
-                }
-            }
-        } finally { archive.close(); }
-    }
-}
-"#,
+        include_str!("../fixtures/types/CreateCloneDefinitions.java"),
         &[archive_path.to_string_lossy().into_owned()],
     );
     let payload_before = definition(&program, "/Source/Payload");
@@ -379,63 +265,7 @@ public class CreateCloneDefinitions extends GhidraScript {
     }
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-import java.util.Arrays;
-import java.util.Objects;
-public class CheckSavedClonedDefinitions extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (String name : new String[] { "Node", "Packed", "Union", "PackedUnion" }) {
-            var original = (Composite) dtm.getDataType("/Source/" + name);
-            var copy = (Composite) dtm.getDataType("/Draft/" + name + "Copy");
-            if (original.getUniversalID().equals(copy.getUniversalID())
-                    || original.getSourceArchive().getArchiveType() != ArchiveType.FILE
-                    || copy.getSourceArchive().getArchiveType() != ArchiveType.PROGRAM)
-                throw new IllegalStateException("Identity or source archive was not preserved");
-            if (original.getPackingType() != copy.getPackingType()
-                    || original.getExplicitPackingValue() != copy.getExplicitPackingValue()
-                    || original.getAlignmentType() != copy.getAlignmentType()
-                    || original.getExplicitMinimumAlignment() != copy.getExplicitMinimumAlignment())
-                throw new IllegalStateException("Packing or alignment changed");
-            var fields = original.getDefinedComponents();
-            var copied = copy.getDefinedComponents();
-            for (int i = 0; i < fields.length; i++) {
-                var a = fields[i].getDefaultSettings();
-                var b = copied[i].getDefaultSettings();
-                if (!Arrays.equals(a.getNames(), b.getNames()))
-                    throw new IllegalStateException("Explicit component settings changed");
-                for (String key : a.getNames()) {
-                    if (!Objects.equals(a.getValue(key), b.getValue(key)))
-                        throw new IllegalStateException("Component setting not saved: " + key);
-                }
-                var oldType = fields[i].getDataType();
-                var newType = copied[i].getDataType();
-                if (oldType instanceof BitFieldDataType) {
-                    oldType = ((BitFieldDataType) oldType).getBaseDataType();
-                    newType = ((BitFieldDataType) newType).getBaseDataType();
-                }
-                if (oldType != newType) throw new IllegalStateException("Dependency was copied");
-            }
-        }
-        var original = (Structure) dtm.getDataType("/Source/Node");
-        var copy = (Structure) dtm.getDataType("/Draft/NodeCopy");
-        if (((Pointer) copy.getComponentAt(8).getDataType()).getDataType() != original)
-            throw new IllegalStateException("Self reference was redirected to the clone");
-        var payload = (Structure) dtm.getDataType("/Source/Payload");
-        payload.getComponentAt(0).setFieldName("shared_edit");
-        if (((Structure) original.getComponentAt(0).getDataType()).getComponentAt(0).getFieldName()
-                .equals("shared_edit") == false
-                || ((Structure) copy.getComponentAt(0).getDataType()).getComponentAt(0).getFieldName()
-                .equals("shared_edit") == false)
-            throw new IllegalStateException("Dependency edits were not shared");
-        copy.getComponentAt(20).setFieldName("independent_edit");
-        if (!original.getComponentAt(20).getFieldName().equals("tail"))
-            throw new IllegalStateException("Clone edit modified source definition");
-    }
-}
-"#,
+        include_str!("../fixtures/types/CheckSavedClonedDefinitions.java"),
         &[],
     );
     reopen(&program);
@@ -461,38 +291,7 @@ fn clone_enum_typedef_and_function_preserves_definition_settings_and_default_cat
     let program = create_type_edit_program("x86:LE:64:default");
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateOtherCloneDefinitions extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var path = new CategoryPath("/Types");
-        var values = new EnumDataType(path, "Values", 4, dtm);
-        values.setDescription("enum description");
-        values.add("FIRST", 1, "first comment");
-        values.add("ALIAS", 1, "alias comment");
-        var savedEnum = dtm.addDataType(values, null);
-        FormatSettingsDefinition.DEF.setChoice(savedEnum.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        var alias = new TypedefDataType(path, "Alias", savedEnum, dtm);
-        var savedAlias = dtm.addDataType(alias, null);
-        FormatSettingsDefinition.DEF.setChoice(savedAlias.getDefaultSettings(), FormatSettingsDefinition.BINARY);
-        var ptr = new PointerTypedef("Relative", savedEnum, 8, dtm, 12L);
-        var savedPointer = dtm.addDataType(ptr, null);
-        savedPointer.setCategoryPath(path);
-        FormatSettingsDefinition.DEF.setChoice(savedPointer.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-        var function = new FunctionDefinitionDataType(path, "Callback", dtm);
-        function.setComment("callback comment");
-        function.setReturnType(savedAlias);
-        function.setArguments(new ParameterDefinitionImpl("arg", savedPointer, "argument comment"));
-        function.setVarArgs(true);
-        function.setNoReturn(true);
-        function.setCallingConvention("__cdecl");
-        dtm.addDataType(function, null);
-    }
-}
-"#,
+        include_str!("../fixtures/types/CreateOtherCloneDefinitions.java"),
         &[],
     );
     let names = ["Values", "Alias", "Relative", "Callback"];
@@ -541,47 +340,7 @@ public class CreateOtherCloneDefinitions extends GhidraScript {
     }
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-import java.util.Objects;
-public class CheckOtherClonedDefinitions extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (String name : new String[] { "Values", "Alias", "Relative", "Callback" }) {
-            var source = dtm.getDataType("/Types/" + name);
-            var copy = dtm.getDataType("/Types/" + name + "Copy");
-            if (source.getUniversalID().equals(copy.getUniversalID()))
-                throw new IllegalStateException("Clone identity matches source");
-            for (String key : source.getDefaultSettings().getNames()) {
-                if (!Objects.equals(source.getDefaultSettings().getValue(key), copy.getDefaultSettings().getValue(key)))
-                    throw new IllegalStateException("Default setting lost: " + name + " " + key);
-            }
-            if (source instanceof TypeDef && ((TypeDef) source).getDataType() != ((TypeDef) copy).getDataType())
-                throw new IllegalStateException("Typedef dependency changed");
-        }
-        var sourceEnum = (ghidra.program.model.data.Enum) dtm.getDataType("/Types/Values");
-        var enumCopy = (ghidra.program.model.data.Enum) dtm.getDataType("/Types/ValuesCopy");
-        for (String name : sourceEnum.getNames()) {
-            if (sourceEnum.getValue(name) != enumCopy.getValue(name)
-                    || !Objects.equals(sourceEnum.getComment(name), enumCopy.getComment(name)))
-                throw new IllegalStateException("Enum member changed");
-        }
-        var original = (FunctionDefinition) dtm.getDataType("/Types/Callback");
-        var copy = (FunctionDefinition) dtm.getDataType("/Types/CallbackCopy");
-        if (original.getReturnType() != copy.getReturnType() || !copy.hasVarArgs() || !copy.hasNoReturn()
-                || !Objects.equals(original.getComment(), copy.getComment())
-                || !Objects.equals(original.getCallingConventionName(), copy.getCallingConventionName()))
-            throw new IllegalStateException("Function properties changed");
-        var originalArg = original.getArguments()[0];
-        var copiedArg = copy.getArguments()[0];
-        if (originalArg.getDataType() != copiedArg.getDataType()
-                || !Objects.equals(originalArg.getName(), copiedArg.getName())
-                || !Objects.equals(originalArg.getComment(), copiedArg.getComment()))
-            throw new IllegalStateException("Function argument changed");
-    }
-}
-"#,
+        include_str!("../fixtures/types/CheckOtherClonedDefinitions.java"),
         &[],
     );
     for (name, original) in names.iter().zip(&originals) {
@@ -726,23 +485,7 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
     type_command(&program, &["get", "/Draft/Item"]).assert_failure();
     run_script(
         &program,
-        r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CheckMovedTypeReferences extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var alias = (TypeDef) dtm.getDataType("/ItemAlias");
-        var moved = dtm.getDataType("/Final/MovedItem");
-        if (((Pointer) alias.getDataType()).getDataType() != moved)
-            throw new IllegalStateException("Moving type changed references");
-        if (dtm.getCategory(new CategoryPath("/Draft/Empty")) != null
-                || dtm.getCategory(new CategoryPath("/Missing")) != null
-                || dtm.getCategory(new CategoryPath("/Bad")) != null)
-            throw new IllegalStateException("Rejected category mutation persisted");
-    }
-}
-"#,
+        include_str!("../fixtures/types/CheckMovedTypeReferences.java"),
         &[],
     );
     harness()

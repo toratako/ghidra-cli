@@ -12,26 +12,7 @@ fn analysis_options_preserve_types_validate_before_mutation_and_save() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.framework.options.OptionType;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.symbol.SourceType;
-public class RegisterAnalysisTestOptions extends GhidraScript {
-    public void run() {
-        var options = currentProgram.getOptions(Program.ANALYSIS_PROPERTIES);
-        options.registerOption("CLI Test.Boolean", true, null, "A nested boolean setting");
-        options.registerOption("CLI Test.Int", 7, null, "An integer setting");
-        options.registerOption("CLI Test.Long", 8L, null, "A long setting");
-        options.registerOption("CLI Test.Float", 0.5f, null, "A float setting");
-        options.registerOption("CLI Test.Double", 0.25d, null, "A double setting");
-        options.registerOption("CLI Test.String", "original", null, "A string setting");
-        options.registerOption("CLI Test.Enum", SourceType.DEFAULT, null, "An enum setting");
-        options.registerOption("CLI Test.File", OptionType.FILE_TYPE, null, null, "A file setting");
-        options.registerOption("CLI Test.Color", java.awt.Color.BLACK, null, "A UI setting");
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/RegisterAnalysisTestOptions.java"),
             &[],
             &[],
             false,
@@ -140,33 +121,14 @@ public class RegisterAnalysisTestOptions extends GhidraScript {
     assert!(client.analysis_option_get("CLI Test.Unknown").is_err());
 
     // Verify actual native types in a separately opened saved database before closing.
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.framework.model.DomainFile;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.symbol.SourceType;
-public class CheckSavedAnalysisOptions extends GhidraScript {
-    public void run() throws Exception {
-        Object consumer = new Object();
-        Program saved = (Program) currentProgram.getDomainFile()
-            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
-        try {
-            var options = saved.getOptions(Program.ANALYSIS_PROPERTIES);
-            if (options.getBoolean("CLI Test.Boolean", true)
-                || options.getInt("CLI Test.Int", 0) != -42
-                || options.getLong("CLI Test.Long", 0) != Long.MAX_VALUE
-                || options.getFloat("CLI Test.Float", 0) != 1.25f
-                || options.getDouble("CLI Test.Double", 0) != 1.125d
-                || !options.getString("CLI Test.String", "bad").isEmpty()
-                || options.getEnum("CLI Test.Enum", SourceType.DEFAULT) != SourceType.USER_DEFINED
-                || !options.getFile("CLI Test.File", null).equals(new java.io.File(getScriptArgs()[0]))
-                || options.contains("CLI Test.Unknown")) {
-                throw new IllegalStateException("Saved analysis option values or types differ");
-            }
-        } finally { saved.release(consumer); }
-    }
-}
-"#, std::slice::from_ref(&file_path), &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/daemon/CheckSavedAnalysisOptions.java"),
+            std::slice::from_ref(&file_path),
+            &[],
+            false,
+        )
+        .unwrap();
     client.program_close().unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
     for (suffix, _, kind, expected) in &cases {
@@ -178,18 +140,7 @@ public class CheckSavedAnalysisOptions extends GhidraScript {
     }
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.listing.Program;
-public class RemoveAnalysisTestOptions extends GhidraScript {
-    public void run() {
-        var options = currentProgram.getOptions(Program.ANALYSIS_PROPERTIES);
-        for (String name : options.getOptionNames()) {
-            if (name.startsWith("CLI Test.")) options.removeOption(name);
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/daemon/RemoveAnalysisTestOptions.java"),
             &[],
             &[],
             false,

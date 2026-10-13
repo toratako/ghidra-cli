@@ -359,16 +359,7 @@ fn test_function_list_unknown_tag_errors_with_hint() {
     cleanup_tag(harness, "tt7_IIII");
     tag_json(harness, &["function", "tag", "create", "tt7_IIII"]);
     let client = harness.client().unwrap();
-    let locale_script = r#"
-import ghidra.app.script.GhidraScript;
-import java.util.Locale;
-public class TagHintLocale extends GhidraScript {
-    public void run() {
-        writer.println(Locale.getDefault().toLanguageTag());
-        Locale.setDefault(Locale.forLanguageTag(getScriptArgs()[0]));
-    }
-}
-"#;
+    let locale_script = include_str!("fixtures/tags/TagHintLocale.java");
     let previous = client
         .script_run_source(locale_script, &["tr-TR".into()], &[], false)
         .unwrap();
@@ -596,23 +587,7 @@ fn tag_metadata_edits_preserve_usage_counts_for_mapped_external_and_unmapped_fun
         }
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class WarmTagUsageCache extends GhidraScript {
-    public void run() throws Exception {
-        var address = toAddr(0x3000);
-        currentProgram.getFunctionManager().createFunction("unmapped_tagged", address,
-            new AddressSet(address, address), SourceType.USER_DEFINED).addTag("review");
-        var manager = currentProgram.getFunctionManager().getFunctionTagManager();
-        var tag = manager.getFunctionTag("review");
-        if (manager.getUseCount(tag) != 4) {
-            throw new IllegalStateException("Native fixture must have four tag memberships");
-        }
-    }
-}
-"#,
+                include_str!("fixtures/tags/WarmTagUsageCache.java"),
                 &[],
                 &[],
                 false,

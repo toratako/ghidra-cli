@@ -6,30 +6,7 @@ pub(super) fn create_symbol_fixture_program() -> String {
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.database.ProgramDB;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.util.DefaultLanguageService;
-public class CreateSymbolDeletionProgram extends GhidraScript {
-    public void run() throws Exception {
-        var language = DefaultLanguageService.getLanguageService()
-            .getLanguage(new LanguageID("x86:LE:64:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language,
-            language.getDefaultCompilerSpec(), this);
-        try {
-            int tx = program.startTransaction("symbol deletion fixture");
-            try {
-                program.getMemory().createInitializedBlock("fixture",
-                    program.getAddressFactory().getDefaultAddressSpace().getAddress(0x1000),
-                    0x100, (byte) 0, monitor, false);
-            } finally { program.endTransaction(tx, true); }
-            state.getProject().getProjectData().getRootFolder()
-                .createFile(getScriptArgs()[0], program, monitor);
-        } finally { program.release(this); }
-    }
-}
-"#,
+            include_str!("../fixtures/symbols/CreateSymbolDeletionProgram.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -48,18 +25,7 @@ fn test_create_label_does_not_rename_default_function() {
     let checked = std::panic::catch_unwind(|| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateDefaultFunctionForLabel extends GhidraScript {
-    public void run() throws Exception {
-        var entry = toAddr(0x1020);
-        currentProgram.getFunctionManager().createFunction(null, entry,
-            new AddressSet(entry, entry), SourceType.DEFAULT);
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateDefaultFunctionForLabel.java"),
                 &[],
                 &[],
                 false,
@@ -97,38 +63,7 @@ fn test_function_and_symbol_deletion_preserve_unselected_thunks() {
     let checked = std::panic::catch_unwind(|| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateGuardedThunkDeletion extends GhidraScript {
-    public void run() throws Exception {
-        var manager = currentProgram.getFunctionManager();
-        var target = manager.createFunction("guarded_target", toAddr(0x1020),
-            new AddressSet(toAddr(0x1020), toAddr(0x1020)), SourceType.USER_DEFINED);
-        var thunk = manager.createFunction(null, toAddr(0x1030),
-            new AddressSet(toAddr(0x1030), toAddr(0x103f)), SourceType.DEFAULT);
-        thunk.setThunkedFunction(target);
-        var indirect = manager.createFunction(null, toAddr(0x1040),
-            new AddressSet(toAddr(0x1040), toAddr(0x1040)), SourceType.DEFAULT);
-        indirect.setThunkedFunction(thunk);
-        currentProgram.getSymbolTable().createLabel(toAddr(0x1010), "guarded_target",
-            SourceType.USER_DEFINED);
-        currentProgram.getSymbolTable().createLabel(toAddr(0x1031), "guarded_target",
-            thunk, SourceType.USER_DEFINED);
-
-        // Establish the native cascade independently of the CLI guards.
-        var nativeTarget = manager.createFunction("native_target", toAddr(0x1060),
-            new AddressSet(toAddr(0x1060), toAddr(0x1060)), SourceType.USER_DEFINED);
-        var nativeThunk = manager.createFunction("native_thunk", toAddr(0x1070),
-            new AddressSet(toAddr(0x1070), toAddr(0x1070)), SourceType.USER_DEFINED);
-        nativeThunk.setThunkedFunction(nativeTarget);
-        if (!manager.removeFunction(nativeTarget.getEntryPoint())
-                || manager.getFunctionAt(toAddr(0x1070)) != null)
-            throw new IllegalStateException("Native deletion must also delete the referring thunk");
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateGuardedThunkDeletion.java"),
                 &[],
                 &[],
                 false,
@@ -260,23 +195,7 @@ fn test_symbol_delete_rejects_library_before_deleting_selected_label_or_imports(
     let checked = std::panic::catch_unwind(|| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.SourceType;
-public class CreateLibraryDeletionFixture extends GhidraScript {
-    public void run() throws Exception {
-        var table = currentProgram.getSymbolTable();
-        var name = getScriptArgs()[0];
-        table.createLabel(toAddr(0x1010), name, SourceType.USER_DEFINED);
-        currentProgram.getExternalManager().addExtLocation(name, "owned_import_one",
-            null, SourceType.USER_DEFINED);
-        currentProgram.getExternalManager().addExtLocation(name, "owned_import_two",
-            null, SourceType.USER_DEFINED);
-        currentProgram.getExternalManager().addExternalLibraryName("empty_library",
-            SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateLibraryDeletionFixture.java"),
                 &["guarded_library".to_owned()],
                 &[],
                 false,
@@ -358,25 +277,7 @@ fn test_default_thunk_names_round_trip_and_keep_mutations_scoped() {
     let checked = std::panic::catch_unwind(|| {
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.SourceType;
-public class CreateDefaultThunkNames extends GhidraScript {
-    public void run() throws Exception {
-        var manager = currentProgram.getFunctionManager();
-        var targetAddress = toAddr(0x1020);
-        var target = manager.createFunction("default_target", targetAddress,
-            new AddressSet(targetAddress, targetAddress), SourceType.USER_DEFINED);
-        for (long offset : new long[] {0x1030, 0x1040}) {
-            var address = toAddr(offset);
-            var thunk = manager.createFunction(null, address,
-                new AddressSet(address, address), SourceType.DEFAULT);
-            thunk.setThunkedFunction(target);
-        }
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateDefaultThunkNames.java"),
                 &[],
                 &[],
                 false,
@@ -445,18 +346,7 @@ fn test_symbol_delete_rejects_dynamic_targets_before_deleting_any_member() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.symbol.*;
-public class CreateDynamicSymbol extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.getReferenceManager().addMemoryReference(
-            toAddr("1000"), toAddr("1010"), RefType.DATA, SourceType.USER_DEFINED, 0);
-        if (!currentProgram.getSymbolTable().getPrimarySymbol(toAddr("1010")).isDynamic())
-            throw new IllegalStateException("fixture must have a dynamic label");
-    }
-}
-"#,
+            include_str!("../fixtures/symbols/CreateDynamicSymbol.java"),
             &[],
             &[],
             false,
@@ -518,25 +408,7 @@ fn test_symbol_mutations_reject_namespace_owners_before_mutating_any_member() {
         let name = "owned_target";
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.*;
-public class CreateNamespaceOwnerFixture extends GhidraScript {
-    public void run() throws Exception {
-        var table = currentProgram.getSymbolTable();
-        var global = currentProgram.getGlobalNamespace();
-        var owner = getScriptArgs()[0].equals("class")
-            ? table.createClass(global, getScriptArgs()[1], SourceType.USER_DEFINED)
-            : table.createNameSpace(global, getScriptArgs()[1], SourceType.USER_DEFINED);
-        table.createLabel(toAddr("1010"), getScriptArgs()[1], owner, SourceType.USER_DEFINED);
-        table.createLabel(toAddr("1020"), getScriptArgs()[1], global, SourceType.USER_DEFINED);
-        currentProgram.getFunctionManager().createFunction("owned_function", owner,
-            toAddr("1030"), new AddressSet(toAddr("1030"), toAddr("103f")),
-            SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateNamespaceOwnerFixture.java"),
                 &[kind.to_owned(), name.to_owned()],
                 &[],
                 false,
@@ -614,23 +486,7 @@ fn test_symbol_delete_handles_function_child_cascades_and_rejects_foreign_transa
         let name = "cascade_target";
         client
             .script_run_source(
-                r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.symbol.*;
-public class CreateCascadingSymbolDeletion extends GhidraScript {
-    public void run() throws Exception {
-        var table = currentProgram.getSymbolTable();
-        var parent = currentProgram.getFunctionManager().createFunction(getScriptArgs()[0],
-            toAddr("1000"), new AddressSet(toAddr("1000"), toAddr("101f")),
-            SourceType.USER_DEFINED);
-        table.createLabel(toAddr("1010"), getScriptArgs()[0], parent, SourceType.USER_DEFINED);
-        var other = table.createNameSpace(currentProgram.getGlobalNamespace(),
-            "unaffected", SourceType.USER_DEFINED);
-        table.createLabel(toAddr("1020"), getScriptArgs()[0], other, SourceType.USER_DEFINED);
-    }
-}
-"#,
+                include_str!("../fixtures/symbols/CreateCascadingSymbolDeletion.java"),
                 &[name.to_owned()],
                 &[],
                 false,
@@ -649,14 +505,7 @@ public class CreateCascadingSymbolDeletion extends GhidraScript {
         let transaction = prevent_save.then(|| {
             let error = client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-public class PreventSymbolDeletionSave extends GhidraScript {
-    public void run() throws Exception {
-        println(Integer.toString(currentProgram.startTransaction("hold deletion save")));
-    }
-}
-"#,
+                    include_str!("../fixtures/symbols/PreventSymbolDeletionSave.java"),
                     &[],
                     &[],
                     false,
@@ -678,14 +527,7 @@ public class PreventSymbolDeletionSave extends GhidraScript {
         if let Some(transaction) = transaction {
             client
                 .script_run_source(
-                    r#"
-import ghidra.app.script.GhidraScript;
-public class ReleaseSymbolDeletionSave extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
-    }
-}
-"#,
+                    include_str!("../fixtures/symbols/ReleaseSymbolDeletionSave.java"),
                     &[transaction],
                     &[],
                     false,

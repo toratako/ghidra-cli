@@ -194,21 +194,7 @@ fn test_stats_has_all_fields() {
         .client()
         .unwrap()
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CountStatsInstructions extends GhidraScript {
-    public void run() throws Exception {
-        long count = 0;
-        var instructions = currentProgram.getListing().getInstructions(true);
-        while (instructions.hasNext()) {
-            monitor.checkCancelled();
-            instructions.next();
-            count++;
-        }
-        println(Long.toString(count));
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/CountStatsInstructions.java"),
             &[],
             &[],
             false,
@@ -347,33 +333,7 @@ fn test_program_export_gzf_reopens_and_preserves_selection() {
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.listing.Program;
-import java.io.File;
-public class VerifyPackedExport extends GhidraScript {
-    public void run() throws Exception {
-        var root = state.getProject().getProjectData().getRootFolder();
-        var file = root.createFile(getScriptArgs()[1], new File(getScriptArgs()[0]), monitor);
-        Object consumer = new Object();
-        try {
-            Program reopened = (Program) file.getDomainObject(consumer, true, false, monitor);
-            try {
-                if (!reopened.getName().equals(currentProgram.getName()) ||
-                    reopened.getFunctionManager().getFunctionCount() !=
-                        currentProgram.getFunctionManager().getFunctionCount() ||
-                    reopened.getMemory().getSize() != currentProgram.getMemory().getSize()) {
-                    throw new IllegalStateException("Packed export differs from current program");
-                }
-            } finally {
-                reopened.release(consumer);
-            }
-        } finally {
-            file.delete();
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/VerifyPackedExport.java"),
             &[
                 path.to_str().unwrap().to_owned(),
                 format!("gzf-{}", uuid::Uuid::new_v4()),
@@ -402,14 +362,7 @@ fn test_program_export_gzf_save_failure_preserves_existing_output() {
     fs::write(&path, b"previous export").unwrap();
     let blocked = client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class BlockPackedExportSave extends GhidraScript {
-    public void run() throws Exception {
-        println(Integer.toString(currentProgram.startTransaction("block packed export save")));
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/BlockPackedExportSave.java"),
             &[],
             &[],
             false,
@@ -427,14 +380,7 @@ public class BlockPackedExportSave extends GhidraScript {
     // Restore the shared session before assertions about the expected failure.
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class UnblockPackedExportSave extends GhidraScript {
-    public void run() throws Exception {
-        currentProgram.endTransaction(Integer.parseInt(getScriptArgs()[0]), true);
-    }
-}
-"#,
+            include_str!("../fixtures/readonly/UnblockPackedExportSave.java"),
             &[transaction],
             &[],
             false,

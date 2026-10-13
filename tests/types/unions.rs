@@ -28,30 +28,13 @@ fn union_edits_reject_packed_alignment_size_overflow_without_saving_a_corrupt_la
     let client = harness().client().unwrap();
     super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-        .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreatePackedUnionOverflow extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (String name : new String[] { "PackedUnionAppend", "PackedUnionSet" }) {
-            var union = new UnionDataType(CategoryPath.ROOT, name, dtm);
-            union.setPackingEnabled(true);
-            union.add(new ArrayDataType(ByteDataType.dataType, Integer.MAX_VALUE, -1, dtm), "bytes", "keep");
-            if (name.equals("PackedUnionSet")) union.add(ByteDataType.dataType, "tag", "keep tag");
-            var saved = dtm.addDataType(union, null);
-            if (saved.getLength() != Integer.MAX_VALUE)
-                throw new IllegalStateException("Fixture must fill the supported union size");
-        }
-    }
-}
-"#,
-            &[],
-            &[],
-            false,
-        )
-        .unwrap();
+            .script_run_source(
+                include_str!("../fixtures/types/CreatePackedUnionOverflow.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
         for (name, command) in [
             (
                 "PackedUnionAppend",
@@ -214,34 +197,7 @@ fn union_alignment_changes_reject_incomplete_applied_parents_even_when_size_is_u
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateUnionAlignmentCases extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        int address = 0x1000;
-        for (String name : new String[] { "AlignAppend", "AlignSet" }) {
-            var union = new UnionDataType(CategoryPath.ROOT, name, dtm);
-            union.setPackingEnabled(true);
-            union.add(new ArrayDataType(ByteDataType.dataType, 8, -1, dtm), "raw", null);
-            var saved = dtm.addDataType(union, null);
-            var holder = new StructureDataType(name + "Holder", 0, dtm);
-            holder.setPackingEnabled(true);
-            holder.add(ByteDataType.dataType, "prefix", null);
-            holder.add(saved, "payload", null);
-            holder.add(ByteDataType.dataType, "tail", null);
-            var parent = dtm.addDataType(holder, null);
-            if (parent.getLength() != 10 || saved.getAlignment() != 1)
-                throw new IllegalStateException("Unexpected initial union alignment");
-            currentProgram.getMemory().createInitializedBlock(name, toAddr(address),
-                10, (byte) 0, monitor, false);
-            currentProgram.getListing().createData(toAddr(address), parent);
-            address += 0x100;
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateUnionAlignmentCases.java"),
             &[],
             &[],
             false,
@@ -269,18 +225,7 @@ public class CreateUnionAlignmentCases extends GhidraScript {
     }
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-public class CheckUnionAlignmentRollback extends GhidraScript {
-    public void run() throws Exception {
-        for (int address : new int[] { 0x1000, 0x1100 }) {
-            var data = currentProgram.getListing().getDefinedDataAt(toAddr(address));
-            if (data == null || data.getLength() != 10 || data.getDataType().getLength() != 10)
-                throw new IllegalStateException("Union alignment left incomplete applied data");
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckUnionAlignmentRollback.java"),
             &[],
             &[],
             false,
@@ -298,40 +243,7 @@ fn field_deletion_preserves_remaining_applied_settings_or_rolls_back() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateFieldDeletionSettingsCases extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        int address = 0x1000;
-        for (boolean keepSettings : new boolean[] { true, false }) {
-            String suffix = keepSettings ? "Guarded" : "Free";
-            var union = new UnionDataType(CategoryPath.ROOT, "DeleteUnion" + suffix, dtm);
-            union.add(QWordDataType.dataType, "wide", null);
-            union.add(DWordDataType.dataType, "narrow", null);
-            var savedUnion = dtm.addDataType(union, null);
-            var holder = new StructureDataType("DeleteHolder" + suffix, 0, dtm);
-            holder.setPackingEnabled(true);
-            holder.add(savedUnion, "payload", null);
-            holder.add(ByteDataType.dataType, "tail", null);
-            var packed = new StructureDataType("DeleteStruct" + suffix, 0, dtm);
-            packed.setPackingEnabled(true);
-            packed.add(QWordDataType.dataType, "wide", null);
-            packed.add(DWordDataType.dataType, "tail", null);
-            for (var type : new StructureDataType[] { holder, packed }) {
-                currentProgram.getMemory().createInitializedBlock(type.getName(), toAddr(address),
-                    32, (byte) 0, monitor, false);
-                var data = currentProgram.getListing().createData(toAddr(address), dtm.addDataType(type, null));
-                if (keepSettings)
-                    FormatSettingsDefinition.DEF.setChoice(data.getComponent(1), FormatSettingsDefinition.BINARY);
-                address += 0x100;
-            }
-        }
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateFieldDeletionSettingsCases.java"),
             &[],
             &[],
             false,
@@ -361,23 +273,7 @@ public class CreateFieldDeletionSettingsCases extends GhidraScript {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-public class CheckFieldDeletionSettingsCases extends GhidraScript {
-    public void run() throws Exception {
-        var listing = currentProgram.getListing();
-        for (int address : new int[] { 0x1000, 0x1100 }) {
-            var data = listing.getDefinedDataAt(toAddr(address));
-            if (FormatSettingsDefinition.DEF.getChoice(data.getComponent(1)) != FormatSettingsDefinition.BINARY)
-                throw new IllegalStateException("Deletion lost a retained component's settings");
-        }
-        if (listing.getDefinedDataAt(toAddr(0x1200)).getLength() != 5
-                || listing.getDefinedDataAt(toAddr(0x1300)).getLength() != 4)
-            throw new IllegalStateException("Safe deletion failed to propagate complete data");
-    }
-}
-"#,
+            include_str!("../fixtures/types/CheckFieldDeletionSettingsCases.java"),
             &[],
             &[],
             false,
@@ -395,22 +291,7 @@ fn union_growth_rejects_truncated_parent_embedding() {
     client.open_program(&program).unwrap();
     client
         .script_run_source(
-            r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.data.*;
-public class CreateUnionGrowthConflict extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        var member = new UnionDataType(CategoryPath.ROOT, "GrowingUnion", dtm);
-        member.add(DWordDataType.dataType, "value", null);
-        var saved = dtm.addDataType(member, null);
-        var parent = new StructureDataType(CategoryPath.ROOT, "UnionParent", 8, dtm);
-        parent.replaceAtOffset(0, saved, 4, "member", null);
-        parent.replaceAtOffset(4, DWordDataType.dataType, 4, "tail", null);
-        dtm.addDataType(parent, null);
-    }
-}
-"#,
+            include_str!("../fixtures/types/CreateUnionGrowthConflict.java"),
             &[],
             &[],
             false,
@@ -614,48 +495,14 @@ fn assert_saved_settings(program: &str, union_name: &str, names: &[&str]) {
     client.open_program(program).unwrap();
     let mut args = vec![union_name.to_owned()];
     args.extend(names.iter().map(|name| (*name).to_owned()));
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.framework.model.DomainFile;
-import ghidra.program.model.data.*;
-import ghidra.program.model.listing.Program;
-public class CheckSavedUnionSettings extends GhidraScript {
-    public void run() throws Exception {
-        Object consumer = new Object();
-        Program saved = (Program) currentProgram.getDomainFile()
-            .getReadOnlyDomainObject(consumer, DomainFile.DEFAULT_VERSION, monitor);
-        try {
-            String[] args = getScriptArgs();
-            var union = (Union) saved.getDataTypeManager().getDataType("/" + args[0]);
-            boolean packed = args[0].equals("Packed");
-            if (union.isPackingEnabled() != packed || !union.getDescription().equals("recovered layout"))
-                throw new IllegalStateException("Union layout metadata changed");
-            if (packed && (union.getExplicitPackingValue() != 2
-                    || union.getExplicitMinimumAlignment() != 16 || union.getAlignment() != 16))
-                throw new IllegalStateException("Packing or minimum alignment changed");
-            for (int i = 1; i < args.length; i++) {
-                DataTypeComponent field = null;
-                for (var candidate : union.getComponents())
-                    if (args[i].equals(candidate.getFieldName())) field = candidate;
-                if (field == null) throw new IllegalStateException("Missing member " + args[i]);
-                if (FormatSettingsDefinition.DEF.getChoice(field.getDefaultSettings())
-                        != FormatSettingsDefinition.DECIMAL
-                        || EndianSettingsDefinition.DEF.getChoice(field.getDefaultSettings())
-                        != EndianSettingsDefinition.BIG)
-                    throw new IllegalStateException("Member settings changed: " + args[i]);
-            }
-            var holder = (Structure) saved.getDataTypeManager().getDataType("/" + args[0] + "Holder");
-            var tail = holder.getComponentAt(16);
-            if (!tail.getFieldName().equals("tail") || tail.getLength() != 4
-                    || holder.getComponentAt(0).getDataType() != union
-                    || FormatSettingsDefinition.DEF.getChoice(tail.getDefaultSettings())
-                        != FormatSettingsDefinition.BINARY)
-                throw new IllegalStateException("Parent field or its settings changed");
-        } finally { saved.release(consumer); }
-    }
-}
-"#, &args, &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CheckSavedUnionSettings.java"),
+            &args,
+            &[],
+            false,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -665,37 +512,14 @@ fn union_edits_preserve_unnamed_members_packing_parent_layout_and_saved_settings
     let program = create_type_edit_program("x86:LE:64:default");
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
-    client.script_run_source(r#"
-import ghidra.app.script.GhidraScript;
-import ghidra.docking.settings.FormatSettingsDefinition;
-import ghidra.program.model.data.*;
-public class CreateUnionSettings extends GhidraScript {
-    public void run() throws Exception {
-        var dtm = currentProgram.getDataTypeManager();
-        for (boolean packed : new boolean[] { false, true }) {
-            String name = packed ? "Packed" : "Unpacked";
-            var union = new UnionDataType(CategoryPath.ROOT, name, dtm);
-            union.setDescription("recovered layout");
-            if (packed) {
-                union.setExplicitPackingValue(2);
-                union.setExplicitMinimumAlignment(16);
-            }
-            union.add(QWordDataType.dataType, "wide", "wide comment");
-            union.add(DWordDataType.dataType, null, "unnamed comment");
-            var registered = (Union) dtm.addDataType(union, null);
-            for (var field : registered.getComponents()) {
-                FormatSettingsDefinition.DEF.setChoice(field.getDefaultSettings(), FormatSettingsDefinition.DECIMAL);
-                EndianSettingsDefinition.DEF.setChoice(field.getDefaultSettings(), EndianSettingsDefinition.BIG);
-            }
-            var holder = new StructureDataType(CategoryPath.ROOT, name + "Holder", 24, dtm);
-            holder.replaceAtOffset(0, registered, registered.getLength(), "payload", "union field");
-            holder.replaceAtOffset(16, DWordDataType.dataType, 4, "tail", "tail comment");
-            var saved = (Structure) dtm.addDataType(holder, null);
-            FormatSettingsDefinition.DEF.setChoice(saved.getComponentAt(16).getDefaultSettings(), FormatSettingsDefinition.BINARY);
-        }
-    }
-}
-"#, &[], &[], false).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/CreateUnionSettings.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
     for name in ["Unpacked", "Packed"] {
         let initial = definition(&program, name);
         assert!(initial["components"][1]["name"].is_null());
