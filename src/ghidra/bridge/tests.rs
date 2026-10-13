@@ -2,6 +2,74 @@ use super::*;
 use std::cell::Cell;
 
 #[test]
+fn invalid_discovery_never_reaches_shutdown_traffic() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("invalid-discovery");
+    let pid_path = pid_file_path(&project).unwrap();
+    let port_path = port_file_path(&project).unwrap();
+    let discovery = [
+        (std::process::id(), 0),
+        (0, 12345),
+        (i32::MAX as u32 + 1, 12345),
+    ];
+    for (pid, port) in discovery {
+        if !cfg!(unix) && pid > i32::MAX as u32 {
+            continue;
+        }
+        std::fs::write(&pid_path, pid.to_string()).unwrap();
+        std::fs::write(&port_path, port.to_string()).unwrap();
+        let error = stop_bridge_with(
+            &project,
+            Some(Duration::from_secs(1)),
+            |_| true,
+            |_, _| panic!("invalid discovery must not send shutdown"),
+            std::time::Instant::now,
+            |_| panic!("invalid discovery must not wait for a process"),
+            || -> Result<()> { panic!("invalid discovery must not permit project operations") },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("Invalid"), "{error:#}");
+        assert!(pid_path.exists() && port_path.exists());
+    }
+    std::fs::remove_file(pid_path).unwrap();
+    std::fs::remove_file(port_path).unwrap();
+}
+
+#[test]
+fn expired_lifecycle_deadline_cannot_acquire_an_unlocked_file() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("expired-lock");
+    assert!(acquire_lifecycle_lock(&project, Some(std::time::Instant::now())).is_err());
+}
+
+#[test]
+fn shutdown_deadline_expiring_after_lock_acquisition_never_runs_project_operations() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("expired-after-lock");
+    let started = std::time::Instant::now();
+    let first_check = Cell::new(true);
+    let error = stop_bridge_with(
+        &project,
+        Some(Duration::from_secs(1)),
+        |_| panic!("there is no recorded process"),
+        |_, _| panic!("there is no recorded bridge"),
+        || {
+            if first_check.replace(false) {
+                started
+            } else {
+                started + Duration::from_secs(2)
+            }
+        },
+        |_| panic!("expired shutdown must not sleep"),
+        || -> Result<()> { panic!("expired shutdown must not run project operations") },
+    )
+    .unwrap_err();
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+        .is_some());
+}
+
+#[test]
 fn stopped_project_remains_locked_through_the_deletion_callback() {
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("delete-project");
@@ -145,7 +213,6 @@ fn shutdown_deadline_expiring_during_pid_check_preserves_discovery_and_timeout_t
     let started = std::time::Instant::now();
     let elapsed = Cell::new(Duration::ZERO);
     let timeout = Duration::from_millis(100);
-    let mut attempted = false;
     let error = stop_bridge_with(
         &project,
         Some(timeout),
@@ -155,20 +222,12 @@ fn shutdown_deadline_expiring_during_pid_check_preserves_discovery_and_timeout_t
             elapsed.set(elapsed.get() + Duration::from_millis(150));
             true
         },
-        |observed_port, deadline| {
-            assert_eq!(observed_port, port);
-            assert_eq!(deadline, Some(started + timeout));
-            assert!(started + elapsed.get() >= deadline.unwrap());
-            attempted = true;
-            // The transport rejects an expired deadline before connecting.
-            Err(std::io::Error::from(std::io::ErrorKind::TimedOut).into())
-        },
+        |_, _| panic!("an expired shutdown must not contact the bridge"),
         || started + elapsed.get(),
         |_| panic!("an expired shutdown must return without sleeping"),
         || Ok(()),
     )
     .unwrap_err();
-    assert!(attempted);
     assert!(error
         .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
         .is_some());
@@ -183,14 +242,18 @@ fn lifecycle_lock_recovers_empty_file_and_excludes_waiters() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("bridge.starting");
     std::fs::write(&path, []).unwrap();
-    let holder = acquire_file_lock(&path, Duration::from_millis(50)).unwrap();
-    assert!(acquire_file_lock(&path, Duration::from_millis(30)).is_err());
+    let holder = acquire_file_lock(&path, None).unwrap();
+    assert!(acquire_file_lock(
+        &path,
+        Some(std::time::Instant::now() + Duration::from_millis(30))
+    )
+    .is_err());
     drop(holder);
     assert!(
         path.exists(),
         "the inode must remain stable for waiting callers"
     );
-    let _next = acquire_file_lock(&path, Duration::from_millis(50)).unwrap();
+    let _next = acquire_file_lock(&path, None).unwrap();
 }
 
 #[test]
@@ -305,6 +368,40 @@ fn discovery_keys_resolve_directory_symlinks() {
         first_hash,
         project_hash(&root.path().join("store")).unwrap()
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn discovery_keys_preserve_non_utf8_project_names() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let first = root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"project-\x80"));
+    let second = root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"project-\x81"));
+    assert_ne!(
+        project_hash(&first).unwrap(),
+        project_hash(&second).unwrap()
+    );
+    std::fs::create_dir(first.with_added_extension("rep")).unwrap();
+    std::fs::create_dir(second.with_added_extension("rep")).unwrap();
+    assert_ne!(
+        project_hash(&first).unwrap(),
+        project_hash(&second).unwrap()
+    );
+    assert_ne!(
+        port_file_path(&first).unwrap(),
+        port_file_path(&second).unwrap()
+    );
+    let _first = acquire_startup_lock(&first).unwrap();
+    let _second = acquire_lifecycle_lock(
+        &second,
+        Some(std::time::Instant::now() + Duration::from_millis(30)),
+    )
+    .expect("different repositories must not share a lifecycle lock");
 }
 
 #[test]

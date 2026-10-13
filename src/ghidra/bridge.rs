@@ -87,7 +87,7 @@ pub(crate) fn project_hash(project_path: &Path) -> Result<String> {
         Ok(identity) => identity,
         // Missing projects still support status, save, and stale-file cleanup.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            absolute.to_string_lossy().as_bytes().to_vec()
+            absolute.as_os_str().as_encoded_bytes().to_vec()
         }
         Err(error) => return Err(error.into()),
     };
@@ -103,8 +103,8 @@ fn repository_path_identity(repository: &Path) -> std::io::Result<Vec<u8>> {
     let mut identity = b"repository-directory\0".to_vec();
     identity.extend_from_slice(
         dunce::canonicalize(repository)?
-            .to_string_lossy()
-            .as_bytes(),
+            .as_os_str()
+            .as_encoded_bytes(),
     );
     Ok(identity)
 }
@@ -181,31 +181,39 @@ pub fn pid_file_path(project_path: &Path) -> Result<PathBuf> {
 /// Read the port from the port file.
 pub fn read_port_file(project_path: &Path) -> Result<Option<u16>> {
     let path = port_file_path(project_path)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let content = std::fs::read_to_string(&path)?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(crate::error::path_io("bridge.port_read", &path, error).into()),
+    };
     let port: u16 = content
         .trim()
         .parse()
         .context("Invalid port in port file")?;
+    anyhow::ensure!(port != 0, "Invalid port in port file: port must be nonzero");
     Ok(Some(port))
 }
 
 /// Read the PID from the PID file.
 pub fn read_pid_file(project_path: &Path) -> Result<Option<u32>> {
     let path = pid_file_path(project_path)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let content = std::fs::read_to_string(&path)?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(crate::error::path_io("bridge.pid_read", &path, error).into()),
+    };
     let pid: u32 = content.trim().parse().context("Invalid PID in PID file")?;
+    anyhow::ensure!(valid_pid(pid), "Invalid PID in PID file: {pid}");
     Ok(Some(pid))
+}
+
+fn valid_pid(pid: u32) -> bool {
+    pid != 0 && (!cfg!(unix) || pid <= i32::MAX as u32)
 }
 
 /// Check if a process with the given PID is alive.
 pub fn is_pid_alive(pid: u32) -> bool {
-    if pid == 0 || pid > i32::MAX as u32 {
+    if !valid_pid(pid) {
         return true; // Invalid identities are never evidence that cleanup is safe.
     }
     #[cfg(unix)]
@@ -272,7 +280,10 @@ struct StartupLockGuard {
 }
 
 fn acquire_startup_lock(project_path: &Path) -> Result<StartupLockGuard> {
-    acquire_lifecycle_lock(project_path, None)
+    acquire_lifecycle_lock(
+        project_path,
+        Some(std::time::Instant::now() + Duration::from_secs(60)),
+    )
 }
 
 fn acquire_lifecycle_lock(
@@ -281,14 +292,13 @@ fn acquire_lifecycle_lock(
 ) -> Result<StartupLockGuard> {
     let lock_path =
         get_data_dir()?.join(format!("bridge-{}.starting", project_hash(project_path)?));
-    let timeout = deadline.map_or(Duration::from_secs(60), |end| {
-        end.saturating_duration_since(std::time::Instant::now())
-            .min(Duration::from_secs(60))
-    });
-    acquire_file_lock(&lock_path, timeout)
+    acquire_file_lock(&lock_path, deadline)
 }
 
-fn acquire_file_lock(path: &Path, timeout: Duration) -> Result<StartupLockGuard> {
+fn acquire_file_lock(
+    path: &Path,
+    deadline: Option<std::time::Instant>,
+) -> Result<StartupLockGuard> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -296,17 +306,19 @@ fn acquire_file_lock(path: &Path, timeout: Duration) -> Result<StartupLockGuard>
         .truncate(false)
         .open(path)
         .map_err(|e| crate::error::path_io("bridge.lifecycle_lock", path, e))?;
-    let deadline = std::time::Instant::now() + timeout;
     loop {
+        anyhow::ensure!(
+            deadline.is_none_or(|end| std::time::Instant::now() < end),
+            "Timed out waiting for bridge lifecycle lock"
+        );
         match file.try_lock() {
             Ok(()) => return Ok(StartupLockGuard { _file: file }),
             Err(std::fs::TryLockError::WouldBlock) => {
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                anyhow::ensure!(
-                    !remaining.is_zero(),
-                    "Timed out waiting for bridge lifecycle lock"
-                );
-                std::thread::sleep(remaining.min(Duration::from_millis(100)));
+                let wait = deadline.map_or(Duration::from_millis(100), |end| {
+                    end.saturating_duration_since(std::time::Instant::now())
+                        .min(Duration::from_millis(100))
+                });
+                std::thread::sleep(wait);
             }
             Err(std::fs::TryLockError::Error(error)) => {
                 return Err(crate::error::path_io("bridge.lifecycle_lock", path, error).into());
@@ -460,15 +472,24 @@ fn stop_bridge_with<T>(
             timeout_secs: timeout.map_or(0, |timeout| timeout.as_secs()),
         })
     };
+    let check_deadline = |at| {
+        if deadline.is_some_and(|end| at >= end) {
+            Err(timeout_error().context("Shutdown deadline expired"))
+        } else {
+            Ok(())
+        }
+    };
     let _lock = acquire_lifecycle_lock(project_path, deadline).map_err(|error| {
         if deadline.is_some_and(|end| now() >= end) {
             timeout_error().context("Shutdown deadline expired waiting for the lifecycle lock; preserving project state")
         } else { error }
     })?;
+    check_deadline(now())?;
     let pid = read_pid_file(project_path)?;
     if let Some(pid) = pid.filter(|pid| check_alive(*pid)) {
         let port = read_port_file(project_path)?.ok_or_else(||
             anyhow::anyhow!("Bridge process {pid} is alive but its port is unavailable; preserving project state"))?;
+        check_deadline(now())?;
         let shutdown_result = request_shutdown(port, deadline);
         if shutdown_result.as_ref().err().is_some_and(|error| {
             error
@@ -479,9 +500,11 @@ fn stop_bridge_with<T>(
         }
         // Exit alone cannot confirm a successful final save: the JVM may have
         // crashed before replying. Preserve that uncertainty for archive callers.
-        while check_alive(pid) {
-            if deadline.is_some_and(|end| now() >= end) {
-                return Err(timeout_error().context(format!("Bridge process {pid} did not exit before GHIDRA_CLI_SHUTDOWN_TIMEOUT; preserving discovery and project locks")));
+        loop {
+            let alive = check_alive(pid);
+            check_deadline(now())?;
+            if !alive {
+                break;
             }
             if let Err(error) = shutdown_result {
                 return Err(error.context(format!("Could not request shutdown of live bridge process {pid}; preserving project state")));
@@ -495,7 +518,9 @@ fn stop_bridge_with<T>(
         shutdown_result
             .context("Bridge exited without confirming its final save; preserving project state")?;
     }
+    check_deadline(now())?;
     cleanup_stale_files_locked(project_path)?;
+    check_deadline(now())?;
     info!("Bridge stopped");
     after_stop()
 }
