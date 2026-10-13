@@ -21,6 +21,8 @@ mod import;
 mod sources;
 mod startup;
 pub use headless::compile_check;
+#[allow(unused_imports)] // The CLI preflights restart with the launcher's JDK policy.
+pub(crate) use headless::resolve_launch_jdk;
 // This type is part of the library's import receipt API; the CLI reads it through the receipt.
 #[allow(unused_imports)]
 pub use import::LoaderDiagnostics;

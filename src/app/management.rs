@@ -2,10 +2,11 @@ use super::output::Output;
 use super::project::{load_config, resolve_project_path};
 use crate::cli::{self, BridgeCommands, Cli, Commands, JobCommands};
 use crate::ghidra::bridge::{self, BridgeStartMode, BridgeStatus};
+use crate::ghidra::installation::Installation;
 use crate::ipc::client::{BridgeClient, ProgramSelection};
 use crate::terminal::write_stdout;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Dispatch bridge lifecycle and job commands without auto-starting a bridge.
 pub(crate) fn handle_management_command(cli: Cli) -> anyhow::Result<()> {
@@ -24,13 +25,12 @@ pub(crate) fn handle_management_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Bridge(BridgeCommands::Stop { project }) => {
             handle_bridge_stop(project.or(global_project), &projects_dir, output)
         }
-        Commands::Bridge(BridgeCommands::Restart { project, program }) => {
-            let proj = project.or(global_project);
-            let prog = program.or(global_program);
-            handle_bridge_stop(proj.clone(), &projects_dir, output)?;
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            handle_bridge_start(proj, prog, &projects_dir, output)
-        }
+        Commands::Bridge(BridgeCommands::Restart { project, program }) => handle_bridge_restart(
+            project.or(global_project),
+            program.or(global_program),
+            &projects_dir,
+            output,
+        ),
         Commands::Bridge(BridgeCommands::Status { project }) => {
             handle_bridge_status(project.or(global_project), &projects_dir)
         }
@@ -69,8 +69,6 @@ fn handle_bridge_start(
     let config = load_config(projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
 
-    let installation = config.get_ghidra_installation()?;
-
     // Check if bridge is already running
     if let Some(port) = bridge::is_bridge_running(&project_path) {
         return Ok(
@@ -79,26 +77,55 @@ fn handle_bridge_start(
         );
     }
 
-    // Determine start mode
-    let mode = if let Some(prog) = program {
-        BridgeStartMode::Process { program_name: prog }
-    } else if let Some(prog) = config.default_program.clone() {
-        BridgeStartMode::Process { program_name: prog }
-    } else {
-        BridgeStartMode::Project
-    };
+    let installation = config.get_ghidra_installation()?;
 
+    // Determine start mode
+    let mode = bridge_start_mode(program.or(config.default_program));
+    start_bridge_result(&project_path, &installation, mode, output)
+}
+
+fn bridge_start_mode(program: Option<String>) -> BridgeStartMode {
+    match program {
+        Some(program_name) => BridgeStartMode::Process { program_name },
+        None => BridgeStartMode::Project,
+    }
+}
+
+fn start_bridge_result(
+    project_path: &Path,
+    installation: &Installation,
+    mode: BridgeStartMode,
+    output: Output,
+) -> anyhow::Result<Value> {
     output.progress(&format!(
         "Starting bridge for project: {}",
         project_path.display()
     ));
 
-    let port = bridge::ensure_bridge_running(&project_path, &installation, mode)?;
+    let port = bridge::ensure_bridge_running(project_path, installation, mode)?;
 
     Ok(
         json!({"state": "running", "project": project_path, "port": port,
         "message": format!("Bridge started on port {}", port)}),
     )
+}
+
+/// Validate the replacement runtime before shutting down the existing bridge.
+fn handle_bridge_restart(
+    project: Option<String>,
+    program: Option<String>,
+    projects_dir: &Option<PathBuf>,
+    output: Output,
+) -> anyhow::Result<Value> {
+    let config = load_config(projects_dir)?;
+    let project_path = resolve_project_path(&project, &config)?;
+    let installation = config.get_ghidra_installation()?;
+    bridge::resolve_launch_jdk(&installation, config.get_java_home())?;
+    let mode = bridge_start_mode(program.or(config.default_program));
+
+    output.progress("Stopping bridge...");
+    bridge::stop_bridge(&project_path)?;
+    start_bridge_result(&project_path, &installation, mode, output)
 }
 
 /// Stop the bridge for a project.

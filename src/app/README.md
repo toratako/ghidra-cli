@@ -137,6 +137,9 @@ the outer target before any program opens.
 Target defaults come from config; CLI target selection does not read environment
 variables. Config `default_program` applies at bridge startup, while a running
 bridge retains its selected program unless explicitly overridden.
+Reusing a running bridge for ordinary operations or `bridge start` does not
+require a local Ghidra installation. Restart resolves its replacement installation
+and checks the launcher's JDK selection before stopping the existing bridge.
 
 The outer batch adds structured `recovery` and matching diagnostic text. A
 restart command requires a confirmed rollback, no later attempts or nested

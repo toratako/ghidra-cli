@@ -2,6 +2,75 @@ use super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
 #[test]
+fn running_bridge_operations_do_not_require_a_local_installation() {
+    let bridge = RecordedBridge::new();
+    for (runtime_variable, other_runtime_variable) in [
+        ("GHIDRA_INSTALL_DIR", "GHIDRA_JAR"),
+        ("GHIDRA_JAR", "GHIDRA_INSTALL_DIR"),
+    ] {
+        bridge.requests.lock().unwrap().clear();
+        for args in [
+            vec!["program", "info", "--program", "B"],
+            vec![
+                "comment",
+                "set",
+                "0x1000",
+                "--text",
+                "saved",
+                "--program",
+                "B",
+            ],
+        ] {
+            let output = bridge
+                .command()
+                .env_remove(other_runtime_variable)
+                .env(runtime_variable, bridge.root.path().join("removed-runtime"))
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{runtime_variable} {args:?}: {output:?}"
+            );
+            let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+            assert_eq!(result["observed_program"], "B");
+        }
+        let requests = bridge.requests.lock().unwrap();
+        let operations: Vec<_> = requests
+            .iter()
+            .filter(|request| request["command"] != "bridge_info")
+            .collect();
+        assert_eq!(operations.len(), 2, "{requests:?}");
+        assert_eq!(operations[0]["command"], "program_info");
+        assert_eq!(operations[1]["command"], "comment_set");
+        assert!(operations.iter().all(|request| request["program"] == "B"));
+    }
+}
+
+#[test]
+fn stopped_bridge_operations_still_require_a_local_installation() {
+    let bridge = RecordedBridge::new();
+    let output = bridge
+        .command()
+        .env(
+            "GHIDRA_INSTALL_DIR",
+            bridge.root.path().join("removed-runtime"),
+        )
+        .args(["program", "info"])
+        .arg("--project")
+        .arg(bridge.root.path().join("stopped"))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(diagnostic["message"]
+        .as_str()
+        .unwrap()
+        .contains("removed-runtime"));
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
 fn listing_programs_does_not_select_a_context_program() {
     let bridge = RecordedBridge::new();
     std::fs::write(

@@ -7,6 +7,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Reuse running bridges without requiring a local Ghidra installation, and
+  validate the replacement installation and JDK before stopping a bridge for restart.
 - Keep bridge readiness probes and lifecycle-lock waits within their shared
   deadlines, and prevent project operations after shutdown expiry.
 - Reject invalid discovery ports and PIDs before sending bridge commands, and

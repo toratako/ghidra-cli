@@ -54,7 +54,7 @@ fn validate_launch_value(value: &OsStr, subject: &str) -> Result<()> {
     Ok(())
 }
 
-fn resolve_launch_jdk(
+pub(crate) fn resolve_launch_jdk(
     installation: &Installation,
     explicit_java: Option<PathBuf>,
 ) -> Result<Option<JdkInfo>> {

@@ -452,6 +452,100 @@ fn starting_a_running_bridge_keeps_its_program_selection() {
 }
 
 #[test]
+fn starting_a_running_bridge_does_not_require_a_launch_installation() {
+    let bridge = RecordedBridge::new();
+    for args in [
+        vec!["bridge", "start"],
+        vec!["bridge", "start", "--program", "B"],
+    ] {
+        let output = bridge
+            .command()
+            .env(
+                "GHIDRA_INSTALL_DIR",
+                bridge.root.path().join("missing-install"),
+            )
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["state"], "running");
+        assert_eq!(result["port"], bridge.port);
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn invalid_restart_installation_does_not_shut_down_a_running_bridge() {
+    let bridge = RecordedBridge::new();
+    for source in ["GHIDRA_INSTALL_DIR", "GHIDRA_JAR"] {
+        let output = bridge
+            .command()
+            .env_remove("GHIDRA_INSTALL_DIR")
+            .env(source, bridge.root.path().join("missing-installation"))
+            .env("GHIDRA_CLI_SHUTDOWN_TIMEOUT", "1")
+            .args(["bridge", "restart", "--program", "B"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{source}: {output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["detail"]["installation"]["status"], "invalid");
+        assert!(
+            bridge.requests.lock().unwrap().is_empty(),
+            "An unusable replacement runtime must fail before shutdown"
+        );
+        assert_eq!(
+            super::bridge::read_port_file(&bridge.project).unwrap(),
+            Some(bridge.port)
+        );
+        assert_eq!(
+            super::bridge::read_pid_file(&bridge.project).unwrap(),
+            Some(std::process::id())
+        );
+    }
+    assert_eq!(bridge.run(&["program", "info"])["observed_program"], "A");
+}
+
+#[test]
+fn invalid_restart_java_home_does_not_shut_down_a_running_bridge() {
+    let bridge = RecordedBridge::new();
+    let missing_jdk = bridge.root.path().join("missing-jdk");
+    let output = bridge
+        .command()
+        .env("GHIDRA_CLI_SHUTDOWN_TIMEOUT", "1")
+        .arg("--java-home")
+        .arg(&missing_jdk)
+        .args(["bridge", "restart", "--program", "B"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains(missing_jdk.to_str().unwrap()),
+        "{error}"
+    );
+    assert!(
+        bridge.requests.lock().unwrap().is_empty(),
+        "An unusable selected JDK must fail before shutdown"
+    );
+    assert_eq!(
+        super::bridge::read_port_file(&bridge.project).unwrap(),
+        Some(bridge.port)
+    );
+    assert_eq!(
+        super::bridge::read_pid_file(&bridge.project).unwrap(),
+        Some(std::process::id())
+    );
+    assert_eq!(bridge.run(&["program", "info"])["observed_program"], "A");
+}
+
+#[test]
 fn deletion_preserves_targets_and_receipt_output_in_standalone_and_batch() {
     for (command, wire) in [
         (vec!["function", "delete", "main"], "delete_function"),

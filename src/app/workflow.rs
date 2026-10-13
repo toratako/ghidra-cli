@@ -180,9 +180,9 @@ fn execute_single(
         return management::program_save_result(&save_cli, selection).map(|(value, _)| value);
     }
 
-    let installation = config.get_ghidra_installation()?;
     // Import owns its workflow and selects only the actual imported program.
     if let Commands::Program(cli::ProgramCommands::Import(args)) = &cli.command {
+        let installation = config.get_ghidra_installation()?;
         return import::run_import(cli, args, project_path, &installation, selection);
     }
 
@@ -197,6 +197,7 @@ fn execute_single(
         // Capability checks do not provide authoritative program selection.
         connect_program_bridge(port)?
     } else {
+        let installation = config.get_ghidra_installation()?;
         let mode = if let Some(program) = startup_program {
             BridgeStartMode::Process {
                 program_name: program,
