@@ -73,6 +73,7 @@ immutable cache under `bridge-sources/jar-launchers`, so a running JVM can keep
 using them after the CLI exits. Native Java arguments contain only ASCII entry
 point names; Java's ANSI argument conversion cannot corrupt the Ghidra paths.
 Persistent startup, import, project bootstraps, and doctor share this construction.
+Reject non-Unicode launch paths before Java can substitute a different path.
 Running bridges keep their original JVM until stopped or restarted.
 
 Omit `-process`: it leaves a headless-owned reference to the initial program that
@@ -110,6 +111,9 @@ overwrite the JVM's PID if Java starts before the parent resumes. Java binds
 `{"status":"ready"}`. On failure/timeout, kill and reap the whole process group
 before joining output-reader threads: a surviving JVM grandchild can keep pipes
 open indefinitely. Preserve stdout/stderr diagnostics and remove stale files.
+One-shot runs invoke process-tree cleanup after every launcher exit before
+collecting output, and retain valid completion receipts even if launcher teardown
+fails. Persistent output readers continue draining after readiness.
 Java startup failures publish a `GHIDRA_CLI_STARTUP_ERROR` JSON diagnostic with
 stage, path, and cause before cleanup. Rust filesystem failures carry the same
 fields; the import workflow adds its saved/analysis checkpoint without losing

@@ -5,6 +5,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep bridge readiness probes and lifecycle-lock waits within their shared
+  deadlines, and prevent project operations after shutdown expiry.
+- Reject invalid discovery ports and PIDs before sending bridge commands, and
+  preserve distinct native project identities. Reject non-Unicode Java launch
+  paths before they can select a replacement-character project path.
+- Drain persistent bridge output after readiness, run process-tree cleanup before
+  collecting one-shot output, and retain completion receipts after launcher failures.
+- Use the selected JDK to bootstrap Ghidra's official launcher even when PATH
+  contains an unusable Java runtime.
+- Validate the effective JAR manifest entry point and report project-directory
+  read failures instead of returning an empty project list.
+
 ## [0.10.1] - 2026-10-12
 
 ### Changed
