@@ -54,6 +54,75 @@ fn decompile(target: &str) -> Value {
 
 #[test]
 #[serial]
+fn return_edits_reject_native_function_type_coercion_and_preserve_saved_inputs() {
+    require_ghidra!();
+    let program = create_fixture();
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.FunctionDefinitionDataType;
+import ghidra.program.model.data.IntegerDataType;
+public class CreateReturnCallbackType extends GhidraScript {
+    public void run() throws Exception {
+        var callback = new FunctionDefinitionDataType("ReturnCallback");
+        callback.setReturnType(IntegerDataType.dataType);
+        currentProgram.getDataTypeManager().addDataType(callback, null);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        set_return(&program, "zero", "void");
+        for target in ["inferred", "zero"] {
+            let before = function(&program, target);
+            let failed = command(
+                &program,
+                &[
+                    "function",
+                    "set-return-type",
+                    target,
+                    "--type",
+                    "ReturnCallback",
+                ],
+            );
+            failed.assert_failure();
+            let error: Value = serde_json::from_str(&failed.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(&program).unwrap();
+                }
+                assert_eq!(function(&program, target), before);
+            }
+        }
+        set_return(&program, "inferred", "ReturnCallback *");
+        let after = function(&program, "inferred");
+        assert_eq!(
+            after["signature_details"]["return"]["type"],
+            "ReturnCallback *"
+        );
+        assert_eq!(
+            after["signature_details"]["params"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(function(&program, "inferred"), after);
+    });
+}
+
+#[test]
+#[serial]
 fn inferred_parameters_survive_return_edits_and_reopen_with_types_still_inferred() {
     require_ghidra!();
     let program = create_fixture();
@@ -270,6 +339,22 @@ public class AnnotateReturnTypeFixture extends GhidraScript {
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
     assert_eq!(function(&program, "indirect"), after);
+    assert_eq!(
+        set_return(&program, "indirect", "/Recovered/Result")["parameters_committed"],
+        0
+    );
+    let restored = function(&program, "indirect");
+    assert_eq!(
+        restored["signature_details"]["return"],
+        indirect["signature_details"]["return"]
+    );
+    assert_eq!(
+        restored["signature_details"]["params"],
+        indirect["signature_details"]["params"]
+    );
+    client.program_close().unwrap();
+    client.open_program(&program).unwrap();
+    assert_eq!(function(&program, "indirect"), restored);
     client
         .script_run_source(
             r#"

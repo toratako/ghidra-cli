@@ -33,7 +33,7 @@ final class FunctionReturnType {
     int set(Function function, DataType returnType, int timeoutSecs) throws Exception {
         if (Undefined.isUndefined(returnType) || function.isExternal()
                 || function.getSignatureSource() != SourceType.DEFAULT) {
-            function.setReturnType(returnType, SourceType.USER_DEFINED);
+            applyReturnType(function, returnType);
             return 0;
         }
         if (session.program().getListing().getInstructionAt(function.getEntryPoint()) == null) {
@@ -48,8 +48,18 @@ final class FunctionReturnType {
         HighFunction high = results.getHighFunction();
         if (high == null) throw cannotPreserve("Decompiler returned no high-level function");
         int committed = commitParameters(function, high);
-        function.setReturnType(returnType, SourceType.USER_DEFINED);
+        applyReturnType(function, returnType);
         return committed;
+    }
+
+    private static void applyReturnType(Function function, DataType returnType) throws InvalidInputException {
+        function.setReturnType(returnType, SourceType.USER_DEFINED);
+        // Native variable validation turns a bare function datatype into a
+        // pointer. Verify the formal type so indirect ABI returns remain valid.
+        if (!function.getReturn().getFormalDataType().isEquivalent(returnType)) {
+            throw new IllegalStateException("Ghidra did not retain the requested return type: "
+                + returnType.getPathName());
+        }
     }
 
     /** Materialize inferred inputs without replacing saved definitions or forcing conflicts. */
