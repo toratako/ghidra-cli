@@ -2,11 +2,100 @@ package ghidracli.protocol;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import java.io.IOException;
+import java.io.StringReader;
 
 /** JSON arguments and response envelopes shared by the bridge. */
 public final class JsonProtocol {
     private JsonProtocol() {}
+
+    /** Reject ambiguous or non-JSON requests before selecting a Program or control. */
+    @SuppressWarnings("deprecation") // Ghidra 11 includes Gson predating Strictness.
+    public static JsonObject parseRequest(String line) {
+        validateRequestTokens(line);
+        try (JsonReader reader = new JsonReader(new StringReader(line))) {
+            // JsonParser.parseReader changes this setting, so consume tokens directly.
+            reader.setLenient(false);
+            JsonElement request = readRequestValue(reader);
+            if (!request.isJsonObject() || reader.peek() != JsonToken.END_DOCUMENT) {
+                throw new IllegalArgumentException("Request must be one JSON object");
+            }
+            return request.getAsJsonObject();
+        } catch (IOException error) {
+            throw new IllegalArgumentException("Invalid request JSON: " + error.getMessage(), error);
+        }
+    }
+
+    private static JsonElement readRequestValue(JsonReader reader) throws IOException {
+        switch (reader.peek()) {
+            case BEGIN_OBJECT:
+                JsonObject object = new JsonObject();
+                reader.beginObject();
+                while (reader.hasNext()) {
+                    String name = reader.nextName();
+                    if (object.has(name)) {
+                        throw new IllegalArgumentException("Duplicate request member: " + name);
+                    }
+                    object.add(name, readRequestValue(reader));
+                }
+                reader.endObject();
+                return object;
+            case BEGIN_ARRAY:
+                JsonArray array = new JsonArray();
+                reader.beginArray();
+                while (reader.hasNext()) array.add(readRequestValue(reader));
+                reader.endArray();
+                return array;
+            case STRING:
+                return new JsonPrimitive(reader.nextString());
+            case NUMBER:
+                // Keep the original numeric precision and spelling without narrowing.
+                return JsonParser.parseString(reader.nextString());
+            case BOOLEAN:
+                return new JsonPrimitive(reader.nextBoolean());
+            case NULL:
+                reader.nextNull();
+                return JsonNull.INSTANCE;
+            default:
+                throw new IllegalArgumentException("Invalid request JSON value");
+        }
+    }
+
+    /** Older Gson's non-lenient mode still accepts these non-JSON spellings. */
+    private static void validateRequestTokens(String line) {
+        boolean quoted = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (quoted) {
+                if (ch == '"') {
+                    quoted = false;
+                } else if (ch == '\\') {
+                    if (++i == line.length() || "\"\\/bfnrtu".indexOf(line.charAt(i)) < 0) {
+                        throw new IllegalArgumentException("Invalid request JSON string escape");
+                    }
+                } else if (ch < 0x20) {
+                    throw new IllegalArgumentException("Unescaped control character in request JSON string");
+                }
+            } else if (ch == '"') {
+                quoted = true;
+            } else if ("tTfFnN".indexOf(ch) >= 0) {
+                String literal = ch == 't' || ch == 'T' ? "true"
+                    : ch == 'f' || ch == 'F' ? "false" : "null";
+                if (line.regionMatches(true, i, literal, 0, literal.length())) {
+                    if (!line.startsWith(literal, i)) {
+                        throw new IllegalArgumentException("Invalid request JSON literal");
+                    }
+                    i += literal.length() - 1;
+                }
+            }
+        }
+    }
 
     /** A validation failure with diagnostics that survive handler boundaries. */
     public static class CommandException extends IllegalArgumentException {

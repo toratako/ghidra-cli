@@ -81,6 +81,8 @@ reopens the queue for recovery.
 {"status":"success","job_id":"2c7a3b91-f960-4b85-87d7-e90cf7bf0625","selected_program":"/sample","data":{"functions":[]},"message":null}
 ```
 
+Requests use strict JSON with unique member names in every object, including
+`args`; reject ambiguous or malformed input before controls or job admission.
 Request `command` is required; optional `args` is omitted when `None`.
 Program requests require `job_id` as a canonical hyphenated UUID (case-insensitive).
 The client creates a new UUID per bridge operation. Controls omit it.

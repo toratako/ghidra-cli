@@ -34,6 +34,8 @@ mod program_session;
 mod protocol;
 #[path = "daemon/rebase.rs"]
 mod rebase;
+#[path = "daemon/request_admission.rs"]
+mod request_admission;
 #[path = "daemon/transaction.rs"]
 mod transaction;
 

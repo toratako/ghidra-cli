@@ -135,6 +135,7 @@ For narrower regression work, these modules cover the non-obvious boundaries:
 |---|---|
 | [daemon/program_session.rs](daemon/program_session.rs), [daemon/deletion.rs](daemon/deletion.rs) | Live versus saved state, program switching, recursive counts excluding type archives, deletion without wrong-target changes |
 | [daemon/job_results.rs](daemon/job_results.rs), [daemon/jobs.rs](daemon/jobs.rs) | Dropped responses, result/error/cancellation recovery, duplicate IDs, restart loss, bounded snapshots, and responsive controls |
+| [daemon/protocol.rs](daemon/protocol.rs), [daemon/request_admission.rs](daemon/request_admission.rs) | LF/UTF-8 framing, strict JSON and duplicate-member rejection before admission, exact numeric and Unicode input, and unchanged saved state after rejected mutations |
 | [daemon/transaction.rs](daemon/transaction.rs) | Late-error/cancellation rollback, pending edits after save failure, foreign/leaked transactions, preview isolation; test-owned Java failure probes, no production hooks |
 | [daemon/decompiler.rs](daemon/decompiler.rs) | Native process reuse by effective predicate setting, default restoration across callers, invalidation after save/rollback, cancellation/timeout recovery, monitor isolation and release |
 | [readonly/decompile.rs](readonly/decompile.rs) | Warning-comment provenance, API-message extraction, entry block permissions, external/unmapped functions, and unchanged function-list scope |
