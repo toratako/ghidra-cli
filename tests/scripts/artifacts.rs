@@ -23,7 +23,7 @@ fn test_script_run_artifact_contract() {
 
     let fixture = write_artifact_script_path();
     assert!(fixture.exists(), "fixture missing: {}", fixture.display());
-    let script = stage_script(&fixture);
+    let (_directory, script) = stage_script(&fixture);
 
     let out =
         std::env::temp_dir().join(format!("ghidra_cli_artifact_{}.jsonl", std::process::id()));

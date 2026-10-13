@@ -85,7 +85,7 @@ the command tree check, and lint still run. Other changes run every suite on
 Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel groups
 per OS: `daemon_tests`, and the project/bootstrap/reliability/fixture suites.
 
-Suite roots own their fixtures and serial locks; domain modules remain in the
+Suite roots own fixture lifetimes and serial locks; domain modules remain in the
 original test executables. `routing_tests.rs` owns the recorded bridge's TCP worker,
 request log, and temporary files. [routing/recorded.rs](routing/recorded.rs) handles
 program selection, response envelopes, and injected failures;
@@ -98,6 +98,10 @@ Filter a domain with, for example,
 `cargo test --test daemon_tests program_session::`.
 
 ## Coverage and fixtures
+
+Independent fixture sources live in [fixtures/](fixtures/README.md), grouped by
+domain. Test modules retain their execution and assertions; fixture files are
+read-only inputs, with generated or modified copies kept in temporary storage.
 
 | Suite/source | Scope |
 |---|---|

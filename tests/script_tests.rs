@@ -38,7 +38,8 @@ fn echo_args_script_path() -> PathBuf {
     path
 }
 
-/// Copy a fixture script into a unique, fresh temp directory and return the copy.
+/// Copy a fixture script into a unique, fresh temp directory and return its owner
+/// and the copy's path.
 ///
 /// Ghidra resolves a script to the FIRST registered source directory that is an
 /// ancestor of it (GhidraScriptUtil.findSourceDirectoryContaining), and bundle
@@ -47,37 +48,24 @@ fn echo_args_script_path() -> PathBuf {
 /// previously-registered ancestor (e.g. tests/fixtures itself), which corrupts
 /// the derived class name. Staging into a unique temp dir gives each run an
 /// unregistered parent — exactly the arbitrary-absolute-path case users hit.
-fn stage_script(fixture: &PathBuf) -> PathBuf {
+fn stage_script(fixture: &PathBuf) -> (tempfile::TempDir, PathBuf) {
     let stem = fixture.file_stem().unwrap().to_string_lossy().into_owned();
-    let dir =
-        std::env::temp_dir().join(format!("ghidra_cli_script_{}_{}", std::process::id(), stem));
-    fs::create_dir_all(&dir).expect("create staging dir");
-    let dest = dir.join(fixture.file_name().unwrap());
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("ghidra_cli_script_{stem}_"))
+        .tempdir()
+        .expect("create staging dir");
+    let dest = dir.path().join(fixture.file_name().unwrap());
     fs::copy(fixture, &dest).expect("copy fixture script");
-    dest
+    (dir, dest)
 }
 
 fn get_test_script_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests");
     path.push("fixtures");
+    path.push("scripts");
     path.push("test_script.py");
     path
-}
-
-fn create_test_script() -> PathBuf {
-    let script_path = get_test_script_path();
-
-    fs::create_dir_all(script_path.parent().unwrap()).ok();
-
-    let script_content = r#"# Test script
-# @category Test
-
-print("Test script executed")
-"#;
-
-    fs::write(&script_path, script_content).expect("Failed to write test script");
-    script_path
 }
 
 #[test]
@@ -108,7 +96,7 @@ fn test_script_list() {
 #[serial]
 fn test_script_run() {
     require_ghidra!();
-    let script_path = create_test_script();
+    let (_directory, script_path) = stage_script(&get_test_script_path());
 
     let _harness = harness();
 
@@ -137,8 +125,6 @@ fn test_script_run() {
         "Expected success or script-not-found error, got: {}",
         stderr
     );
-
-    fs::remove_file(script_path).ok();
 }
 
 /// A checked-in Java script runs by absolute path (no global-scripts-dir copy),
@@ -153,7 +139,7 @@ fn test_script_run_java_args() {
 
     let fixture = echo_args_script_path();
     assert!(fixture.exists(), "fixture missing: {}", fixture.display());
-    let script_path = stage_script(&fixture);
+    let (_directory, script_path) = stage_script(&fixture);
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
         .arg("script")
