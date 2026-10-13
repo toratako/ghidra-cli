@@ -44,6 +44,25 @@ impl Session {
             self.program = target.to_owned();
             self.has_current_program = true;
         }
+        let import_failure = &self.bridge_info["test_import_followup_error"];
+        if matches!(
+            request["command"].as_str(),
+            Some("analysis_run" | "open_program")
+        ) && import_failure["command"] == request["command"]
+        {
+            if import_failure["disconnect"] == true {
+                return Reply::Disconnect;
+            }
+            let selected_program = import_failure
+                .get("selected_program")
+                .cloned()
+                .unwrap_or_else(|| json!(self.has_current_program.then_some(&self.program)));
+            return Reply::Send(json!({
+                "status": "error", "job_id": request["job_id"],
+                "selected_program": selected_program, "message": "Import follow-up failed",
+                "detail": import_failure["detail"],
+            }));
+        }
         if args["text"] == "test-save-failure"
             || (request["command"] == "program_save"
                 && self.bridge_info["test_save_failure"] == true)

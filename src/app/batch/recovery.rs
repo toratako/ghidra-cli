@@ -98,6 +98,10 @@ fn inspection_reason(row: &Value) -> Option<&'static str> {
         Some("transaction_failed")
     } else if detail["partial_changes_saved"] == true {
         Some("partial_changes_saved")
+    } else if detail["import_status"] == "saved" {
+        // Rollback describes the failed follow-up request, not the durable
+        // import completed earlier in the same CLI line.
+        Some("import_saved")
     } else if detail["rolled_back"] == true {
         None
     } else {
@@ -131,6 +135,7 @@ fn describe(report: &Value, project: &Path) -> Option<Recovery> {
             "save_failed" => "Changes may remain in memory. Keep the bridge running, resolve the save failure, then retry program save for this project. Inspect the command result before choosing a restart line; do not repeat the edit.",
             "transaction_failed" => "Rollback is unconfirmed. Keep the bridge running and close outstanding transactions through their owner before saving or retrying.",
             "partial_changes_saved" => "Partial changes were saved. Inspect the program and any external effects before choosing a restart line.",
+            "import_saved" => "The import was already saved. Do not re-import. Recover the remaining import or analysis step using this command's diagnostics, then retry only failed or unexecuted operations.",
             _ => "Rollback has not been confirmed. Inspect this command's result and any program or external effects before retrying.",
         };
         (failure, "inspect_state", reason, message)
@@ -275,6 +280,10 @@ mod tests {
             (
                 json!({"partial_changes_saved": true}),
                 "partial_changes_saved",
+            ),
+            (
+                json!({"import_status": "saved", "rolled_back": true}),
+                "import_saved",
             ),
             (json!({"transaction_failed": true}), "transaction_failed"),
             (json!({}), "unconfirmed_failure"),

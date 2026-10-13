@@ -228,3 +228,102 @@ fn explicit_address_import_bases_are_checked_before_import_or_bridge_changes() {
         );
     }
 }
+
+#[test]
+fn import_followup_save_failures_retain_the_import_and_the_previous_save_target() {
+    for command in ["analysis_run", "open_program"] {
+        let bridge = RecordedBridge::with_info(json!({
+            "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+            "explicit_addresses": true,
+            "test_import_followup_error": {
+                "command": command, "selected_program": "/previous",
+                "detail": {"save_failed": true, "saved": false, "program": "/previous"},
+            },
+        }));
+        std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+        let mut args = vec!["program", "import", "binary"];
+        if command == "open_program" {
+            args.push("--no-analyze");
+        }
+        let output = bridge.command().args(args).output().unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        let detail = &error["detail"];
+        assert_eq!(detail["import_status"], "saved", "{error}");
+        assert_eq!(detail["program"], "/previous", "{error}");
+        assert_eq!(detail["imported_program"], "/imported", "{error}");
+        assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence\n");
+        assert_eq!(
+            detail["recovery"],
+            json!([
+                "ghidra-cli",
+                "program",
+                "save",
+                "--project",
+                bridge.project,
+                "--program",
+                "/previous",
+            ])
+        );
+        let requests = bridge.requests.lock().unwrap();
+        assert_eq!(
+            requests.iter().filter(|r| r["command"] == "import").count(),
+            1
+        );
+        assert_eq!(
+            requests.iter().filter(|r| r["command"] == command).count(),
+            1
+        );
+        assert_eq!(requests.last().unwrap()["command"], command);
+    }
+}
+
+#[test]
+fn lost_import_followup_responses_recover_the_exact_job_without_reimporting() {
+    for command in ["analysis_run", "open_program"] {
+        let bridge = RecordedBridge::with_info(json!({
+            "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+            "explicit_addresses": true,
+            "test_import_followup_error": {"command": command, "disconnect": true},
+        }));
+        std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+        let mut args = vec!["program", "import", "binary"];
+        if command == "open_program" {
+            args.push("--no-analyze");
+        }
+        let output = bridge.command().args(args).output().unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        let detail = &error["detail"];
+        assert_eq!(detail["import_status"], "saved", "{error}");
+        assert_eq!(detail["imported_program"], "/imported", "{error}");
+        assert_eq!(detail["outcome_unknown"], true, "{error}");
+        assert_eq!(detail["command"], command, "{error}");
+        assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence\n");
+        let requests = bridge.requests.lock().unwrap();
+        let followup = requests.last().unwrap();
+        assert_eq!(followup["command"], command);
+        assert_eq!(detail["job_id"], followup["job_id"]);
+        assert_eq!(detail["recovery"]["action"], "retrieve_result");
+        assert_eq!(
+            detail["recovery"]["argv"],
+            json!([
+                "ghidra-cli",
+                "job",
+                "result",
+                followup["job_id"],
+                "--project",
+                bridge.project,
+            ])
+        );
+        assert_eq!(
+            requests.iter().filter(|r| r["command"] == "import").count(),
+            1
+        );
+        assert_eq!(
+            requests.iter().filter(|r| r["command"] == command).count(),
+            1
+        );
+    }
+}

@@ -48,6 +48,23 @@ impl ImportProgress {
             // selection. Recovery must retain that actual save target.
             fields.entry("program").or_insert(json!(program));
         }
+        if fields
+            .get("import_status")
+            .is_some_and(|status| status == "saved")
+        {
+            // `program` belongs to the failed request and can identify the
+            // previous selection. Retain the imported file independently.
+            let imported_program = self
+                .receipt
+                .as_ref()
+                .and_then(|receipt| receipt["program_path"].as_str())
+                .or(self.program.as_deref())
+                .or_else(|| fields.get("program").and_then(serde_json::Value::as_str))
+                .map(str::to_owned);
+            if let Some(program) = imported_program {
+                fields.insert("imported_program".into(), json!(program));
+            }
+        }
         let mut message = format!(
             "{} failed: {error:#}. Import: {}; analysis: {}",
             self.stage,
@@ -62,7 +79,16 @@ impl ImportProgress {
                      state before saving or retrying.",
                 );
             } else if let Some(program) = detail["program"].as_str() {
-                let command = if detail["outcome_unknown"] == true {
+                // A lost startup capability response is a control request,
+                // after import and analysis finished. It has no queued job to
+                // inspect and cannot make those completed stages unknown.
+                let unknown_job = detail["outcome_unknown"] == true
+                    && !(self.stage == "bridge.start"
+                        && matches!(self.analysis, "completed" | "skipped")
+                        && error
+                            .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+                            .is_none());
+                let command = if unknown_job {
                     vec![
                         "ghidra-cli".to_owned(),
                         "job".into(),
@@ -138,6 +164,7 @@ mod tests {
         assert_eq!(detail["workflow_stage"], "bridge.start");
         assert_eq!(detail["path"], json!(path));
         assert_eq!(detail["import_status"], "saved");
+        assert_eq!(detail["imported_program"], "saved-name");
         assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence");
         assert_eq!(
             detail["recovery"],
@@ -258,7 +285,10 @@ mod tests {
             imported: "saved",
             analysis: "unknown",
             program: Some("new-import".into()),
-            receipt: Some(json!({"loader_diagnostics": {"text": "loader evidence"}})),
+            receipt: Some(json!({
+                "program_path": "/new-import",
+                "loader_diagnostics": {"text": "loader evidence"},
+            })),
         };
         let error = progress.failure(
             crate::ipc::protocol::BridgeCommandError {
@@ -270,6 +300,7 @@ mod tests {
         );
         let detail = crate::error::diagnostic_detail(&error);
         assert_eq!(detail["program"], "/previous");
+        assert_eq!(detail["imported_program"], "/new-import");
         assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence");
         assert_eq!(
             detail["recovery"],
@@ -283,6 +314,78 @@ mod tests {
                 "/previous"
             ])
         );
+    }
+
+    #[test]
+    fn failed_launcher_retains_the_imported_program_from_its_saved_checkpoint() {
+        let progress = ImportProgress {
+            stage: "import.headless",
+            imported: "unknown",
+            analysis: "unknown",
+            program: None,
+            receipt: None,
+        };
+        let error = progress.failure(
+            BridgeCommandError {
+                message: "Launcher cleanup failed after saving".into(),
+                detail: json!({
+                    "import_status": "saved", "analysis_status": "completed",
+                    "program": "/saved-name",
+                }),
+            }
+            .into(),
+            Path::new("project"),
+        );
+        let detail = crate::error::diagnostic_detail(&error);
+        assert_eq!(detail["imported_program"], "/saved-name");
+        assert_eq!(detail["recovery"][1], "bridge");
+        assert_eq!(detail["recovery"][2], "start");
+    }
+
+    #[test]
+    fn lost_startup_capability_response_recovers_the_saved_import_without_a_job() {
+        use std::io::{BufRead, BufReader};
+        use std::net::TcpListener;
+
+        for analysis in ["completed", "skipped"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let worker = std::thread::spawn(move || {
+                let (connection, _) = listener.accept().unwrap();
+                let mut request = String::new();
+                BufReader::new(connection).read_line(&mut request).unwrap();
+                let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+                assert_eq!(request["command"], "bridge_info");
+                assert!(request.get("job_id").is_none());
+            });
+            let error = crate::app::connect_program_bridge(port).err().unwrap();
+            worker.join().unwrap();
+            let progress = ImportProgress {
+                stage: "bridge.start",
+                imported: "saved",
+                analysis,
+                program: Some("saved-name".into()),
+                receipt: Some(json!({"program_path": "/saved-name"})),
+            };
+            let error = progress.failure(error, Path::new("project"));
+            let detail = crate::error::diagnostic_detail(&error);
+            assert_eq!(detail["import_status"], "saved");
+            assert_eq!(detail["analysis_status"], analysis);
+            assert_eq!(detail["imported_program"], "/saved-name");
+            assert_eq!(
+                detail["recovery"],
+                json!([
+                    "ghidra-cli",
+                    "bridge",
+                    "start",
+                    "--project",
+                    "project",
+                    "--program",
+                    "saved-name",
+                ])
+            );
+            assert!(detail.get("job_id").is_none());
+        }
     }
 
     #[test]

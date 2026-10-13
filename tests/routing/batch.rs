@@ -225,6 +225,107 @@ fn batch_recovery_does_not_replay_completed_later_or_nested_commands() {
 }
 
 #[test]
+fn batch_recovery_does_not_reimport_after_a_followup_request_rolls_back() {
+    for no_analyze in [false, true] {
+        for nested in [false, true] {
+            for policy in ["continue", "stop"] {
+                let followup = if no_analyze {
+                    "open_program"
+                } else {
+                    "analysis_run"
+                };
+                let bridge = RecordedBridge::with_info(json!({
+                    "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+                    "explicit_addresses": true,
+                    "test_import_followup_error": {
+                        "command": followup,
+                        "detail": {"rolled_back": true, "program": "imported"},
+                    },
+                }));
+                std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+                let import = if no_analyze {
+                    "program import binary --no-analyze"
+                } else {
+                    "program import binary"
+                };
+                let line = if nested {
+                    std::fs::write(
+                        bridge.root.path().join("child.txt"),
+                        format!("{import}\ncomment set 0x1001 --text child-after\n"),
+                    )
+                    .unwrap();
+                    "batch child.txt"
+                } else {
+                    import
+                };
+                std::fs::write(
+                    bridge.root.path().join("batch.txt"),
+                    format!(
+                        "comment set 0x1000 --text before\n{line}\ncomment set 0x1002 --text outer-after\n"
+                    ),
+                )
+                .unwrap();
+
+                let (report, diagnostic) =
+                    failed_report(&bridge, &["batch", "batch.txt", "--on-error", policy]);
+                assert_eq!(diagnostic["exit_code"], 1);
+                let stopped = policy == "stop";
+                assert_eq!(report["commands_executed"], if stopped { 2 } else { 3 });
+                assert_eq!(report["not_executed"], usize::from(stopped));
+                let failure = if nested {
+                    let child = &report["results"][1]["detail"];
+                    assert_eq!(child["commands_executed"], if stopped { 1 } else { 2 });
+                    &child["results"][0]["detail"]
+                } else {
+                    &report["results"][1]["detail"]
+                };
+                assert_eq!(failure["rolled_back"], true);
+                assert_eq!(failure["import_status"], "saved");
+                assert_eq!(failure["loader_diagnostics"]["text"], "loader evidence\n");
+                let recovery = &report["recovery"];
+                assert_eq!(recovery["action"], "inspect_state");
+                assert_eq!(recovery["reason"], "import_saved");
+                assert_eq!(
+                    recovery["file"],
+                    if nested { "child.txt" } else { "batch.txt" }
+                );
+                assert_eq!(recovery["line"], if nested { 1 } else { 2 });
+                assert!(recovery.get("argv").is_none(), "{recovery}");
+                assert!(recovery["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Do not re-import"));
+
+                let requests = bridge.requests.lock().unwrap();
+                for operation in ["import", followup] {
+                    assert_eq!(
+                        requests
+                            .iter()
+                            .filter(|r| r["command"] == operation)
+                            .count(),
+                        1,
+                        "{requests:?}",
+                    );
+                }
+                let comments: Vec<_> = requests
+                    .iter()
+                    .filter(|r| r["command"] == "comment_set")
+                    .map(|r| r["args"]["text"].as_str().unwrap())
+                    .collect();
+                let expected = if stopped {
+                    vec!["before"]
+                } else if nested {
+                    vec!["before", "child-after", "outer-after"]
+                } else {
+                    vec!["before", "outer-after"]
+                };
+                assert_eq!(comments, expected);
+            }
+        }
+    }
+}
+
+#[test]
 fn batch_resume_hint_requires_reproducible_project_selections() {
     let outer = RecordedBridge::new();
     let other = RecordedBridge::new();

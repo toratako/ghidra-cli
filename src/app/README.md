@@ -78,6 +78,8 @@ gutter; C rendering appends address comments to mapped lines. Projecting away
 `program import` owns its startup and selection workflow; `--name` is the saved
 file name, independent of global `--program` and configured target defaults.
 Import binds follow-up analysis or information requests to the imported program.
+Import failures keep the saved import in `imported_program` separately from the
+failed request's `program`, which can identify a previous selection's save failure.
 `program save` saves in place and does nothing for a stopped bridge.
 Discovery read errors, incomplete live discovery, and connection failures must
 fail saving instead of claiming that the bridge is stopped.
