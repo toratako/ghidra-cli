@@ -45,6 +45,14 @@ public final class FunctionQueries {
         return funcData;
     }
 
+    /** Native thunk and external symbols can substitute an explicitly requested name. */
+    static void requireName(Function function, String requestedName) {
+        if (!requestedName.equals(function.getName())) {
+            throw new IllegalStateException("Ghidra did not retain the requested function name: "
+                + requestedName);
+        }
+    }
+
     /** Native function deletion also deletes referring thunks. */
     public void requireNoOutsideThunks(Function function, Set<Long> selectedIds)
             throws ghidra.util.exception.CancelledException {

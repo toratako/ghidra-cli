@@ -162,9 +162,7 @@ public final class FunctionCommands {
 
             String oldName = func.getName();
             func.setName(newName, SourceType.USER_DEFINED);
-            if (!newName.equals(func.getName())) {
-                throw new IllegalStateException("Ghidra did not retain the requested function name: " + newName);
-            }
+            FunctionQueries.requireName(func, newName);
 
             JsonObject result = new JsonObject();
             result.addProperty("status", "renamed");
@@ -266,9 +264,7 @@ public final class FunctionCommands {
                 // Native thunk detection creates through a separate command that
                 // inherits the entry's label instead of the requested name.
                 created.setName(requestedName, SourceType.USER_DEFINED);
-                if (!created.getName().equals(requestedName)) {
-                    return errorResult("Ghidra did not retain the requested function name");
-                }
+                FunctionQueries.requireName(created, requestedName);
             }
 
             JsonObject result = new JsonObject();

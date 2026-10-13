@@ -92,6 +92,29 @@ fn assert_unchanged_after_reopen(program: &str, signature: &Value, inventory: &V
 
 #[test]
 #[serial]
+fn signature_edits_apply_the_declared_function_name_and_persist_it() {
+    require_ghidra!();
+    let program = create_program(64);
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        for (declaration, expected) in [
+            ("int renamed(int value)", "renamed"),
+            ("void lookup(char *input)", "lookup"),
+        ] {
+            let edited = set_signature(&program, declaration);
+            edited.assert_success();
+            assert_eq!(edited.data::<Value>()["function"], expected);
+            let after = function();
+            assert_eq!(after["name"], expected, "{after}");
+            client.program_close().unwrap();
+            client.open_program(&program).unwrap();
+            assert_eq!(function(), after);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn signature_edits_retain_comments_on_named_parameters_after_reordering_and_reopen() {
     require_ghidra!();
     let program = create_program(64);

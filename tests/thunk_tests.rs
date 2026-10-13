@@ -336,6 +336,16 @@ public class LocateNamedExternalFunction extends GhidraScript {
             ),
             (
                 "function_set_signature",
+                json!({"target":"0x1c00", "signature":"int FUN_00001c00(int value)"}),
+                "FUN_00001c00",
+            ),
+            (
+                "function_set_signature",
+                json!({"target":external_address, "signature":"int FUN_00001000(int value)"}),
+                "FUN_00001000",
+            ),
+            (
+                "function_set_signature",
                 json!({"target":external_address, "signature":"int FUN_00001000(int value)",
                     "storage":{"parameters":[{"name":"value", "pieces":[{"kind":"register", "register":"EAX"}]}],
                         "return":[{"kind":"register", "register":"EDX"}]}}),

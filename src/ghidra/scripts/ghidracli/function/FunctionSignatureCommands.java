@@ -74,6 +74,12 @@ public final class FunctionSignatureCommands {
                     throw new IllegalStateException("Ghidra did not retain the declared parameter name: " + name);
                 }
             }
+            // The native helper only renames default symbols. Apply the declared
+            // name consistently with custom signatures, then reject substitutions.
+            if (!funcDef.getName().equals(func.getName())) {
+                func.setName(funcDef.getName(), SourceType.USER_DEFINED);
+            }
+            FunctionQueries.requireName(func, funcDef.getName());
 
             String newSig = null;
             try { newSig = func.getPrototypeString(false, false); } catch (Exception e) {}

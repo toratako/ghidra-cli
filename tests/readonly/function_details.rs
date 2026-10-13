@@ -411,7 +411,7 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
                     "set-signature",
                     "chained_thunk",
                     "--signature",
-                    "short plain(int replacement)",
+                    "short chained_thunk(int replacement)",
                 ],
             );
             assert_eq!(receipt["effective_function"], "plain");
