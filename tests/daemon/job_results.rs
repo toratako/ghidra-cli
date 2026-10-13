@@ -308,6 +308,7 @@ import ghidra.app.script.GhidraScript;
 import com.google.gson.JsonObject;
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -360,7 +361,8 @@ public class CheckResultResponsePool extends GhidraScript {
             for (int i = 0; i < 40; i++) {
                 Socket socket = new Socket("127.0.0.1", port);
                 waiting.add(socket);
-                new PrintWriter(socket.getOutputStream(), true).println("slow-result");
+                // The raw callback retains CR; println would send CRLF on Windows.
+                socket.getOutputStream().write("slow-result\n".getBytes(StandardCharsets.UTF_8));
             }
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (accepted.get() != 40) {
@@ -369,7 +371,7 @@ public class CheckResultResponsePool extends GhidraScript {
             }
             try (Socket ping = new Socket("127.0.0.1", port)) {
                 ping.setSoTimeout(2000);
-                new PrintWriter(ping.getOutputStream(), true).println("ping");
+                ping.getOutputStream().write("ping\n".getBytes(StandardCharsets.UTF_8));
                 String line = new BufferedReader(new InputStreamReader(ping.getInputStream())).readLine();
                 if (line == null || !line.contains("success")) throw new IllegalStateException("Control did not reply");
             }
