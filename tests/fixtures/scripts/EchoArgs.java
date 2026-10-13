@@ -5,12 +5,12 @@
 import ghidra.app.script.GhidraScript;
 
 public class EchoArgs extends GhidraScript {
-    @Override
-    public void run() throws Exception {
-        String[] scriptArgs = getScriptArgs();
-        println("ARGC=" + scriptArgs.length);
-        for (int i = 0; i < scriptArgs.length; i++) {
-            println("ARG" + i + "=" + scriptArgs[i]);
-        }
+  @Override
+  public void run() throws Exception {
+    String[] scriptArgs = getScriptArgs();
+    println("ARGC=" + scriptArgs.length);
+    for (int i = 0; i < scriptArgs.length; i++) {
+      println("ARG" + i + "=" + scriptArgs[i]);
     }
+  }
 }

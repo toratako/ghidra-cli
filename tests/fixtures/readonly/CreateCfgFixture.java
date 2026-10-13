@@ -3,8 +3,8 @@ import ghidra.app.script.GhidraScript;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.FlowOverride;
 import ghidra.program.model.listing.Program;
@@ -13,191 +13,320 @@ import ghidra.program.model.symbol.SourceType;
 import ghidra.program.util.DefaultLanguageService;
 
 public class CreateCfgFixture extends GhidraScript {
-    private Address address(Program program, long offset) {
-        return program.getAddressFactory().getDefaultAddressSpace().getAddress(offset);
-    }
+  private Address address(Program program, long offset) {
+    return program.getAddressFactory().getDefaultAddressSpace().getAddress(offset);
+  }
 
-    private void code(Program program, long offset, int... bytes) throws Exception {
-        byte[] encoded = new byte[bytes.length];
-        for (int i = 0; i < bytes.length; i++) encoded[i] = (byte) bytes[i];
-        Address start = address(program, offset);
-        program.getMemory().setBytes(start, encoded);
-        if (!new DisassembleCommand(start, new AddressSet(start, start.add(bytes.length - 1)), true)
-                .applyTo(program, monitor)) {
-            throw new IllegalStateException("Could not disassemble CFG fixture at " + start);
-        }
+  private void code(Program program, long offset, int... bytes) throws Exception {
+    byte[] encoded = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) encoded[i] = (byte) bytes[i];
+    Address start = address(program, offset);
+    program.getMemory().setBytes(start, encoded);
+    if (!new DisassembleCommand(start, new AddressSet(start, start.add(bytes.length - 1)), true)
+        .applyTo(program, monitor)) {
+      throw new IllegalStateException("Could not disassemble CFG fixture at " + start);
     }
+  }
 
-    private void function(Program program, String name, long... ranges) throws Exception {
-        AddressSet body = new AddressSet();
-        for (int i = 0; i < ranges.length; i += 2) {
-            body.add(address(program, ranges[i]), address(program, ranges[i + 1]));
-        }
-        program.getFunctionManager().createFunction(name, address(program, ranges[0]), body,
-            SourceType.USER_DEFINED);
+  private void function(Program program, String name, long... ranges) throws Exception {
+    AddressSet body = new AddressSet();
+    for (int i = 0; i < ranges.length; i += 2) {
+      body.add(address(program, ranges[i]), address(program, ranges[i + 1]));
     }
+    program
+        .getFunctionManager()
+        .createFunction(name, address(program, ranges[0]), body, SourceType.USER_DEFINED);
+  }
 
-    public void run() throws Exception {
-        boolean mips = getScriptArgs().length > 1 && getScriptArgs()[1].equals("mips");
-        var language = DefaultLanguageService.getLanguageService().getLanguage(
-            new LanguageID(mips ? "MIPS:BE:32:default" : "x86:LE:32:default"));
-        var program = new ProgramDB(getScriptArgs()[0], language, language.getDefaultCompilerSpec(), this);
-        try {
-            int transaction = program.startTransaction("instruction CFG fixture");
-            try {
-                var text = program.getMemory().createInitializedBlock("code", address(program, 0x1000),
-                    0x1100, (byte) 0, monitor, false);
-                text.setExecute(true);
-                if (mips) {
-                    // beq a0,zero,0x1010; addiu v0,zero,1 (delay slot).
-                    code(program, 0x1000, 0x10, 0x80, 0, 3, 0x24, 2, 0, 1);
-                    code(program, 0x1008, 0x03, 0xe0, 0, 8, 0, 0, 0, 0);
-                    code(program, 0x1010, 0x03, 0xe0, 0, 8, 0x24, 2, 0, 2);
-                    // Deliberately exclude the branch's delay slot from the body.
-                    function(program, "delay", 0x1000, 0x1003, 0x1008, 0x1017);
-                    if (!program.getListing().getInstructionAt(address(program, 0x1004)).isInDelaySlot()) {
-                        throw new IllegalStateException("Expected branch delay slot");
-                    }
-                } else {
-                    // Both arms converge on the final add/ret block.
-                    code(program, 0x1000, 0x85, 0xc0, 0x74, 7, 0xb8, 1, 0, 0, 0, 0xeb, 5,
-                        0xb8, 2, 0, 0, 0, 0x83, 0xc0, 3, 0xc3);
-                    function(program, "diamond", 0x1000, 0x1013);
-                    code(program, 0x1100, 0x31, 0xc0, 0x40, 0x83, 0xf8, 5, 0x75, 0xfa, 0xc3);
-                    function(program, "looping", 0x1100, 0x1108);
-                    // The unresolved register call is in the middle of a native block.
-                    code(program, 0x1200, 0xff, 0xd0, 0xb8, 3, 0, 0, 0,
-                        0xe8, 0xf4, 1, 0, 0, 0xc3);
-                    function(program, "caller", 0x1200, 0x120c);
-                    code(program, 0x1250, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
-                    function(program, "pointer_caller", 0x1250, 0x1257);
-                    program.getMemory().setInt(address(program, 0x2000), 0x1400);
-                    program.getListing().createData(address(program, 0x2000),
-                        new PointerDataType(null, 4, program.getDataTypeManager()));
-                    program.getReferenceManager().addMemoryReference(address(program, 0x2000),
-                        address(program, 0x1400), RefType.DATA, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x2001),
-                        address(program, 0x1600), RefType.DATA, SourceType.USER_DEFINED, 0);
-                    // Reading from the middle of a typed pointer does not load its value.
-                    code(program, 0x1260, 0xff, 0x15, 1, 0x20, 0, 0, 0x90, 0xc3);
-                    function(program, "interior_pointer_caller", 0x1260, 0x1267);
-                    code(program, 0x1270, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
-                    function(program, "overridden_pointer_caller", 0x1270, 0x1277);
-                    var override = program.getReferenceManager().addMemoryReference(
-                        address(program, 0x1270), address(program, 0x1440),
-                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().setPrimary(override, true);
-                    code(program, 0x1280, 0xff, 0xd0, 0x90, 0xc3);
-                    function(program, "external_caller", 0x1280, 0x1283);
-                    var external = program.getExternalManager().addExtFunction("fixture", "external_target",
-                        null, SourceType.USER_DEFINED);
-                    program.getReferenceManager().addExternalReference(address(program, 0x1280), 0,
-                        external, SourceType.USER_DEFINED, RefType.COMPUTED_CALL);
-                    code(program, 0x1290, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
-                    function(program, "inactive_pointer_caller", 0x1290, 0x1297);
-                    var inactive = program.getReferenceManager().addMemoryReference(
-                        address(program, 0x1290), address(program, 0x1440),
-                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().setPrimary(inactive, false);
-                    code(program, 0x1300, 0xe9, 0xfb, 0, 0, 0);
-                    function(program, "outside", 0x1300, 0x1304);
-                    code(program, 0x1350, 0xe9, 0xab, 0x0a, 0, 0);
-                    function(program, "missing", 0x1350, 0x1354);
-                    code(program, 0x1380, 0xff, 0xe0);
-                    function(program, "unresolved", 0x1380, 0x1381);
-                    // The native block iterator follows any primitive at a READ
-                    // destination, including pointer interiors and non-pointers.
-                    code(program, 0x13a0, 0xff, 0x25, 1, 0x20, 0, 0);
-                    function(program, "interior_pointer_jump", 0x13a0, 0x13a5);
-                    program.getListing().createData(address(program, 0x2010), IntegerDataType.dataType);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x2010),
-                        address(program, 0x1600), RefType.DATA, SourceType.USER_DEFINED, 0);
-                    code(program, 0x13c0, 0xff, 0x25, 0x10, 0x20, 0, 0);
-                    function(program, "scalar_jump", 0x13c0, 0x13c5);
-                    code(program, 0x1400, 0xc3);
-                    function(program, "target", 0x1400, 0x1400);
-                    code(program, 0x1440, 0xc3);
-                    function(program, "override_target", 0x1440, 0x1440);
-                    code(program, 0x1500, 0x90, 0x90, 0x90, 0xc3);
-                    function(program, "disjoint", 0x1500, 0x1500, 0x1502, 0x1503);
-                    code(program, 0x1600, 0xc3);
-                    code(program, 0x1620, 0xc3);
-                    function(program, "unreachable", 0x1600, 0x1600, 0x1620, 0x1620);
-                    code(program, 0x1700, 0xe8, 0xfb, 0xfc, 0xff, 0xff, 0xc3);
-                    function(program, "override_branch", 0x1700, 0x1705);
-                    program.getListing().getInstructionAt(address(program, 0x1700))
-                        .setFlowOverride(FlowOverride.BRANCH);
-                    code(program, 0x1720, 0xe8, 0xdb, 0xfc, 0xff, 0xff, 0xc3);
-                    function(program, "terminal_call", 0x1720, 0x1725);
-                    program.getListing().getInstructionAt(address(program, 0x1720))
-                        .setFlowOverride(FlowOverride.CALL_RETURN);
-                    code(program, 0x1740, 0x90, 0xc3);
-                    code(program, 0x1750, 0xc3);
-                    function(program, "redirected", 0x1740, 0x1741, 0x1750, 0x1750);
-                    program.getListing().getInstructionAt(address(program, 0x1740))
-                        .setFallThrough(address(program, 0x1750));
-                    code(program, 0x1760, 0x90, 0xc3);
-                    function(program, "inert_call_override", 0x1760, 0x1761);
-                    var inert = program.getReferenceManager().addMemoryReference(
-                        address(program, 0x1760), address(program, 0x1440),
-                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().setPrimary(inert, true);
-                    code(program, 0x1770, 0xff, 0xe0);
-                    function(program, "inert_call_on_jump", 0x1770, 0x1771);
-                    var inertJumpCall = program.getReferenceManager().addMemoryReference(
-                        address(program, 0x1770), address(program, 0x1440),
-                        RefType.CALL_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().setPrimary(inertJumpCall, true);
-                    code(program, 0x1780, 0xff, 0xe0);
-                    function(program, "external_jump", 0x1780, 0x1781);
-                    program.getReferenceManager().addExternalReference(address(program, 0x1780), 0,
-                        external, SourceType.USER_DEFINED, RefType.COMPUTED_JUMP);
-                    code(program, 0x1790, 0xe9, 0x6b, 0xfc, 0xff, 0xff);
-                    function(program, "overridden_external_jump", 0x1790, 0x1794);
-                    program.getReferenceManager().addExternalReference(address(program, 0x1790), -1,
-                        external, SourceType.USER_DEFINED, RefType.COMPUTED_JUMP);
-                    var jumpOverride = program.getReferenceManager().addMemoryReference(
-                        address(program, 0x1790), address(program, 0x1440),
-                        RefType.JUMP_OVERRIDE_UNCONDITIONAL, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().setPrimary(jumpOverride, true);
-                    // A pointer table's base is not the effective address when
-                    // an unknown runtime register selects the slot.
-                    code(program, 0x17a0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
-                    function(program, "indexed_pointer_caller", 0x17a0, 0x17a7);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17a0),
-                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
-                    // A recorded runtime call destination remains stronger
-                    // evidence than the indexed operand's unresolved table base.
-                    code(program, 0x17b0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
-                    function(program, "resolved_indexed_caller", 0x17b0, 0x17b7);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17b0),
-                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17b0),
-                        address(program, 0x1440), RefType.COMPUTED_CALL, SourceType.USER_DEFINED, 0);
-                    // A register-only memory operand has no encoded table base.
-                    // Its explicit READ records a known pointer-slot address.
-                    code(program, 0x17c0, 0xff, 0x10, 0xc3);
-                    function(program, "recorded_pointer_caller", 0x17c0, 0x17c2);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17c0),
-                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
-                    program.getListing().createData(address(program, 0x2008), PointerDataType.dataType);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x2008),
-                        address(program, 0x1440), RefType.DATA, SourceType.USER_DEFINED, 0);
-                    code(program, 0x17d0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
-                    function(program, "recorded_indexed_slot_caller", 0x17d0, 0x17d7);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17d0),
-                        address(program, 0x2008), RefType.READ, SourceType.USER_DEFINED, 0);
-                    code(program, 0x17e0, 0xff, 0x94, 0x83, 0, 0x20, 0, 0, 0xc3);
-                    function(program, "indexed_base_pointer_caller", 0x17e0, 0x17e7);
-                    program.getReferenceManager().addMemoryReference(address(program, 0x17e0),
-                        address(program, 0x2000), RefType.READ, SourceType.USER_DEFINED, 0);
-                }
-            } finally {
-                program.endTransaction(transaction, true);
-            }
-            state.getProject().getProjectData().getRootFolder().createFile(getScriptArgs()[0], program, monitor);
-        } finally {
-            program.release(this);
+  public void run() throws Exception {
+    boolean mips = getScriptArgs().length > 1 && getScriptArgs()[1].equals("mips");
+    var language =
+        DefaultLanguageService.getLanguageService()
+            .getLanguage(new LanguageID(mips ? "MIPS:BE:32:default" : "x86:LE:32:default"));
+    var program =
+        new ProgramDB(getScriptArgs()[0], language, language.getDefaultCompilerSpec(), this);
+    try {
+      int transaction = program.startTransaction("instruction CFG fixture");
+      try {
+        var text =
+            program
+                .getMemory()
+                .createInitializedBlock(
+                    "code", address(program, 0x1000), 0x1100, (byte) 0, monitor, false);
+        text.setExecute(true);
+        if (mips) {
+          // beq a0,zero,0x1010; addiu v0,zero,1 (delay slot).
+          code(program, 0x1000, 0x10, 0x80, 0, 3, 0x24, 2, 0, 1);
+          code(program, 0x1008, 0x03, 0xe0, 0, 8, 0, 0, 0, 0);
+          code(program, 0x1010, 0x03, 0xe0, 0, 8, 0x24, 2, 0, 2);
+          // Deliberately exclude the branch's delay slot from the body.
+          function(program, "delay", 0x1000, 0x1003, 0x1008, 0x1017);
+          if (!program.getListing().getInstructionAt(address(program, 0x1004)).isInDelaySlot()) {
+            throw new IllegalStateException("Expected branch delay slot");
+          }
+        } else {
+          // Both arms converge on the final add/ret block.
+          code(
+              program, 0x1000, 0x85, 0xc0, 0x74, 7, 0xb8, 1, 0, 0, 0, 0xeb, 5, 0xb8, 2, 0, 0, 0,
+              0x83, 0xc0, 3, 0xc3);
+          function(program, "diamond", 0x1000, 0x1013);
+          code(program, 0x1100, 0x31, 0xc0, 0x40, 0x83, 0xf8, 5, 0x75, 0xfa, 0xc3);
+          function(program, "looping", 0x1100, 0x1108);
+          // The unresolved register call is in the middle of a native block.
+          code(program, 0x1200, 0xff, 0xd0, 0xb8, 3, 0, 0, 0, 0xe8, 0xf4, 1, 0, 0, 0xc3);
+          function(program, "caller", 0x1200, 0x120c);
+          code(program, 0x1250, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
+          function(program, "pointer_caller", 0x1250, 0x1257);
+          program.getMemory().setInt(address(program, 0x2000), 0x1400);
+          program
+              .getListing()
+              .createData(
+                  address(program, 0x2000),
+                  new PointerDataType(null, 4, program.getDataTypeManager()));
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x2000),
+                  address(program, 0x1400),
+                  RefType.DATA,
+                  SourceType.USER_DEFINED,
+                  0);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x2001),
+                  address(program, 0x1600),
+                  RefType.DATA,
+                  SourceType.USER_DEFINED,
+                  0);
+          // Reading from the middle of a typed pointer does not load its value.
+          code(program, 0x1260, 0xff, 0x15, 1, 0x20, 0, 0, 0x90, 0xc3);
+          function(program, "interior_pointer_caller", 0x1260, 0x1267);
+          code(program, 0x1270, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
+          function(program, "overridden_pointer_caller", 0x1270, 0x1277);
+          var override =
+              program
+                  .getReferenceManager()
+                  .addMemoryReference(
+                      address(program, 0x1270),
+                      address(program, 0x1440),
+                      RefType.CALL_OVERRIDE_UNCONDITIONAL,
+                      SourceType.USER_DEFINED,
+                      0);
+          program.getReferenceManager().setPrimary(override, true);
+          code(program, 0x1280, 0xff, 0xd0, 0x90, 0xc3);
+          function(program, "external_caller", 0x1280, 0x1283);
+          var external =
+              program
+                  .getExternalManager()
+                  .addExtFunction("fixture", "external_target", null, SourceType.USER_DEFINED);
+          program
+              .getReferenceManager()
+              .addExternalReference(
+                  address(program, 0x1280),
+                  0,
+                  external,
+                  SourceType.USER_DEFINED,
+                  RefType.COMPUTED_CALL);
+          code(program, 0x1290, 0xff, 0x15, 0, 0x20, 0, 0, 0x90, 0xc3);
+          function(program, "inactive_pointer_caller", 0x1290, 0x1297);
+          var inactive =
+              program
+                  .getReferenceManager()
+                  .addMemoryReference(
+                      address(program, 0x1290),
+                      address(program, 0x1440),
+                      RefType.CALL_OVERRIDE_UNCONDITIONAL,
+                      SourceType.USER_DEFINED,
+                      0);
+          program.getReferenceManager().setPrimary(inactive, false);
+          code(program, 0x1300, 0xe9, 0xfb, 0, 0, 0);
+          function(program, "outside", 0x1300, 0x1304);
+          code(program, 0x1350, 0xe9, 0xab, 0x0a, 0, 0);
+          function(program, "missing", 0x1350, 0x1354);
+          code(program, 0x1380, 0xff, 0xe0);
+          function(program, "unresolved", 0x1380, 0x1381);
+          // The native block iterator follows any primitive at a READ
+          // destination, including pointer interiors and non-pointers.
+          code(program, 0x13a0, 0xff, 0x25, 1, 0x20, 0, 0);
+          function(program, "interior_pointer_jump", 0x13a0, 0x13a5);
+          program.getListing().createData(address(program, 0x2010), IntegerDataType.dataType);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x2010),
+                  address(program, 0x1600),
+                  RefType.DATA,
+                  SourceType.USER_DEFINED,
+                  0);
+          code(program, 0x13c0, 0xff, 0x25, 0x10, 0x20, 0, 0);
+          function(program, "scalar_jump", 0x13c0, 0x13c5);
+          code(program, 0x1400, 0xc3);
+          function(program, "target", 0x1400, 0x1400);
+          code(program, 0x1440, 0xc3);
+          function(program, "override_target", 0x1440, 0x1440);
+          code(program, 0x1500, 0x90, 0x90, 0x90, 0xc3);
+          function(program, "disjoint", 0x1500, 0x1500, 0x1502, 0x1503);
+          code(program, 0x1600, 0xc3);
+          code(program, 0x1620, 0xc3);
+          function(program, "unreachable", 0x1600, 0x1600, 0x1620, 0x1620);
+          code(program, 0x1700, 0xe8, 0xfb, 0xfc, 0xff, 0xff, 0xc3);
+          function(program, "override_branch", 0x1700, 0x1705);
+          program
+              .getListing()
+              .getInstructionAt(address(program, 0x1700))
+              .setFlowOverride(FlowOverride.BRANCH);
+          code(program, 0x1720, 0xe8, 0xdb, 0xfc, 0xff, 0xff, 0xc3);
+          function(program, "terminal_call", 0x1720, 0x1725);
+          program
+              .getListing()
+              .getInstructionAt(address(program, 0x1720))
+              .setFlowOverride(FlowOverride.CALL_RETURN);
+          code(program, 0x1740, 0x90, 0xc3);
+          code(program, 0x1750, 0xc3);
+          function(program, "redirected", 0x1740, 0x1741, 0x1750, 0x1750);
+          program
+              .getListing()
+              .getInstructionAt(address(program, 0x1740))
+              .setFallThrough(address(program, 0x1750));
+          code(program, 0x1760, 0x90, 0xc3);
+          function(program, "inert_call_override", 0x1760, 0x1761);
+          var inert =
+              program
+                  .getReferenceManager()
+                  .addMemoryReference(
+                      address(program, 0x1760),
+                      address(program, 0x1440),
+                      RefType.CALL_OVERRIDE_UNCONDITIONAL,
+                      SourceType.USER_DEFINED,
+                      0);
+          program.getReferenceManager().setPrimary(inert, true);
+          code(program, 0x1770, 0xff, 0xe0);
+          function(program, "inert_call_on_jump", 0x1770, 0x1771);
+          var inertJumpCall =
+              program
+                  .getReferenceManager()
+                  .addMemoryReference(
+                      address(program, 0x1770),
+                      address(program, 0x1440),
+                      RefType.CALL_OVERRIDE_UNCONDITIONAL,
+                      SourceType.USER_DEFINED,
+                      0);
+          program.getReferenceManager().setPrimary(inertJumpCall, true);
+          code(program, 0x1780, 0xff, 0xe0);
+          function(program, "external_jump", 0x1780, 0x1781);
+          program
+              .getReferenceManager()
+              .addExternalReference(
+                  address(program, 0x1780),
+                  0,
+                  external,
+                  SourceType.USER_DEFINED,
+                  RefType.COMPUTED_JUMP);
+          code(program, 0x1790, 0xe9, 0x6b, 0xfc, 0xff, 0xff);
+          function(program, "overridden_external_jump", 0x1790, 0x1794);
+          program
+              .getReferenceManager()
+              .addExternalReference(
+                  address(program, 0x1790),
+                  -1,
+                  external,
+                  SourceType.USER_DEFINED,
+                  RefType.COMPUTED_JUMP);
+          var jumpOverride =
+              program
+                  .getReferenceManager()
+                  .addMemoryReference(
+                      address(program, 0x1790),
+                      address(program, 0x1440),
+                      RefType.JUMP_OVERRIDE_UNCONDITIONAL,
+                      SourceType.USER_DEFINED,
+                      0);
+          program.getReferenceManager().setPrimary(jumpOverride, true);
+          // A pointer table's base is not the effective address when
+          // an unknown runtime register selects the slot.
+          code(program, 0x17a0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+          function(program, "indexed_pointer_caller", 0x17a0, 0x17a7);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17a0),
+                  address(program, 0x2000),
+                  RefType.READ,
+                  SourceType.USER_DEFINED,
+                  0);
+          // A recorded runtime call destination remains stronger
+          // evidence than the indexed operand's unresolved table base.
+          code(program, 0x17b0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+          function(program, "resolved_indexed_caller", 0x17b0, 0x17b7);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17b0),
+                  address(program, 0x2000),
+                  RefType.READ,
+                  SourceType.USER_DEFINED,
+                  0);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17b0),
+                  address(program, 0x1440),
+                  RefType.COMPUTED_CALL,
+                  SourceType.USER_DEFINED,
+                  0);
+          // A register-only memory operand has no encoded table base.
+          // Its explicit READ records a known pointer-slot address.
+          code(program, 0x17c0, 0xff, 0x10, 0xc3);
+          function(program, "recorded_pointer_caller", 0x17c0, 0x17c2);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17c0),
+                  address(program, 0x2000),
+                  RefType.READ,
+                  SourceType.USER_DEFINED,
+                  0);
+          program.getListing().createData(address(program, 0x2008), PointerDataType.dataType);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x2008),
+                  address(program, 0x1440),
+                  RefType.DATA,
+                  SourceType.USER_DEFINED,
+                  0);
+          code(program, 0x17d0, 0xff, 0x14, 0x85, 0, 0x20, 0, 0, 0xc3);
+          function(program, "recorded_indexed_slot_caller", 0x17d0, 0x17d7);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17d0),
+                  address(program, 0x2008),
+                  RefType.READ,
+                  SourceType.USER_DEFINED,
+                  0);
+          code(program, 0x17e0, 0xff, 0x94, 0x83, 0, 0x20, 0, 0, 0xc3);
+          function(program, "indexed_base_pointer_caller", 0x17e0, 0x17e7);
+          program
+              .getReferenceManager()
+              .addMemoryReference(
+                  address(program, 0x17e0),
+                  address(program, 0x2000),
+                  RefType.READ,
+                  SourceType.USER_DEFINED,
+                  0);
         }
+      } finally {
+        program.endTransaction(transaction, true);
+      }
+      state
+          .getProject()
+          .getProjectData()
+          .getRootFolder()
+          .createFile(getScriptArgs()[0], program, monitor);
+    } finally {
+      program.release(this);
     }
+  }
 }

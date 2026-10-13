@@ -7,16 +7,16 @@ import java.io.FileWriter;
 import java.io.PrintWriter;
 
 public class WriteArtifact extends GhidraScript {
-    @Override
-    public void run() throws Exception {
-        String[] scriptArgs = getScriptArgs();
-        String outPath = scriptArgs[0];
-        int count = Integer.parseInt(scriptArgs[1]);
-        try (PrintWriter w = new PrintWriter(new FileWriter(outPath))) {
-            for (int i = 0; i < count; i++) {
-                w.println("{\"i\":" + i + "}");
-            }
-        }
-        println("wrote " + count + " records to " + outPath);
+  @Override
+  public void run() throws Exception {
+    String[] scriptArgs = getScriptArgs();
+    String outPath = scriptArgs[0];
+    int count = Integer.parseInt(scriptArgs[1]);
+    try (PrintWriter w = new PrintWriter(new FileWriter(outPath))) {
+      for (int i = 0; i < count; i++) {
+        w.println("{\"i\":" + i + "}");
+      }
     }
+    println("wrote " + count + " records to " + outPath);
+  }
 }

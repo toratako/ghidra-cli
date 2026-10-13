@@ -28,234 +28,243 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class TypeResolver {
-    private final ProgramSession session;
+  private final ProgramSession session;
 
-    public TypeResolver(ProgramSession session) {
-        this.session = session;
+  public TypeResolver(ProgramSession session) {
+    this.session = session;
+  }
+
+  private static final Map<String, String> TYPE_NAME_ALIASES = buildTypeNameAliases();
+  private static final Pattern ARRAY_DIMENSION = Pattern.compile("\\[\\s*([0-9]+)\\s*\\]\\s*");
+  // Native wrapper naming and cloning recurse too. Keep expression evaluation
+  // comfortably within supported JVM stacks before constructing those objects.
+  private static final int MAX_EXPRESSION_DEPTH = 128;
+
+  static final class TypeResolutionException extends JsonProtocol.CommandException {
+    TypeResolutionException(String message, JsonObject detail) {
+      super(message, detail);
     }
+  }
 
-    private static final Map<String, String> TYPE_NAME_ALIASES = buildTypeNameAliases();
-    private static final Pattern ARRAY_DIMENSION = Pattern.compile("\\[\\s*([0-9]+)\\s*\\]\\s*");
-    // Native wrapper naming and cloning recurse too. Keep expression evaluation
-    // comfortably within supported JVM stacks before constructing those objects.
-    private static final int MAX_EXPRESSION_DEPTH = 128;
+  /**
+   * Common C spellings that aren't registered under that literal name in Ghidra's data type
+   * managers ("unsigned X") -- mapped to the canonical Ghidra builtin name that resolveDataType()
+   * can find directly.
+   */
+  private static Map<String, String> buildTypeNameAliases() {
+    Map<String, String> m = new HashMap<>();
+    m.put("unsigned", "uint");
+    m.put("unsigned int", "uint");
+    m.put("unsigned long", "ulong");
+    m.put("unsigned long long", "ulonglong");
+    m.put("unsigned short", "ushort");
+    m.put("unsigned char", "uchar");
+    m.put("signed char", "schar");
+    return m;
+  }
 
-    static final class TypeResolutionException extends JsonProtocol.CommandException {
-        TypeResolutionException(String message, JsonObject detail) {
-            super(message, detail);
-        }
-    }
-
-    /**
-     * Common C spellings that aren't registered under that literal name in
-     * Ghidra's data type managers ("unsigned X")
-     * -- mapped to the canonical Ghidra builtin name that resolveDataType()
-     * can find directly.
-     */
-    private static Map<String, String> buildTypeNameAliases() {
-        Map<String, String> m = new HashMap<>();
-        m.put("unsigned", "uint");
-        m.put("unsigned int", "uint");
-        m.put("unsigned long", "ulong");
-        m.put("unsigned long long", "ulonglong");
-        m.put("unsigned short", "ushort");
-        m.put("unsigned char", "uchar");
-        m.put("signed char", "schar");
-        return m;
-    }
-
-    public DataType resolveRegisteredDataType(String name) {
-        checkCancelled();
-        if (name == null || name.trim().isEmpty()) return null;
-        String trimmed = name.trim();
-        DataTypeManager dtm = session.program().getDataTypeManager();
-        // Deletion needs the stored object, not a detached pointer/array expression.
-        DataType registered = trimmed.startsWith("/") ? dtm.getDataType(trimmed)
+  public DataType resolveRegisteredDataType(String name) {
+    checkCancelled();
+    if (name == null || name.trim().isEmpty()) return null;
+    String trimmed = name.trim();
+    DataTypeManager dtm = session.program().getDataTypeManager();
+    // Deletion needs the stored object, not a detached pointer/array expression.
+    DataType registered =
+        trimmed.startsWith("/")
+            ? dtm.getDataType(trimmed)
             : findDataTypeByName(dtm, trimmed, trimmed);
-        if (registered != null) return registered;
-        // Built-in alias clones may equal a registered type. Check equivalence
-        // before using its path so a same-named user type cannot be deleted.
-        DataType resolved = resolveDataType(trimmed);
-        if (resolved == null || !dtm.contains(resolved)) return null;
-        return dtm.getDataType(resolved.getPathName());
+    if (registered != null) return registered;
+    // Built-in alias clones may equal a registered type. Check equivalence
+    // before using its path so a same-named user type cannot be deleted.
+    DataType resolved = resolveDataType(trimmed);
+    if (resolved == null || !dtm.contains(resolved)) return null;
+    return dtm.getDataType(resolved.getPathName());
+  }
+
+  public DataType resolveDataType(String name) {
+    return resolveDataType(name, 0);
+  }
+
+  private DataType resolveDataType(String name, int depth) {
+    checkCancelled();
+    if (name == null || name.trim().isEmpty()) return null;
+    String trimmed = name.trim();
+    DataTypeManager dtm = session.program().getDataTypeManager();
+
+    // An absolute name can itself contain expression characters. Stored
+    // paths take precedence over interpreting pointer or array syntax.
+    if (trimmed.startsWith("/")) {
+      DataType registered = resolveDataTypePath(trimmed);
+      if (registered != null) return registered;
     }
 
-    public DataType resolveDataType(String name) {
-        return resolveDataType(name, 0);
+    // Handle pointer syntax: "int *" or "char **" -- peel one level and
+    // resolve the pointee with the same path/ambiguity rules. The target
+    // manager supplies pointer width before a caller measures the type.
+    if (trimmed.endsWith("*")) {
+      requireExpressionDepth(depth, 1, trimmed);
+      String base = trimmed.substring(0, trimmed.length() - 1).trim();
+      DataType baseType = resolveDataType(base, depth + 1);
+      return baseType != null ? new PointerDataType(baseType, dtm) : null;
     }
 
-    private DataType resolveDataType(String name, int depth) {
-        checkCancelled();
-        if (name == null || name.trim().isEmpty()) return null;
-        String trimmed = name.trim();
-        DataTypeManager dtm = session.program().getDataTypeManager();
+    if (trimmed.indexOf('[') >= 0 || trimmed.indexOf(']') >= 0) {
+      return resolveArray(trimmed, dtm, depth);
+    }
 
-        // An absolute name can itself contain expression characters. Stored
-        // paths take precedence over interpreting pointer or array syntax.
-        if (trimmed.startsWith("/")) {
-            DataType registered = resolveDataTypePath(trimmed);
-            if (registered != null) return registered;
-        }
+    // A full path never falls back to another category or an alias.
+    // Builtins may still be addressed by their exact path (e.g. /int).
+    if (trimmed.startsWith("/")) {
+      return resolveDataTypePath(trimmed);
+    }
 
-        // Handle pointer syntax: "int *" or "char **" -- peel one level and
-        // resolve the pointee with the same path/ambiguity rules. The target
-        // manager supplies pointer width before a caller measures the type.
-        if (trimmed.endsWith("*")) {
-            requireExpressionDepth(depth, 1, trimmed);
-            String base = trimmed.substring(0, trimmed.length() - 1).trim();
-            DataType baseType = resolveDataType(base, depth + 1);
-            return baseType != null ? new PointerDataType(baseType, dtm) : null;
-        }
+    // Scan by simple name: the program's own data type manager first,
+    // then Ghidra's built-in primitives (int, uint, dword, qword, ulong,
+    // byte, ...). Built-ins usually aren't materialized in the
+    // program's own DTM until something references them, so scanning
+    // only currentProgram.getDataTypeManager() misses most of the
+    // ordinary C type names a user would type.
+    DataType found = findDataTypeByName(dtm, trimmed, trimmed);
+    if (found == null) {
+      found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), trimmed, trimmed);
+    }
+    if (found != null) return found.clone(dtm);
 
-        if (trimmed.indexOf('[') >= 0 || trimmed.indexOf(']') >= 0) {
-            return resolveArray(trimmed, dtm, depth);
-        }
+    // Ghidra's default undefined type is not enumerated by its built-in
+    // manager until another type or a Program references it.
+    if (trimmed.equals(DataType.DEFAULT.getName())) return DataType.DEFAULT.clone(dtm);
 
-        // A full path never falls back to another category or an alias.
-        // Builtins may still be addressed by their exact path (e.g. /int).
-        if (trimmed.startsWith("/")) {
-            return resolveDataTypePath(trimmed);
-        }
-
-        // Scan by simple name: the program's own data type manager first,
-        // then Ghidra's built-in primitives (int, uint, dword, qword, ulong,
-        // byte, ...). Built-ins usually aren't materialized in the
-        // program's own DTM until something references them, so scanning
-        // only currentProgram.getDataTypeManager() misses most of the
-        // ordinary C type names a user would type.
-        DataType found = findDataTypeByName(dtm, trimmed, trimmed);
-        if (found == null) {
-            found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), trimmed, trimmed);
-        }
-        if (found != null) return found.clone(dtm);
-
-        // Ghidra's default undefined type is not enumerated by its built-in
-        // manager until another type or a Program references it.
-        if (trimmed.equals(DataType.DEFAULT.getName())) return DataType.DEFAULT.clone(dtm);
-
-        // Fixed-width aliases must not inherit the target ABI's int/long sizes
-        // or a program type shadowing a canonical primitive name.
-        DataType fixed = switch (trimmed) {
-            case "uint8_t", "u8" -> ByteDataType.dataType;
-            case "int8_t", "s8" -> SignedByteDataType.dataType;
-            case "uint16_t", "u16" -> WordDataType.dataType;
-            case "int16_t", "s16" -> SignedWordDataType.dataType;
-            case "uint32_t", "u32" -> DWordDataType.dataType;
-            case "int32_t", "s32" -> SignedDWordDataType.dataType;
-            case "uint64_t", "u64" -> QWordDataType.dataType;
-            case "int64_t", "s64" -> SignedQWordDataType.dataType;
-            default -> null;
+    // Fixed-width aliases must not inherit the target ABI's int/long sizes
+    // or a program type shadowing a canonical primitive name.
+    DataType fixed =
+        switch (trimmed) {
+          case "uint8_t", "u8" -> ByteDataType.dataType;
+          case "int8_t", "s8" -> SignedByteDataType.dataType;
+          case "uint16_t", "u16" -> WordDataType.dataType;
+          case "int16_t", "s16" -> SignedWordDataType.dataType;
+          case "uint32_t", "u32" -> DWordDataType.dataType;
+          case "int32_t", "s32" -> SignedDWordDataType.dataType;
+          case "uint64_t", "u64" -> QWordDataType.dataType;
+          case "int64_t", "s64" -> SignedQWordDataType.dataType;
+          default -> null;
         };
-        if (fixed != null) return fixed.clone(dtm);
+    if (fixed != null) return fixed.clone(dtm);
 
-        // Retry ordinary C spellings under their canonical ABI-dependent name.
-        String canonical = TYPE_NAME_ALIASES.get(trimmed);
-        if (canonical != null) {
-            found = findDataTypeByName(dtm, canonical, trimmed);
-            if (found == null) {
-                found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), canonical, trimmed);
-            }
-        }
-        return found != null ? found.clone(dtm) : null;
+    // Retry ordinary C spellings under their canonical ABI-dependent name.
+    String canonical = TYPE_NAME_ALIASES.get(trimmed);
+    if (canonical != null) {
+      found = findDataTypeByName(dtm, canonical, trimmed);
+      if (found == null) {
+        found = findDataTypeByName(BuiltInDataTypeManager.getDataTypeManager(), canonical, trimmed);
+      }
+    }
+    return found != null ? found.clone(dtm) : null;
+  }
+
+  /** Exact registered path lookup, without interpreting pointer/array expressions. */
+  public DataType resolveDataTypePath(String path) {
+    checkCancelled();
+    DataTypeManager dtm = session.program().getDataTypeManager();
+    DataType found = dtm.getDataType(path);
+    if (found == null) {
+      found = BuiltInDataTypeManager.getDataTypeManager().getDataType(path);
+    }
+    return found != null ? found.clone(dtm) : null;
+  }
+
+  private DataType resolveArray(String expression, DataTypeManager dtm, int depth) {
+    int firstDimension = expression.indexOf('[');
+    if (firstDimension <= 0 || expression.substring(0, firstDimension).indexOf(']') >= 0) {
+      throw invalidArray(expression, "expected a base type followed by [count]");
     }
 
-    /** Exact registered path lookup, without interpreting pointer/array expressions. */
-    public DataType resolveDataTypePath(String path) {
-        checkCancelled();
-        DataTypeManager dtm = session.program().getDataTypeManager();
-        DataType found = dtm.getDataType(path);
-        if (found == null) {
-            found = BuiltInDataTypeManager.getDataTypeManager().getDataType(path);
-        }
-        return found != null ? found.clone(dtm) : null;
+    String dimensions = expression.substring(firstDimension);
+    Matcher matcher = ARRAY_DIMENSION.matcher(dimensions);
+    List<Integer> counts = new ArrayList<>();
+    int end = 0;
+    while (matcher.find()) {
+      checkCancelled();
+      if (matcher.start() != end) break;
+      int count;
+      try {
+        count = Integer.parseInt(matcher.group(1));
+      } catch (NumberFormatException e) {
+        throw invalidArray(expression, "array count must be between 1 and " + Integer.MAX_VALUE);
+      }
+      if (count <= 0) {
+        throw invalidArray(expression, "array count must be positive");
+      }
+      counts.add(count);
+      requireExpressionDepth(depth, counts.size(), expression);
+      end = matcher.end();
+    }
+    if (end != dimensions.length() || counts.isEmpty()) {
+      throw invalidArray(expression, "expected positive decimal array counts, such as byte[16]");
     }
 
-    private DataType resolveArray(String expression, DataTypeManager dtm, int depth) {
-        int firstDimension = expression.indexOf('[');
-        if (firstDimension <= 0 || expression.substring(0, firstDimension).indexOf(']') >= 0) {
-            throw invalidArray(expression, "expected a base type followed by [count]");
-        }
-
-        String dimensions = expression.substring(firstDimension);
-        Matcher matcher = ARRAY_DIMENSION.matcher(dimensions);
-        List<Integer> counts = new ArrayList<>();
-        int end = 0;
-        while (matcher.find()) {
-            checkCancelled();
-            if (matcher.start() != end) break;
-            int count;
-            try {
-                count = Integer.parseInt(matcher.group(1));
-            } catch (NumberFormatException e) {
-                throw invalidArray(expression, "array count must be between 1 and " + Integer.MAX_VALUE);
-            }
-            if (count <= 0) {
-                throw invalidArray(expression, "array count must be positive");
-            }
-            counts.add(count);
-            requireExpressionDepth(depth, counts.size(), expression);
-            end = matcher.end();
-        }
-        if (end != dimensions.length() || counts.isEmpty()) {
-            throw invalidArray(expression, "expected positive decimal array counts, such as byte[16]");
-        }
-
-        DataType element = resolveDataType(expression.substring(0, firstDimension), depth + counts.size());
-        if (element == null) return null;
-        // C dimensions are outermost first: byte[2][3] is two arrays of three
-        // bytes. Construct from the final dimension inward to preserve shape.
-        for (int i = counts.size() - 1; i >= 0; i--) {
-            checkCancelled();
-            int elementLength = element.getAlignedLength();
-            if (element.isZeroLength() || element.getLength() <= 0 || elementLength <= 0) {
-                throw invalidArray(expression, "array element type must have a fixed positive size");
-            }
-            if ((long) elementLength * counts.get(i) > Integer.MAX_VALUE) {
-                throw invalidArray(expression, "array byte length exceeds " + Integer.MAX_VALUE);
-            }
-            // These are detached objects: resolving a type expression never
-            // registers a datatype or mutates the program database.
-            element = new ArrayDataType(element, counts.get(i), -1, dtm);
-        }
-        return element;
+    DataType element =
+        resolveDataType(expression.substring(0, firstDimension), depth + counts.size());
+    if (element == null) return null;
+    // C dimensions are outermost first: byte[2][3] is two arrays of three
+    // bytes. Construct from the final dimension inward to preserve shape.
+    for (int i = counts.size() - 1; i >= 0; i--) {
+      checkCancelled();
+      int elementLength = element.getAlignedLength();
+      if (element.isZeroLength() || element.getLength() <= 0 || elementLength <= 0) {
+        throw invalidArray(expression, "array element type must have a fixed positive size");
+      }
+      if ((long) elementLength * counts.get(i) > Integer.MAX_VALUE) {
+        throw invalidArray(expression, "array byte length exceeds " + Integer.MAX_VALUE);
+      }
+      // These are detached objects: resolving a type expression never
+      // registers a datatype or mutates the program database.
+      element = new ArrayDataType(element, counts.get(i), -1, dtm);
     }
+    return element;
+  }
 
-    private TypeResolutionException invalidArray(String expression, String reason) {
-        JsonObject detail = new JsonObject();
-        detail.addProperty("type_name", expression);
-        return new TypeResolutionException("Invalid array type '" + expression + "': " + reason, detail);
-    }
+  private TypeResolutionException invalidArray(String expression, String reason) {
+    JsonObject detail = new JsonObject();
+    detail.addProperty("type_name", expression);
+    return new TypeResolutionException(
+        "Invalid array type '" + expression + "': " + reason, detail);
+  }
 
-    private void requireExpressionDepth(int depth, int additional, String expression) {
-        if (depth + additional <= MAX_EXPRESSION_DEPTH) return;
-        JsonObject detail = new JsonObject();
-        detail.addProperty("type_name", expression);
-        throw new TypeResolutionException("Type expression nesting exceeds " + MAX_EXPRESSION_DEPTH, detail);
-    }
+  private void requireExpressionDepth(int depth, int additional, String expression) {
+    if (depth + additional <= MAX_EXPRESSION_DEPTH) return;
+    JsonObject detail = new JsonObject();
+    detail.addProperty("type_name", expression);
+    throw new TypeResolutionException(
+        "Type expression nesting exceeds " + MAX_EXPRESSION_DEPTH, detail);
+  }
 
-    private DataType findDataTypeByName(DataTypeManager mgr, String name, String requestedName) {
-        Map<String, DataType> matches = new TreeMap<>();
-        Iterator<DataType> iter = mgr.getAllDataTypes();
-        while (iter.hasNext()) {
-            checkCancelled();
-            DataType candidate = iter.next();
-            if (candidate.getName().equals(name)) {
-                matches.put(candidate.getPathName(), candidate);
-            }
-        }
-        if (matches.size() > 1) {
-            JsonArray candidates = new JsonArray();
-            for (String path : matches.keySet()) candidates.add(path);
-            JsonObject detail = new JsonObject();
-            detail.addProperty("type_name", requestedName);
-            detail.add("candidates", candidates);
-            throw new TypeResolutionException("Ambiguous type name '" + requestedName
-                + "'. Use a full path: " + String.join(", ", matches.keySet()), detail);
-        }
-        return matches.isEmpty() ? null : matches.values().iterator().next();
+  private DataType findDataTypeByName(DataTypeManager mgr, String name, String requestedName) {
+    Map<String, DataType> matches = new TreeMap<>();
+    Iterator<DataType> iter = mgr.getAllDataTypes();
+    while (iter.hasNext()) {
+      checkCancelled();
+      DataType candidate = iter.next();
+      if (candidate.getName().equals(name)) {
+        matches.put(candidate.getPathName(), candidate);
+      }
     }
+    if (matches.size() > 1) {
+      JsonArray candidates = new JsonArray();
+      for (String path : matches.keySet()) candidates.add(path);
+      JsonObject detail = new JsonObject();
+      detail.addProperty("type_name", requestedName);
+      detail.add("candidates", candidates);
+      throw new TypeResolutionException(
+          "Ambiguous type name '"
+              + requestedName
+              + "'. Use a full path: "
+              + String.join(", ", matches.keySet()),
+          detail);
+    }
+    return matches.isEmpty() ? null : matches.values().iterator().next();
+  }
 
-    private void checkCancelled() {
-        if (session.monitor().isCancelled()) throw new CancellationException("Command cancelled");
-    }
+  private void checkCancelled() {
+    if (session.monitor().isCancelled()) throw new CancellationException("Command cancelled");
+  }
 }

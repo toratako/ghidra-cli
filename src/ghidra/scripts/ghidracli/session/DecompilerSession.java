@@ -10,56 +10,62 @@ import ghidra.util.task.TaskMonitor;
 
 /** One lazy native decompiler, owned by ProgramSession on the program thread. */
 final class DecompilerSession {
-    private DecompInterface decompiler;
-    private long modification;
+  private DecompInterface decompiler;
+  private long modification;
 
-    DecompileResults decompile(Program program, Function function, int timeoutSecs,
-            TaskMonitor monitor, DecompileOptions options) throws CancelledException {
-        boolean completed = false;
-        try {
-            monitor.checkCancelled();
-            if (decompiler != null && (decompiler.getProgram() != program
-                    || modification != program.getModificationNumber()
-                    || decompiler.getOptions().isPredicate() != options.isPredicate())) {
-                close();
-            }
-            if (decompiler == null) {
-                decompiler = new DecompInterface();
-                // Predicate is the only request override; all other options are
-                // fresh native defaults. Effective values define session reuse.
-                decompiler.setOptions(options);
-                if (!decompiler.openProgram(program)) {
-                    throw new IllegalStateException("Could not open program in decompiler: "
-                        + decompiler.getLastMessage());
-                }
-                // Includes changes made by scripts, analysis and rollback, even
-                // after saving clears Program.isChanged(). Reopening also refreshes
-                // language/address-space state that flushCache alone cannot fix.
-                modification = program.getModificationNumber();
-            }
-            // Results belong to this call only. Ghidra flushes native function and
-            // symbol data after decompilation; retain the process and initialization.
-            DecompileResults results = decompiler.decompileFunction(function, timeoutSecs, monitor);
-            monitor.checkCancelled();
-            completed = results.decompileCompleted();
-            return results;
-        } finally {
-            // Failed initialization, native failures and cancellation must not
-            // retain a broken process or affect a subsequent request's monitor.
-            if (!completed) close();
+  DecompileResults decompile(
+      Program program,
+      Function function,
+      int timeoutSecs,
+      TaskMonitor monitor,
+      DecompileOptions options)
+      throws CancelledException {
+    boolean completed = false;
+    try {
+      monitor.checkCancelled();
+      if (decompiler != null
+          && (decompiler.getProgram() != program
+              || modification != program.getModificationNumber()
+              || decompiler.getOptions().isPredicate() != options.isPredicate())) {
+        close();
+      }
+      if (decompiler == null) {
+        decompiler = new DecompInterface();
+        // Predicate is the only request override; all other options are
+        // fresh native defaults. Effective values define session reuse.
+        decompiler.setOptions(options);
+        if (!decompiler.openProgram(program)) {
+          throw new IllegalStateException(
+              "Could not open program in decompiler: " + decompiler.getLastMessage());
         }
+        // Includes changes made by scripts, analysis and rollback, even
+        // after saving clears Program.isChanged(). Reopening also refreshes
+        // language/address-space state that flushCache alone cannot fix.
+        modification = program.getModificationNumber();
+      }
+      // Results belong to this call only. Ghidra flushes native function and
+      // symbol data after decompilation; retain the process and initialization.
+      DecompileResults results = decompiler.decompileFunction(function, timeoutSecs, monitor);
+      monitor.checkCancelled();
+      completed = results.decompileCompleted();
+      return results;
+    } finally {
+      // Failed initialization, native failures and cancellation must not
+      // retain a broken process or affect a subsequent request's monitor.
+      if (!completed) close();
     }
+  }
 
-    void close() {
-        if (decompiler == null) return;
-        DecompInterface closing = decompiler;
-        decompiler = null;
-        // dispose() alone defers closing to Ghidra's disposer thread. Detach
-        // synchronously before ProgramSession releases the Program consumer.
-        try {
-            closing.closeProgram();
-        } finally {
-            closing.dispose();
-        }
+  void close() {
+    if (decompiler == null) return;
+    DecompInterface closing = decompiler;
+    decompiler = null;
+    // dispose() alone defers closing to Ghidra's disposer thread. Detach
+    // synchronously before ProgramSession releases the Program consumer.
+    try {
+      closing.closeProgram();
+    } finally {
+      closing.dispose();
     }
+  }
 }

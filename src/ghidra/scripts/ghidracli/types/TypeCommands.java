@@ -1,5 +1,9 @@
 package ghidracli.types;
 
+import static ghidracli.protocol.JsonProtocol.errorResult;
+import static ghidracli.protocol.JsonProtocol.getArgString;
+import static ghidracli.protocol.JsonProtocol.getNonnegativeIntArg;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -27,515 +31,566 @@ import ghidracli.session.ProgramSession;
 import java.util.Iterator;
 import java.util.Locale;
 
-import static ghidracli.protocol.JsonProtocol.errorResult;
-import static ghidracli.protocol.JsonProtocol.getArgString;
-import static ghidracli.protocol.JsonProtocol.getNonnegativeIntArg;
-
 public final class TypeCommands {
-    private static final int MAX_COMPONENTS = 100_000;
-    private final ProgramSession session;
-    private final TypeResolver typeResolver;
+  private static final int MAX_COMPONENTS = 100_000;
+  private final ProgramSession session;
+  private final TypeResolver typeResolver;
 
-    public TypeCommands(ProgramSession session, TypeResolver typeResolver) {
-        this.session = session;
-        this.typeResolver = typeResolver;
+  public TypeCommands(ProgramSession session, TypeResolver typeResolver) {
+    this.session = session;
+    this.typeResolver = typeResolver;
+  }
+
+  public JsonObject handleTypeList(JsonObject args)
+      throws ghidra.util.exception.CancelledException {
+    if (session.program() == null) return errorResult("No program loaded");
+
+    ListQuery query = new ListQuery(session, args);
+    DataTypeManager dtm = session.program().getDataTypeManager();
+    JsonArray types = new JsonArray();
+
+    Iterator<DataType> dtIter = dtm.getAllDataTypes();
+    while (dtIter.hasNext()) {
+      if (query.isFull()) break;
+      DataType dt = dtIter.next();
+
+      if (!query.include(dt.getName())) {
+        continue;
+      }
+
+      JsonObject typeData = new JsonObject();
+      typeData.addProperty("name", dt.getName());
+      typeData.addProperty("path", dt.getPathName());
+      typeData.addProperty("category", dt.getCategoryPath().toString());
+      typeData.addProperty(
+          "size",
+          dt instanceof Structure
+              ? StructureFields.length((Structure) dt)
+              : dt instanceof Union ? UnionFields.length((Union) dt) : dt.getLength());
+      String kind;
+      if (dt instanceof Structure) kind = "struct";
+      else if (dt instanceof Union) kind = "union";
+      else if (dt instanceof ghidra.program.model.data.Enum) kind = "enum";
+      else if (dt instanceof TypeDef) kind = "typedef";
+      else if (dt instanceof FunctionDefinition) kind = "functiondef";
+      else if (dt instanceof Pointer) kind = "pointer";
+      else if (dt instanceof Array) kind = "array";
+      else kind = "other";
+      typeData.addProperty("kind", kind);
+      types.add(typeData);
+      query.record();
     }
 
-    public JsonObject handleTypeList(JsonObject args) throws ghidra.util.exception.CancelledException {
-        if (session.program() == null) return errorResult("No program loaded");
+    JsonObject result = new JsonObject();
+    result.add("types", types);
+    result.addProperty("count", types.size());
+    return result;
+  }
 
-        ListQuery query = new ListQuery(session, args);
-        DataTypeManager dtm = session.program().getDataTypeManager();
-        JsonArray types = new JsonArray();
+  public JsonObject handleTypeGet(JsonObject args) throws ghidra.util.exception.CancelledException {
+    if (session.program() == null) return errorResult("No program loaded");
 
-        Iterator<DataType> dtIter = dtm.getAllDataTypes();
-        while (dtIter.hasNext()) {
-            if (query.isFull()) break;
-            DataType dt = dtIter.next();
+    String typeName = getArgString(args, "name");
+    if (typeName == null) return errorResult("Type name required");
 
-            if (!query.include(dt.getName())) {
-                continue;
-            }
-
-            JsonObject typeData = new JsonObject();
-            typeData.addProperty("name", dt.getName());
-            typeData.addProperty("path", dt.getPathName());
-            typeData.addProperty("category", dt.getCategoryPath().toString());
-            typeData.addProperty("size", dt instanceof Structure ? StructureFields.length((Structure) dt)
-                : dt instanceof Union ? UnionFields.length((Union) dt) : dt.getLength());
-            String kind;
-            if (dt instanceof Structure) kind = "struct";
-            else if (dt instanceof Union) kind = "union";
-            else if (dt instanceof ghidra.program.model.data.Enum) kind = "enum";
-            else if (dt instanceof TypeDef) kind = "typedef";
-            else if (dt instanceof FunctionDefinition) kind = "functiondef";
-            else if (dt instanceof Pointer) kind = "pointer";
-            else if (dt instanceof Array) kind = "array";
-            else kind = "other";
-            typeData.addProperty("kind", kind);
-            types.add(typeData);
-            query.record();
-        }
-
-        JsonObject result = new JsonObject();
-        result.add("types", types);
-        result.addProperty("count", types.size());
-        return result;
+    DataType dataType = typeResolver.resolveDataType(typeName);
+    if (dataType == null) {
+      return errorResult("Type not found: " + typeName);
     }
 
-    public JsonObject handleTypeGet(JsonObject args) throws ghidra.util.exception.CancelledException {
-        if (session.program() == null) return errorResult("No program loaded");
+    JsonObject typeInfo = new JsonObject();
+    typeInfo.addProperty("name", dataType.getName());
+    typeInfo.addProperty("path", dataType.getPathName());
+    typeInfo.addProperty("category", dataType.getCategoryPath().toString());
+    typeInfo.addProperty("size", dataType.getLength());
+    typeInfo.addProperty("description", dataType.getDescription());
+    addIdentity(typeInfo, dataType);
 
-        String typeName = getArgString(args, "name");
-        if (typeName == null) return errorResult("Type name required");
-
-        DataType dataType = typeResolver.resolveDataType(typeName);
-        if (dataType == null) {
-            return errorResult("Type not found: " + typeName);
-        }
-
-        JsonObject typeInfo = new JsonObject();
-        typeInfo.addProperty("name", dataType.getName());
-        typeInfo.addProperty("path", dataType.getPathName());
-        typeInfo.addProperty("category", dataType.getCategoryPath().toString());
-        typeInfo.addProperty("size", dataType.getLength());
-        typeInfo.addProperty("description", dataType.getDescription());
-        addIdentity(typeInfo, dataType);
-
-        if (dataType instanceof Structure) {
-            typeInfo.addProperty("kind", "struct");
-            Structure struct = (Structure) dataType;
-            typeInfo.addProperty("size", StructureFields.length(struct));
-            typeInfo.addProperty("packing_enabled", struct.isPackingEnabled());
-            typeInfo.add("components", describeComponents(struct));
-        } else if (dataType instanceof Union) {
-            typeInfo.addProperty("kind", "union");
-            Union union = (Union) dataType;
-            typeInfo.addProperty("size", UnionFields.length(union));
-            typeInfo.addProperty("packing_enabled", union.isPackingEnabled());
-            typeInfo.add("components", describeComponents(union));
-        } else if (dataType instanceof ghidra.program.model.data.Enum) {
-            typeInfo.addProperty("kind", "enum");
-            ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) dataType;
-            JsonArray members = new JsonArray();
-            for (String name : enumType.getNames()) {
-                session.monitor().checkCancelled();
-                JsonObject member = new JsonObject();
-                member.addProperty("name", name);
-                member.addProperty("value", enumType.getValue(name));
-                members.add(member);
-            }
-            typeInfo.add("members", members);
-        } else if (dataType instanceof TypeDef) {
-            typeInfo.addProperty("kind", "typedef");
-            TypeDef td = (TypeDef) dataType;
-            typeInfo.addProperty("base_type", td.getDataType().getName());
-            typeInfo.addProperty("base_type_path", td.getDataType().getPathName());
-        } else if (dataType instanceof FunctionDefinition) {
-            typeInfo.addProperty("kind", "functiondef");
-            FunctionDefinition function = (FunctionDefinition) dataType;
-            typeInfo.addProperty("comment", function.getComment());
-            typeInfo.addProperty("calling_convention", function.getCallingConventionName());
-            typeInfo.addProperty("variadic", function.hasVarArgs());
-            typeInfo.addProperty("no_return", function.hasNoReturn());
-            typeInfo.add("return", describeSignatureType(function.getReturnType()));
-            JsonArray parameters = new JsonArray();
-            for (ParameterDefinition parameter : function.getArguments()) {
-                session.monitor().checkCancelled();
-                JsonObject row = describeSignatureType(parameter.getDataType());
-                row.addProperty("ordinal", parameter.getOrdinal());
-                row.addProperty("name", parameter.getName());
-                row.addProperty("comment", parameter.getComment());
-                parameters.add(row);
-            }
-            typeInfo.add("params", parameters);
-        } else if (dataType instanceof Pointer) {
-            typeInfo.addProperty("kind", "pointer");
-        } else if (dataType instanceof Array) {
-            typeInfo.addProperty("kind", "array");
-        } else {
-            typeInfo.addProperty("kind", "other");
-        }
-
-        return typeInfo;
-    }
-
-    private JsonArray describeComponents(Composite type) throws ghidra.util.exception.CancelledException {
-        int count = type.getNumComponents();
-        if (count > MAX_COMPONENTS)
-            throw new IllegalArgumentException("Type has " + count + " components; type get supports at most "
-                + MAX_COMPONENTS + ": " + type.getPathName());
+    if (dataType instanceof Structure) {
+      typeInfo.addProperty("kind", "struct");
+      Structure struct = (Structure) dataType;
+      typeInfo.addProperty("size", StructureFields.length(struct));
+      typeInfo.addProperty("packing_enabled", struct.isPackingEnabled());
+      typeInfo.add("components", describeComponents(struct));
+    } else if (dataType instanceof Union) {
+      typeInfo.addProperty("kind", "union");
+      Union union = (Union) dataType;
+      typeInfo.addProperty("size", UnionFields.length(union));
+      typeInfo.addProperty("packing_enabled", union.isPackingEnabled());
+      typeInfo.add("components", describeComponents(union));
+    } else if (dataType instanceof ghidra.program.model.data.Enum) {
+      typeInfo.addProperty("kind", "enum");
+      ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) dataType;
+      JsonArray members = new JsonArray();
+      for (String name : enumType.getNames()) {
         session.monitor().checkCancelled();
-        JsonArray components = new JsonArray();
-        for (DataTypeComponent component : type.getComponents()) {
-            session.monitor().checkCancelled();
-            components.add(StructureFields.describe(component));
-        }
-        return components;
+        JsonObject member = new JsonObject();
+        member.addProperty("name", name);
+        member.addProperty("value", enumType.getValue(name));
+        members.add(member);
+      }
+      typeInfo.add("members", members);
+    } else if (dataType instanceof TypeDef) {
+      typeInfo.addProperty("kind", "typedef");
+      TypeDef td = (TypeDef) dataType;
+      typeInfo.addProperty("base_type", td.getDataType().getName());
+      typeInfo.addProperty("base_type_path", td.getDataType().getPathName());
+    } else if (dataType instanceof FunctionDefinition) {
+      typeInfo.addProperty("kind", "functiondef");
+      FunctionDefinition function = (FunctionDefinition) dataType;
+      typeInfo.addProperty("comment", function.getComment());
+      typeInfo.addProperty("calling_convention", function.getCallingConventionName());
+      typeInfo.addProperty("variadic", function.hasVarArgs());
+      typeInfo.addProperty("no_return", function.hasNoReturn());
+      typeInfo.add("return", describeSignatureType(function.getReturnType()));
+      JsonArray parameters = new JsonArray();
+      for (ParameterDefinition parameter : function.getArguments()) {
+        session.monitor().checkCancelled();
+        JsonObject row = describeSignatureType(parameter.getDataType());
+        row.addProperty("ordinal", parameter.getOrdinal());
+        row.addProperty("name", parameter.getName());
+        row.addProperty("comment", parameter.getComment());
+        parameters.add(row);
+      }
+      typeInfo.add("params", parameters);
+    } else if (dataType instanceof Pointer) {
+      typeInfo.addProperty("kind", "pointer");
+    } else if (dataType instanceof Array) {
+      typeInfo.addProperty("kind", "array");
+    } else {
+      typeInfo.addProperty("kind", "other");
     }
 
-    private static JsonObject describeSignatureType(DataType type) {
-        JsonObject result = new JsonObject();
-        result.addProperty("type", type.getName());
-        result.addProperty("type_path", type.getPathName());
-        result.addProperty("size", type.getLength());
-        return result;
+    return typeInfo;
+  }
+
+  private JsonArray describeComponents(Composite type)
+      throws ghidra.util.exception.CancelledException {
+    int count = type.getNumComponents();
+    if (count > MAX_COMPONENTS)
+      throw new IllegalArgumentException(
+          "Type has "
+              + count
+              + " components; type get supports at most "
+              + MAX_COMPONENTS
+              + ": "
+              + type.getPathName());
+    session.monitor().checkCancelled();
+    JsonArray components = new JsonArray();
+    for (DataTypeComponent component : type.getComponents()) {
+      session.monitor().checkCancelled();
+      components.add(StructureFields.describe(component));
+    }
+    return components;
+  }
+
+  private static JsonObject describeSignatureType(DataType type) {
+    JsonObject result = new JsonObject();
+    result.addProperty("type", type.getName());
+    result.addProperty("type_path", type.getPathName());
+    result.addProperty("size", type.getLength());
+    return result;
+  }
+
+  private static void addIdentity(JsonObject result, DataType type) {
+    result.addProperty(
+        "universal_id", type.getUniversalID() == null ? null : type.getUniversalID().toString());
+    SourceArchive archive = type.getSourceArchive();
+    if (archive == null) {
+      result.add("source_archive", JsonNull.INSTANCE);
+    } else {
+      JsonObject source = new JsonObject();
+      source.addProperty(
+          "id",
+          archive.getSourceArchiveID() == null ? null : archive.getSourceArchiveID().toString());
+      source.addProperty("name", archive.getName());
+      source.addProperty("kind", archive.getArchiveType().name().toLowerCase(Locale.ROOT));
+      result.add("source_archive", source);
+    }
+  }
+
+  public JsonObject handleTypeCreate(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+
+    String typeName = getArgString(args, "definition");
+    if (typeName == null) return errorResult("Type name required");
+
+    // This only ever creates an empty struct named `typeName` -- it does
+    // NOT parse a C-style struct body. Reject anything that isn't a bare
+    // identifier instead of silently creating a type literally named
+    // after the whole (unparsed) string, e.g. `struct Foo {}` -- that
+    // used to succeed and leave a garbage type behind with no error.
+    if (!typeName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+      return errorResult(
+          "Invalid type name: '"
+              + typeName
+              + "'. `type create struct` takes a "
+              + "bare identifier and always creates an empty struct; build fields afterward "
+              + "with `type field append`. It does not parse a C-style struct definition.");
     }
 
-    private static void addIdentity(JsonObject result, DataType type) {
-        result.addProperty("universal_id", type.getUniversalID() == null ? null : type.getUniversalID().toString());
-        SourceArchive archive = type.getSourceArchive();
-        if (archive == null) {
-            result.add("source_archive", JsonNull.INSTANCE);
-        } else {
-            JsonObject source = new JsonObject();
-            source.addProperty("id", archive.getSourceArchiveID() == null ? null : archive.getSourceArchiveID().toString());
-            source.addProperty("name", archive.getName());
-            source.addProperty("kind", archive.getArchiveType().name().toLowerCase(Locale.ROOT));
-            result.add("source_archive", source);
-        }
+    try {
+      DataTypeManager dtm = session.program().getDataTypeManager();
+      StructureDataType newStruct = new StructureDataType(typeName, 0);
+      DataType registered = dtm.addDataType(newStruct, null);
+
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "created");
+      result.addProperty("name", registered.getName());
+      result.addProperty("path", registered.getPathName());
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to create type: " + e.getMessage());
     }
+  }
 
-    public JsonObject handleTypeCreate(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-
-        String typeName = getArgString(args, "definition");
-        if (typeName == null) return errorResult("Type name required");
-
-        // This only ever creates an empty struct named `typeName` -- it does
-        // NOT parse a C-style struct body. Reject anything that isn't a bare
-        // identifier instead of silently creating a type literally named
-        // after the whole (unparsed) string, e.g. `struct Foo {}` -- that
-        // used to succeed and leave a garbage type behind with no error.
-        if (!typeName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
-            return errorResult("Invalid type name: '" + typeName + "'. `type create struct` takes a "
-                + "bare identifier and always creates an empty struct; build fields afterward "
-                + "with `type field append`. It does not parse a C-style struct definition.");
-        }
-
-        try {
-            DataTypeManager dtm = session.program().getDataTypeManager();
-            StructureDataType newStruct = new StructureDataType(typeName, 0);
-            DataType registered = dtm.addDataType(newStruct, null);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "created");
-            result.addProperty("name", registered.getName());
-            result.addProperty("path", registered.getPathName());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to create type: " + e.getMessage());
-        }
+  public JsonObject handleTypeCreateUnion(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String name = getArgString(args, "name");
+    if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_]*"))
+      return errorResult(
+          "Union name must be a bare identifier; use type import-c for C declarations");
+    try {
+      DataTypeManager dtm = session.program().getDataTypeManager();
+      DataType registered =
+          dtm.addDataType(
+              new UnionDataType(ghidra.program.model.data.CategoryPath.ROOT, name, dtm), null);
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "created");
+      result.addProperty("name", registered.getName());
+      result.addProperty("path", registered.getPathName());
+      result.addProperty("kind", "union");
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to create union: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeCreateUnion(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String name = getArgString(args, "name");
-        if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_]*"))
-            return errorResult("Union name must be a bare identifier; use type import-c for C declarations");
-        try {
-            DataTypeManager dtm = session.program().getDataTypeManager();
-            DataType registered = dtm.addDataType(
-                new UnionDataType(ghidra.program.model.data.CategoryPath.ROOT, name, dtm), null);
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "created");
-            result.addProperty("name", registered.getName());
-            result.addProperty("path", registered.getPathName());
-            result.addProperty("kind", "union");
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to create union: " + e.getMessage(), e);
-        }
+  public JsonObject handleTypeDelete(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String typeName = getArgString(args, "name");
+    if (typeName == null || typeName.isEmpty()) return errorResult("Type name required");
+
+    try {
+      DataType dataType = typeResolver.resolveRegisteredDataType(typeName);
+      if (dataType == null) return errorResult("Type not found: " + typeName);
+
+      String fullPath = dataType.getPathName();
+      DataTypeManager dtm = session.program().getDataTypeManager();
+      boolean removed = dtm.remove(dataType, session.monitor());
+      if (!removed) {
+        return errorResult("Failed to remove type: " + typeName + " (may be in use or built-in)");
+      }
+
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "deleted");
+      result.addProperty("name", typeName);
+      result.addProperty("path", fullPath);
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to delete type: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeDelete(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String typeName = getArgString(args, "name");
-        if (typeName == null || typeName.isEmpty()) return errorResult("Type name required");
+  public JsonObject handleTypeRename(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String oldName = getArgString(args, "old_name");
+    String newName = getArgString(args, "new_name");
+    if (oldName == null || oldName.isEmpty()) return errorResult("Old type name required");
+    if (newName == null || newName.isEmpty()) return errorResult("New type name required");
 
-        try {
-            DataType dataType = typeResolver.resolveRegisteredDataType(typeName);
-            if (dataType == null) return errorResult("Type not found: " + typeName);
+    try {
+      DataType dataType = typeResolver.resolveDataType(oldName);
+      if (dataType == null) return errorResult("Type not found: " + oldName);
 
-            String fullPath = dataType.getPathName();
-            DataTypeManager dtm = session.program().getDataTypeManager();
-            boolean removed = dtm.remove(dataType, session.monitor());
-            if (!removed) {
-                return errorResult("Failed to remove type: " + typeName + " (may be in use or built-in)");
-            }
+      dataType.setName(newName);
+      if (!newName.equals(dataType.getName()))
+        throw new IllegalArgumentException("Type cannot be renamed: " + oldName);
 
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "deleted");
-            result.addProperty("name", typeName);
-            result.addProperty("path", fullPath);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to delete type: " + e.getMessage(), e);
-        }
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "renamed");
+      result.addProperty("old_name", oldName);
+      result.addProperty("new_name", newName);
+      result.addProperty("path", dataType.getPathName());
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to rename type: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeRename(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String oldName = getArgString(args, "old_name");
-        String newName = getArgString(args, "new_name");
-        if (oldName == null || oldName.isEmpty()) return errorResult("Old type name required");
-        if (newName == null || newName.isEmpty()) return errorResult("New type name required");
+  public JsonObject handleTypeCreateEnum(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String name = getArgString(args, "name");
+    JsonElement members = args.get("members");
+    int size = getNonnegativeIntArg(args, "size", 4);
+    if (name == null
+        || members == null
+        || !members.isJsonArray()
+        || members.getAsJsonArray().size() == 0)
+      return errorResult("name and nonempty members array required");
 
-        try {
-            DataType dataType = typeResolver.resolveDataType(oldName);
-            if (dataType == null) return errorResult("Type not found: " + oldName);
+    if (size != 1 && size != 2 && size != 4 && size != 8)
+      return errorResult("Enum size must be 1, 2, 4, or 8");
 
-            dataType.setName(newName);
-            if (!newName.equals(dataType.getName()))
-                throw new IllegalArgumentException("Type cannot be renamed: " + oldName);
+    try {
+      DataTypeManager dtm = session.program().getDataTypeManager();
+      EnumDataType enumDt = new EnumDataType(name, size);
+      for (JsonElement element : members.getAsJsonArray()) {
+        JsonObject member = element.getAsJsonObject();
+        String memberName = getArgString(member, "name");
+        String memberValue = getArgString(member, "value");
+        if (memberName == null || memberName.trim().isEmpty() || memberValue == null)
+          throw new IllegalArgumentException("Each enum member requires a name and value");
+        long value = IntegerLiteral.parse(memberValue.trim()).longValueExact();
+        enumDt.add(memberName.trim(), value);
+      }
+      DataType registered = dtm.addDataType(enumDt, null);
 
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "renamed");
-            result.addProperty("old_name", oldName);
-            result.addProperty("new_name", newName);
-            result.addProperty("path", dataType.getPathName());
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to rename type: " + e.getMessage(), e);
-        }
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "created");
+      result.addProperty("name", registered.getName());
+      result.addProperty("path", registered.getPathName());
+      result.addProperty("kind", "enum");
+      result.addProperty("size", size);
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to create enum: " + e.getMessage());
     }
+  }
 
-    public JsonObject handleTypeCreateEnum(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String name = getArgString(args, "name");
-        JsonElement members = args.get("members");
-        int size = getNonnegativeIntArg(args, "size", 4);
-        if (name == null || members == null || !members.isJsonArray()
-                || members.getAsJsonArray().size() == 0)
-            return errorResult("name and nonempty members array required");
+  public JsonObject handleTypeTypedef(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String name = getArgString(args, "name");
+    String baseTypeName = getArgString(args, "base_type");
+    if (name == null || baseTypeName == null) return errorResult("name and base_type required");
 
-        if (size != 1 && size != 2 && size != 4 && size != 8)
-            return errorResult("Enum size must be 1, 2, 4, or 8");
+    try {
+      DataType baseType = typeResolver.resolveDataType(baseTypeName);
+      if (baseType == null) return errorResult("Base type not found: " + baseTypeName);
 
-        try {
-            DataTypeManager dtm = session.program().getDataTypeManager();
-            EnumDataType enumDt = new EnumDataType(name, size);
-            for (JsonElement element : members.getAsJsonArray()) {
-                JsonObject member = element.getAsJsonObject();
-                String memberName = getArgString(member, "name");
-                String memberValue = getArgString(member, "value");
-                if (memberName == null || memberName.trim().isEmpty() || memberValue == null)
-                    throw new IllegalArgumentException("Each enum member requires a name and value");
-                long value = IntegerLiteral.parse(memberValue.trim()).longValueExact();
-                enumDt.add(memberName.trim(), value);
-            }
-            DataType registered = dtm.addDataType(enumDt, null);
+      DataTypeManager dtm = session.program().getDataTypeManager();
+      TypedefDataType td = new TypedefDataType(name, baseType);
+      DataType registered = dtm.addDataType(td, null);
 
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "created");
-            result.addProperty("name", registered.getName());
-            result.addProperty("path", registered.getPathName());
-            result.addProperty("kind", "enum");
-            result.addProperty("size", size);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to create enum: " + e.getMessage());
-        }
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "created");
+      result.addProperty("name", registered.getName());
+      result.addProperty("path", registered.getPathName());
+      result.addProperty("kind", "typedef");
+      result.addProperty("base_type", baseTypeName);
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to create typedef: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeTypedef(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String name = getArgString(args, "name");
-        String baseTypeName = getArgString(args, "base_type");
-        if (name == null || baseTypeName == null) return errorResult("name and base_type required");
-
-        try {
-            DataType baseType = typeResolver.resolveDataType(baseTypeName);
-            if (baseType == null) return errorResult("Base type not found: " + baseTypeName);
-
-            DataTypeManager dtm = session.program().getDataTypeManager();
-            TypedefDataType td = new TypedefDataType(name, baseType);
-            DataType registered = dtm.addDataType(td, null);
-
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "created");
-            result.addProperty("name", registered.getName());
-            result.addProperty("path", registered.getPathName());
-            result.addProperty("kind", "typedef");
-            result.addProperty("base_type", baseTypeName);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to create typedef: " + e.getMessage(), e);
-        }
+  public JsonObject handleTypeEnumMemberDelete(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String typeName = getArgString(args, "type_name");
+    String name = getArgString(args, "member_name");
+    if (typeName == null || name == null) return errorResult("type_name and member_name required");
+    try {
+      DataType type = typeResolver.resolveRegisteredDataType(typeName);
+      if (!(type instanceof ghidra.program.model.data.Enum))
+        return errorResult(
+            type == null ? "Type not found: " + typeName : "Type is not an enum: " + typeName);
+      ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) type;
+      if (!enumType.contains(name))
+        return errorResult("Enum member not found: " + name + " in " + typeName);
+      long value = enumType.getValue(name);
+      enumType.remove(name);
+      JsonObject result = new JsonObject();
+      result.addProperty("status", "member_deleted");
+      result.addProperty("enum", enumType.getName());
+      result.addProperty("path", enumType.getPathName());
+      result.addProperty("member", name);
+      result.addProperty("value", value);
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to delete enum member: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeEnumMemberDelete(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String typeName = getArgString(args, "type_name");
-        String name = getArgString(args, "member_name");
-        if (typeName == null || name == null) return errorResult("type_name and member_name required");
-        try {
-            DataType type = typeResolver.resolveRegisteredDataType(typeName);
-            if (!(type instanceof ghidra.program.model.data.Enum))
-                return errorResult(type == null ? "Type not found: " + typeName : "Type is not an enum: " + typeName);
-            ghidra.program.model.data.Enum enumType = (ghidra.program.model.data.Enum) type;
-            if (!enumType.contains(name))
-                return errorResult("Enum member not found: " + name + " in " + typeName);
-            long value = enumType.getValue(name);
-            enumType.remove(name);
-            JsonObject result = new JsonObject();
-            result.addProperty("status", "member_deleted");
-            result.addProperty("enum", enumType.getName());
-            result.addProperty("path", enumType.getPathName());
-            result.addProperty("member", name);
-            result.addProperty("value", value);
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to delete enum member: " + e.getMessage(), e);
-        }
+  public JsonObject handleTypeFieldAppend(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String typeName = getArgString(args, "type_name");
+    String fieldName = getArgString(args, "field_name");
+    String fieldTypeName = getArgString(args, "field_type");
+    if (typeName == null || fieldName == null || fieldTypeName == null)
+      return errorResult("type_name, field_name, and field_type required");
+
+    try {
+      DataType structType = typeResolver.resolveDataType(typeName);
+      if (structType == null) return errorResult("Type not found: " + typeName);
+      if (!(structType instanceof Structure) && !(structType instanceof Union))
+        return errorResult("Type is not a struct or union: " + typeName);
+
+      DataType fieldDataType = typeResolver.resolveDataType(fieldTypeName);
+      if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
+      if (structType instanceof Union)
+        return UnionFields.append(
+            session, (Union) structType, fieldName, fieldDataType, StructureFields.size(args));
+
+      Structure struct = (Structure) structType;
+      StructureFields.validateName(struct, null, fieldName);
+      DataTypeUtilities.checkAncestry(struct, fieldDataType);
+      Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
+      Integer size = StructureFields.size(args);
+      DataTypeComponent expected;
+      if (size != null) {
+        if ((long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
+          return errorResult("Field size must fit within the structure");
+        expected = staged.add(fieldDataType, size, fieldName, null);
+        if (expected.getLength() != size)
+          return errorResult(
+              "Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
+      } else {
+        expected = staged.add(fieldDataType, fieldName, null);
+      }
+      if (!fieldName.equals(expected.getFieldName()))
+        return errorResult("Ghidra did not preserve the requested field name");
+      TypeFields.verifyComponentCount(staged);
+      // Preserve existing components and their per-field default settings.
+      int sizeBefore = StructureFields.length(struct);
+      TypeResizeCommands.PropagationSnapshot propagation =
+          new TypeResizeCommands.PropagationSnapshot(session, struct);
+      DataTypeComponent added =
+          size != null
+              ? struct.add(fieldDataType, size, fieldName, null)
+              : struct.add(fieldDataType, fieldName, null);
+      propagation.verify();
+      return TypeFields.result(
+          struct,
+          sizeBefore,
+          StructureFields.length(struct),
+          null,
+          StructureFields.describe(added),
+          "appended");
+    } catch (Exception e) {
+      return errorResult("Failed to append field: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeFieldAppend(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String typeName = getArgString(args, "type_name");
-        String fieldName = getArgString(args, "field_name");
-        String fieldTypeName = getArgString(args, "field_type");
-        if (typeName == null || fieldName == null || fieldTypeName == null)
-            return errorResult("type_name, field_name, and field_type required");
+  private Structure findStructure(JsonObject args) {
+    String name = getArgString(args, "type_name");
+    if (name == null || name.isBlank())
+      throw new IllegalArgumentException("Structure name required");
+    DataType type = typeResolver.resolveDataType(name);
+    if (type == null) throw new IllegalArgumentException("Type not found: " + name);
+    if (!(type instanceof Structure))
+      throw new IllegalArgumentException("Type is not a struct: " + name);
+    return (Structure) type;
+  }
 
-        try {
-            DataType structType = typeResolver.resolveDataType(typeName);
-            if (structType == null) return errorResult("Type not found: " + typeName);
-            if (!(structType instanceof Structure) && !(structType instanceof Union))
-                return errorResult("Type is not a struct or union: " + typeName);
-
-            DataType fieldDataType = typeResolver.resolveDataType(fieldTypeName);
-            if (fieldDataType == null) return errorResult("Field type not found: " + fieldTypeName);
-            if (structType instanceof Union)
-                return UnionFields.append(session, (Union) structType, fieldName, fieldDataType, StructureFields.size(args));
-
-            Structure struct = (Structure) structType;
-            StructureFields.validateName(struct, null, fieldName);
-            DataTypeUtilities.checkAncestry(struct, fieldDataType);
-            Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
-            Integer size = StructureFields.size(args);
-            DataTypeComponent expected;
-            if (size != null) {
-                if ((long) StructureFields.length(struct) + size > Integer.MAX_VALUE)
-                    return errorResult("Field size must fit within the structure");
-                expected = staged.add(fieldDataType, size, fieldName, null);
-                if (expected.getLength() != size)
-                    return errorResult("Ghidra cannot honor --size " + size + " for field type " + fieldTypeName);
-            } else {
-                expected = staged.add(fieldDataType, fieldName, null);
-            }
-            if (!fieldName.equals(expected.getFieldName()))
-                return errorResult("Ghidra did not preserve the requested field name");
-            TypeFields.verifyComponentCount(staged);
-            // Preserve existing components and their per-field default settings.
-            int sizeBefore = StructureFields.length(struct);
-            TypeResizeCommands.PropagationSnapshot propagation =
-                new TypeResizeCommands.PropagationSnapshot(session, struct);
-            DataTypeComponent added = size != null ? struct.add(fieldDataType, size, fieldName, null)
-                : struct.add(fieldDataType, fieldName, null);
-            propagation.verify();
-            return TypeFields.result(struct, sizeBefore, StructureFields.length(struct),
-                null, StructureFields.describe(added), "appended");
-        } catch (Exception e) {
-            return errorResult("Failed to append field: " + e.getMessage(), e);
-        }
+  public JsonObject handleTypeFieldSet(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    try {
+      String targetName = getArgString(args, "type_name");
+      if (targetName == null || targetName.isBlank())
+        return errorResult("Struct or union name required");
+      DataType target = typeResolver.resolveDataType(targetName);
+      if (target == null) return errorResult("Type not found: " + targetName);
+      if (!(target instanceof Structure) && !(target instanceof Union))
+        return errorResult("Type is not a struct or union: " + targetName);
+      String typeName = getArgString(args, "field_type");
+      DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
+      if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
+      String comment = getArgString(args, "comment");
+      Integer bitSize = BitFields.bitSize(args);
+      if (target instanceof Union) {
+        if (bitSize != null)
+          return errorResult("Bit-field layout edits require a structure with packing disabled");
+        return UnionFields.set(
+            session,
+            (Union) target,
+            TypeFields.unionOrdinal((Union) target, args),
+            getArgString(args, "field_name"),
+            type,
+            comment,
+            StructureFields.size(args));
+      }
+      Structure struct = (Structure) target;
+      TypeFields.StructureSelection selected = TypeFields.structureSelection(struct, args);
+      if (selected.field != null && selected.field.isBitFieldComponent())
+        return BitFields.set(
+            struct,
+            selected.field,
+            getArgString(args, "field_name"),
+            type,
+            comment,
+            StructureFields.size(args),
+            bitSize);
+      if (bitSize != null) return errorResult("--bit-size requires an existing bit-field");
+      StructureFields.Plan plan =
+          StructureFields.set(
+              struct,
+              selected,
+              getArgString(args, "field_name"),
+              type,
+              comment,
+              comment != null,
+              StructureFields.size(args));
+      TypeResizeCommands.PropagationSnapshot propagation =
+          plan.changesSize() ? new TypeResizeCommands.PropagationSnapshot(session, struct) : null;
+      JsonObject result = plan.apply(struct);
+      if (propagation != null) propagation.verify();
+      return result;
+    } catch (Exception e) {
+      return errorResult("Failed to set field: " + e.getMessage(), e);
     }
+  }
 
-    private Structure findStructure(JsonObject args) {
-        String name = getArgString(args, "type_name");
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("Structure name required");
-        DataType type = typeResolver.resolveDataType(name);
-        if (type == null) throw new IllegalArgumentException("Type not found: " + name);
-        if (!(type instanceof Structure)) throw new IllegalArgumentException("Type is not a struct: " + name);
-        return (Structure) type;
+  public JsonObject handleTypeFieldClear(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    try {
+      Structure struct = findStructure(args);
+      return StructureFields.clear(struct, TypeFields.structureSelection(struct, args))
+          .apply(struct);
+    } catch (Exception e) {
+      return errorResult("Failed to clear field: " + e.getMessage(), e);
     }
+  }
 
-    public JsonObject handleTypeFieldSet(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        try {
-            String targetName = getArgString(args, "type_name");
-            if (targetName == null || targetName.isBlank())
-                return errorResult("Struct or union name required");
-            DataType target = typeResolver.resolveDataType(targetName);
-            if (target == null) return errorResult("Type not found: " + targetName);
-            if (!(target instanceof Structure) && !(target instanceof Union))
-                return errorResult("Type is not a struct or union: " + targetName);
-            String typeName = getArgString(args, "field_type");
-            DataType type = typeName == null ? null : typeResolver.resolveDataType(typeName);
-            if (typeName != null && type == null) return errorResult("Field type not found: " + typeName);
-            String comment = getArgString(args, "comment");
-            Integer bitSize = BitFields.bitSize(args);
-            if (target instanceof Union) {
-                if (bitSize != null)
-                    return errorResult("Bit-field layout edits require a structure with packing disabled");
-                return UnionFields.set(session, (Union) target, TypeFields.unionOrdinal((Union) target, args),
-                    getArgString(args, "field_name"), type, comment, StructureFields.size(args));
-            }
-            Structure struct = (Structure) target;
-            TypeFields.StructureSelection selected = TypeFields.structureSelection(struct, args);
-            if (selected.field != null && selected.field.isBitFieldComponent())
-                return BitFields.set(struct, selected.field, getArgString(args, "field_name"),
-                    type, comment, StructureFields.size(args), bitSize);
-            if (bitSize != null) return errorResult("--bit-size requires an existing bit-field");
-            StructureFields.Plan plan = StructureFields.set(struct, selected,
-                getArgString(args, "field_name"), type, comment, comment != null,
-                StructureFields.size(args));
-            TypeResizeCommands.PropagationSnapshot propagation = plan.changesSize()
-                ? new TypeResizeCommands.PropagationSnapshot(session, struct) : null;
-            JsonObject result = plan.apply(struct);
-            if (propagation != null) propagation.verify();
-            return result;
-        } catch (Exception e) {
-            return errorResult("Failed to set field: " + e.getMessage(), e);
-        }
+  public JsonObject handleTypeFieldDelete(JsonObject args) {
+    if (session.program() == null) return errorResult("No program loaded");
+    String typeName = getArgString(args, "type_name");
+    if (typeName == null || typeName.isBlank()) return errorResult("Struct or union name required");
+
+    try {
+      DataType structType = typeResolver.resolveDataType(typeName);
+      if (structType == null) return errorResult("Type not found: " + typeName);
+      if (structType instanceof Union) {
+        Union union = (Union) structType;
+        return UnionFields.delete(session, union, TypeFields.unionOrdinal(union, args));
+      }
+      if (!(structType instanceof Structure))
+        return errorResult("Type is not a struct or union: " + typeName);
+
+      Structure struct = (Structure) structType;
+      DataTypeComponent field = TypeFields.structureDeletionTarget(struct, args);
+      int sizeBefore = StructureFields.length(struct);
+      JsonObject before = StructureFields.describe(field);
+      Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
+      staged.delete(field.getOrdinal());
+      TypeFields.verifyComponentCount(staged);
+      int deletedDefinedIndex = 0;
+      for (DataTypeComponent defined : struct.getDefinedComponents()) {
+        if (defined.getOrdinal() == field.getOrdinal()) break;
+        deletedDefinedIndex++;
+      }
+      TypeResizeCommands.PropagationSnapshot propagation =
+          struct.isPackingEnabled()
+                  || StructureFields.length(staged) != sizeBefore
+                  || staged.getAlignment() != struct.getAlignment()
+              ? new TypeResizeCommands.PropagationSnapshot(session, struct, deletedDefinedIndex)
+              : null;
+      struct.delete(field.getOrdinal());
+      TypeFields.verifyComponentCount(struct);
+      if (propagation != null) propagation.verify();
+      return TypeFields.result(
+          struct, sizeBefore, StructureFields.length(struct), before, null, "deleted");
+    } catch (Exception e) {
+      return errorResult("Failed to delete field: " + e.getMessage(), e);
     }
-
-    public JsonObject handleTypeFieldClear(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        try {
-            Structure struct = findStructure(args);
-            return StructureFields.clear(struct, TypeFields.structureSelection(struct, args)).apply(struct);
-        } catch (Exception e) {
-            return errorResult("Failed to clear field: " + e.getMessage(), e);
-        }
-    }
-
-    public JsonObject handleTypeFieldDelete(JsonObject args) {
-        if (session.program() == null) return errorResult("No program loaded");
-        String typeName = getArgString(args, "type_name");
-        if (typeName == null || typeName.isBlank()) return errorResult("Struct or union name required");
-
-        try {
-            DataType structType = typeResolver.resolveDataType(typeName);
-            if (structType == null) return errorResult("Type not found: " + typeName);
-            if (structType instanceof Union) {
-                Union union = (Union) structType;
-                return UnionFields.delete(session, union, TypeFields.unionOrdinal(union, args));
-            }
-            if (!(structType instanceof Structure))
-                return errorResult("Type is not a struct or union: " + typeName);
-
-            Structure struct = (Structure) structType;
-            DataTypeComponent field = TypeFields.structureDeletionTarget(struct, args);
-            int sizeBefore = StructureFields.length(struct);
-            JsonObject before = StructureFields.describe(field);
-            Structure staged = (Structure) struct.copy(struct.getDataTypeManager());
-            staged.delete(field.getOrdinal());
-            TypeFields.verifyComponentCount(staged);
-            int deletedDefinedIndex = 0;
-            for (DataTypeComponent defined : struct.getDefinedComponents()) {
-                if (defined.getOrdinal() == field.getOrdinal()) break;
-                deletedDefinedIndex++;
-            }
-            TypeResizeCommands.PropagationSnapshot propagation = struct.isPackingEnabled()
-                    || StructureFields.length(staged) != sizeBefore || staged.getAlignment() != struct.getAlignment()
-                ? new TypeResizeCommands.PropagationSnapshot(session, struct, deletedDefinedIndex) : null;
-            struct.delete(field.getOrdinal());
-            TypeFields.verifyComponentCount(struct);
-            if (propagation != null) propagation.verify();
-            return TypeFields.result(struct, sizeBefore, StructureFields.length(struct), before, null, "deleted");
-        } catch (Exception e) {
-            return errorResult("Failed to delete field: " + e.getMessage(), e);
-        }
-    }
+  }
 }
