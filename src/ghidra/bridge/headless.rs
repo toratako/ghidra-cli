@@ -4,7 +4,7 @@ use super::sources;
 use crate::ghidra::installation::{Installation, InstallationKind};
 use crate::ghidra::java::{self, JdkInfo};
 use anyhow::Result;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{info, warn};
@@ -19,6 +19,10 @@ pub(super) fn headless_command(
     installation: &Installation,
     arguments: &[OsString],
 ) -> Result<Command> {
+    validate_launch_value(installation.path.as_os_str(), "Ghidra installation path")?;
+    for argument in arguments {
+        validate_launch_value(argument, "Ghidra launch argument")?;
+    }
     let explicit_java = crate::config::Config::load()?.get_java_home();
     let jdk = resolve_launch_jdk(installation, explicit_java)?;
     let mut command = command_with_jdk(
@@ -39,6 +43,15 @@ pub(super) fn headless_command(
         }
     }
     Ok(command)
+}
+
+fn validate_launch_value(value: &OsStr, subject: &str) -> Result<()> {
+    anyhow::ensure!(
+        value.to_str().is_some(),
+        "{subject} is not valid Unicode: {}",
+        value.to_string_lossy()
+    );
+    Ok(())
 }
 
 fn resolve_launch_jdk(
@@ -74,6 +87,9 @@ fn command_with_jdk(
     headless_maxmem: Option<OsString>,
     maxmem: Option<OsString>,
 ) -> Result<Command> {
+    if let Some(jdk) = jdk {
+        validate_launch_value(jdk.home.as_os_str(), "Java home")?;
+    }
     let mut cmd = match installation.kind {
         InstallationKind::Directory => {
             Command::new(installation.launcher().expect("directory launcher"))
@@ -115,6 +131,21 @@ fn command_with_jdk(
     };
     if let Some(jdk) = jdk {
         cmd.env("JAVA_HOME", &jdk.home);
+        if installation.kind == InstallationKind::Directory {
+            // The official wrapper runs PATH's java to bootstrap LaunchSupport
+            // before consulting JAVA_HOME. Use the validated JDK for that step
+            // too, even when PATH contains an older or broken Java executable.
+            let mut paths = vec![jdk.home.join("bin")];
+            if let Some(inherited) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&inherited));
+            }
+            // A Unix JDK home can contain ':', which PATH cannot represent.
+            // Leave PATH inherited in that case; LaunchSupport still selects
+            // the runtime through the full JAVA_HOME path.
+            if let Ok(path) = std::env::join_paths(paths) {
+                cmd.env("PATH", path);
+            }
+        }
     }
     Ok(cmd)
 }

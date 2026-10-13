@@ -11,6 +11,35 @@ fn installation(path: PathBuf, kind: InstallationKind) -> Installation {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn launch_rejects_unrepresentable_project_parent_before_java_selection() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let mut install = installation(
+        root.path().join("missing-ghidra.jar"),
+        InstallationKind::Jar,
+    );
+    install.min_java = u32::MAX;
+    let parent = root
+        .path()
+        .join(OsString::from_vec(b"projects\xff".to_vec()));
+    let arguments = [
+        parent.into_os_string(),
+        "project".into(),
+        "-noanalysis".into(),
+    ];
+
+    let error = headless_command(&install, &arguments).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .starts_with("Ghidra launch argument is not valid Unicode"),
+        "{error}"
+    );
+}
+
 #[test]
 fn jar_launch_uses_selected_java_and_heap_limits() {
     let root = tempfile::Builder::new()
@@ -62,6 +91,91 @@ fn directory_launch_keeps_the_official_wrapper_and_its_java_fallback() {
     assert_eq!(command.get_program(), install.launcher().unwrap());
     assert_eq!(command.get_args().count(), 0);
     assert_eq!(command.get_envs().count(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn directory_launch_bootstraps_with_the_selected_jdk_before_path_java() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::Builder::new()
+        .prefix("Ghidra launch's ")
+        .tempdir()
+        .unwrap();
+    let install = installation(
+        root.path().join("distribution"),
+        InstallationKind::Directory,
+    );
+    let jdk = JdkInfo {
+        home: root.path().join("selected jdk"),
+        major: 21,
+        source: "test".into(),
+    };
+    let launcher = install.launcher().unwrap();
+    let java = jdk.home.join("bin/java");
+    for (path, script) in [
+        (
+            &launcher,
+            "#!/bin/sh\njava ghidra-cli-selected-jdk-bootstrap\n",
+        ),
+        (&java, "#!/bin/sh\necho selected-jdk-bootstrap\n"),
+    ] {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, script).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let inherited = std::env::var_os("PATH");
+    let mut command = command_with_jdk(&install, Some(&jdk), None, None).unwrap();
+    let path = command
+        .get_envs()
+        .find_map(|(key, value)| (key == "PATH").then_some(value.unwrap()))
+        .unwrap();
+    let mut paths = std::env::split_paths(path);
+    assert_eq!(paths.next().unwrap(), jdk.home.join("bin"));
+    assert_eq!(
+        paths.collect::<Vec<_>>(),
+        inherited
+            .as_ref()
+            .map(|path| std::env::split_paths(path).collect::<Vec<_>>())
+            .unwrap_or_default()
+    );
+    let output = command.output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"selected-jdk-bootstrap\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn directory_launch_keeps_colon_java_home_and_inherits_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let install = installation(
+        root.path().join("distribution"),
+        InstallationKind::Directory,
+    );
+    let jdk = JdkInfo {
+        home: root.path().join("selected:jdk"),
+        major: 21,
+        source: "test".into(),
+    };
+    let launcher = install.launcher().unwrap();
+    let java = jdk.home.join("bin/java");
+    for (path, script) in [
+        (&launcher, "#!/bin/sh\nexec \"$JAVA_HOME/bin/java\"\n"),
+        (&java, "#!/bin/sh\necho selected-jdk-runtime\n"),
+    ] {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, script).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let mut command = command_with_jdk(&install, Some(&jdk), None, None).unwrap();
+    assert!(command.get_envs().all(|(key, _)| key != "PATH"));
+    let output = command.output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"selected-jdk-runtime\n");
 }
 
 #[test]
