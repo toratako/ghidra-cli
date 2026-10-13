@@ -145,6 +145,9 @@ while bridges are running.
 
 - `is_bridge_running()` checks a valid port, valid/live PID, and TCP connectivity,
   returning the port from that check to avoid a separate discovery-file read.
+- `discover_bridge_port()` preserves discovery failures and distinguishes missing
+  discovery or a dead PID from incomplete discovery for a live process. Saving
+  uses it without a TCP health probe so connection failures remain errors.
 - `bridge_status()` uses `BridgeClient::ping()` for protocol-level verification.
 - `stop_bridge()` uses deadline-aware shutdown and waits for accepted jobs to
   drain, the final save to succeed, and the JVM to exit. A save failure restores

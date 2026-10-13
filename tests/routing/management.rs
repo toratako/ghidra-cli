@@ -428,6 +428,102 @@ fn explicit_save_failure_preserves_recovery_details_and_running_bridge() {
 }
 
 #[test]
+fn save_does_not_report_nothing_pending_for_unusable_live_discovery() {
+    for failure in ["missing-port", "invalid-port", "missing-pid", "invalid-pid"] {
+        let bridge = RecordedBridge::new();
+        let port_file = super::bridge::port_file_path(&bridge.project).unwrap();
+        let pid_file = super::bridge::pid_file_path(&bridge.project).unwrap();
+        match failure {
+            "missing-port" => std::fs::remove_file(&port_file).unwrap(),
+            "invalid-port" => std::fs::write(&port_file, "not a port").unwrap(),
+            "missing-pid" => std::fs::remove_file(&pid_file).unwrap(),
+            "invalid-pid" => std::fs::write(&pid_file, "not a PID").unwrap(),
+            _ => unreachable!(),
+        }
+        let before = (
+            std::fs::read(&port_file).ok(),
+            std::fs::read(&pid_file).ok(),
+        );
+        let output = bridge.command().args(["program", "save"]).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{failure}: {output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["status"], "error");
+        assert!(error["detail"].get("outcome_unknown").is_none());
+        assert!(error["detail"].get("job_id").is_none());
+        assert!(bridge.requests.lock().unwrap().is_empty());
+        assert_eq!(
+            (
+                std::fs::read(&port_file).ok(),
+                std::fs::read(&pid_file).ok(),
+            ),
+            before,
+            "A failed save must not discard or repair discovery"
+        );
+    }
+}
+
+#[test]
+fn save_reports_connection_failure_for_a_live_process_without_a_listener() {
+    let bridge = RecordedBridge::new();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let disconnected_port = listener.local_addr().unwrap().port();
+    let port_file = super::bridge::port_file_path(&bridge.project).unwrap();
+    std::fs::write(&port_file, disconnected_port.to_string()).unwrap();
+    drop(listener);
+
+    let output = bridge
+        .command()
+        .env("GHIDRA_CLI_CONNECT_DEADLINE", "1")
+        .args(["program", "save"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(error["message"]
+        .as_str()
+        .unwrap()
+        .contains("Failed to connect"));
+    assert!(error["detail"].get("outcome_unknown").is_none());
+    assert!(error["detail"].get("job_id").is_none());
+    assert!(bridge.requests.lock().unwrap().is_empty());
+    assert_eq!(
+        super::bridge::read_port_file(&bridge.project).unwrap(),
+        Some(disconnected_port)
+    );
+    assert_eq!(
+        super::bridge::read_pid_file(&bridge.project).unwrap(),
+        Some(std::process::id())
+    );
+}
+
+#[test]
+fn save_without_discovery_remains_a_noop_without_a_launch_installation() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config.yaml");
+    std::fs::write(&config, "{}\n").unwrap();
+    let project = root.path().join("stopped-project");
+    let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+        .env("GHIDRA_CLI_CONFIG", &config)
+        .env_remove("GHIDRA_JAR")
+        .env("GHIDRA_INSTALL_DIR", root.path().join("missing-install"))
+        .arg("--project")
+        .arg(&project)
+        .args(["program", "save"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["saved"], false);
+    assert_eq!(result["state"], "stopped");
+    assert_eq!(result["project"], json!(project));
+    assert!(!super::bridge::port_file_path(&project).unwrap().exists());
+    assert!(!super::bridge::pid_file_path(&project).unwrap().exists());
+}
+
+#[test]
 fn starting_a_running_bridge_keeps_its_program_selection() {
     let bridge = RecordedBridge::new();
     std::fs::write(
@@ -543,6 +639,148 @@ fn invalid_restart_java_home_does_not_shut_down_a_running_bridge() {
         Some(std::process::id())
     );
     assert_eq!(bridge.run(&["program", "info"])["observed_program"], "A");
+}
+
+#[test]
+fn lost_save_response_recovers_the_sent_job_without_replaying_or_selecting() {
+    let bridge = RecordedBridge::with_info(json!({"test_program_save_lost_response": true}));
+    let output = bridge
+        .command()
+        .args(["--projects-dir", "recovery projects'", "program", "save"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    let requests = bridge.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(requests[0]["command"], "program_save");
+    assert!(requests[0].get("program").is_none());
+    assert_eq!(error["detail"]["job_id"], requests[0]["job_id"]);
+    assert_eq!(error["detail"]["command"], "program_save");
+    assert_eq!(error["detail"]["outcome_unknown"], true);
+    let recovery = &error["detail"]["recovery"];
+    assert_eq!(recovery["action"], "retrieve_result");
+    assert_eq!(recovery["working_directory"], json!(bridge.root.path()));
+    assert_eq!(
+        recovery["argv"],
+        json!([
+            "ghidra-cli",
+            "--projects-dir=recovery projects'",
+            "job",
+            "result",
+            requests[0]["job_id"],
+            "--project",
+            bridge.project,
+        ])
+    );
+
+    let arguments: Vec<_> = recovery["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    let retrieved = bridge
+        .command()
+        .env(
+            "GHIDRA_INSTALL_DIR",
+            bridge.root.path().join("missing-install"),
+        )
+        .args(arguments)
+        .output()
+        .unwrap();
+    assert!(retrieved.status.success(), "{retrieved:?}");
+    let result: Value = crate::json_output::from_slice(&retrieved.stdout).unwrap();
+    assert_eq!(result["id"], requests[0]["job_id"]);
+    assert_eq!(result["response"]["status"], "success");
+    let requests = bridge.requests.lock().unwrap();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(requests[1]["command"], "job_result");
+    assert!(requests[1].get("job_id").is_none());
+    assert!(requests[1].get("program").is_none());
+}
+
+#[test]
+fn job_result_preserves_failed_responses_and_distinguishes_pending_from_unavailable() {
+    for human in [false, true] {
+        for state in ["available", "pending", "expired"] {
+            let mut job = json!({
+                "id": JOB_ID, "command": "comment_set",
+                "state": if state == "pending" { "running" } else { "failed" },
+                "result": {"state": state},
+            });
+            if state != "pending" {
+                job["error"] = json!("Edit rejected");
+            }
+            if state == "available" {
+                job["response"] = json!({
+                    "status": "error", "job_id": JOB_ID, "selected_program": "/A",
+                    "message": "Edit rejected", "detail": {"rolled_back": true},
+                });
+            }
+            let response = if state == "available" {
+                json!({"status": "success", "data": job})
+            } else {
+                json!({
+                    "status": "error", "message": "Result unavailable",
+                    "detail": {"result_state": state, "job": job},
+                })
+            };
+            let bridge = RecordedBridge::with_info(json!({"test_job_result_response": response}));
+            if human {
+                std::fs::write(
+                    bridge.root.path().join("config.yaml"),
+                    "default_output_format: full\n",
+                )
+                .unwrap();
+            }
+            let output = bridge
+                .command()
+                .args(["--program", "ignored", "job", "result", JOB_ID])
+                .output()
+                .unwrap();
+            if state == "available" {
+                assert!(output.status.success(), "{human} {state}: {output:?}");
+                assert!(output.stderr.is_empty(), "{output:?}");
+                if human {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    assert!(stdout.contains("Edit rejected"), "{stdout}");
+                    assert!(stdout.contains("\"rolled_back\": true"), "{stdout}");
+                } else {
+                    let result: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+                    assert_eq!(result, job);
+                }
+            } else {
+                assert_eq!(
+                    output.status.code(),
+                    Some(if state == "pending" { 75 } else { 1 }),
+                    "{human} {state}: {output:?}"
+                );
+                assert!(output.stdout.is_empty(), "{output:?}");
+                if !human {
+                    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                    assert_eq!(
+                        error["status"],
+                        if state == "pending" {
+                            "pending"
+                        } else {
+                            "error"
+                        }
+                    );
+                    assert_eq!(error["detail"]["result_state"], state);
+                    assert!(error["detail"].get("outcome_unknown").is_none());
+                    assert!(error["detail"].get("recovery").is_none());
+                }
+            }
+            assert_eq!(
+                *bridge.requests.lock().unwrap(),
+                vec![json!({"command": "job_result", "args": {"job_id": JOB_ID}})],
+                "Result retrieval must not enter the program queue, select a target, or replay the edit"
+            );
+        }
+    }
 }
 
 #[test]

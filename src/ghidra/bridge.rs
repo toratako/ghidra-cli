@@ -329,25 +329,33 @@ fn acquire_file_lock(
     }
 }
 
+/// Resolve a live discovered process without treating discovery or connection
+/// failures as proof that there are no pending changes to save.
+pub(crate) fn discover_bridge_port(project_path: &Path) -> Result<Option<u16>> {
+    let port = read_port_file(project_path)?;
+    let pid = read_pid_file(project_path)?;
+    match (port, pid) {
+        (None, None) => Ok(None),
+        (_, Some(pid)) if !is_pid_alive(pid) => Ok(None),
+        (Some(port), Some(_)) => Ok(Some(port)),
+        (None, Some(pid)) => anyhow::bail!(
+            "Bridge process {pid} is still alive but its port file is missing; cannot confirm bridge state for {}",
+            project_path.display()
+        ),
+        (Some(_), None) => anyhow::bail!(
+            "Bridge port file exists without a PID file; cannot confirm bridge state for {}",
+            project_path.display()
+        ),
+    }
+}
+
 /// Check if a bridge is running for the given project.
 ///
 /// Verifies: port file exists, PID is alive, TCP connect succeeds.
 /// Returns `Some(port)` if running, `None` otherwise. Callers use the returned port
 /// directly, avoiding a separate read_port_file call (TOCTOU elimination).
 pub fn is_bridge_running(project_path: &Path) -> Option<u16> {
-    let port = match read_port_file(project_path) {
-        Ok(Some(p)) => p,
-        _ => return None,
-    };
-
-    let pid = match read_pid_file(project_path) {
-        Ok(Some(p)) => p,
-        _ => return None,
-    };
-
-    if !is_pid_alive(pid) {
-        return None;
-    }
+    let port = discover_bridge_port(project_path).ok().flatten()?;
 
     // Verify TCP connect (with timeout to avoid long hangs on Windows)
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().ok()?;

@@ -79,6 +79,8 @@ gutter; C rendering appends address comments to mapped lines. Projecting away
 file name, independent of global `--program` and configured target defaults.
 Import binds follow-up analysis or information requests to the imported program.
 `program save` saves in place and does nothing for a stopped bridge.
+Discovery read errors, incomplete live discovery, and connection failures must
+fail saving instead of claiming that the bridge is stopped.
 `program list/delete` ignore a direct `--program`; deletion uses its positional
 file operand. In a batch they still carry the inherited selection context.
 

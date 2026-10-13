@@ -165,7 +165,7 @@ pub(super) fn program_save_result(
         .or_else(|| cli.program.clone());
     let config = load_config(&cli.projects_dir)?;
     let project_path = resolve_project_path(&project, &config)?;
-    let Some(port) = bridge::is_bridge_running(&project_path) else {
+    let Some(port) = bridge::discover_bridge_port(&project_path)? else {
         return Ok((
             json!({"saved": false, "state": "stopped", "project": project_path}),
             format!(

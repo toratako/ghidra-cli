@@ -25,6 +25,16 @@ impl Session {
 
     pub(super) fn reply(&mut self, request: &Value) -> Reply {
         let args = &request["args"];
+        if request["command"] == "program_save"
+            && self.bridge_info["test_program_save_lost_response"] == true
+        {
+            return Reply::Disconnect;
+        }
+        if request["command"] == "job_result" {
+            if let Some(response) = self.bridge_info.get("test_job_result_response") {
+                return Reply::Send(response.clone());
+            }
+        }
         if let Some(target) = request["program"].as_str() {
             if target == "missing-program" {
                 return Reply::Send(
