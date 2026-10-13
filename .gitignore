@@ -25,3 +25,5 @@ target
 /tests/fixtures/sample_binary.exe
 
 /docs/local/
+
+/.agents/
