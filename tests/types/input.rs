@@ -191,6 +191,63 @@ public class CheckImportRollbackFixture extends GhidraScript {
 
 #[test]
 #[serial]
+fn type_import_rejects_discarded_enum_members_and_base_structures() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    type_command(
+        &program,
+        &["import-c", "--code", "struct Existing { int original; };"],
+    )
+    .assert_success();
+    let before = type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>();
+    let listed = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+    let client = harness().client().unwrap();
+    for declaration in [
+        "struct Dropped : MissingBase { int value; };",
+        "enum Dropped { FIRST = 1, FIRST = 2, LAST = 3 };",
+    ] {
+        let code = format!("struct Existing {{ char changed; }}; {declaration}");
+        let failed = type_command(&program, &["import-c", "--code", &code]);
+        failed
+            .assert_failure()
+            .assert_stderr_contains("C parser discarded");
+        let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            assert_eq!(
+                type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>(),
+                before
+            );
+            assert_eq!(
+                type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                listed
+            );
+        }
+    }
+    type_command(
+        &program,
+        &["import-c", "--code", "enum Aliases { FIRST = 1, SAME = 1, LAST = 3 }; struct Derived : Existing { char value; };"],
+    )
+    .assert_success();
+    let aliases = type_command(&program, &["get", "/Aliases"]).data::<serde_json::Value>();
+    assert_eq!(aliases["members"].as_array().unwrap().len(), 3);
+    let derived = type_command(&program, &["get", "/Derived"]).data::<serde_json::Value>();
+    assert_eq!(derived["size"], 8);
+    assert_eq!(derived["components"][0]["type_path"], "/Existing");
+    client.program_close().unwrap();
+    assert_eq!(
+        type_command(&program, &["get", "/Derived"]).data::<serde_json::Value>(),
+        derived
+    );
+    client.open_program(TEST_PROGRAM).unwrap();
+}
+
+#[test]
+#[serial]
 fn type_import_rejects_truncated_existing_applications_without_saving_changes() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
@@ -495,6 +552,100 @@ fn type_import_rejects_native_dropped_components_without_saving_partial_declarat
         assert_eq!(
             type_command(&program, &["get", "/CompleteComponent"]).data::<serde_json::Value>(),
             complete
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn type_import_rejects_native_clipped_bitfields_without_changing_saved_definitions() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        type_command(
+            &program,
+            &["import-c", "--code", "struct Existing { int original; };"],
+        )
+        .assert_success();
+        let before = type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>();
+        let listed = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        for declaration in [
+            "struct Clipped { unsigned int bits : 64; };",
+            "struct Clipped { struct { unsigned char bits : 9; } *entry; };",
+        ] {
+            let code = format!("struct Existing {{ char changed; }}; {declaration}");
+            let failed = type_command(&program, &["import-c", "--code", &code]);
+            failed
+                .assert_failure()
+                .assert_stderr_contains("Bit-field width");
+            let error: serde_json::Value = serde_json::from_str(&failed.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            client.program_close().unwrap();
+            assert_eq!(
+                type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>(),
+                before
+            );
+            assert_eq!(
+                type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                listed
+            );
+        }
+        type_command(&program, &["import-c", "--code", "struct CompleteBits { unsigned int full : 32; unsigned int : 0; unsigned char small : 3; };"])
+            .assert_success();
+        let complete =
+            type_command(&program, &["get", "/CompleteBits"]).data::<serde_json::Value>();
+        let fields = complete["components"].as_array().unwrap();
+        for (name, width) in [("full", 32), ("small", 3)] {
+            assert_eq!(
+                fields.iter().find(|field| field["name"] == name).unwrap()["bit_size"],
+                width
+            );
+        }
+        client
+            .script_run_source(
+                r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.*;
+public class CreateExistingOverwideDependency extends GhidraScript {
+    public void run() throws Exception {
+        var dtm = currentProgram.getDataTypeManager();
+        var existing = new StructureDataType(new CategoryPath("/Source"), "ExistingOverwide", 0, dtm);
+        existing.setPackingEnabled(true);
+        existing.addBitField(UnsignedIntegerDataType.dataType, 64, "bits", null);
+        var stored = dtm.addDataType(existing, null);
+        var parent = new StructureDataType("ExistingContainer", 0, dtm);
+        parent.add(stored, "value", null);
+        dtm.addDataType(parent, null);
+    }
+}
+"#,
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let existing = type_command(&program, &["get", "/Source/ExistingOverwide"])
+            .data::<serde_json::Value>();
+        type_command(&program, &["import-c", "--code", "typedef struct ExistingOverwide *ExistingOverwidePointer; struct UsesExistingOverwide { struct ExistingOverwide value; };"])
+            .assert_success();
+        type_command(&program, &["import-c", "--code", "struct ExistingOverwide { int value; }; struct UsesExistingContainer { struct ExistingContainer value; };"])
+            .assert_success();
+        client.program_close().unwrap();
+        assert_eq!(
+            type_command(&program, &["get", "/CompleteBits"]).data::<serde_json::Value>(),
+            complete
+        );
+        assert_eq!(
+            type_command(&program, &["get", "/Source/ExistingOverwide"])
+                .data::<serde_json::Value>(),
+            existing
+        );
+        let uses =
+            type_command(&program, &["get", "/UsesExistingOverwide"]).data::<serde_json::Value>();
+        assert_eq!(
+            uses["components"][0]["type_path"],
+            "/Source/ExistingOverwide"
         );
     });
 }

@@ -8,10 +8,12 @@ import ghidra.app.util.cparser.C.ParseException;
 import ghidra.app.util.cparser.C.Token;
 import ghidra.app.util.cparser.C.TokenMgrError;
 import ghidra.program.model.data.Array;
+import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.Composite;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeConflictHandler;
+import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.StandAloneDataTypeManager;
@@ -65,12 +67,7 @@ public final class TypeImportCommands {
             parser.setMonitor(session.monitor());
             parsedManager.parse(parser, processedCode);
             String parseMessages = parser.getParseMessages();
-            // Native CParser catches a failed component insertion and continues
-            // with the remaining fields. The resulting layout alone cannot
-            // reveal that a requested component was discarded.
-            if (parseMessages != null && parseMessages.lines().anyMatch(
-                    line -> line.startsWith("Bad structure size ")))
-                throw new IllegalArgumentException("C parser discarded a field: " + parseMessages.trim());
+            requireCompleteParse(parseMessages);
 
             Set<String> definedNames = new HashSet<>();
             definedNames.addAll(parser.getComposites().keySet());
@@ -99,6 +96,7 @@ public final class TypeImportCommands {
             // before any native resolve can collapse those different definitions.
             List<DataType> dependencies = TypeArchiveGraph.dependencies(parsedTypes, session.monitor());
             verifyLayouts(dependencies);
+            verifyDeclaredBitFields(dependencies, parsedTypes);
 
             CategoryPath lookupPath = CategoryPath.ROOT;
             if (categoryPath != null) {
@@ -260,6 +258,18 @@ public final class TypeImportCommands {
         }
     }
 
+    /** Native parsing can return normally after omitting requested definitions or members. */
+    private static void requireCompleteParse(String messages) {
+        if (messages == null) return;
+        for (String line : messages.lines().toList()) {
+            if (line.startsWith("Bad structure size ") || line.startsWith("BAD data type struct size "))
+                throw new IllegalArgumentException("C parser discarded a field: " + messages.trim());
+            if (line.startsWith("duplicate enum value: ") || line.startsWith("Parent structure ")
+                    || line.startsWith("Problem with type ") || line.startsWith("Problem adding DataType "))
+                throw new IllegalArgumentException("C parser discarded a definition or member: " + messages.trim());
+        }
+    }
+
     /** Keep CParser's external lookups exact without replacing its local declarations. */
     private final class ImportTypes extends StandAloneDataTypeManager {
         private final TypeResolver resolver = new TypeResolver(session);
@@ -390,6 +400,25 @@ public final class TypeImportCommands {
                 if (length > Integer.MAX_VALUE || length < 0
                         || !array.isZeroLength() && array.getLength() != length)
                     throw new IllegalArgumentException("Array size exceeds its supported range in " + type.getPathName());
+            }
+        }
+    }
+
+    private void verifyDeclaredBitFields(Iterable<DataType> types, Set<DataType> declared)
+            throws CancelledException {
+        for (DataType type : types) {
+            session.monitor().checkCancelled();
+            // Referencing a stored definition does not request new field widths.
+            // Explicit tag bodies may reuse an equivalent stored definition;
+            // anonymous/new composites retain no source archive before staging.
+            if (!(type instanceof Composite) || type.getSourceArchive() != null
+                    && !declared.contains(type)) continue;
+            for (DataTypeComponent field : ((Composite) type).getDefinedComponents()) {
+                session.monitor().checkCancelled();
+                if (field.getDataType() instanceof BitFieldDataType bits
+                        && bits.getDeclaredBitSize() != bits.getBitSize())
+                    throw new IllegalArgumentException("Bit-field width exceeds the base type; clipping is not allowed in "
+                        + type.getPathName());
             }
         }
     }
