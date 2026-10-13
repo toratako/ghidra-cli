@@ -38,6 +38,167 @@ fn rejected(program: &str, name: &str, size: u32) {
     assert!(error["detail"].get("partial_changes_saved").is_none());
 }
 
+fn saved_variable_state() -> Value {
+    let result = harness()
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("SavedVariablePropagationFixture.java"),
+            &["read".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    serde_json::from_str(result["stdout"].as_str().unwrap().trim()).unwrap()
+}
+
+fn with_saved_variable_fixture(check: impl FnOnce(&ghidra_cli::ipc::client::BridgeClient, &str)) {
+    let program = create_type_edit_program("x86:LE:32:default");
+    let client = harness().client().unwrap();
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                include_str!("SavedVariablePropagationFixture.java"),
+                &["create".to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        check(&client, &program);
+    });
+}
+
+#[test]
+#[serial]
+fn type_growth_rejects_newly_invalid_saved_returns_parameters_and_locals() {
+    require_ghidra!();
+    with_saved_variable_fixture(|client, program| {
+        let mut accepted = Vec::new();
+        for operation in ["Resize", "Field", "Import"] {
+            for kind in ["Return", "Parameter", "Local"] {
+                let name = format!("{operation}{kind}");
+                let path = format!("/Audit/{name}");
+                let before = saved_variable_state();
+                let types = success(type_command(
+                    program,
+                    &["list", "--limit", "0", "--sort", "path"],
+                ));
+                let declaration = format!("struct {name} {{ long long grown; }};");
+                let args = match operation {
+                    "Resize" => vec!["resize", &path, "--size", "8"],
+                    "Field" => vec!["field", "append", &path, "--type", "int", "--name", "added"],
+                    _ => vec!["import-c", "--category", "/Audit", "--code", &declaration],
+                };
+                let result = type_command(program, &args);
+                if result.exit_code == 0 {
+                    accepted.push(name);
+                    continue;
+                }
+                result.assert_failure();
+                let error: Value = serde_json::from_str(&result.stderr).unwrap();
+                assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+                assert!(
+                    error["message"].as_str().unwrap().contains("saved"),
+                    "{error}"
+                );
+                for reopen in [false, true] {
+                    if reopen {
+                        client.program_close().unwrap();
+                        client.open_program(program).unwrap();
+                    }
+                    assert_eq!(saved_variable_state(), before, "{operation}/{kind}");
+                    assert_eq!(
+                        success(type_command(
+                            program,
+                            &["list", "--limit", "0", "--sort", "path"]
+                        )),
+                        types
+                    );
+                }
+            }
+        }
+        assert!(
+            accepted.is_empty(),
+            "Type growth invalidated saved native applications: {accepted:?}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn type_growth_preserves_valid_dynamic_abis_and_existing_incomplete_definitions() {
+    require_ghidra!();
+    with_saved_variable_fixture(|client, program| {
+        let before = saved_variable_state();
+        assert_eq!(
+            before["preexisting_invalid"]["variables"][1]["valid"],
+            false
+        );
+        client
+            .script_run_source(
+                include_str!("CheckSavedVariablePropagationCancellation.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        assert_eq!(saved_variable_state(), before);
+        for args in [
+            vec!["resize", "/Audit/DynamicValue", "--size", "8"],
+            vec![
+                "field",
+                "append",
+                "/Audit/DynamicValue",
+                "--type",
+                "int",
+                "--name",
+                "added",
+            ],
+            vec![
+                "import-c",
+                "--category",
+                "/Audit",
+                "--code",
+                "struct DynamicValue { long long lanes[2]; };",
+            ],
+        ] {
+            success(type_command(program, &args));
+            let after = saved_variable_state();
+            for variable in after["dynamic"]["variables"].as_array().unwrap() {
+                assert_eq!(variable["valid"], true, "{after}");
+            }
+            for (name, row) in before.as_object().unwrap() {
+                if name != "dynamic" {
+                    assert_eq!(&after[name], row, "{name}");
+                }
+            }
+            client.program_close().unwrap();
+            client.open_program(program).unwrap();
+            assert_eq!(saved_variable_state(), after);
+        }
+        let before = saved_variable_state();
+        resize(program, "/Audit/PreexistingInvalid", 12);
+        let mut expected = before["preexisting_invalid"].clone();
+        expected["variables"][1]["length"] = json!(12);
+        assert_eq!(saved_variable_state()["preexisting_invalid"], expected);
+        resize(program, "/Audit/Unreferenced", 8);
+        resize(program, "/Audit/ResizeLocal", 2);
+        let after = saved_variable_state();
+        let local = after["ResizeLocal"]["variables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == "saved_local")
+            .unwrap();
+        assert_eq!(local["length"], 4);
+        assert_eq!(local["storage_length"], 8);
+        assert_eq!(local["valid"], true);
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(saved_variable_state(), after);
+    });
+}
+
 #[test]
 #[serial]
 fn resize_preserves_explicit_fields_bitfields_zero_length_boundaries_and_settings() {

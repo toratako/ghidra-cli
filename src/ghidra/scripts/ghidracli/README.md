@@ -332,10 +332,15 @@ and remaining paths. GDT cannot store component settings; unsupported settings
 must not silently disappear in an otherwise successful export.
 
 `TypeResizeCommands` follows native size propagation through composite, array,
-and typedef parents and scans their applied Listing data. Before committing it
-checks complete component lengths, native component counts, preserved definitions,
-and explicit settings on applied components. Packed parent movement and array
-stride changes are allowed only when existing settings keep their association.
+and typedef parents and scans their applied Listing data and saved function
+returns, parameters, and locals, including external and unmapped functions.
+Thunk views are checked through their effective owner's variables.
+Before committing it checks complete component lengths, native component counts,
+preserved definitions, and explicit settings on applied components. Originally
+valid saved variables must remain valid after native notifications; they are
+reacquired by function/symbol identity so dynamic ABI storage can be rebuilt.
+Packed parent movement and array stride changes are allowed only when existing
+settings keep their association.
 The scan checks cancellation through defined fields and array elements; it does
 not expand implicit struct filler. Applied zero-length roots are rejected because
 Listing cannot represent their requested logical length. All failures use the

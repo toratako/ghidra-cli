@@ -14,8 +14,12 @@ import ghidra.program.model.data.TypeDef;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
+import ghidra.program.model.listing.Parameter;
+import ghidra.program.model.listing.Variable;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.protocol.JsonProtocol;
@@ -67,6 +71,7 @@ public final class TypeResizeCommands {
             }
             Map<DataType, Definition> affected = captureDefinitions(session, List.of(structure));
             List<Application> applications = captureApplications(session, affected);
+            List<VariableApplication> variables = captureVariables(session, affected);
             structure.setLength(size);
             if (StructureFields.length(structure) != size)
                 throw new IllegalArgumentException("Ghidra did not retain the requested structure size");
@@ -78,6 +83,7 @@ public final class TypeResizeCommands {
                 session.monitor().checkCancelled();
                 application.verify(session.program().getListing(), session.monitor());
             }
+            for (VariableApplication variable : variables) variable.verify(session);
         }
         JsonObject result = new JsonObject();
         result.addProperty("status", previous == size ? "unchanged" : "resized");
@@ -89,12 +95,13 @@ public final class TypeResizeCommands {
         return result;
     }
 
-    /** Check native parent and listing propagation after a field changes a type's size. */
+    /** Check native parents and saved applications after a field changes a type's size. */
     static final class PropagationSnapshot {
         private final ProgramSession session;
         private final Set<DataType> targets;
         private final Map<DataType, Definition> affected;
         private final List<Application> applications;
+        private final List<VariableApplication> variables;
 
         PropagationSnapshot(ProgramSession session, DataType target) throws Exception {
             this(session, target, -1);
@@ -115,6 +122,7 @@ public final class TypeResizeCommands {
             this.targets.addAll(targets);
             affected = captureDefinitions(session, targets);
             applications = captureApplications(session, affected, deletedType, deletedDefinedIndex);
+            variables = captureVariables(session, affected);
         }
 
         void verify() throws Exception {
@@ -160,6 +168,7 @@ public final class TypeResizeCommands {
                 application.verify(session.program().getListing(), session.monitor(),
                     insertedType, insertedDefinedIndex, replacements);
             }
+            for (VariableApplication variable : variables) variable.verify(session);
             for (DataType original : targets) {
                 DataType target = replacements.getOrDefault(original, original);
                 if (target instanceof Structure) TypeFields.verifyComponentCount((Structure) target);
@@ -209,6 +218,65 @@ public final class TypeResizeCommands {
                 applications.add(new Application(item, listing, session.monitor(), deletedType, deletedDefinedIndex));
         }
         return applications;
+    }
+
+    private static List<VariableApplication> captureVariables(
+            ProgramSession session, Map<DataType, Definition> affected) throws CancelledException {
+        List<VariableApplication> applications = new ArrayList<>();
+        // Include external and unmapped definitions. Thunk views share the saved
+        // owner's variables, and that owner is independently present in this scan.
+        var symbols = session.program().getSymbolTable().getSymbols(null, SymbolType.FUNCTION, true);
+        while (symbols.hasNext()) {
+            session.monitor().checkCancelled();
+            Function function = session.program().getFunctionManager().getFunction(symbols.next().getID());
+            if (function.isThunk()) continue;
+            Parameter result = function.getReturn();
+            if (affected.containsKey(result.getFormalDataType()) && result.isValid())
+                applications.add(new VariableApplication(function, result, true));
+            for (Variable variable : function.getAllVariables()) {
+                session.monitor().checkCancelled();
+                if (variable instanceof Parameter parameter && parameter.isAutoParameter()) continue;
+                DataType declared = variable instanceof Parameter parameter
+                    ? parameter.getFormalDataType() : variable.getDataType();
+                // Existing incomplete definitions do not block an unrelated edit
+                // or a repair. Preserve validity only where it existed before.
+                if (affected.containsKey(declared) && variable.isValid())
+                    applications.add(new VariableApplication(function, variable, false));
+            }
+        }
+        session.monitor().checkCancelled();
+        return applications;
+    }
+
+    private static final class VariableApplication {
+        final long functionId;
+        final long symbolId;
+        final String location;
+
+        VariableApplication(Function function, Variable variable, boolean result) {
+            functionId = function.getID();
+            symbolId = result ? -1 : variable.getSymbol().getID();
+            location = (result ? "return" : variable instanceof Parameter ? "parameter" : "local")
+                + " '" + variable.getName() + "' in function '" + function.getName() + "'";
+        }
+
+        void verify(ProgramSession session) throws CancelledException {
+            session.monitor().checkCancelled();
+            Function function = session.program().getFunctionManager().getFunction(functionId);
+            Variable current = null;
+            if (function != null) {
+                if (symbolId == -1) current = function.getReturn();
+                else {
+                    var symbol = session.program().getSymbolTable().getSymbol(symbolId);
+                    if (symbol != null && symbol.getParentNamespace().getID() == functionId
+                            && symbol.getObject() instanceof Variable variable) current = variable;
+                }
+            }
+            // Reacquire after native type notifications: dynamic ABI storage can
+            // be rebuilt, while saved custom/local containers can become too small.
+            require(current != null && current.isValid(),
+                "saved " + location + " no longer has complete type storage");
+        }
     }
 
     private static Map<String, Object> settings(Settings settings) {
