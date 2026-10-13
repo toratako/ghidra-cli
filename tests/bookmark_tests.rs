@@ -25,7 +25,7 @@ fn with_fixture(check: impl FnOnce(&DaemonTestHarness, &BridgeClient, &str)) {
     let name = format!("bookmark-mutations-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("bookmarks/CreateBookmarkMutationFixture.java"),
+            include_str!("fixtures/bookmarks/CreateBookmarkMutationFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,

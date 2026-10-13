@@ -436,7 +436,7 @@ fn failed_import_analysis_preserves_cancellation_and_releases_detached_programs(
     project
         .client()
         .script_run_source(
-            include_str!("CheckImportFailures.java"),
+            include_str!("../fixtures/bootstrap/CheckImportFailures.java"),
             &[raw.to_str().unwrap().to_owned()],
             &[],
             false,

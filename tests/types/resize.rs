@@ -43,7 +43,7 @@ fn saved_variable_state() -> Value {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("SavedVariablePropagationFixture.java"),
+            include_str!("../fixtures/types/SavedVariablePropagationFixture.java"),
             &["read".to_owned()],
             &[],
             false,
@@ -58,7 +58,7 @@ fn with_saved_variable_fixture(check: impl FnOnce(&ghidra_cli::ipc::client::Brid
     super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                include_str!("SavedVariablePropagationFixture.java"),
+                include_str!("../fixtures/types/SavedVariablePropagationFixture.java"),
                 &["create".to_owned()],
                 &[],
                 false,
@@ -136,7 +136,7 @@ fn type_growth_preserves_valid_dynamic_abis_and_existing_incomplete_definitions(
         );
         client
             .script_run_source(
-                include_str!("CheckSavedVariablePropagationCancellation.java"),
+                include_str!("../fixtures/types/CheckSavedVariablePropagationCancellation.java"),
                 &[],
                 &[],
                 false,

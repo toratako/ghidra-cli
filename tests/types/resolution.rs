@@ -686,7 +686,7 @@ fn type_resolution_and_definition_reads_cancel_without_database_changes() {
     let client = harness().client().unwrap();
     client.open_program(&program).unwrap();
     let checked = client.script_run_source(
-        include_str!("CheckTypeQueriesReadOnly.java"),
+        include_str!("../fixtures/types/CheckTypeQueriesReadOnly.java"),
         &[],
         &[],
         false,

@@ -3,7 +3,7 @@ use ghidra_cli::ipc::client::BridgeClient;
 use serde_json::json;
 use serial_test::serial;
 
-const FIXTURE: &str = include_str!("MemoryWriteFixture.java");
+const FIXTURE: &str = include_str!("../fixtures/patch/MemoryWriteFixture.java");
 
 fn fixture(language: &str, check: impl FnOnce(&BridgeClient)) {
     require_ghidra!();

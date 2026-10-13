@@ -23,7 +23,7 @@ fn fixture(test: impl FnOnce(&BridgeClient, &str)) {
     let name = format!("call-signatures-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("call_signatures/CreateCallSignatureFixture.java"),
+            include_str!("fixtures/call_signatures/CreateCallSignatureFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -82,7 +82,7 @@ fn rejected(client: &BridgeClient, args: Value, diagnostic: &str) {
 fn check(client: &BridgeClient, arguments: &[&str]) {
     client
         .script_run_source(
-            include_str!("call_signatures/CheckCallSignatureFixture.java"),
+            include_str!("fixtures/call_signatures/CheckCallSignatureFixture.java"),
             &arguments
                 .iter()
                 .map(|arg| arg.to_string())
@@ -96,7 +96,7 @@ fn check(client: &BridgeClient, arguments: &[&str]) {
 fn type_inventory(client: &BridgeClient) -> Value {
     let result = client
         .script_run_source(
-            include_str!("call_signatures/CheckCallSignatureFixture.java"),
+            include_str!("fixtures/call_signatures/CheckCallSignatureFixture.java"),
             &["inventory".to_owned()],
             &[],
             false,
@@ -696,7 +696,7 @@ fn failed_native_replacement_rolls_back_removed_marker_and_preserves_saved_proto
         let before = get(client, "caller", "0x1005");
         client
             .script_run_source(
-                include_str!("call_signatures/ExhaustOverrideHashSlots.java"),
+                include_str!("fixtures/call_signatures/ExhaustOverrideHashSlots.java"),
                 &[],
                 &[],
                 false,

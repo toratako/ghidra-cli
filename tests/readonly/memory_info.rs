@@ -12,7 +12,7 @@ fn memory_info_classifies_listing_and_preserves_object_and_address_space_boundar
     let name = format!("memory-info-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateMemoryInfoFixture.java"),
+            include_str!("../fixtures/readonly/CreateMemoryInfoFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,

@@ -20,7 +20,7 @@ fn fixture(program: &str, mode: &str, file: &Path) {
     client.open_program(program).unwrap();
     client
         .script_run_source(
-            include_str!("GdtArchiveFixture.java"),
+            include_str!("../fixtures/types/GdtArchiveFixture.java"),
             &[mode.into(), file.to_string_lossy().into_owned()],
             &[],
             false,
@@ -69,7 +69,7 @@ fn packed_database_cache_entries() -> Vec<String> {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("GdtArchiveFixture.java"),
+            include_str!("../fixtures/types/GdtArchiveFixture.java"),
             &["packed-cache-state".into(), String::new()],
             &[],
             false,
@@ -836,7 +836,7 @@ fn cancellation_and_presave_failures_preserve_databases_and_unpublished_archives
         let folder = format!("gdt-probe-{}", uuid::Uuid::new_v4());
         let result = client
             .script_run_source(
-                include_str!("GdtArchiveProbe.java"),
+                include_str!("../fixtures/types/GdtArchiveProbe.java"),
                 &[
                     mode.into(),
                     source.to_string_lossy().into_owned(),

@@ -665,7 +665,7 @@ fn type_import_rejects_colliding_definitions_without_changing_users() {
     )
     .assert_success();
     let client = harness().client().unwrap();
-    let fixture = include_str!("CheckCImportNamespaceCollision.java");
+    let fixture = include_str!("../fixtures/types/CheckCImportNamespaceCollision.java");
     client
         .script_run_source(fixture, &["setup".into()], &[], false)
         .unwrap();
@@ -924,7 +924,7 @@ fn type_import_category_preserves_root_types_and_users_after_reopen() {
         typedef int (*Callback)(struct Item *);";
     type_command(&program, &["import-c", "--code", root_code]).assert_success();
     let client = harness().client().unwrap();
-    let fixture = include_str!("CheckImportCategory.java");
+    let fixture = include_str!("../fixtures/types/CheckImportCategory.java");
     client
         .script_run_source(fixture, &["setup".to_string()], &[], false)
         .unwrap();

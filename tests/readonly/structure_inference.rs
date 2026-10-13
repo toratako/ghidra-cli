@@ -12,7 +12,7 @@ fn fixture() -> &'static str {
             .client()
             .unwrap()
             .script_run_source(
-                include_str!("CreateStructureInferenceFixture.java"),
+                include_str!("../fixtures/readonly/CreateStructureInferenceFixture.java"),
                 std::slice::from_ref(&name),
                 &[],
                 false,
@@ -240,7 +240,7 @@ fn structure_inference_cancellation_discards_candidates_and_recovers() {
     restored(|| {
         client
             .script_run_source(
-                include_str!("CheckStructureInferenceCancellation.java"),
+                include_str!("../fixtures/readonly/CheckStructureInferenceCancellation.java"),
                 &[],
                 &[],
                 false,

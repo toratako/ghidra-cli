@@ -9,7 +9,7 @@ pub(super) fn create_fixture() -> String {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("CreateReturnTypeFixture.java"),
+            include_str!("../fixtures/types/CreateReturnTypeFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -272,7 +272,7 @@ fn defined_custom_external_and_hidden_return_signatures_keep_explicit_parameters
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            include_str!("../readonly/CreateSignatureDetailsFixture.java"),
+            include_str!("../fixtures/readonly/CreateSignatureDetailsFixture.java"),
             &[program.clone(), "gcc".to_owned()],
             &[],
             false,
@@ -462,7 +462,7 @@ fn thiscall_return_edits_preserve_existing_auto_this_and_commit_only_the_formal_
     let client = harness().client().unwrap();
     client
         .script_run_source(
-            include_str!("CreateThiscallReturnFixture.java"),
+            include_str!("../fixtures/types/CreateThiscallReturnFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,

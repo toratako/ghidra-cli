@@ -38,7 +38,7 @@ fn fixture(language: &str, bytes: &[u8], check: impl FnOnce(&common::DaemonTestH
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("listing_flow/CreateFlowFixture.java"),
+            include_str!("fixtures/listing_flow/CreateFlowFixture.java"),
             &[],
             &[],
             false,

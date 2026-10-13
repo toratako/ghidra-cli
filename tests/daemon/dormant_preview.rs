@@ -13,7 +13,7 @@ fn dormant_type_preview_cancellation_failures_and_save_recovery_preserve_native_
     let folder = format!("dormant-preview-{}", uuid::Uuid::new_v4());
     let result = client
         .script_run_source(
-            include_str!("../types/CheckDormantMutationPreviewFailures.java"),
+            include_str!("../fixtures/types/CheckDormantMutationPreviewFailures.java"),
             std::slice::from_ref(&folder),
             &[],
             false,
@@ -103,7 +103,7 @@ fn dormant_type_preview_cancellation_failures_and_save_recovery_preserve_native_
         assert_eq!(parameters[0]["type_path"], "/Audit/DormantCell");
         let inspected = client
             .script_run_source(
-                include_str!("../types/CheckDormantMutationPreviewFailures.java"),
+                include_str!("../fixtures/types/CheckDormantMutationPreviewFailures.java"),
                 &[folder.clone(), "inspect".to_owned()],
                 &[],
                 false,

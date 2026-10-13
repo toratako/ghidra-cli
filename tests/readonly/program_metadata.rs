@@ -12,7 +12,7 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
     let name = format!("program-metadata-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateProgramMetadataFixture.java"),
+            include_str!("../fixtures/readonly/CreateProgramMetadataFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -92,7 +92,7 @@ fn relocations_preserve_native_evidence_and_support_cli_queries() {
 
         client
             .script_run_source(
-                include_str!("CheckRelocationCancellation.java"),
+                include_str!("../fixtures/readonly/CheckRelocationCancellation.java"),
                 &[],
                 &[],
                 false,

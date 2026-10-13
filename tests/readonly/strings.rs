@@ -370,7 +370,7 @@ fn sparse_strings_avoid_whole_object_reads_and_cancel_inside_native_traversal() 
     let name = format!("sparse-strings-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateSparseStringFixture.java"),
+            include_str!("../fixtures/readonly/CreateSparseStringFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -416,7 +416,7 @@ public class AddDenseStringArray extends GhidraScript {
             .unwrap();
         client
             .script_run_source(
-                include_str!("CheckStringValueCancellation.java"),
+                include_str!("../fixtures/readonly/CheckStringValueCancellation.java"),
                 &[],
                 &[],
                 false,

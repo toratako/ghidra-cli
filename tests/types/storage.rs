@@ -49,7 +49,7 @@ fn storage_partial_edits_preserve_saved_abi_and_replace_parameters_atomically() 
     let program = format!("storage-x86-{}", unique_suffix());
     client
         .script_run_source(
-            include_str!("../readonly/CreateSignatureDetailsFixture.java"),
+            include_str!("../fixtures/readonly/CreateSignatureDetailsFixture.java"),
             &[program.clone(), "gcc".into()],
             &[],
             false,

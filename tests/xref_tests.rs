@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 mod common;
 
 static HARNESS: OnceLock<common::DaemonTestHarness> = OnceLock::new();
-const FIXTURE: &str = include_str!("xref/XrefMutationFixture.java");
+const FIXTURE: &str = include_str!("fixtures/xref/XrefMutationFixture.java");
 
 fn fixture(check: impl FnOnce(&BridgeClient)) {
     require_ghidra!();

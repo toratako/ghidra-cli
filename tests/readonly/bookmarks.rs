@@ -41,7 +41,7 @@ fn bookmarks_preserve_annotations_and_query_exact_addresses() {
     let name = format!("bookmark-queries-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateBookmarkFixture.java"),
+            include_str!("../fixtures/readonly/CreateBookmarkFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,

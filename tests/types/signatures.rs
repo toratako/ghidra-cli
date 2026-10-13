@@ -69,7 +69,7 @@ fn callback_fixture(mode: &str) -> Value {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("SignatureCallbackFixture.java"),
+            include_str!("../fixtures/types/SignatureCallbackFixture.java"),
             &[mode.to_string()],
             &[],
             false,

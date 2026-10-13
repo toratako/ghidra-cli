@@ -14,7 +14,7 @@ fn fixture() -> &'static str {
             .client()
             .unwrap()
             .script_run_source(
-                include_str!("CreateDecompileControlFlowFixture.java"),
+                include_str!("../fixtures/readonly/CreateDecompileControlFlowFixture.java"),
                 std::slice::from_ref(&name),
                 &[],
                 false,

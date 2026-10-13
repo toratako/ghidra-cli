@@ -11,7 +11,7 @@ fn fixture() -> &'static str {
             .client()
             .unwrap()
             .script_run_source(
-                include_str!("CreateSemanticTypeUsesFixture.java"),
+                include_str!("../fixtures/types/CreateSemanticTypeUsesFixture.java"),
                 std::slice::from_ref(&name),
                 &[],
                 false,
@@ -272,7 +272,7 @@ fn semantic_field_uses_follow_signed_pointer_arithmetic_within_the_selected_fiel
             .client()
             .unwrap()
             .script_run_source(
-                include_str!("CheckSemanticFieldPointerArithmetic.java"),
+                include_str!("../fixtures/types/CheckSemanticFieldPointerArithmetic.java"),
                 &[],
                 &[],
                 false,
@@ -484,7 +484,7 @@ fn semantic_searches_preserve_saved_program_and_recover_native_cancel_and_timeou
         let before = client.function_var_list("inferred_local").unwrap();
         client
             .script_run_source(
-                include_str!("CheckSemanticTypeUsesReadOnly.java"),
+                include_str!("../fixtures/types/CheckSemanticTypeUsesReadOnly.java"),
                 &[],
                 &[],
                 false,

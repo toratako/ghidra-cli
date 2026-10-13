@@ -37,7 +37,7 @@ fn verify(project: &Path) -> anyhow::Result<()> {
         common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     let client = harness.client()?;
     assert_eq!(client.list_programs()?["count"], 2);
-    client.script_run_source(include_str!("VerifyArchiveFixture.java"), &[], &[], false)?;
+    client.script_run_source(include_str!("../fixtures/project/VerifyArchiveFixture.java"), &[], &[], false)?;
     drop(harness);
     Ok(())
 }
@@ -54,7 +54,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let harness =
         common::DaemonTestHarness::new(project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     harness.client()?.script_run_source(
-        include_str!("CreateArchiveFixture.java"),
+        include_str!("../fixtures/project/CreateArchiveFixture.java"),
         &[],
         &[],
         false,
@@ -124,7 +124,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     common::fixture::copy_analyzed_project(&worker)?;
     let worker = common::DaemonTestHarness::new(worker.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     worker.client()?.script_run_source(
-        include_str!("CheckGarSnapshot.java"),
+        include_str!("../fixtures/project/CheckGarSnapshot.java"),
         &[
             root.path().to_string_lossy().into_owned(),
             project.to_string_lossy().into_owned(),
@@ -134,7 +134,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     )?;
     let native_restored = root.path().join("native-restored");
     worker.client()?.script_run_source(
-        include_str!("NativeGar.java"),
+        include_str!("../fixtures/project/NativeGar.java"),
         &[
             "restore".into(),
             native_restored.to_string_lossy().into_owned(),
@@ -149,7 +149,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     verify(&native_restored)?;
     let native_gar = root.path().join("native.gar");
     worker.client()?.script_run_source(
-        include_str!("NativeGar.java"),
+        include_str!("../fixtures/project/NativeGar.java"),
         &[
             "archive".into(),
             project.to_string_lossy().into_owned(),
@@ -198,7 +198,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     verify(&from_windows)?;
 
     worker.client()?.script_run_source(
-        include_str!("CheckGarFailures.java"),
+        include_str!("../fixtures/project/CheckGarFailures.java"),
         &[
             root.path().to_string_lossy().into_owned(),
             project.to_string_lossy().into_owned(),
@@ -232,7 +232,7 @@ fn gar_resolves_symlinks_before_parent_components_for_every_path() -> anyhow::Re
     let wrong =
         common::DaemonTestHarness::new(wrong_project.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
     wanted.client()?.script_run_source(
-        include_str!("CreateArchiveFixture.java"),
+        include_str!("../fixtures/project/CreateArchiveFixture.java"),
         &[],
         &[],
         false,

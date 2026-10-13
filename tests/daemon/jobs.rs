@@ -621,7 +621,7 @@ fn bridge_info_observes_a_complete_program_snapshot_during_refresh() {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("CheckRuntimeSnapshotPublication.java"),
+            include_str!("../fixtures/daemon/CheckRuntimeSnapshotPublication.java"),
             &[],
             &[],
             false,

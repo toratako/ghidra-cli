@@ -51,7 +51,7 @@ fn instruction_cfg_preserves_flows_body_boundaries_and_limits() {
     let program = format!("instruction-cfg-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateCfgFixture.java"),
+            include_str!("../fixtures/readonly/CreateCfgFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -274,7 +274,7 @@ fn instruction_cfg_keeps_delay_slot_outside_body_and_branch_origin() {
     let program = format!("instruction-cfg-mips-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateCfgFixture.java"),
+            include_str!("../fixtures/readonly/CreateCfgFixture.java"),
             &[program.clone(), "mips".into()],
             &[],
             false,
@@ -331,7 +331,7 @@ fn instruction_cfg_excludes_external_targets_replaced_by_jump_overrides() {
     let program = format!("instruction-cfg-jump-override-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateCfgFixture.java"),
+            include_str!("../fixtures/readonly/CreateCfgFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -365,7 +365,7 @@ fn instruction_cfg_does_not_resolve_unknown_pointer_table_indices() {
     let program = format!("instruction-cfg-pointer-index-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateCfgFixture.java"),
+            include_str!("../fixtures/readonly/CreateCfgFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -445,7 +445,7 @@ fn instruction_cfg_does_not_resolve_unknown_pointer_table_indices() {
         assert_eq!(slot["calls"][0]["destination"], "0x00001440", "{slot}");
         client
             .script_run_source(
-                include_str!("CheckCallQueriesReadOnly.java"),
+                include_str!("../fixtures/readonly/CheckCallQueriesReadOnly.java"),
                 &[],
                 &[],
                 false,

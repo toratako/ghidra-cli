@@ -36,7 +36,7 @@ fn convention_edits_reject_native_removal_of_explicit_parameters_atomically() {
     let program = format!("convention-parameters-{}", unique_suffix());
     client
         .script_run_source(
-            include_str!("../readonly/CreateSignatureDetailsFixture.java"),
+            include_str!("../fixtures/readonly/CreateSignatureDetailsFixture.java"),
             &[program.clone(), "gcc".to_owned()],
             &[],
             false,
@@ -204,7 +204,7 @@ fn convention_validation_uses_selected_spec_and_preserves_rejected_edits_after_r
     let x32 = format!("convention-x32-{}", unique_suffix());
     client
         .script_run_source(
-            include_str!("../readonly/CreateSignatureDetailsFixture.java"),
+            include_str!("../fixtures/readonly/CreateSignatureDetailsFixture.java"),
             &[x32.clone(), "gcc".to_owned()],
             &[],
             false,

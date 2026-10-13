@@ -21,7 +21,7 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
     let name = format!("constant-search-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateConstantSearchFixture.java"),
+            include_str!("../fixtures/readonly/CreateConstantSearchFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,
@@ -245,7 +245,7 @@ fn constant_search_matches_operand_scalars_without_numeric_precision_loss() {
         assert_eq!(results[2]["result"]["data"], minus_one.len());
         client
             .script_run_source(
-                include_str!("CheckConstantCancellation.java"),
+                include_str!("../fixtures/readonly/CheckConstantCancellation.java"),
                 &[],
                 &[],
                 false,

@@ -124,7 +124,7 @@ public class CreateAddressFixture extends GhidraScript {
     check_generated_name_collisions(&client, &program);
     client
         .script_run_source(
-            include_str!("readonly/CheckAddressLookupCancellation.java"),
+            include_str!("fixtures/readonly/CheckAddressLookupCancellation.java"),
             &[],
             &[],
             false,

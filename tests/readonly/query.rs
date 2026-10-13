@@ -23,7 +23,7 @@ fn name_suggestions_bound_long_names_and_cancel_during_matching() {
             "final class NameSuggestions",
             1,
         );
-    let source = format!("{helper}\n{}", include_str!("CheckNameSuggestions.java"));
+    let source = format!("{helper}\n{}", include_str!("../fixtures/readonly/CheckNameSuggestions.java"));
     harness()
         .client()
         .unwrap()

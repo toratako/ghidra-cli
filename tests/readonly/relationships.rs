@@ -135,7 +135,7 @@ fn xref_metadata_preserves_operand_distinct_references_in_both_directions() {
     let program = format!("xref-metadata-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreateXrefMetadataFixture.java"),
+            include_str!("../fixtures/readonly/CreateXrefMetadataFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,

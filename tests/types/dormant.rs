@@ -7,7 +7,7 @@ use serial_test::serial;
 fn snapshot(client: &BridgeClient) -> Value {
     let result = client
         .script_run_source(
-            include_str!("DormantTypeMutationFixture.java"),
+            include_str!("../fixtures/types/DormantTypeMutationFixture.java"),
             &["read".to_owned()],
             &[],
             false,
@@ -28,7 +28,7 @@ fn with_fixture(check: impl FnOnce(&BridgeClient, &str)) {
     super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
             .script_run_source(
-                include_str!("DormantTypeMutationFixture.java"),
+                include_str!("../fixtures/types/DormantTypeMutationFixture.java"),
                 &["create".to_owned()],
                 &[],
                 false,

@@ -229,7 +229,7 @@ fn symbol_rename_rolls_back_native_generated_name_substitutions() {
     let program = super::deletion::create_symbol_fixture_program();
     crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-            .script_run_source(include_str!("RenameIdentityFixture.java"), &[], &[], false)
+            .script_run_source(include_str!("../fixtures/symbols/RenameIdentityFixture.java"), &[], &[], false)
             .unwrap();
         let before = client.symbol_get_by_name("rename_selected").unwrap();
         let targets = before["symbols"].as_array().unwrap();
@@ -324,7 +324,7 @@ fn symbol_lookup_round_trips_generated_variable_names() {
     let program = super::deletion::create_symbol_fixture_program();
     crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         client
-            .script_run_source(include_str!("RenameIdentityFixture.java"), &[], &[], false)
+            .script_run_source(include_str!("../fixtures/symbols/RenameIdentityFixture.java"), &[], &[], false)
             .unwrap();
         let listed = client.symbol_list(None, None, None).unwrap();
         let generated: Vec<_> = listed["symbols"]

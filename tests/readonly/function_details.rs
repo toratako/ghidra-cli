@@ -9,7 +9,7 @@ fn fixture(compiler: &str) -> String {
         .client()
         .unwrap()
         .script_run_source(
-            include_str!("CreateFunctionDetailsFixture.java"),
+            include_str!("../fixtures/readonly/CreateFunctionDetailsFixture.java"),
             &[program.clone(), compiler.to_owned()],
             &[],
             false,
@@ -177,7 +177,7 @@ fn signature_details_read_program_types_storage_and_thunk_provenance_without_edi
         let program = format!("signature-details-{compiler}-{}", uuid::Uuid::new_v4());
         client
             .script_run_source(
-                include_str!("CreateSignatureDetailsFixture.java"),
+                include_str!("../fixtures/readonly/CreateSignatureDetailsFixture.java"),
                 &[program.clone(), compiler.to_owned()],
                 &[],
                 false,
@@ -439,7 +439,7 @@ fn frame_details_preserve_positive_growth_and_signed_stack_offsets() {
     let program = format!("positive-frame-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("CreatePositiveFrameFixture.java"),
+            include_str!("../fixtures/readonly/CreatePositiveFrameFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,

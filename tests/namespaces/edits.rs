@@ -12,7 +12,7 @@ fn namespace(client: &BridgeClient, path: &str) -> Value {
 
 fn state(client: &BridgeClient) -> Value {
     let result = client
-        .script_run_source(include_str!("ReadNamespaceEditState.java"), &[], &[], false)
+        .script_run_source(include_str!("../fixtures/namespaces/ReadNamespaceEditState.java"), &[], &[], false)
         .unwrap();
     serde_json::from_str(result["stdout"].as_str().unwrap().trim()).unwrap()
 }
@@ -258,7 +258,7 @@ fn namespace_id_selection_recovers_native_path_ambiguity_without_editing_its_twi
     require_ghidra!();
     with_fixture(|client, program| {
         client
-            .script_run_source(include_str!("CreateNamespacePaths.java"), &[], &[], false)
+            .script_run_source(include_str!("../fixtures/namespaces/CreateNamespacePaths.java"), &[], &[], false)
             .unwrap();
         let all = client.send_command("namespace_list", None).unwrap();
         let flat = all["namespaces"]
@@ -340,7 +340,7 @@ public class CreateAmbiguousNamespaceSubtree extends GhidraScript {
 fn stale_targets_detect_reparenting_between_namespaces_with_identical_display_paths() {
     require_ghidra!();
     with_fixture(|client, program| {
-        let fixture = include_str!("NamespaceIdentityFixture.java");
+        let fixture = include_str!("../fixtures/namespaces/NamespaceIdentityFixture.java");
         client.script_run_source(fixture, &[], &[], false).unwrap();
         let symbols = client.symbol_get_by_name("identity_symbol").unwrap();
         let rows = symbols["symbols"].as_array().unwrap();

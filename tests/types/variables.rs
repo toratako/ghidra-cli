@@ -79,7 +79,7 @@ fn variable_edits_preserve_hidden_saved_locals_unless_the_symbol_is_a_locked_mer
         let program = format!("variable-numbered-{}", uuid::Uuid::new_v4());
         client
             .script_run_source(
-                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                include_str!("../fixtures/types/CreateVariableTestProgram.java"),
                 std::slice::from_ref(&program),
                 &[],
                 false,
@@ -194,7 +194,7 @@ fn variable_resize_preserves_neighboring_saved_locals_for_saved_and_inferred_tar
         let program = format!("variable-resize-{}", uuid::Uuid::new_v4());
         client
             .script_run_source(
-                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                include_str!("../fixtures/types/CreateVariableTestProgram.java"),
                 std::slice::from_ref(&program),
                 &[],
                 false,
@@ -339,7 +339,7 @@ fn variable_selection_rejects_identical_program_in_another_project() {
         let client = harness.client().unwrap();
         client
             .script_run_source(
-                include_str!("../function_variables/CreateVariableTestProgram.java"),
+                include_str!("../fixtures/types/CreateVariableTestProgram.java"),
                 &[program.to_owned()],
                 &[],
                 false,
@@ -418,7 +418,7 @@ fn function_variables_read_inferred_definitions_and_persist_selected_edits() {
     // local starts inferred, so rename-only must not pin its inferred int type.
     client
         .script_run_source(
-            include_str!("../function_variables/CreateVariableTestProgram.java"),
+            include_str!("../fixtures/types/CreateVariableTestProgram.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -832,7 +832,7 @@ fn parameter_edits_roll_back_when_native_naming_changes_the_requested_name() {
     let program = format!("variable-name-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("../function_variables/CreateVariableTestProgram.java"),
+            include_str!("../fixtures/types/CreateVariableTestProgram.java"),
             std::slice::from_ref(&program),
             &[],
             false,

@@ -27,7 +27,7 @@ fn with_fixture(test: impl FnOnce(&BridgeClient, &str)) {
     let program = format!("namespaces-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("namespaces/CreateNamespaceFixture.java"),
+            include_str!("fixtures/namespaces/CreateNamespaceFixture.java"),
             std::slice::from_ref(&program),
             &[],
             false,
@@ -163,7 +163,7 @@ fn namespace_paths_round_trip_native_templates_and_reject_ambiguous_native_bound
     with_fixture(|client, program| {
         client
             .script_run_source(
-                include_str!("namespaces/CreateNamespacePaths.java"),
+                include_str!("fixtures/namespaces/CreateNamespacePaths.java"),
                 &[],
                 &[],
                 false,

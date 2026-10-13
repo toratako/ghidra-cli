@@ -23,7 +23,7 @@ fn fixture(test: impl FnOnce(&BridgeClient, &str)) {
     let name = format!("equates-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("equates/CreateEquateFixture.java"),
+            include_str!("fixtures/equates/CreateEquateFixture.java"),
             std::slice::from_ref(&name),
             &[],
             false,

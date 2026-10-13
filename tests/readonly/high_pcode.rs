@@ -15,7 +15,7 @@ fn fixture() -> &'static str {
             .client()
             .unwrap()
             .script_run_source(
-                include_str!("CreateHighPcodeFixture.java"),
+                include_str!("../fixtures/readonly/CreateHighPcodeFixture.java"),
                 std::slice::from_ref(&name),
                 &[],
                 false,

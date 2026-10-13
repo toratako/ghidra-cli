@@ -24,7 +24,7 @@ fn with_fixture(language: &str, check: impl FnOnce(&BridgeClient, &str)) {
     let program = format!("function-body-{}", uuid::Uuid::new_v4());
     client
         .script_run_source(
-            include_str!("function_body/CreateFunctionBodyFixture.java"),
+            include_str!("fixtures/function_body/CreateFunctionBodyFixture.java"),
             &[program.clone(), language.into()],
             &[],
             false,
@@ -53,7 +53,7 @@ fn set(client: &BridgeClient, target: &str, ranges: Value) -> Value {
 fn state(client: &BridgeClient) -> Value {
     let response = client
         .script_run_source(
-            include_str!("function_body/ReadFunctionBodyState.java"),
+            include_str!("fixtures/function_body/ReadFunctionBodyState.java"),
             &[],
             &[],
             false,
@@ -199,7 +199,7 @@ fn function_creation_preserves_another_functions_shared_tail_and_annotations() {
     with_fixture("x86:LE:32:default", |client, program| {
         client
             .script_run_source(
-                include_str!("function_body/CreateSharedTailFixture.java"),
+                include_str!("fixtures/function_body/CreateSharedTailFixture.java"),
                 &[],
                 &[],
                 false,

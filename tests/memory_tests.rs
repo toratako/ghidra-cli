@@ -521,7 +521,7 @@ public class CreateRecursiveReadMappings extends GhidraScript {
     assert_eq!(read_memory(&client, "0x1000", 1)["hex"], "5a");
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            include_str!("fixtures/memory/CheckMappedReadBounds.java"),
             &[],
             &[],
             false,
@@ -683,7 +683,7 @@ public class CreatePartialMemoryMappings extends GhidraScript {
     assert_eq!(pointer_program_state(&client), before);
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckPartialMappingCancellation.java"),
+            include_str!("fixtures/memory/CheckPartialMappingCancellation.java"),
             &[],
             &[],
             false,
@@ -822,7 +822,7 @@ public class CreateMappedNativeReaders extends GhidraScript {
     assert_eq!(shifted["results"][0]["entry_count"], 4096);
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            include_str!("fixtures/memory/CheckMappedReadBounds.java"),
             &["instruction".to_owned()],
             &[],
             false,
@@ -838,7 +838,7 @@ public class CreateMappedNativeReaders extends GhidraScript {
     assert_eq!(candidate["results"][0]["address"], "0x00005500");
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            include_str!("fixtures/memory/CheckMappedReadBounds.java"),
             &["definition".to_owned()],
             &[],
             false,
@@ -874,7 +874,7 @@ public class CreateMappedNativeReaders extends GhidraScript {
     }
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            include_str!("fixtures/memory/CheckMappedReadBounds.java"),
             &["instruction".to_owned()],
             &[],
             false,
@@ -914,7 +914,7 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
     let client = harness.client().unwrap();
     client
         .script_run_source(
-            include_str!("fixtures/memory_sources/CreateMemorySources.java"),
+            include_str!("fixtures/memory/CreateMemorySources.java"),
             &[],
             &[],
             false,
@@ -922,7 +922,7 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
         .unwrap();
     client
         .script_run_source(
-            include_str!("memory_mappings/CreateFileMappings.java"),
+            include_str!("fixtures/memory/CreateFileMappings.java"),
             &[],
             &[],
             false,
@@ -983,7 +983,7 @@ public class CreateReadChunkBoundary extends GhidraScript {
     assert_eq!(boundary["pointers"].as_array().unwrap().len(), 4 * 1024);
     client
         .script_run_source(
-            include_str!("memory_mappings/CheckFileMappingCancellation.java"),
+            include_str!("fixtures/memory/CheckFileMappingCancellation.java"),
             &[],
             &[],
             false,

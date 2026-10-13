@@ -303,7 +303,7 @@ fn failed_export_preserves_existing_output() {
         .into_owned();
     client
         .script_run_source(
-            include_str!("CheckBinaryExportBounds.java"),
+            include_str!("fixtures/export/CheckBinaryExportBounds.java"),
             &[binary_output],
             &[],
             false,
