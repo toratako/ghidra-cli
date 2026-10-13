@@ -465,6 +465,14 @@ public class CreateRecursiveReadMappings extends GhidraScript {
             memory.createByteMappedBlock("mixed_tail_" + i, toAddr(start + 65552),
                 toAddr(i == 2 ? start : 0x5000000 + i * 7), 1, false);
         }
+        memory.createByteMappedBlock("sparse_shift", toAddr(0x7000000), toAddr(0x7000002), 4, false);
+        memory.createInitializedBlock("sparse_seed", toAddr(0x7000004), 1, (byte) 0x6b, monitor, false);
+        memory.createByteMappedBlock("wide_shift", toAddr(0x7100000), toAddr(0x7100002), 4, false);
+        memory.createInitializedBlock("wide_seed", toAddr(0x7100004),
+            new java.io.ByteArrayInputStream(new byte[]{0x6c, 0x6d}), 2, monitor, false);
+        memory.createInitializedBlock("back_seed", toAddr(0x7200000),
+            new java.io.ByteArrayInputStream(new byte[]{0x6e, 0x6f}), 2, monitor, false);
+        memory.createByteMappedBlock("back_shift", toAddr(0x7200002), toAddr(0x7200000), 4, false);
     }
 }
 "#,
@@ -511,6 +519,16 @@ public class CreateRecursiveReadMappings extends GhidraScript {
     assert_eq!(prefix["size"], 1);
     assert_eq!(prefix["hex"], "24");
     assert_eq!(read_memory(&client, "0x1000", 1)["hex"], "5a");
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert_eq!(read_memory(&client, "0x7100000", 6)["hex"], "6c6d6c6d6c6d");
+    assert_eq!(read_memory(&client, "0x7200000", 6)["hex"], "6e6f6e6f6e6f");
 }
 
 #[test]
@@ -557,6 +575,18 @@ public class CreatePartialMemoryMappings extends GhidraScript {
         memory.createByteMappedBlock("nested_bytes", space.getAddress(0x1800),
             space.getAddress(0x2000), 32, false);
         memory.createUninitializedBlock("unknown_source", source.add(16), 16, false);
+        memory.createInitializedBlock("chunk_source", space.getAddress(0x10000),
+            0xc000, (byte) 0xee, monitor, false);
+        memory.setBytes(space.getAddress(0x13ffe), new byte[]{0x12, 0x34, 0x56, 0x78});
+        memory.createByteMappedBlock("chunk_alias", space.getAddress(0x30000),
+            space.getAddress(0x10000), 0xc000, false);
+        memory.createByteMappedBlock("chunk_nested", space.getAddress(0x20000),
+            space.getAddress(0x30000), 0xc000, false);
+        var header = memory.createInitializedBlock("headers",
+            ghidra.program.model.address.AddressSpace.OTHER_SPACE.getAddress(0),
+            new java.io.ByteArrayInputStream(new byte[]{(byte) 0xca, (byte) 0xfe}),
+            2, monitor, true).getStart();
+        memory.createByteMappedBlock("loaded_header_view", space.getAddress(0x40000), header, 2, false);
         createData(space.getAddress(0x1800), new ghidra.program.model.data.ArrayDataType(
             ghidra.program.model.data.CharDataType.dataType, 16, 1));
     }
@@ -590,6 +620,67 @@ public class CreatePartialMemoryMappings extends GhidraScript {
         client.find_string("ZZ").unwrap()["results"],
         strings["strings"]
     );
+    let bytes = client.find_bytes("5a5a").unwrap();
+    let text = client.find_text("ZZ", "ascii").unwrap();
+    let regex = client.find_bytes_regex_with_limit("ZZ", None).unwrap();
+    assert_eq!((bytes["count"].clone(), text["count"].clone(), regex["count"].clone()),
+        (json!(45), json!(45), json!(24)),
+        "all searches must include each readable nested alias: bytes={bytes}, text={text}, regex={regex}");
+    assert_eq!(
+        bytes["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| &row["address"])
+            .collect::<Vec<_>>(),
+        text["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| &row["address"])
+            .collect::<Vec<_>>()
+    );
+    for result in [
+        client.find_bytes("12345678").unwrap(),
+        client
+            .find_bytes_regex_with_limit(r"\x12\x34\x56\x78", None)
+            .unwrap(),
+    ] {
+        let addresses = result["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["address"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            addresses,
+            ["0x00013ffe", "0x00023ffe", "0x00033ffe"],
+            "{result}"
+        );
+    }
+    let long = client
+        .send_command(
+            "find_bytes",
+            Some(json!({"hex": "ee".repeat(16 * 1024 + 1), "limit": 2})),
+        )
+        .unwrap();
+    assert_eq!(
+        long["results"],
+        json!([
+            {"address": "0x00014002"}, {"address": "0x00014003"}
+        ])
+    );
+    assert_eq!(
+        client.find_bytes("cafe").unwrap()["results"],
+        json!([{"address": "0x00040000"}])
+    );
+    assert_eq!(
+        client
+            .find_bytes_regex_with_limit(r"\xca\xfe", None)
+            .unwrap()["results"],
+        json!([{"address": "0x00040000", "byte_length": 2}])
+    );
+    assert_eq!(pointer_program_state(&client), before);
     client
         .script_run_source(
             include_str!("memory_mappings/CheckPartialMappingCancellation.java"),
@@ -605,12 +696,190 @@ public class CreatePartialMemoryMappings extends GhidraScript {
     }
     client.program_close().unwrap();
     client.open_program(&program).unwrap();
+    assert_eq!(client.find_bytes("5a5a").unwrap(), bytes);
+    assert_eq!(client.find_text("ZZ", "ascii").unwrap(), text);
+    assert_eq!(
+        client.find_bytes_regex_with_limit("ZZ", None).unwrap(),
+        regex
+    );
     assert_eq!(
         client
             .send_command("data_read", Some(json!({"target": "0x1800"})))
             .unwrap()["value"],
         "Z".repeat(16)
     );
+}
+
+#[test]
+#[serial]
+fn mapped_address_tables_and_instruction_bytes_use_readable_ranges() {
+    require_ghidra!();
+    let directory = tempfile::Builder::new()
+        .prefix("ghidra-mapped-native-")
+        .tempdir()
+        .unwrap();
+    let project = directory.path().join("project");
+    let binary = directory.path().join("tables.bin");
+    std::fs::write(
+        &binary,
+        [0x00, 0x30, 0, 0, 0x10, 0x30, 0, 0, 0x20, 0x30, 0, 0],
+    )
+    .unwrap();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let program = import_oneshot(
+        &project,
+        &binary,
+        &installation,
+        &OneShotImportOptions {
+            language: Some("x86:LE:32:default".to_owned()),
+            loader: Some("BinaryLoader".to_owned()),
+            loader_options: vec![("baseAddr".to_owned(), "0x1000".to_owned())],
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .program;
+    let harness = common::DaemonTestHarness::new(project.to_str().unwrap(), &program).unwrap();
+    let client = harness.client().unwrap();
+    client.script_run_source(r#"
+import ghidra.app.script.GhidraScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+public class CreateMappedNativeReaders extends GhidraScript {
+    public void run() throws Exception {
+        var memory = currentProgram.getMemory();
+        memory.createInitializedBlock("targets", toAddr(0x3000), 0x40, (byte) 0xee, monitor, false);
+        memory.createByteMappedBlock("tables_alias", toAddr(0x2000), toAddr(0x1000), 12, false);
+        memory.createByteMappedBlock("tables_nested", toAddr(0x1800), toAddr(0x2000), 12, false);
+        memory.createByteMappedBlock("tables_cycle", toAddr(0x4000), toAddr(0x4000), 12, false);
+        memory.createInitializedBlock("code", toAddr(0x5000),
+            new java.io.ByteArrayInputStream(new byte[]{(byte) 0x90, (byte) 0xc3}), 2, monitor, false);
+        memory.createByteMappedBlock("code_alias", toAddr(0x6000), toAddr(0x5000), 2, false);
+        memory.createByteMappedBlock("code_nested", toAddr(0x5500), toAddr(0x6000), 2, false);
+        var command = new DisassembleCommand(toAddr(0x6000), null, true);
+        command.enableCodeAnalysis(false);
+        if (!command.applyTo(currentProgram, monitor))
+            throw new IllegalStateException("Cannot decode mapped fixture instructions");
+        // Native disassembly omits nested aliases from its initialized set.
+        // Place already decoded instructions to exercise the listing reader.
+        for (int i = 0; i < 2; i++) {
+            var instruction = currentProgram.getListing().getInstructionAt(toAddr(0x6000 + i));
+            currentProgram.getListing().createInstruction(toAddr(0x5500 + i),
+                instruction.getPrototype(),
+                new ghidra.program.model.mem.DumbMemBufferImpl(memory, toAddr(0x5500 + i)),
+                instruction, 0);
+        }
+        memory.getBlock(toAddr(0x5500)).setExecute(true);
+        memory.createInitializedBlock("caller", toAddr(0x7000),
+            new java.io.ByteArrayInputStream(new byte[]{(byte) 0xe8, (byte) 0xfb,
+                (byte) 0xe4, (byte) 0xff, (byte) 0xff}), 5, monitor, false);
+        var call = new DisassembleCommand(toAddr(0x7000), null, false);
+        call.enableCodeAnalysis(false);
+        if (!call.applyTo(currentProgram, monitor)) throw new IllegalStateException("Cannot define caller");
+        memory.createInitializedBlock("shifted_seed", toAddr(0x8000), 1, (byte) 0xc3, monitor, false);
+        memory.createByteMappedBlock("shifted_table", toAddr(0x8001), toAddr(0x8000), 16 * 1024, false);
+        memory.createInitializedBlock("shifted_target", toAddr(0xc3c3c3c3L), 16, (byte) 0xee, monitor, false);
+        var ret = currentProgram.getListing().getInstructionAt(toAddr(0x6001));
+        currentProgram.getListing().createInstruction(toAddr(0xc000), ret.getPrototype(),
+            new ghidra.program.model.mem.ByteMemBufferImpl(memory, toAddr(0xc000),
+                new byte[]{(byte) 0xc3}, false), ret, 0);
+        memory.createInitializedBlock("string_seed", toAddr(0xd000), 1, (byte) 0, monitor, false);
+        memory.createByteMappedBlock("shifted_string", toAddr(0xd001), toAddr(0xd000), 16 * 1024, false);
+        currentProgram.getListing().createData(toAddr(0x11000),
+            ghidra.program.model.data.ByteDataType.dataType, 1);
+    }
+}
+"#, &[], &[], false).unwrap();
+    let before = pointer_program_state(&client);
+    let code = client.disasm("0x5500", Some(2)).unwrap();
+    assert_eq!(code["instructions"][0]["bytes"], "90");
+    assert_eq!(code["instructions"][1]["bytes"], "c3");
+    assert_eq!(read_memory(&client, "0x5500", 2)["hex"], "90c3");
+    let searches = ["0x1000", "0x2000", "0x1800", "0x4000"].map(|address| {
+        client.send_command_with_timeout(
+            "find_address_tables",
+            Some(json!({"start": address, "end": address})),
+            Some(std::time::Duration::from_secs(15)),
+        )
+    });
+    eprintln!("mapped table outcomes: {searches:?}");
+    assert_eq!(pointer_program_state(&client), before);
+    assert!(client.disasm("0x4000", Some(1)).is_err());
+    for result in &searches[..3] {
+        assert_eq!(result.as_ref().unwrap()["count"], 1);
+        assert_eq!(result.as_ref().unwrap()["results"][0]["entry_count"], 3);
+    }
+    assert_eq!(searches[3].as_ref().unwrap()["count"], 0);
+    let shifted = client
+        .send_command_with_timeout(
+            "find_address_tables",
+            Some(json!({"start": "0x8001", "end": "0x8001"})),
+            Some(std::time::Duration::from_secs(15)),
+        )
+        .unwrap();
+    assert_eq!(shifted["results"][0]["entry_count"], 4096);
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            &["instruction".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    let candidate = client
+        .send_command(
+            "find_function_candidates",
+            Some(json!({"start": "0x5500", "end": "0x5500"})),
+        )
+        .unwrap();
+    assert_eq!(candidate["count"], 1, "{candidate}");
+    assert_eq!(candidate["results"][0]["address"], "0x00005500");
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            &["definition".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    let original = client
+        .send_command("data_read", Some(json!({"target": "0x11000"})))
+        .unwrap();
+    for (address, type_name) in [("0x11000", "TerminatedCString"), ("0x10ffd", "void *")] {
+        let error = client
+            .send_command(
+                "define_data",
+                Some(json!({
+                    "address": address, "type_name": type_name, "force": true
+                })),
+            )
+            .unwrap_err();
+        let failure = error
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert_eq!(failure.detail["rolled_back"], true);
+        assert!(
+            error.to_string().contains("recursive memory mappings"),
+            "{error}"
+        );
+        assert_eq!(
+            client
+                .send_command("data_read", Some(json!({"target": "0x11000"})))
+                .unwrap(),
+            original
+        );
+        assert_eq!(read_memory(&client, "0x10ffd", 4)["hex"], "00000000");
+    }
+    client
+        .script_run_source(
+            include_str!("memory_mappings/CheckMappedReadBounds.java"),
+            &["instruction".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
 }
 
 #[test]

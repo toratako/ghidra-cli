@@ -12,7 +12,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.datastruct.Accumulator;
@@ -20,17 +20,20 @@ import ghidra.util.datastruct.ListAccumulator;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.query.AddressCodec;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressResolver;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.util.Locale;
+import java.util.concurrent.CancellationException;
 import java.util.regex.PatternSyntaxException;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
@@ -237,15 +240,30 @@ public final class SearchCommands {
             Object settings = settingsClass.getConstructor().newInstance();
             Object matcher = matcherClass.getConstructor(String.class, settingsClass)
                 .newInstance(pattern, settings);
-            Object source = sourceClass.getConstructor(Program.class).newInstance(session.program());
-            Memory memory = session.program().getMemory();
+            Object nativeSource = sourceClass.getConstructor(Program.class).newInstance(session.program());
+            Class<?> byteSourceClass = loader.loadClass(prefix + "bytesource.AddressableByteSource");
+            MemoryReads reads = new MemoryReads(session);
+            Object source = Proxy.newProxyInstance(loader, new Class<?>[] { byteSourceClass },
+                (proxy, method, sourceArgs) -> {
+                    if (method.getName().equals("getBytes")) {
+                        try {
+                            return reads.read((Address) sourceArgs[0], (byte[]) sourceArgs[1],
+                                0, ((Number) sourceArgs[2]).intValue());
+                        } catch (MemoryAccessException unreadable) {
+                            return 0;
+                        } catch (CancelledException cancelled) {
+                            throw new CancellationException();
+                        }
+                    }
+                    return method.invoke(nativeSource, sourceArgs);
+                });
             // The native accumulator and JSON arrays both have int-sized lengths;
             // do not narrow large valid wire limits by wrapping them to int.
             int nativeLimit = limit == 0 ? Integer.MAX_VALUE : (int) Math.min(limit, Integer.MAX_VALUE);
             Object searcher = searcherClass.getConstructor(
-                loader.loadClass(prefix + "bytesource.AddressableByteSource"),
+                byteSourceClass,
                 loader.loadClass(prefix + "matcher.ByteMatcher"), AddressSetView.class, int.class)
-                .newInstance(source, matcher, memory.getLoadedAndInitializedAddressSet(), nativeLimit);
+                .newInstance(source, matcher, reads.loadedInitializedAddresses(), nativeLimit);
             ListAccumulator<Object> matches = new ListAccumulator<>();
             session.monitor().checkCancelled();
             searcherClass.getMethod("findAll", Accumulator.class, TaskMonitor.class)
@@ -284,27 +302,49 @@ public final class SearchCommands {
 
     /** Shared exact-byte scanning, including overlapping matches and cancellation. */
     private JsonObject searchMemory(byte[] bytes, long limit, String encoding)
-            throws CancelledException {
-        Memory memory = session.program().getMemory();
+            throws Exception {
+        MemoryReads reads = new MemoryReads(session);
         JsonArray results = new JsonArray();
-        Address addr = memory.getMinAddress();
-        while (addr != null && (limit == 0 || results.size() < limit)) {
+        // KMP retains the matched prefix across bounded reads, including across
+        // adjacent blocks, without missing overlapping matches or re-reading
+        // every candidate through the native recursive mapped-byte API.
+        int[] prefixes = new int[bytes.length];
+        for (int i = 1, matched = 0; i < bytes.length; i++) {
             session.monitor().checkCancelled();
-            Address found = memory.findBytes(addr, bytes, null, true, session.monitor());
-            session.monitor().checkCancelled();
-            if (found == null) break;
-            JsonObject item = new JsonObject();
-            item.addProperty("address", AddressCodec.format(found));
-            if (encoding != null) {
-                item.addProperty("byte_length", bytes.length);
-                item.addProperty("encoding", encoding);
+            while (matched > 0 && bytes[i] != bytes[matched]) matched = prefixes[matched - 1];
+            if (bytes[i] == bytes[matched]) matched++;
+            prefixes[i] = matched;
+        }
+        byte[] buffer = new byte[16 * 1024];
+        search:
+        for (var range : reads.loadedInitializedAddresses().getAddressRanges()) {
+            Address cursor = range.getMinAddress();
+            long remaining = range.getLength();
+            int matched = 0;
+            while (remaining > 0) {
+                session.monitor().checkCancelled();
+                int requested = (int) Math.min(remaining, buffer.length);
+                int read = reads.read(cursor, buffer, 0, requested);
+                for (int i = 0; i < read; i++) {
+                    session.monitor().checkCancelled();
+                    while (matched > 0 && buffer[i] != bytes[matched]) matched = prefixes[matched - 1];
+                    if (buffer[i] == bytes[matched]) matched++;
+                    if (matched != bytes.length) continue;
+                    Address found = cursor.addNoWrap((long) i - bytes.length + 1);
+                    JsonObject item = new JsonObject();
+                    item.addProperty("address", AddressCodec.format(found));
+                    if (encoding != null) {
+                        item.addProperty("byte_length", bytes.length);
+                        item.addProperty("encoding", encoding);
+                    }
+                    results.add(item);
+                    if (limit > 0 && results.size() >= limit) break search;
+                    matched = prefixes[matched - 1];
+                }
+                if (read < requested) break;
+                remaining -= read;
+                if (remaining > 0) cursor = cursor.addNoWrap(read);
             }
-            results.add(item);
-            // Walk the memory set rather than incrementing within one address
-            // space: a match at its maximum must not hide later spaces.
-            var remaining = memory.getLoadedAndInitializedAddressSet().getAddresses(found, true);
-            remaining.next(); // The matching address itself is included.
-            addr = remaining.hasNext() ? remaining.next() : null;
         }
         JsonObject result = new JsonObject();
         result.add("results", results);

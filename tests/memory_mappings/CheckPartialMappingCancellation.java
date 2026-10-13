@@ -5,6 +5,7 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
+import ghidra.util.exception.CancelledException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 
@@ -87,6 +88,57 @@ public class CheckPartialMappingCancellation extends GhidraScript {
             JsonObject mappedRecovery = (JsonObject) read.invoke(commands, args);
             if (mappedRecovery.has("error") || mappedRecovery.get("size").getAsInt() != 16)
                 throw new IllegalStateException("Mapping traversal did not recover: " + mappedRecovery);
+
+            Class<?> stringsClass = loader.loadClass(prefix + "listing.StringQueries");
+            Object strings = stringsClass.getConstructor(sessionClass).newInstance(session);
+            Class<?> searchClass = loader.loadClass(prefix + "listing.SearchCommands");
+            Object searches = searchClass.getConstructor(sessionClass, resolverClass, stringsClass)
+                .newInstance(session, resolver, strings);
+            JsonObject searchArgs = new JsonObject();
+            searchArgs.addProperty("hex", "5a5a");
+            searchArgs.addProperty("text", "ZZ");
+            searchArgs.addProperty("encoding", "ascii");
+            searchArgs.addProperty("pattern", "ZZ");
+            String[] searchMethods = {"handleFindBytes", "handleFindText", "handleFindBytesRegex"};
+            for (String searchMethod : searchMethods) {
+                var search = searchClass.getMethod(searchMethod, JsonObject.class);
+                cancelledRead[0] = "getBytes";
+                reads[0] = 0;
+                cancel[0] = true;
+                JsonObject stopped = (JsonObject) search.invoke(searches, searchArgs);
+                if (!requestMonitor.isCancelled() || !stopped.has("error"))
+                    throw new IllegalStateException("Cancelled search returned partial success: " + stopped);
+                requestMonitor.clearCancelled();
+                cancel[0] = false;
+                JsonObject resumed = (JsonObject) search.invoke(searches, searchArgs);
+                int expected = searchMethod.equals("handleFindBytesRegex") ? 24 : 45;
+                if (resumed.has("error") || resumed.get("count").getAsInt() != expected)
+                    throw new IllegalStateException("Mapped search did not recover: " + resumed);
+            }
+            Class<?> tableClass = loader.loadClass(prefix + "listing.AddressTableSearch");
+            Object tables = tableClass.getConstructor(sessionClass, resolverClass).newInstance(session, resolver);
+            var find = tableClass.getMethod("handleFindAddressTables", JsonObject.class);
+            JsonObject tableArgs = new JsonObject();
+            tableArgs.addProperty("start", "0x1800");
+            tableArgs.addProperty("end", "0x1800");
+            cancelledRead[0] = "getByte";
+            reads[0] = 0;
+            cancel[0] = true;
+            try {
+                find.invoke(tables, tableArgs);
+                throw new IllegalStateException("Cancelled mapped scalar returned table success");
+            } catch (InvocationTargetException failure) {
+                if (!(failure.getCause() instanceof CancelledException))
+                    throw new IllegalStateException("Mapped scalar changed cancellation type: "
+                        + failure.getCause().getClass().getSimpleName());
+            }
+            if (!requestMonitor.isCancelled() || reads[0] != 2)
+                throw new IllegalStateException("Did not cancel inside mapped scalar read");
+            requestMonitor.clearCancelled();
+            cancel[0] = false;
+            JsonObject tablesRecovered = (JsonObject) find.invoke(tables, tableArgs);
+            if (tablesRecovered.get("count").getAsInt() != 0)
+                throw new IllegalStateException("Mapped scalar did not recover: " + tablesRecovered);
         } finally {
             requestMonitor.clearCancelled();
             try {

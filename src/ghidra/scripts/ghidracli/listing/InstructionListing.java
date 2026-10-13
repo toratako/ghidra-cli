@@ -6,6 +6,7 @@ import com.google.gson.JsonPrimitive;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
@@ -22,10 +23,11 @@ public final class InstructionListing {
     public JsonObject instructionsIn(AddressSetView range, JsonObject args) throws Exception {
         long limit = ListQuery.pageArgument(args, "limit");
         JsonArray instructions = new JsonArray();
+        MemoryReads reads = new MemoryReads(session);
         for (Instruction instruction : session.program().getListing().getInstructions(range, true)) {
             session.monitor().checkCancelled();
             if (!range.contains(instruction.getAddress())) continue;
-            instructions.add(instructionToJson(instruction));
+            instructions.add(instructionToJson(instruction, reads));
             if (limit > 0 && instructions.size() >= limit) break;
         }
         JsonObject result = new JsonObject();
@@ -36,16 +38,20 @@ public final class InstructionListing {
 
     JsonArray instructionsFrom(Instruction instruction, long limit) throws Exception {
         JsonArray instructions = new JsonArray();
+        MemoryReads reads = new MemoryReads(session);
         while (instruction != null && (limit == 0 || instructions.size() < limit)) {
             session.monitor().checkCancelled();
-            instructions.add(instructionToJson(instruction));
+            instructions.add(instructionToJson(instruction, reads));
             instruction = instruction.getNext();
         }
         return instructions;
     }
 
-    private JsonObject instructionToJson(Instruction instr) throws MemoryAccessException {
-        String bytesHex = HexFormat.of().formatHex(instr.getBytes());
+    private JsonObject instructionToJson(Instruction instr, MemoryReads reads) throws Exception {
+        byte[] bytes = new byte[instr.getLength()];
+        if (reads.read(instr.getAddress(), bytes, 0, bytes.length) != bytes.length)
+            throw new MemoryAccessException("Couldn't get all bytes for instruction");
+        String bytesHex = HexFormat.of().formatHex(bytes);
 
         JsonArray operands = new JsonArray();
         int numOperands = instr.getNumOperands();

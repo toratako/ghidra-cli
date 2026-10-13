@@ -13,6 +13,7 @@ import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.exception.CancelledException;
 import ghidracli.listing.InstructionFlow;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.AddressResolver;
 import ghidracli.query.ListQuery;
@@ -40,7 +41,7 @@ public final class FunctionCandidateSearch {
         if (program == null) return errorResult("No program loaded");
         AddressSet scope = new AddressSet(resolver.instructionRange(
             getArgString(args, "start"), getArgString(args, "end")))
-            .intersect(program.getMemory().getLoadedAndInitializedAddressSet())
+            .intersect(new MemoryReads(session).loadedInitializedAddresses())
             .intersect(program.getMemory().getExecuteSet());
         long limit = ListQuery.pageArgument(args, "limit");
         AddressIterator destinations = program.getReferenceManager()

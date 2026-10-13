@@ -65,9 +65,9 @@ public final class ListingCommands {
             }
 
             // Mirror listing applicability and sizing before any destructive clear.
-            if (dataType instanceof FactoryDataType) {
-                dataType = ((FactoryDataType) dataType).getDataType(
-                    new MemoryBufferImpl(session.program().getMemory(), addr));
+            if (dataType instanceof FactoryDataType factory) {
+                dataType = nativeDefinition(() -> factory.getDataType(
+                    new MemoryBufferImpl(session.program().getMemory(), addr)));
                 if (dataType == null) return errorResult("Failed to resolve data type: " + typeName);
                 dataType = dataType.clone(session.program().getDataTypeManager());
             }
@@ -77,8 +77,9 @@ public final class ListingCommands {
                 ? ((TypeDef) dataType).getBaseDataType() : dataType;
             if (baseType instanceof FunctionDefinition)
                 dataType = new PointerDataType(dataType, session.program().getDataTypeManager());
-            int length = dataType instanceof Dynamic
-                ? ((Dynamic) dataType).getLength(new MemoryBufferImpl(session.program().getMemory(), addr), -1)
+            int length = dataType instanceof Dynamic dynamic
+                ? nativeDefinition(() -> dynamic.getLength(
+                    new MemoryBufferImpl(session.program().getMemory(), addr), -1))
                 : dataType.getLength();
             if (length <= 0 || dataType.isZeroLength())
                 return errorResult("Type must have a positive applicable data length: " + typeName);
@@ -95,13 +96,14 @@ public final class ListingCommands {
                 : null;
 
             Listing listing = session.program().getListing();
+            DataType definitionType = dataType;
             try {
                 session.monitor().checkCancelled();
                 if (force) {
                     listing.clearCodeUnits(addr, clearEnd, false, session.monitor());
                 }
                 session.monitor().checkCancelled();
-                if (listing.createData(addr, dataType, length) == null) {
+                if (nativeDefinition(() -> listing.createData(addr, definitionType, length)) == null) {
                     throw new IllegalStateException("Ghidra did not create data at " + AddressCodec.format(addr));
                 }
                 session.monitor().checkCancelled();
@@ -132,6 +134,19 @@ public final class ListingCommands {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to apply type: " + e.getMessage(), e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface DefinitionOperation<T> { T run() throws Exception; }
+
+    private static <T> T nativeDefinition(DefinitionOperation<T> operation) throws Exception {
+        try { return operation.run(); }
+        catch (StackOverflowError recursion) {
+            // Native datatype sizing and insertion read Memory recursively.
+            // Keep that known failure inside the ordinary rollback boundary.
+            throw new IllegalArgumentException(
+                "Ghidra could not define data through recursive memory mappings", recursion);
         }
     }
 

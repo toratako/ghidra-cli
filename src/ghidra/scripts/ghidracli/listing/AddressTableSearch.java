@@ -10,14 +10,18 @@ import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.query.AddressCodec;
+import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressResolver;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.concurrent.CancellationException;
 
 import static ghidracli.protocol.JsonProtocol.errorResult;
 import static ghidracli.protocol.JsonProtocol.getArgString;
@@ -57,8 +61,9 @@ public final class AddressTableSearch {
         }
         AddressSetView requested = resolver.instructionRange(
             getArgString(args, "start"), getArgString(args, "end"));
-        AddressSet scope = new AddressSet(requested).intersect(
-            program.getMemory().getLoadedAndInitializedAddressSet());
+        MemoryReads reads = new MemoryReads(session);
+        AddressSet scope = new AddressSet(requested).intersect(reads.loadedInitializedAddresses());
+        Program readableProgram = readableProgram(program, reads);
         long limit = ListQuery.pageArgument(args, "limit");
         NativeDetector detector;
         try {
@@ -83,7 +88,12 @@ public final class AddressTableSearch {
                 throw new IllegalArgumentException("Native address-table search requires byte-addressed memory: "
                     + start.getAddressSpace().getName());
             }
-            Object table = detector.find(program, start, session.monitor(), minimum, alignment);
+            Object table;
+            try { table = detector.find(readableProgram, start, session.monitor(), minimum, alignment); }
+            catch (CancellationException cancelled) {
+                session.monitor().checkCancelled();
+                throw cancelled;
+            }
             // getEntry returns a partial table on cancellation. Never publish it
             // as a successful candidate, even when a result limit has been met.
             session.monitor().checkCancelled();
@@ -142,6 +152,30 @@ public final class AddressTableSearch {
         if (!complete) scan.addProperty("stop_reason", "limit");
         result.add("scan", scan);
         return result;
+    }
+
+    /** Keep the native detector while resolving its scalar/index reads iteratively. */
+    private static Program readableProgram(Program program, MemoryReads reads) {
+        Memory memory = program.getMemory();
+        Memory readableMemory = (Memory) Proxy.newProxyInstance(Memory.class.getClassLoader(),
+            new Class<?>[] { Memory.class }, (proxy, method, args) -> {
+                if (args != null && args.length == 1 && args[0] instanceof Address address) {
+                    switch (method.getName()) {
+                        case "getByte": return reads.buffer(address).getByte(0);
+                        case "getInt": return reads.buffer(address).getInt(0);
+                        case "getLong": return reads.buffer(address).getLong(0);
+                    }
+                }
+                return invoke(method, memory, args);
+            });
+        return (Program) Proxy.newProxyInstance(Program.class.getClassLoader(),
+            new Class<?>[] { Program.class }, (proxy, method, args) ->
+                method.getName().equals("getMemory") ? readableMemory : invoke(method, program, args));
+    }
+
+    private static Object invoke(Method method, Object target, Object[] args) throws Throwable {
+        try { return method.invoke(target, args); }
+        catch (InvocationTargetException failure) { throw failure.getCause(); }
     }
 
     /** Do not make a private Ghidra GUI package a hard OSGi import. */
