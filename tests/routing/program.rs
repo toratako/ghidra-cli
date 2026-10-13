@@ -71,6 +71,43 @@ fn stopped_bridge_operations_still_require_a_local_installation() {
 }
 
 #[test]
+fn empty_project_targets_do_not_edit_the_project_directory() {
+    let bridge = RecordedBridge::new();
+    let old_port = super::bridge::port_file_path(&bridge.project).unwrap();
+    let old_pid = super::bridge::pid_file_path(&bridge.project).unwrap();
+    std::fs::create_dir_all(bridge.project.with_added_extension("rep")).unwrap();
+    std::fs::rename(
+        old_port,
+        super::bridge::port_file_path(&bridge.project).unwrap(),
+    )
+    .unwrap();
+    std::fs::rename(
+        old_pid,
+        super::bridge::pid_file_path(&bridge.project).unwrap(),
+    )
+    .unwrap();
+
+    let output = bridge
+        .command()
+        .env("GHIDRA_PROJECT_DIR", &bridge.project)
+        .args([
+            "comment",
+            "set",
+            "0x1000",
+            "--text",
+            "must-not-edit",
+            "--project",
+            "",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(diagnostic["message"].as_str().unwrap().contains("empty"));
+    assert!(bridge.requests.lock().unwrap().is_empty());
+}
+
+#[test]
 fn listing_programs_does_not_select_a_context_program() {
     let bridge = RecordedBridge::new();
     std::fs::write(

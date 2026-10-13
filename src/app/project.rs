@@ -25,10 +25,12 @@ pub(super) fn resolve_project_name(
     project: &Option<String>,
     config: &Config,
 ) -> anyhow::Result<String> {
-    project
+    let name = project
         .clone()
         .or_else(|| config.default_project.clone())
-        .ok_or_else(|| anyhow::anyhow!("No project specified and no default project configured"))
+        .ok_or_else(|| anyhow::anyhow!("No project specified and no default project configured"))?;
+    anyhow::ensure!(!name.is_empty(), "Project name or path cannot be empty");
+    Ok(name)
 }
 
 /// Resolve a project name to its full path on disk.
@@ -51,6 +53,23 @@ pub(super) fn resolve_project_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_project_targets_do_not_resolve_to_the_project_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        for (project, default_project) in [
+            (Some(String::new()), Some("configured".to_owned())),
+            (None, Some(String::new())),
+        ] {
+            let config = Config {
+                projects_dir_override: Some(temp.path().to_owned()),
+                default_project,
+                ..Config::default()
+            };
+            let error = resolve_project_path(&project, &config).unwrap_err();
+            assert!(error.to_string().contains("empty"), "{error}");
+        }
+    }
 
     #[test]
     fn empty_project_artifacts_are_not_program_data() {

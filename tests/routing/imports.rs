@@ -327,3 +327,50 @@ fn lost_import_followup_responses_recover_the_exact_job_without_reimporting() {
         );
     }
 }
+
+// APFS can reject non-UTF-8 names; Linux checks the resolved CWD against an
+// existing, distinct Unicode replacement path that lossy encoding would select.
+#[cfg(target_os = "linux")]
+#[test]
+fn import_rejects_non_utf8_working_directories_before_loading_a_different_file() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let bridge = RecordedBridge::new();
+    let directory = bridge
+        .root
+        .path()
+        .join(std::ffi::OsString::from_vec(b"input-\xff".to_vec()));
+    let replacement = bridge.root.path().join("input-\u{fffd}");
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::create_dir(&replacement).unwrap();
+    std::fs::write(directory.join("binary"), "requested input").unwrap();
+    std::fs::write(replacement.join("binary"), "different input").unwrap();
+    for flags in [vec![], vec!["--language", "x86:LE:32:default"]] {
+        let output = bridge
+            .command()
+            .current_dir(&directory)
+            .args(["program", "import", "binary", "--no-analyze"])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Binary path cannot be represented as UTF-8"),
+            "{error}"
+        );
+        assert_eq!(error["detail"]["import_status"], "not_started");
+        assert!(bridge.requests.lock().unwrap().is_empty());
+    }
+    assert_eq!(
+        std::fs::read(directory.join("binary")).unwrap(),
+        b"requested input"
+    );
+    assert_eq!(
+        std::fs::read(replacement.join("binary")).unwrap(),
+        b"different input"
+    );
+}

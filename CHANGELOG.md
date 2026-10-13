@@ -13,6 +13,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   treating an unavailable live bridge as stopped with nothing pending.
 - Preserve saved import identities and checkpoints in failure recovery, and
   avoid batch restart guidance that would repeat an already saved import.
+- Reject empty project selections and non-Unicode script, import, artifact,
+  and export paths before they can select a different target.
 - Keep bridge readiness probes and lifecycle-lock waits within their shared
   deadlines, and prevent project operations after shutdown expiry.
 - Reject invalid discovery ports and PIDs before sending bridge commands, and

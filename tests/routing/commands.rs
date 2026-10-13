@@ -1,6 +1,43 @@
 use super::{batch_arguments, RecordedBridge};
 use serde_json::{json, Value};
 
+#[cfg(target_os = "linux")]
+#[test]
+fn export_rejects_an_unrepresentable_output_directory_before_dispatch() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let bridge = RecordedBridge::new();
+    let directory = bridge
+        .root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"exports\xff"));
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::create_dir(bridge.root.path().join("exports\u{fffd}")).unwrap();
+    let output = bridge
+        .command()
+        .current_dir(directory)
+        .args([
+            "program",
+            "export",
+            "A",
+            "--export-format",
+            "binary",
+            "--output",
+            "program.bin",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(diagnostic["message"].as_str().unwrap().contains("UTF-8"));
+    assert!(!bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|request| request["command"] == "program_export"));
+}
+
 #[test]
 fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();

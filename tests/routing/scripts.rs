@@ -1,6 +1,74 @@
 use super::RecordedBridge;
 use serde_json::{json, Value};
 
+#[cfg(target_os = "linux")]
+#[test]
+fn script_symlinks_cannot_redirect_execution_through_lossy_paths() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let bridge = RecordedBridge::new();
+    let target = bridge
+        .root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"Script\xff.java"));
+    std::fs::write(&target, "int intended;").unwrap();
+    std::fs::write(bridge.root.path().join("Script\u{fffd}.java"), "int wrong;").unwrap();
+    std::os::unix::fs::symlink(&target, bridge.root.path().join("alias.java")).unwrap();
+
+    let output = bridge
+        .command()
+        .args(["script", "run", "alias.java"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(diagnostic["message"].as_str().unwrap().contains("UTF-8"));
+    assert!(!bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|request| request["command"] == "script_run"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn unrepresentable_artifact_paths_fail_before_running_a_script() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let bridge = RecordedBridge::new();
+    let directory = bridge
+        .root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"artifacts\xff"));
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::create_dir(bridge.root.path().join("artifacts\u{fffd}")).unwrap();
+    let script = bridge.root.path().join("Example.java");
+    std::fs::write(&script, "int intended;").unwrap();
+
+    for option in ["--expect", "--expect-rows"] {
+        let mut command = bridge.command();
+        command
+            .current_dir(&directory)
+            .args(["script", "run"])
+            .arg(&script);
+        command.args([option, "rows.jsonl"]);
+        if option == "--expect-rows" {
+            command.arg("1");
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{option}: {output:?}");
+        let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(diagnostic["message"].as_str().unwrap().contains("UTF-8"));
+    }
+    assert!(!bridge
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|request| request["command"] == "script_run"));
+}
+
 #[test]
 fn script_inputs_and_artifact_paths_are_prepared_by_the_client() {
     let bridge = RecordedBridge::new();

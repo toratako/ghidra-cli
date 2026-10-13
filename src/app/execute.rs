@@ -7,6 +7,7 @@ mod type_archives;
 
 use crate::cli::{self, Commands};
 use crate::ipc::client::BridgeClient;
+use anyhow::Context;
 
 /// Read free-form annotation text without changing whitespace or line endings.
 fn resolve_annotation_text(
@@ -287,7 +288,10 @@ pub(super) fn execute_via_bridge(
                 ProgramCommands::ListCallingConventions(_) => client.program_list_calling_conventions(),
                 ProgramCommands::Export(args) => {
                     let output = std::path::absolute(&args.output)?;
-                    client.program_export(&args.format, Some(&output.to_string_lossy()))
+                    let output = output.to_str().with_context(|| {
+                        format!("Export path cannot be represented as UTF-8: {}", output.display())
+                    })?;
+                    client.program_export(&args.format, Some(output))
                 }
                 // Top-level save handles a stopped bridge without auto-start;
                 // inside a batch, the bridge is already available.

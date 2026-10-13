@@ -49,6 +49,12 @@ fn run_import_steps(
     // CLI's CWD without replacing a symlink's input name with its target name.
     let binary_path = std::path::absolute(binary_path)?;
     let binary_path = dunce::simplified(&binary_path).to_path_buf();
+    let binary_path_text = binary_path.to_str().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Binary path cannot be represented as UTF-8: {}",
+            binary_path.display()
+        )
+    })?;
     let (options, explicit_loader) = build_oneshot_import_options(args)?;
     let running = bridge::is_bridge_running(project_path);
     let one_shot =
@@ -104,8 +110,7 @@ fn run_import_steps(
         .with_selection(selection.clone());
         progress.stage = "import.load";
         progress.imported = "unknown";
-        let result =
-            client.import_binary(&binary_path.to_string_lossy(), options.program.as_deref())?;
+        let result = client.import_binary(binary_path_text, options.program.as_deref())?;
         let name = result["program"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Import did not return its saved program name"))?

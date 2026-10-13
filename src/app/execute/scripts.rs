@@ -2,6 +2,7 @@
 
 use crate::cli::ScriptCommands;
 use crate::ipc::client::BridgeClient;
+use anyhow::Context;
 
 pub(super) fn execute(
     client: &BridgeClient,
@@ -14,9 +15,9 @@ pub(super) fn execute(
                 .expect
                 .iter()
                 .map(|path| expected_artifact(path, None))
-                .collect();
+                .collect::<anyhow::Result<_>>()?;
             for [path, rows] in args.expect_rows.as_chunks::<2>().0 {
-                expect.push(expected_artifact(path, Some(parse_min_rows(rows)?)));
+                expect.push(expected_artifact(path, Some(parse_min_rows(rows)?))?);
             }
             if args.script_path == "-" {
                 // Read a one-off script's Java source from stdin so a
@@ -29,13 +30,17 @@ pub(super) fn execute(
                 // Canonicalize client-side so the bridge receives an absolute
                 // path independent of the working directory its JVM inherited.
                 // Use the ordinary Windows form that Ghidra's Java APIs accept.
-                // Fall back to the raw path if the file is missing; the bridge
+                // Keep an absolute path if the file is missing; the bridge
                 // then reports a clear "Script not found".
                 let path = dunce::canonicalize(&args.script_path)
-                    .or_else(|_| std::path::absolute(&args.script_path))
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_else(|_| args.script_path.clone());
-                client.script_run(&path, &args.args, &expect, args.allow_empty)
+                    .or_else(|_| std::path::absolute(&args.script_path))?;
+                let path = path.to_str().with_context(|| {
+                    format!(
+                        "Script path cannot be represented as UTF-8: {}",
+                        path.display()
+                    )
+                })?;
+                client.script_run(path, &args.args, &expect, args.allow_empty)
             }
         }
         ScriptCommands::List => client.script_list(),
@@ -43,16 +48,23 @@ pub(super) fn execute(
 }
 
 /// Resolve artifact paths against the client's CWD, independent of the bridge JVM.
-fn expected_artifact(path: &str, min_rows: Option<i64>) -> serde_json::Value {
-    let abs = std::path::absolute(path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string());
+fn expected_artifact(path: &str, min_rows: Option<i64>) -> anyhow::Result<serde_json::Value> {
+    let abs = std::path::absolute(path)?;
+    let abs = abs.to_str().with_context(|| {
+        format!(
+            "Artifact path cannot be represented as UTF-8: {}",
+            abs.display()
+        )
+    })?;
     let mut obj = serde_json::Map::new();
-    obj.insert("path".to_string(), serde_json::Value::String(abs));
+    obj.insert(
+        "path".to_string(),
+        serde_json::Value::String(abs.to_owned()),
+    );
     if let Some(n) = min_rows {
         obj.insert("min_rows".to_string(), serde_json::json!(n));
     }
-    serde_json::Value::Object(obj)
+    Ok(serde_json::Value::Object(obj))
 }
 
 pub(super) fn validate_expect_specs(expect_rows: &[String]) -> anyhow::Result<()> {
