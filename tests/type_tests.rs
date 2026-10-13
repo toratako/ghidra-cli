@@ -24,6 +24,8 @@ mod components;
 mod define_data;
 #[path = "types/definitions.rs"]
 mod definitions;
+#[path = "types/dormant.rs"]
+mod dormant;
 #[path = "types/enums.rs"]
 mod enums;
 #[path = "types/fields.rs"]

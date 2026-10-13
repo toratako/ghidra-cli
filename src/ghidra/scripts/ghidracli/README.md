@@ -192,8 +192,9 @@ their owners; the failed request's edits cannot subsequently be committed.
 Until cleanup completes, report `transaction_failed` without `rolled_back` and
 do not save. Recovery scripts remain available. Never end an unknown transaction ID.
 
-Bounded code definition uses `ProgramSession.preview()` before any mutations in
-the atomic request. Preview verifies the sole owned transaction and unchanged
+Bounded code definition and dormant function validation use
+`ProgramSession.preview()` before any mutations in the atomic request. Preview
+verifies the sole owned transaction and unchanged
 Program modification number, ends that untouched transaction without committing,
 runs a program-only preview in a separate transaction that is always rolled back,
 then restores the request transaction after completed rollback. A leaked preview
@@ -250,6 +251,7 @@ another consumer or terminate its checkout.
 | [`TypeCommands`](types/TypeCommands.java), [`TypeImportCommands`](types/TypeImportCommands.java), [`TypeResolver`](types/TypeResolver.java), [`TypeFields`](types/TypeFields.java), [`StructureFields`](types/StructureFields.java), [`UnionFields`](types/UnionFields.java) | Data types, C parsing/import, type-name resolution, validated struct/union edits |
 | [`TypeArchiveCommands`](types/TypeArchiveCommands.java), [`TypeArchiveGraph`](types/TypeArchiveGraph.java) | GDT snapshots/publication, guarded root selection, dependency and ABI/identity validation |
 | [`TypeDefinitionCommands`](types/TypeDefinitionCommands.java), [`TypeResizeCommands`](types/TypeResizeCommands.java), [`BitFieldCommands`](types/BitFieldCommands.java), [`BitFields`](types/BitFields.java) | Definition identity/settings, category operations, guarded size propagation, and shared explicit bitfield layouts |
+| [`TypeMutationPreview`](types/TypeMutationPreview.java) | Rollback trial of type mutations preserving dormant thunk-owned definitions before fresh real execution |
 | [`TypeUsesCommands`](types/TypeUsesCommands.java), [`TypeUseMatcher`](types/TypeUseMatcher.java) | Registered type identity, declaration wrapper paths, and applied-data/function-signature uses |
 | [`SemanticTypeUsesCommands`](analysis/SemanticTypeUsesCommands.java), [`FieldUses`](analysis/FieldUses.java), [`TypeFieldTarget`](types/TypeFieldTarget.java) | Decompiler variable searches, native field access evidence, and unambiguous read-only component selection |
 | [`TagCommands`](function/TagCommands.java), [`TagSupport`](function/TagSupport.java), [`SymbolCommands`](symbol/SymbolCommands.java), [`CommentCommands`](symbol/CommentCommands.java), [`BookmarkCommands`](symbol/BookmarkCommands.java) | Program annotations and symbols |
@@ -334,7 +336,8 @@ must not silently disappear in an otherwise successful export.
 `TypeResizeCommands` follows native size propagation through composite, array,
 and typedef parents and scans their applied Listing data and saved function
 returns, parameters, and locals, including external and unmapped functions.
-Thunk views are checked through their effective owner's variables.
+Thunk views are checked through their effective owner's variables;
+`TypeMutationPreview` separately checks their dormant own definitions.
 Before committing it checks complete component lengths, native component counts,
 preserved definitions, and explicit settings on applied components. Originally
 valid saved variables must remain valid after native notifications; they are
@@ -345,6 +348,19 @@ The scan checks cancellation through defined fields and array elements; it does
 not expand implicit struct filler. Applied zero-length roots are rejected because
 Listing cannot represent their requested logical length. All failures use the
 ordinary request rollback boundary.
+
+The dispatcher wraps resize, field append/set/delete, explicit bitfield creation,
+and C import in `TypeMutationPreview`. With active thunks, the rollback trial
+temporarily clears their direct relations to capture originally valid own
+returns, explicit parameters, and locals. It restores the original graph before
+running the mutation, then clears the relations again to verify fresh own values
+against their retained or replacement type IDs and complete native storage.
+This ordering matters because native type replacement skips active thunk return
+records; a missing type can otherwise appear as valid undefined storage.
+After rollback, the handler runs again and resolves all native objects afresh,
+including C parsing and its staging manager. Only the real pass returns a receipt
+and reaches saving. Error results and cancellation prevent replay. Without
+active thunks the handler runs once. No native objects cross the preview rollback.
 
 `TypeUsesCommands` selects a registered Program type through `TypeResolver`, then
 matches manager-qualified local type IDs while following only typedef, pointer,

@@ -50,6 +50,7 @@ import ghidracli.types.TypeArchiveCommands;
 import ghidracli.types.TypeCommands;
 import ghidracli.types.TypeDefinitionCommands;
 import ghidracli.types.TypeImportCommands;
+import ghidracli.types.TypeMutationPreview;
 import ghidracli.types.TypeResizeCommands;
 import ghidracli.types.TypeResolver;
 import ghidracli.types.TypeUsesCommands;
@@ -80,6 +81,7 @@ final class CommandDispatcher {
     private final SemanticTypeUsesCommands semanticTypeUsesCommands;
     private final TypeDefinitionCommands typeDefinitionCommands;
     private final TypeResizeCommands typeResizeCommands;
+    private final TypeMutationPreview typeMutationPreview;
     private final BitFieldCommands bitFieldCommands;
     private final TagCommands tagCommands;
     private final PcodeCommands pcodeCommands;
@@ -142,6 +144,7 @@ final class CommandDispatcher {
         semanticTypeUsesCommands = new SemanticTypeUsesCommands(session, typeResolver, functionQueries);
         typeDefinitionCommands = new TypeDefinitionCommands(session, typeResolver);
         typeResizeCommands = new TypeResizeCommands(session, typeResolver);
+        typeMutationPreview = new TypeMutationPreview(session);
         bitFieldCommands = new BitFieldCommands(session, typeResolver);
         tagCommands = new TagCommands(session, functionQueries);
         pcodeCommands = new PcodeCommands(session, addressResolver, functionQueries);
@@ -242,12 +245,14 @@ final class CommandDispatcher {
             case "type_clone":      return typeDefinitionCommands.handleClone(args);
             case "type_set_description": return typeDefinitionCommands.handleSetDescription(args);
             case "type_move":       return typeDefinitionCommands.handleMove(args);
-            case "type_resize":     return typeResizeCommands.handleResize(args);
+            case "type_resize":
+                return typeMutationPreview.execute(() -> typeResizeCommands.handleResize(args));
             case "type_category_list": return typeDefinitionCommands.handleCategoryList(args);
             case "type_category_create": return typeDefinitionCommands.handleCategoryCreate(args);
             case "type_category_delete": return typeDefinitionCommands.handleCategoryDelete(args);
             case "type_create":     return typeCommands.handleTypeCreate(args);
-            case "type_import_c":   return typeImportCommands.handleTypeImportC(args);
+            case "type_import_c":
+                return typeMutationPreview.execute(() -> typeImportCommands.handleTypeImportC(args));
             case "type_archive_list": return typeArchiveCommands.handleList(args);
             case "type_gdt_candidates": return typeArchiveCommands.handleCandidates(args);
             case "type_import_gdt": return typeArchiveCommands.handleImport(args);
@@ -262,11 +267,15 @@ final class CommandDispatcher {
             case "type_create_union": return typeCommands.handleTypeCreateUnion(args);
             case "type_enum_member_delete": return typeCommands.handleTypeEnumMemberDelete(args);
             case "type_typedef":    return typeCommands.handleTypeTypedef(args);
-            case "type_field_append":  return typeCommands.handleTypeFieldAppend(args);
-            case "type_field_create_bitfield": return bitFieldCommands.handleCreate(args);
-            case "type_field_set":  return typeCommands.handleTypeFieldSet(args);
+            case "type_field_append":
+                return typeMutationPreview.execute(() -> typeCommands.handleTypeFieldAppend(args));
+            case "type_field_create_bitfield":
+                return typeMutationPreview.execute(() -> bitFieldCommands.handleCreate(args));
+            case "type_field_set":
+                return typeMutationPreview.execute(() -> typeCommands.handleTypeFieldSet(args));
             case "type_field_clear": return typeCommands.handleTypeFieldClear(args);
-            case "type_field_delete":  return typeCommands.handleTypeFieldDelete(args);
+            case "type_field_delete":
+                return typeMutationPreview.execute(() -> typeCommands.handleTypeFieldDelete(args));
             // Tag commands
             case "tag_list":        return tagCommands.handleTagList(args);
             case "tag_get":         return tagCommands.handleTagGet(args);

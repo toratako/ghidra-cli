@@ -420,6 +420,10 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../scripts/ghidracli/types/TypeImportCommands.java"),
     ),
     (
+        "ghidracli/types/TypeMutationPreview.java",
+        include_str!("../scripts/ghidracli/types/TypeMutationPreview.java"),
+    ),
+    (
         "ghidracli/types/TypeResizeCommands.java",
         include_str!("../scripts/ghidracli/types/TypeResizeCommands.java"),
     ),
