@@ -136,8 +136,9 @@ impl BridgeClient {
         let wire = format!("{request_json}\n");
         // From the first write onward, a transport/protocol failure cannot prove
         // that the bridge did not execute the command. Never replay it.
+        let mut write_attempted = false;
         let response = (|| -> Result<BridgeResponse> {
-            connection.write_request(&wire)?;
+            connection.write_request(&wire, || write_attempted = true)?;
             let response_line = match connection.read_line() {
                 // EOF before any response: bridge closed the socket without replying.
                 Ok(line) if line.is_empty() => {
@@ -183,6 +184,9 @@ impl BridgeClient {
             Ok(response)
         })()
         .map_err(|error| {
+            if !write_attempted {
+                return error;
+            }
             let error = if error.downcast_ref::<BridgeTimeoutError>().is_some() {
                 error
             } else {

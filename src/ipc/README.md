@@ -60,6 +60,8 @@ Read timeouts exit 75 without cancelling the job; other unknown outcomes exit 1.
 Sent program requests retain their client-generated UUID on either failure path;
 the CLI's diagnostics and batch rows use it to retrieve the result. Controls do
 not create jobs or advertise a new recovery ID. No operation is automatically replayed.
+Connection or timeout-setup failures before the first write attempt do not
+advertise an unknown outcome or a recovery ID.
 Shutdown uses the caller's remaining total deadline for connect, write, and read;
 it must not fall back to an independent generic socket timeout. The lifecycle
 caller also budgets lock acquisition and process exit, preserves the typed

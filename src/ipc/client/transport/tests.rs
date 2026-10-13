@@ -243,6 +243,33 @@ fn expired_shutdown_deadline_does_not_connect() {
         error.downcast_ref::<Error>().unwrap().kind(),
         ErrorKind::TimedOut
     );
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+        .is_none());
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+        .is_none());
+    assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+}
+
+#[test]
+fn expired_program_deadline_does_not_create_a_recovery_job() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let client = BridgeClient::new(listener.local_addr().unwrap().port());
+    let error = client
+        .send_command_with_deadline("comment_set", None, Some(std::time::Instant::now()))
+        .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<Error>().unwrap().kind(),
+        ErrorKind::TimedOut
+    );
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+        .is_none());
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+        .is_none());
     assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
 }
 
@@ -275,6 +302,12 @@ fn invalid_read_timeout_fails_before_sending_request() {
         ErrorKind::InvalidInput
     );
     assert!(error.to_string().contains("before sending request"));
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeOutcomeUnknownError>()
+        .is_none());
+    assert!(error
+        .downcast_ref::<crate::ipc::protocol::BridgeJob>()
+        .is_none());
 }
 
 #[test]

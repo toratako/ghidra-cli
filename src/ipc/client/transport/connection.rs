@@ -41,58 +41,106 @@ impl Connection {
         })
     }
 
-    pub(super) fn write_request(&mut self, wire: &str) -> Result<()> {
-        let mut pending = wire.as_bytes();
-        while !pending.is_empty() {
-            self.stream.set_write_timeout(remaining_timeout(
-                self.deadline,
-                Some(Duration::from_secs(30)),
-            )?)?;
-            let written = match self.stream.write(pending) {
-                Ok(written) => written,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error.into()),
-            };
-            anyhow::ensure!(written > 0, "Bridge closed while writing request");
-            pending = &pending[written..];
-        }
-
+    /// Notify the caller immediately before each write attempt: timeout setup
+    /// failure still proves that no request bytes reached the bridge.
+    pub(super) fn write_request(
+        &mut self,
+        wire: &str,
+        on_write_attempt: impl FnMut(),
+    ) -> Result<()> {
+        write_request_to(
+            &self.stream,
+            wire.as_bytes(),
+            || {
+                self.stream.set_write_timeout(remaining_timeout(
+                    self.deadline,
+                    Some(Duration::from_secs(30)),
+                )?)
+            },
+            || remaining_timeout(self.deadline, None).map(|_| ()),
+            on_write_attempt,
+        )?;
         Ok(())
     }
 
     pub(super) fn read_line(&self) -> std::io::Result<String> {
-        let mut reader = BufReader::new(&self.stream);
-        let mut bytes = Vec::new();
-        loop {
-            // Refresh the remaining budget on every receive, so a partial reply
-            // cannot extend the shutdown deadline by trickling bytes.
-            self.stream
-                .set_read_timeout(remaining_timeout(self.deadline, self.read_timeout)?)?;
-            let available = match reader.fill_buf() {
-                Ok(available) => available,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error),
-            };
-            if available.is_empty() {
-                if bytes.is_empty() {
-                    return Ok(String::new());
-                }
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "Bridge closed the connection before completing its response frame",
-                ));
+        read_response_frame(
+            BufReader::new(&self.stream),
+            || {
+                // Refresh the remaining budget on every receive, so a partial
+                // reply cannot extend the shutdown deadline by trickling bytes.
+                self.stream
+                    .set_read_timeout(remaining_timeout(self.deadline, self.read_timeout)?)
+            },
+            || remaining_timeout(self.deadline, None).map(|_| ()),
+        )
+    }
+}
+
+// Keep framing and the point where a request may reach the bridge testable
+// without relying on socket buffer sizes, scheduling, or wall-clock delays.
+fn write_request_to(
+    mut writer: impl Write,
+    mut pending: &[u8],
+    mut prepare_write: impl FnMut() -> std::io::Result<()>,
+    mut check_deadline: impl FnMut() -> std::io::Result<()>,
+    mut on_write_attempt: impl FnMut(),
+) -> std::io::Result<()> {
+    while !pending.is_empty() {
+        prepare_write()?;
+        on_write_attempt();
+        let written = match writer.write(pending) {
+            Ok(written) => written,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        check_deadline()?;
+        if written == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "Bridge closed while writing request",
+            ));
+        }
+        pending = &pending[written..];
+    }
+    Ok(())
+}
+
+fn read_response_frame(
+    mut reader: impl BufRead,
+    mut prepare_read: impl FnMut() -> std::io::Result<()>,
+    mut check_deadline: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<String> {
+    let mut bytes = Vec::new();
+    loop {
+        prepare_read()?;
+        let available = match reader.fill_buf() {
+            Ok(available) => available,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        // A socket timeout may round its duration up, and a completed receive
+        // can be followed by descheduling. Do not accept a late response.
+        check_deadline()?;
+        if available.is_empty() {
+            if bytes.is_empty() {
+                return Ok(String::new());
             }
-            let count = available
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map_or(available.len(), |index| index + 1);
-            let complete = available[count - 1] == b'\n';
-            bytes.extend_from_slice(&available[..count]);
-            reader.consume(count);
-            if complete {
-                return String::from_utf8(bytes)
-                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
-            }
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "Bridge closed the connection before completing its response frame",
+            ));
+        }
+        let count = available
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(available.len(), |index| index + 1);
+        let complete = available[count - 1] == b'\n';
+        bytes.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if complete {
+            return String::from_utf8(bytes)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
     }
 }
@@ -126,8 +174,8 @@ fn is_transient_connect_error(e: &std::io::Error) -> bool {
 /// failures are retried — nothing has been written yet — so this stays safe for
 /// non-idempotent commands (rename/comment/patch).
 fn connect_with_retry(addr: &std::net::SocketAddr, deadline: Option<Instant>) -> Result<TcpStream> {
-    let budget = remaining_timeout(deadline, Some(connect_deadline()))?.unwrap();
     let started = std::time::Instant::now();
+    let budget = remaining_timeout(deadline, Some(connect_deadline()))?.unwrap();
     retry_connect(
         budget,
         |timeout| TcpStream::connect_timeout(addr, timeout),
@@ -159,7 +207,10 @@ fn retry_connect<T>(
     loop {
         let remaining = budget.saturating_sub(elapsed());
         if remaining.is_zero() {
-            return Err(last_err.unwrap_or_else(|| std::io::ErrorKind::TimedOut.into()));
+            return Err(match last_err {
+                Some(error) => std::io::Error::new(std::io::ErrorKind::TimedOut, error),
+                None => std::io::ErrorKind::TimedOut.into(),
+            });
         }
         match connect(remaining.min(Duration::from_secs(10))) {
             Ok(stream) if elapsed() < budget => return Ok(stream),
@@ -196,7 +247,27 @@ fn remaining_timeout(
 mod tests {
     use super::*;
     use std::cell::Cell;
-    use std::io::{Error, ErrorKind};
+    use std::io::{Cursor, Error, ErrorKind, Read};
+
+    struct WriterFn<F>(F);
+
+    impl<F: FnMut(&[u8]) -> std::io::Result<usize>> Write for WriterFn<F> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0(bytes)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct ReaderFn<F>(F);
+
+    impl<F: FnMut(&mut [u8]) -> std::io::Result<usize>> Read for ReaderFn<F> {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            self.0(bytes)
+        }
+    }
 
     #[test]
     fn connect_attempts_and_backoff_share_one_deadline() {
@@ -216,7 +287,16 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+        assert_eq!(
+            error
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<Error>()
+                .unwrap()
+                .kind(),
+            ErrorKind::ConnectionRefused
+        );
         assert_eq!(
             attempts,
             [Duration::from_millis(250), Duration::from_millis(150)]
@@ -243,8 +323,20 @@ mod tests {
             |_| elapsed.set(Duration::from_secs(21)),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::ConnectionRefused);
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
         assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn exhausted_connect_budget_does_not_attempt_or_wait() {
+        let error = retry_connect::<()>(
+            Duration::ZERO,
+            |_| panic!("expired connection budget must not attempt a connection"),
+            || Duration::ZERO,
+            |_| panic!("expired connection budget must not wait"),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
     }
 
     #[test]
@@ -310,5 +402,184 @@ mod tests {
                 "{kind:?} should not be retryable"
             );
         }
+    }
+
+    #[test]
+    fn write_setup_failures_do_not_mark_or_attempt_a_request() {
+        for kind in [ErrorKind::TimedOut, ErrorKind::PermissionDenied] {
+            let attempted = Cell::new(false);
+            let error = write_request_to(
+                WriterFn(|_: &[u8]| panic!("failed timeout setup must not write")),
+                b"request\n",
+                || Err(kind.into()),
+                || panic!("failed timeout setup must return before deadline recheck"),
+                || attempted.set(true),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(!attempted.get());
+        }
+    }
+
+    #[test]
+    fn partial_and_interrupted_writes_preserve_the_request() {
+        let mut written = Vec::new();
+        let attempted = Cell::new(0);
+        let prepared = Cell::new(0);
+        write_request_to(
+            WriterFn(|pending: &[u8]| {
+                assert_eq!(attempted.get(), prepared.get());
+                if attempted.get() == 1 {
+                    return Err(ErrorKind::Interrupted.into());
+                }
+                let count = pending.len().min(2);
+                written.extend_from_slice(&pending[..count]);
+                Ok(count)
+            }),
+            b"request\n",
+            || {
+                prepared.set(prepared.get() + 1);
+                Ok(())
+            },
+            || Ok(()),
+            || attempted.set(attempted.get() + 1),
+        )
+        .unwrap();
+        assert_eq!(written, b"request\n");
+        assert_eq!(attempted.get(), 5);
+    }
+
+    #[test]
+    fn deadline_expiring_after_a_partial_write_prevents_the_next_write() {
+        let mut written = Vec::new();
+        let attempted = Cell::new(0);
+        let prepared = Cell::new(0);
+        let error = write_request_to(
+            WriterFn(|pending: &[u8]| {
+                written.extend_from_slice(&pending[..3]);
+                Ok(3)
+            }),
+            b"request\n",
+            || {
+                prepared.set(prepared.get() + 1);
+                if prepared.get() == 1 {
+                    Ok(())
+                } else {
+                    Err(ErrorKind::TimedOut.into())
+                }
+            },
+            || Ok(()),
+            || attempted.set(attempted.get() + 1),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+        assert_eq!(written, b"req");
+        assert_eq!(attempted.get(), 1);
+    }
+
+    #[test]
+    fn successful_write_returned_after_deadline_is_still_an_attempted_request() {
+        let attempted = Cell::new(false);
+        let mut written = Vec::new();
+        let error = write_request_to(
+            &mut written,
+            b"request\n",
+            || Ok(()),
+            || Err(ErrorKind::TimedOut.into()),
+            || attempted.set(true),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+        assert_eq!(written, b"request\n");
+        assert!(attempted.get());
+    }
+
+    #[test]
+    fn failed_and_zero_writes_are_attempted_once() {
+        for failure in [None, Some(ErrorKind::BrokenPipe)] {
+            let attempted = Cell::new(0);
+            let error = write_request_to(
+                WriterFn(|_: &[u8]| match failure {
+                    None => Ok(0),
+                    Some(kind) => Err(kind.into()),
+                }),
+                b"request\n",
+                || Ok(()),
+                || Ok(()),
+                || attempted.set(attempted.get() + 1),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), failure.unwrap_or(ErrorKind::WriteZero));
+            assert_eq!(attempted.get(), 1);
+        }
+    }
+
+    #[test]
+    fn read_frame_reassembles_fragmented_utf8_and_stops_at_first_newline() {
+        let response = "{\"text\":\"é\"}\n";
+        let bytes = format!("{response}second frame\n");
+        let result = read_response_frame(
+            BufReader::with_capacity(1, Cursor::new(bytes)),
+            || Ok(()),
+            || Ok(()),
+        )
+        .unwrap();
+        assert_eq!(result, response);
+    }
+
+    #[test]
+    fn interrupted_reads_continue_the_same_response_frame() {
+        let mut interrupted = false;
+        let mut bytes = Cursor::new(b"response\n");
+        let reader = ReaderFn(|buffer: &mut [u8]| {
+            if !interrupted {
+                interrupted = true;
+                Err(ErrorKind::Interrupted.into())
+            } else {
+                bytes.read(buffer)
+            }
+        });
+        let response =
+            read_response_frame(BufReader::with_capacity(2, reader), || Ok(()), || Ok(())).unwrap();
+        assert!(interrupted);
+        assert_eq!(response, "response\n");
+    }
+
+    #[test]
+    fn read_frame_requires_newline_and_valid_utf8() {
+        for (bytes, kind) in [
+            (&b"unterminated"[..], ErrorKind::UnexpectedEof),
+            (&b"\xff\n"[..], ErrorKind::InvalidData),
+        ] {
+            let error = read_response_frame(Cursor::new(bytes), || Ok(()), || Ok(())).unwrap_err();
+            assert_eq!(error.kind(), kind);
+        }
+        assert_eq!(
+            read_response_frame(Cursor::new([]), || Ok(()), || Ok(())).unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn completed_response_returned_after_deadline_is_rejected() {
+        let error = read_response_frame(
+            Cursor::new(b"response\n"),
+            || Ok(()),
+            || Err(ErrorKind::TimedOut.into()),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn read_deadline_prevents_receiving_a_response() {
+        let reader = ReaderFn(|_: &mut [u8]| panic!("expired deadline must not receive"));
+        let error = read_response_frame(
+            BufReader::new(reader),
+            || Err(ErrorKind::TimedOut.into()),
+            || panic!("expired deadline must return before deadline recheck"),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
     }
 }
