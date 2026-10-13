@@ -11,6 +11,11 @@ Complete Java scripts use their public class name as the filename. Shared Java
 fragments use `.java.inc`; templates with explicit insertion markers use
 `.java.in`. Keep both beside the scripts that use them.
 
+Format complete `.java` fixtures with `cargo xtask fmt-java`; CI checks them with
+`cargo xtask fmt-java --check`. Fragments, templates, and inline parser inputs keep
+their intentional syntax. See [developer tasks](../../xtask/README.md) for formatter
+setup.
+
 Treat this tree as read-only during tests. Stage scripts that need file execution
 or modification into an owned `tempfile` directory and retain its owner until
 execution finishes. Generated binaries, projects, archives, and artifacts also

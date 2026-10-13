@@ -11,6 +11,8 @@ cargo xtask test --no-fail-fast
 cargo xtask test --test comment_tests --test type_tests
 cargo xtask gen-tree
 cargo xtask gen-tree --check
+cargo xtask fmt-java
+cargo xtask fmt-java --check
 ```
 
 `test` runs `cargo test` with every following argument unchanged and in order,
@@ -30,6 +32,18 @@ caller's working directory and always writes `docs/tree.md` there. Regenerate it
 after changing command definitions. `--check` leaves the file unchanged and fails
 if it is missing or stale; it accepts CRLF line endings in Windows checkouts.
 
+`fmt-java` formats complete `.java` files under the workspace's `src/` and `tests/`
+directories with google-java-format 1.37.0 and Google's two-space indentation.
+Long string literals retain their spelling for tests that modify Java source.
+`--check` leaves files unchanged and fails when formatting is needed. Java fragments
+(`.java.inc`), templates (`.java.in`), and inline parser test inputs keep their
+intentional syntax and are excluded.
+
+The formatter needs a full JDK 21 or newer, available through `JAVA_HOME` or
+`PATH`, and `curl` on `PATH` for the first download. It downloads the official
+all-deps JAR, verifies its pinned SHA-256, and caches it in
+`target/google-java-format`. Ghidra is not required.
+
 ## Implementation and checks
 
 | Source | Responsibility |
@@ -37,6 +51,7 @@ if it is missing or stale; it accepts CRLF line endings in Windows checkouts.
 | [src/main.rs](src/main.rs) | Task dispatch |
 | [src/test.rs](src/test.rs) | Cargo argument forwarding and run-scoped fixture lifetime |
 | [src/gen_tree.rs](src/gen_tree.rs) | Command tree rendering, generation, and freshness checks |
+| [src/fmt_java.rs](src/fmt_java.rs) | Pinned Java formatter download, verification, and source formatting |
 | [../src/cli.rs](../src/cli.rs) | Shared CLI command definitions |
 
 Run `cargo test -p xtask` and `cargo xtask gen-tree --check` without Ghidra.

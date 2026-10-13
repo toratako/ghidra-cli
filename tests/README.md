@@ -7,6 +7,7 @@ cargo xtask test --no-fail-fast
 cargo test -p xtask
 cargo xtask gen-tree --check
 cargo fmt --all -- --check
+cargo xtask fmt-java --check
 cargo clippy --workspace -- -D warnings
 python -m unittest discover -s .github/actions/install-ghidra -v
 ```
@@ -49,6 +50,10 @@ API and belongs to `project_tests`.
 CI unit coverage runs both `--lib` and `--bin ghidra-cli`, the `xtask`
 tests, and the generated command tree check on Linux, Windows, and macOS 26 ARM64.
 See [the test workflow](../.github/workflows/test.yml) for suite groupings.
+
+The [lint workflow](../.github/workflows/lint.yml) checks Java formatting on Linux,
+Windows, and macOS 26 ARM64 with a full JDK 21 and no Ghidra installation.
+See [developer tasks](../xtask/README.md) for formatter prerequisites and commands.
 
 CI builds, tests, lint, and publishing use `--locked` so Cargo cannot silently
 resolve a different dependency set. For `xtask test`, CI locks both Cargo
