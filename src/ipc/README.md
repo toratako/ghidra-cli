@@ -33,9 +33,10 @@ resolution gaps and unreadable slots. This operation reads absolute pointers.
 
 ## Connection and timeout boundaries
 
-Each request uses a fresh localhost TCP connection for one newline-terminated
-JSON request and response. Socket handlers run independently of the serialized
-Ghidra program lane; see [Java execution ownership](../ghidra/scripts/ghidracli/README.md).
+Each request uses a fresh localhost TCP connection for one LF-terminated UTF-8
+JSON request and response. A partial frame at EOF is never admitted as a request.
+Socket handlers run independently of the serialized Ghidra program lane; see
+[Java execution ownership](../ghidra/scripts/ghidracli/README.md).
 
 Retry transient connection failures with backoff only **before sending**; replaying
 a sent mutation could duplicate it. Read waits include time in the program queue.

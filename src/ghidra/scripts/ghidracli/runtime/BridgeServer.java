@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import java.io.BufferedReader;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -12,6 +13,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -152,15 +154,17 @@ final class BridgeServer {
             // for serialized Ghidra work to finish.
             client.setSoTimeout(30000);
             BufferedReader in = new BufferedReader(
-                new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
-            String line = in.readLine();
+                new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)));
+            String line = readRequestLine(in);
             readingClients.remove(client);
             if (line == null || line.trim().isEmpty()) {
                 closeClient(client);
                 return;
             }
 
-            BridgeReply reply = requests.apply(line.trim());
+            BridgeReply reply = requests.apply(line);
             if (!reply.asynchronous) {
                 respondAndClose(client, reply.completion.join().get());
                 return;
@@ -189,6 +193,20 @@ final class BridgeServer {
             }
         } finally {
             readingClients.remove(client);
+        }
+    }
+
+    private static String readRequestLine(BufferedReader in) throws IOException {
+        StringBuilder line = new StringBuilder();
+        while (true) {
+            int character = in.read();
+            if (character == '\n') return line.toString();
+            if (character == -1) {
+                if (line.length() == 0) return null;
+                // EOF and a bare CR do not complete the LF-terminated frame.
+                throw new EOFException("Client closed before completing its request frame");
+            }
+            line.append((char) character);
         }
     }
 
