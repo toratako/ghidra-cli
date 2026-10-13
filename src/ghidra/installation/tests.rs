@@ -52,6 +52,21 @@ fn jar_metadata_uses_official_layout_and_manifest_continuations() {
 }
 
 #[test]
+fn jar_validation_uses_the_effective_main_class() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = standalone_jar(
+        &temp.path().join("ghidra.jar"),
+        "Manifest-Version: 1.0\nMain-Class: ghidra.JarRun\nmAiN-cLaSs: unrelated.Main\n\n",
+        "application.version=12.1.4\n",
+        None,
+    );
+    assert!(inspect(&path, InstallationKind::Jar)
+        .unwrap_err()
+        .to_string()
+        .contains("Main-Class must be ghidra.JarRun"));
+}
+
+#[test]
 fn jar_selection_rejects_plus_in_canonical_path_only() {
     let temp = tempfile::tempdir().unwrap();
     let directory = distribution(&temp.path().join("jar+path"), Platform::native(), "12.1");

@@ -65,7 +65,8 @@ fn main_class(manifest: &str) -> Option<String> {
             attributes.push(line.into());
         }
     }
-    attributes.iter().find_map(|attribute| {
+    // java.util.jar.Attributes keeps the final value of duplicate names.
+    attributes.iter().rev().find_map(|attribute| {
         let (name, value) = attribute.split_once(": ")?;
         name.eq_ignore_ascii_case("Main-Class")
             .then(|| value.to_owned())
