@@ -1,6 +1,50 @@
 use super::*;
 use std::cell::Cell;
 
+#[cfg(target_os = "linux")]
+#[test]
+fn startup_rejects_non_utf8_name_before_selecting_a_lossy_collision() {
+    use crate::ghidra::installation::InstallationKind;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let requested = root
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"project-\xff"));
+    let collision = root.path().join("project-\u{fffd}");
+    let descriptor = collision.with_added_extension("gpr");
+    let data = collision.with_added_extension("rep");
+    std::fs::write(&descriptor, "untouched project").unwrap();
+    std::fs::create_dir(&data).unwrap();
+
+    let installation = Installation {
+        path: root.path().join("distribution"),
+        kind: InstallationKind::Directory,
+        version: "12.1.4".into(),
+        source: "test".into(),
+        min_java: 21,
+    };
+    let launcher = installation.launcher().unwrap();
+    std::fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+    std::fs::write(
+        &launcher,
+        "#!/bin/sh\nprintf launched > \"$0.launched\"\nexit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let error = start_bridge(&requested, &installation, BridgeStartMode::Project).unwrap_err();
+
+    assert!(error.to_string().contains("UTF-8"), "{error:#}");
+    assert!(!launcher.with_added_extension("launched").exists());
+    assert_eq!(
+        std::fs::read_to_string(descriptor).unwrap(),
+        "untouched project"
+    );
+    assert_eq!(std::fs::read_dir(data).unwrap().count(), 0);
+}
+
 #[test]
 fn launcher_pid_never_overwrites_java_publication() {
     let directory = tempfile::tempdir().unwrap();
@@ -65,13 +109,30 @@ fn stderr_capture_bounds_history_and_preserves_early_diagnostics() {
 }
 
 #[test]
+fn stdout_keeps_draining_after_ready_and_end_marker() {
+    let output = concat!(
+        "---GHIDRA_CLI_START---\n",
+        "{\"status\":\"ready\",\"port\":12345}\n",
+        "---GHIDRA_CLI_END---\n",
+        "ERROR failed after readiness publication\n",
+        "last stdout line\n",
+    );
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (last_error, captured) = capture_stdout(output.as_bytes(), ready_tx);
+
+    assert_eq!(ready_rx.into_iter().count(), 1);
+    assert_eq!(last_error, "ERROR failed after readiness publication");
+    assert_eq!(captured.tail.back().unwrap(), "last stdout line");
+}
+
+#[test]
 fn ready_when_socket_binds_while_alive() {
     // Becomes ready on the 3rd poll; process stays alive throughout.
     let polls = Cell::new(0);
     let outcome = poll_until_ready(
         Duration::from_millis(1),
         Duration::from_secs(5),
-        || {
+        |_| {
             polls.set(polls.get() + 1);
             polls.get() >= 3
         },
@@ -86,7 +147,7 @@ fn exited_when_process_dies_before_ready() {
     let outcome = poll_until_ready(
         Duration::from_millis(1),
         Duration::from_secs(5),
-        || false, // never ready
+        |_| false, // never ready
         || {
             let was = alive.get();
             alive.set(false); // dies after the first liveness check
@@ -101,7 +162,7 @@ fn timed_out_when_never_ready_but_alive() {
     let outcome = poll_until_ready(
         Duration::from_millis(5),
         Duration::from_millis(30), // tiny cap
-        || false,                  // never ready
+        |_| false,                 // never ready
         || true,                   // always alive
     );
     assert_eq!(outcome, ReadyOutcome::TimedOut);
@@ -112,7 +173,7 @@ fn readiness_wins_before_liveness_and_timeout_checks() {
     let outcome = poll_until_ready(
         Duration::ZERO,
         Duration::ZERO,
-        || true,
+        |_| true,
         || panic!("a ready bridge must not need a liveness check"),
     );
     assert_eq!(outcome, ReadyOutcome::Ready);
@@ -127,7 +188,7 @@ fn process_exit_rechecks_readiness_before_reporting_failure() {
         let outcome = poll_until_ready(
             Duration::ZERO,
             Duration::ZERO,
-            || {
+            |_| {
                 polls.set(polls.get() + 1);
                 polls.get() == 2 && ready_after_exit
             },
@@ -143,6 +204,33 @@ fn process_exit_rechecks_readiness_before_reporting_failure() {
             }
         );
     }
+}
+
+#[test]
+fn readiness_probes_and_poll_sleep_share_launch_budget() {
+    let elapsed = Cell::new(Duration::ZERO);
+    let mut probes = Vec::new();
+    let mut sleeps = Vec::new();
+    let outcome = poll_until_ready_with_clock(
+        Duration::from_millis(250),
+        Duration::from_millis(50),
+        |remaining| {
+            probes.push(remaining);
+            // A failed readiness probe consumes part of the launch budget.
+            elapsed.set(elapsed.get() + Duration::from_millis(20));
+            false
+        },
+        || true,
+        || elapsed.get(),
+        |duration| {
+            sleeps.push(duration);
+            elapsed.set(elapsed.get() + duration);
+        },
+    );
+
+    assert_eq!(outcome, ReadyOutcome::TimedOut);
+    assert_eq!(probes, [Duration::from_millis(50), Duration::ZERO]);
+    assert_eq!(sleeps, [Duration::from_millis(30)]);
 }
 
 /// Spawn a shell that itself spawns a long-lived child, then prove

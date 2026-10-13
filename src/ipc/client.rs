@@ -80,7 +80,7 @@ impl BridgeClient {
         self.ping_with_deadline(Instant::now() + Duration::from_secs(5))
     }
 
-    fn ping_with_deadline(&self, deadline: Instant) -> Result<bool> {
+    pub(crate) fn ping_with_deadline(&self, deadline: Instant) -> Result<bool> {
         match self.send_command_with_deadline("ping", None, Some(deadline)) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),

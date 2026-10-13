@@ -24,6 +24,11 @@ pub fn start_bridge(
 ) -> Result<u16> {
     info!("Starting Ghidra bridge...");
 
+    let ghidra_project_name = project_path
+        .file_name()
+        .context("Project must have a name")?
+        .to_str()
+        .context("Project name cannot be represented as UTF-8")?;
     let scripts_dir = sources::install()?;
 
     // Resolve discovery paths before spawning the child.
@@ -32,10 +37,6 @@ pub fn start_bridge(
 
     // analyzeHeadless expects: <parent_directory> <project_name>
     let ghidra_project_dir = std::path::absolute(project_path.parent().unwrap_or(project_path))?;
-    let ghidra_project_name = project_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "project".to_string());
 
     // Script-only headless mode would otherwise create a missing project.
     anyhow::ensure!(
@@ -116,40 +117,7 @@ pub fn start_bridge(
     // can fail due to buffering, so the port file fallback is essential.
     let stdout = child.stdout.take().expect("stdout should be piped");
     let (stdout_tx, stdout_rx) = std::sync::mpsc::channel();
-    let stdout_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        let mut last_error = String::new();
-        let mut captured = CapturedOutput::default();
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => break,
-            };
-            info!("[Ghidra stdout] {}", line);
-
-            if line.contains("ERROR") || line.contains("Exception") || line.contains("SEVERE") {
-                last_error = line.clone();
-            }
-
-            let start_marker = line.contains("---GHIDRA_CLI_START---");
-            let ready = line.contains("\"status\"") && line.contains("\"ready\"");
-            let end_marker = line.contains("---GHIDRA_CLI_END---");
-            captured.push(line);
-            if start_marker {
-                continue;
-            }
-            if ready {
-                info!("Bridge is ready (stdout signal)");
-                let _ = stdout_tx.send(true);
-                return (true, last_error, captured);
-            }
-            if end_marker {
-                break;
-            }
-        }
-        let _ = stdout_tx.send(false);
-        (false, last_error, captured)
-    });
+    let stdout_handle = std::thread::spawn(move || capture_stdout(stdout, stdout_tx));
 
     // Wait for the bridge to become ready.
     //
@@ -167,10 +135,15 @@ pub fn start_bridge(
         .unwrap_or_else(|_| Duration::from_secs(180));
 
     let mut ready_port: Option<u16> = None;
-    let check_ready = || {
-        let signaled = matches!(stdout_rx.try_recv(), Ok(true));
+    let check_ready = |remaining: Duration| {
+        let signaled = stdout_rx.try_recv().is_ok();
         if let Ok(Some(port)) = read_port_file(project_path) {
-            if signaled || BridgeClient::new(port).ping().unwrap_or(false) {
+            let deadline = std::time::Instant::now() + remaining.min(Duration::from_secs(5));
+            if signaled
+                || BridgeClient::new(port)
+                    .ping_with_deadline(deadline)
+                    .unwrap_or(false)
+            {
                 ready_port = Some(port);
                 return true;
             }
@@ -214,7 +187,7 @@ pub fn start_bridge(
             kill_process_tree(&mut child);
             cleanup_stale_files_locked(project_path).ok();
 
-            let (_, last_error, stdout_output) = stdout_handle.join().unwrap_or_default();
+            let (last_error, stdout_output) = stdout_handle.join().unwrap_or_default();
             let stderr_output = stderr_handle.join().unwrap_or_default();
             let CapturedOutput {
                 tail: stdout_tail,
@@ -320,6 +293,30 @@ fn capture_stderr(stream: impl std::io::Read) -> CapturedOutput {
     captured
 }
 
+fn capture_stdout(
+    stream: impl std::io::Read,
+    ready: std::sync::mpsc::Sender<()>,
+) -> (String, CapturedOutput) {
+    let mut last_error = String::new();
+    let mut captured = CapturedOutput::default();
+    let mut signaled = false;
+    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+        info!("[Ghidra stdout] {}", line);
+        if line.contains("ERROR") || line.contains("Exception") || line.contains("SEVERE") {
+            last_error = line.clone();
+        }
+        if !signaled && line.contains("\"status\"") && line.contains("\"ready\"") {
+            info!("Bridge is ready (stdout signal)");
+            let _ = ready.send(());
+            signaled = true;
+        }
+        captured.push(line);
+        // Keep draining after readiness and its end marker: closing this pipe
+        // would break later JVM writes and discard startup failure diagnostics.
+    }
+    (last_error, captured)
+}
+
 fn startup_diagnostic(line: &str) -> Option<crate::ipc::protocol::BridgeCommandError> {
     let (_, payload) = line.split_once("GHIDRA_CLI_STARTUP_ERROR ")?;
     // GhidraScript.println goes through the logger, which can append a class
@@ -348,32 +345,51 @@ enum ReadyOutcome {
 /// Liveness-aware readiness state machine. Factored out (closures injected) so
 /// the three outcomes can be unit-tested without a real Ghidra process.
 ///
-/// - `check_ready`: returns true once the bridge is listening (port + ping).
+/// - `check_ready`: probes readiness within the supplied remaining launch budget.
 /// - `check_alive`: returns true while the launched process is still running.
 fn poll_until_ready(
     poll_interval: Duration,
     launch_timeout: Duration,
-    mut check_ready: impl FnMut() -> bool,
-    mut check_alive: impl FnMut() -> bool,
+    check_ready: impl FnMut(Duration) -> bool,
+    check_alive: impl FnMut() -> bool,
 ) -> ReadyOutcome {
     let start = std::time::Instant::now();
+    poll_until_ready_with_clock(
+        poll_interval,
+        launch_timeout,
+        check_ready,
+        check_alive,
+        || start.elapsed(),
+        std::thread::sleep,
+    )
+}
+
+fn poll_until_ready_with_clock(
+    poll_interval: Duration,
+    launch_timeout: Duration,
+    mut check_ready: impl FnMut(Duration) -> bool,
+    mut check_alive: impl FnMut() -> bool,
+    mut elapsed: impl FnMut() -> Duration,
+    mut sleep: impl FnMut(Duration),
+) -> ReadyOutcome {
     loop {
-        if check_ready() {
+        if check_ready(launch_timeout.saturating_sub(elapsed())) {
             return ReadyOutcome::Ready;
         }
         if !check_alive() {
             // Re-check readiness once: the socket may have bound in the same
             // instant the process record flipped to exited (it shouldn't, but
             // this avoids a benign race reporting a false failure).
-            if check_ready() {
+            if check_ready(launch_timeout.saturating_sub(elapsed())) {
                 return ReadyOutcome::Ready;
             }
             return ReadyOutcome::Exited;
         }
-        if start.elapsed() >= launch_timeout {
+        let remaining = launch_timeout.saturating_sub(elapsed());
+        if remaining.is_zero() {
             return ReadyOutcome::TimedOut;
         }
-        std::thread::sleep(poll_interval);
+        sleep(poll_interval.min(remaining));
     }
 }
 
