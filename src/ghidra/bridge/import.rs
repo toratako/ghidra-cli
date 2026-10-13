@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::info;
 
@@ -93,6 +93,14 @@ pub(super) fn run_bootstrap(
         receipt.as_os_str().to_owned(),
     ];
     let mut cmd = headless_command(installation, &arguments)?;
+    execute_bootstrap(&mut cmd, &receipt, timeout)
+}
+
+fn execute_bootstrap(
+    cmd: &mut Command,
+    receipt: &Path,
+    timeout: Option<Duration>,
+) -> Result<Value> {
     let executable = std::path::PathBuf::from(cmd.get_program());
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -141,29 +149,62 @@ pub(super) fn run_bootstrap(
         }
         std::thread::sleep(Duration::from_millis(100));
     };
-    if waited.is_err() {
-        startup::kill_process_tree(&mut child);
-    }
+    // A finished one-shot launcher can leave descendants holding the inherited
+    // pipes, even on successful exit. Close the group before joining readers.
+    startup::kill_process_tree(&mut child);
     let diagnostics = format!(
         "{}\n{}",
         stdout.join().unwrap_or_default(),
         stderr.join().unwrap_or_default()
     );
-    let status = waited.with_context(|| format!("Ghidra bootstrap output: {diagnostics}"))?;
-    anyhow::ensure!(
-        status.success(),
-        "Ghidra bootstrap failed (exit {:?}): {}",
-        status.code(),
-        diagnostics
-    );
-    let receipt_bytes = std::fs::read(&receipt)
-        .map_err(|e| crate::error::path_io("import.receipt_read", &receipt, e))
-        .with_context(|| {
-            format!("Ghidra bootstrap did not produce its completion receipt: {diagnostics}")
-        })?;
-    let result: Value = serde_json::from_slice(&receipt_bytes)
-        .with_context(|| format!("Invalid bootstrap receipt at {}", receipt.display()))?;
-    bootstrap_result(result)
+    let process_result = waited
+        .with_context(|| format!("Ghidra bootstrap output: {diagnostics}"))
+        .and_then(|status| {
+            anyhow::ensure!(
+                status.success(),
+                "Ghidra bootstrap failed (exit {:?}): {}",
+                status.code(),
+                diagnostics
+            );
+            Ok(())
+        });
+    let receipt_result = (|| {
+        let receipt_bytes = std::fs::read(receipt)
+            .map_err(|e| crate::error::path_io("import.receipt_read", receipt, e))
+            .with_context(|| {
+                format!("Ghidra bootstrap did not produce its completion receipt: {diagnostics}")
+            })?;
+        let result: Value = serde_json::from_slice(&receipt_bytes)
+            .with_context(|| format!("Invalid bootstrap receipt at {}", receipt.display()))?;
+        bootstrap_result(result)
+    })();
+    match process_result {
+        Ok(()) => receipt_result,
+        Err(error) => {
+            // The script writes its receipt before headless shutdown. A later
+            // process failure must not erase a saved import or published GAR.
+            let (message, detail) = match receipt_result {
+                Ok(completion) => {
+                    let mut detail = completion.clone();
+                    detail.as_object_mut().unwrap().remove("status");
+                    detail["completion"] = completion;
+                    (format!("{error:#}"), detail)
+                }
+                Err(receipt_error) => {
+                    let Some(failure) =
+                        receipt_error.downcast_ref::<crate::ipc::protocol::BridgeCommandError>()
+                    else {
+                        return Err(error);
+                    };
+                    (
+                        format!("{error:#}; script failed: {receipt_error:#}"),
+                        failure.detail.clone(),
+                    )
+                }
+            };
+            Err(error.context(crate::ipc::protocol::BridgeCommandError { message, detail }))
+        }
+    }
 }
 
 fn bootstrap_result(result: Value) -> Result<Value> {
@@ -183,6 +224,77 @@ fn bootstrap_result(result: Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn launcher_exit_closes_descendant_pipes_and_keeps_completion() {
+        let work = tempfile::tempdir().unwrap();
+        let receipt = work.path().join("receipt.json");
+        let completion = json!({
+            "status": "success", "program": "saved-name", "program_path": "/saved-name",
+            "import_status": "saved", "analysis_status": "completed",
+            "loader_diagnostics": {"text": "loader evidence", "truncated": false,
+                "retained_characters": 15, "original_characters": 15, "maximum_characters": 16384}
+        });
+        std::fs::write(&receipt, serde_json::to_vec(&completion).unwrap()).unwrap();
+        for exit in [0, 7] {
+            let began = Instant::now();
+            let result = execute_bootstrap(
+                Command::new("sh").arg("-c").arg(format!(
+                    "sleep 3 & printf 'launcher cleanup failed\\n' >&2; exit {exit}"
+                )),
+                &receipt,
+                Some(Duration::from_millis(100)),
+            );
+            assert!(began.elapsed() < Duration::from_secs(2), "{result:?}");
+            if exit == 0 {
+                assert_eq!(result.unwrap(), completion);
+            } else {
+                let error = result.unwrap_err();
+                assert!(format!("{error:#}").contains("launcher cleanup failed"));
+                let detail = crate::error::diagnostic_detail(&error);
+                assert_eq!(detail["import_status"], "saved");
+                assert_eq!(detail["analysis_status"], "completed");
+                assert_eq!(detail["program"], "saved-name");
+                assert_eq!(detail["loader_diagnostics"]["text"], "loader evidence");
+                assert_eq!(detail["completion"], completion);
+            }
+        }
+    }
+
+    #[test]
+    fn failed_launcher_keeps_the_script_failure_checkpoint() {
+        let work = tempfile::tempdir().unwrap();
+        let receipt = work.path().join("receipt.json");
+        let checkpoint = json!({
+            "stage": "import.save", "import_status": "unknown", "analysis_status": "completed",
+            "loader_diagnostics": {"text": "save evidence", "truncated": false,
+                "retained_characters": 13, "original_characters": 13, "maximum_characters": 16384}
+        });
+        std::fs::write(
+            &receipt,
+            serde_json::to_vec(&json!({
+                "status": "error", "message": "program save failed", "detail": checkpoint
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        let mut command = {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 7"]);
+            command
+        };
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = Command::new("cmd");
+            command.args(["/C", "exit /B 7"]);
+            command
+        };
+        let error = execute_bootstrap(&mut command, &receipt, None).unwrap_err();
+        assert!(format!("{error:#}").contains("program save failed"));
+        assert_eq!(crate::error::diagnostic_detail(&error), checkpoint);
+    }
 
     #[test]
     fn bootstrap_receipts_keep_loader_diagnostics_on_success_and_failure() {
