@@ -43,23 +43,16 @@ public final class AddressResolver {
             checkCancelled();
             appendSymbols(st.getSymbols(target.substring(separator + 2)), target, candidates);
         }
-        // Generated external names are absent from the name index, and the
-        // function iterator below visits only local functions. Include both
-        // external labels and functions before deciding that a name is unique.
-        SymbolIterator externals = st.getExternalSymbols();
-        while (externals.hasNext()) {
+        // Generated external, thunk, parameter and local names can be absent
+        // from the name index. Inspect every persisted symbol before deciding
+        // that an indexed match is unique. Global lookup above covers dynamic
+        // labels, which have no persisted symbol record.
+        SymbolIterator defined = st.getDefinedSymbols();
+        while (defined.hasNext()) {
             checkCancelled();
-            Symbol symbol = externals.next();
+            Symbol symbol = defined.next();
             if (symbol.getName().equals(target) || symbol.getName(true).equals(target)) {
                 appendAddress(symbol.getAddress(), candidates);
-            }
-        }
-        FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
-        while (iter.hasNext()) {
-            checkCancelled();
-            Function func = iter.next();
-            if (func.getName().equals(target) || func.getSymbol().getName(true).equals(target)) {
-                candidates.add(func.getEntryPoint());
             }
         }
         return candidates;

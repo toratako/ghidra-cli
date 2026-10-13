@@ -101,6 +101,15 @@ public class CreateAddressFixture extends GhidraScript {
         symbols.createLabel(space.getAddress(0x1608), "handler<ns::0xItem>", SourceType.USER_DEFINED);
         symbols.createLabel(space.getAddress(0x1609), "scope0::0xcollision", SourceType.USER_DEFINED);
         symbols.createLabel(space.getAddress(0x160a), "0xcollision", scope, SourceType.USER_DEFINED);
+        currentProgram.getReferenceManager().addMemoryReference(space.getAddress(0x1500),
+            space.getAddress(0x1610), ghidra.program.model.symbol.RefType.DATA,
+            SourceType.USER_DEFINED, 0);
+        var generatedOwner = functions.createFunction("generated_owner", space.getAddress(0x1620),
+            new AddressSet(space.getAddress(0x1620)), SourceType.USER_DEFINED);
+        generatedOwner.addParameter(new ghidra.program.model.listing.ParameterImpl(null,
+            ghidra.program.model.data.IntegerDataType.dataType, currentProgram), SourceType.DEFAULT);
+        generatedOwner.addLocalVariable(new ghidra.program.model.listing.LocalVariableImpl(null,
+            ghidra.program.model.data.IntegerDataType.dataType, -4, currentProgram), SourceType.DEFAULT);
     }
 }
 "#,
@@ -112,6 +121,7 @@ public class CreateAddressFixture extends GhidraScript {
 
     check_name_and_address_reads(&client);
     check_symbol_address_names(&client);
+    check_generated_name_collisions(&client, &program);
     client
         .script_run_source(
             include_str!("readonly/CheckAddressLookupCancellation.java"),
@@ -126,6 +136,104 @@ public class CreateAddressFixture extends GhidraScript {
     check_mutation_targets(&client, &harness);
     check_address_codec(&client);
     check_import_base_addresses(&client, &binary);
+}
+
+fn check_generated_name_collisions(client: &BridgeClient, program: &str) {
+    let generated = client.symbol_get("0x1610").unwrap()["symbols"][0].clone();
+    assert_eq!(generated["source"], "DEFAULT");
+    let name = generated["name"].as_str().unwrap();
+    let read = |target: &str| {
+        client
+            .send_command("read_memory", Some(json!({"address": target, "size": 1})))
+            .unwrap()
+    };
+    // Generated labels remain candidates even when an indexed label has the
+    // same name. Parameters and locals must retain that protection as well.
+    assert_eq!(read(name), read("0x1610"));
+    client.symbol_create_label("0x1611", name).unwrap();
+    let variables: Vec<_> = client.symbol_list(None, None, None).unwrap()["symbols"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["namespace"] == "generated_owner")
+        .cloned()
+        .collect();
+    assert_eq!(variables.len(), 2);
+    for variable in &variables {
+        let address = variable["address"].as_str().unwrap();
+        assert!(client.symbol_get(address).unwrap()["symbols"]
+            .as_array()
+            .unwrap()
+            .contains(variable));
+        let name = variable["name"].as_str().unwrap();
+        for target in [name.to_owned(), format!("generated_owner::{name}")] {
+            assert_eq!(
+                client
+                    .send_command("memory_info", Some(json!({"address": target})))
+                    .unwrap()["address"],
+                address
+            );
+        }
+    }
+    let mut names = vec![name.to_owned()];
+    for (index, variable) in variables.iter().enumerate() {
+        let name = variable["name"].as_str().unwrap();
+        client
+            .symbol_create_label(&format!("0x{:x}", 0x1612 + index), name)
+            .unwrap();
+        names.push(name.to_owned());
+    }
+    let symbols_before = client.symbol_list(None, None, None).unwrap();
+    let bytes_before = read("0x1610");
+    let memory_before = client
+        .send_command("read_memory", Some(json!({"address": "0x1611", "size": 3})))
+        .unwrap();
+    for name in names {
+        let error = client
+            .memory_write(&name, "90")
+            .expect_err("generated and indexed symbols must make the target ambiguous");
+        assert!(error.to_string().contains("Ambiguous"), "{error:#}");
+        assert!(client
+            .send_command("read_memory", Some(json!({"address": name, "size": 1})))
+            .unwrap_err()
+            .to_string()
+            .contains("Ambiguous"));
+    }
+    // Qualification still selects the requested variable after a local label
+    // makes its unqualified name ambiguous.
+    for variable in &variables {
+        let qualified = format!("generated_owner::{}", variable["name"].as_str().unwrap());
+        assert_eq!(
+            client
+                .send_command("memory_info", Some(json!({"address": qualified})))
+                .unwrap()["address"],
+            variable["address"]
+        );
+    }
+    assert_eq!(read("0x1610"), bytes_before);
+    assert_eq!(
+        client
+            .send_command("read_memory", Some(json!({"address": "0x1611", "size": 3})))
+            .unwrap(),
+        memory_before
+    );
+    assert_eq!(
+        client.symbol_list(None, None, None).unwrap(),
+        symbols_before
+    );
+    client.program_close().unwrap();
+    client.open_program(program).unwrap();
+    assert_eq!(read("0x1610"), bytes_before);
+    assert_eq!(
+        client
+            .send_command("read_memory", Some(json!({"address": "0x1611", "size": 3})))
+            .unwrap(),
+        memory_before
+    );
+    assert_eq!(
+        client.symbol_list(None, None, None).unwrap(),
+        symbols_before
+    );
 }
 
 fn check_symbol_address_names(client: &BridgeClient) {
