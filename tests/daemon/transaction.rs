@@ -270,6 +270,15 @@ public class RequestTransactionProbe extends GhidraScript {
                     case "setProgram": selected = (Program) args[0]; return null;
                     case "state": return state;
                     case "monitor": return requestMonitor;
+                    case "analyzeAll":
+                        if ("analysis-native-abort".equals(fault)) {
+                            fault = null;
+                            int child = real.startTransaction("native analysis child");
+                            try {
+                                real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "aborted-analysis-edit");
+                            } finally { real.endTransaction(child, false); }
+                        }
+                        return null;
                     case "logError": printerr((String) args[0]); return null;
                     default: throw new UnsupportedOperationException(method.getName());
                 }
@@ -369,6 +378,101 @@ public class RequestTransactionProbe extends GhidraScript {
         savedComment(CodeUnit.PRE_COMMENT, "saved-before-late-cancel");
         success(command("comment_set", comment("after-cancelled-script", "PRE")));
         savedComment(CodeUnit.PRE_COMMENT, "after-cancelled-script");
+    }
+
+    private void testNonAtomicNativeAbort(boolean analysis) throws Exception {
+        String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+        int previousSaveCalls = saveCalls;
+        JsonObject response;
+        if (analysis) {
+            fault = "analysis-native-abort";
+            response = command("analysis_run", new JsonObject());
+            check(fault == null, "Native analysis abort was not exercised");
+        } else {
+            JsonObject args = new JsonObject();
+            args.addProperty("source", """
+                import ghidra.app.script.GhidraScript;
+                public class SessionAbortedRequest extends GhidraScript {
+                    public void run() throws Exception {
+                        int child = currentProgram.startTransaction("script-owned aborted child");
+                        try { setPreComment(toAddr(getScriptArgs()[0]), "aborted-script-edit"); }
+                        finally { currentProgram.endTransaction(child, false); }
+                        println("native-child-aborted");
+                    }
+                }
+                """);
+            com.google.gson.JsonArray scriptArgs = new com.google.gson.JsonArray();
+            scriptArgs.add("0x" + address.toString());
+            args.add("args", scriptArgs);
+            response = command("script_run", args);
+        }
+        rolledBack(response);
+        JsonObject commandResponse = response.getAsJsonObject("detail").getAsJsonObject("command_response");
+        check(commandResponse != null && "success".equals(commandResponse.get("status").getAsString()),
+            "Native abort lost its handler response: " + response);
+        if (!analysis) check(commandResponse.getAsJsonObject("data").get("stdout").getAsString()
+            .contains("native-child-aborted"), "Native abort lost script output: " + response);
+        else check("full".equals(response.getAsJsonObject("detail").get("mode").getAsString())
+            && !response.getAsJsonObject("detail").get("completed").getAsBoolean()
+            && !response.getAsJsonObject("detail").get("saved").getAsBoolean(),
+            "Aborted analysis reported completion or lost its receipt: " + response);
+        check(saveCalls == previousSaveCalls, "Aborted request performed a save");
+        check(real.getCurrentTransactionInfo() == null, "Aborted request left a transaction open");
+        check(java.util.Objects.equals(previouslySaved, liveComment(CodeUnit.PRE_COMMENT)),
+            "Aborted request retained its changes");
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+        // A successful neighboring request still commits and saves normally.
+        success(command("comment_set", comment("after-native-abort", "PRE")));
+        savedComment(CodeUnit.PRE_COMMENT, "after-native-abort");
+    }
+
+    private void testNativeAbortBeforeSave(boolean listenerFailure) throws Exception {
+        String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+        int pending = real.startTransaction("pending edit from a prior save failure");
+        try { real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "pending-before-native-abort"); }
+        finally { real.endTransaction(pending, true); }
+        Class<?> type = session.getClass();
+        type.getMethod("beginRequest", String.class).invoke(session, "program_export");
+        real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "aborted-export-edit");
+        int child = real.startTransaction("native aborted export child");
+        real.endTransaction(child, false);
+        int previousSaveCalls = saveCalls;
+        TransactionListener listener = new TransactionListener() {
+            public void transactionStarted(DomainObjectAdapterDB program, TransactionInfo info) {}
+            public void transactionEnded(DomainObjectAdapterDB program) {
+                check(program.getCurrentTransactionInfo() == null, "Abort listener ran before rollback");
+                throw new AssertionError("injected aborted-save rollback listener failure");
+            }
+            public void undoStackChanged(DomainObjectAdapterDB program) {}
+            public void undoRedoOccurred(DomainObjectAdapterDB program) {}
+        };
+        if (listenerFailure) real.addTransactionListener(listener);
+        Throwable saveError = null;
+        try { type.getMethod("save").invoke(session); }
+        catch (InvocationTargetException failure) { saveError = failure.getCause(); }
+        finally { if (listenerFailure) real.removeTransactionListener(listener); }
+        check(saveError != null, "Explicit save accepted a native-aborted request");
+        check(saveCalls == previousSaveCalls, "Aborted request saved earlier pending edits");
+        if (listenerFailure) check(saveError instanceof AssertionError
+            && saveError.getMessage().contains("injected aborted-save rollback listener failure"),
+            "Lost native rollback listener failure: " + saveError);
+        else rollbackPending(saveError);
+        Throwable finishError = null;
+        try { type.getMethod("finishRequest", boolean.class).invoke(session, false); }
+        catch (InvocationTargetException failure) { finishError = failure.getCause(); }
+        check(finishError != null, "Request completion retried an aborted explicit save");
+        rollbackPending(finishError);
+        check(saveCalls == previousSaveCalls, "Completion saved earlier pending edits after aborted save");
+        check(real.getCurrentTransactionInfo() == null, "Aborted explicit save leaked a transaction");
+        check("pending-before-native-abort".equals(liveComment(CodeUnit.PRE_COMMENT)),
+            "Aborted explicit save lost earlier pending edits");
+        savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+        success(command("program_save", new JsonObject()));
+        savedComment(CodeUnit.PRE_COMMENT, "pending-before-native-abort");
+        success(command("comment_set", comment("after-native-abort-save", "PRE")));
+        savedComment(CodeUnit.EOL_COMMENT, prior);
+        savedComment(CodeUnit.PRE_COMMENT, "after-native-abort-save");
     }
 
     private void testMemoryFailure(String mode) throws Exception {
@@ -1116,6 +1220,10 @@ public class RequestTransactionProbe extends GhidraScript {
                 case "stats-cancel": testStatsCancellation(); break;
                 case "non-atomic-cancel": case "non-atomic-cancel-save":
                     testNonAtomicCancellationDiagnostics(mode.equals("non-atomic-cancel-save")); break;
+                case "script-native-abort": case "analysis-native-abort":
+                    testNonAtomicNativeAbort(mode.equals("analysis-native-abort")); break;
+                case "native-abort-save": case "native-abort-save-listener":
+                    testNativeAbortBeforeSave(mode.equals("native-abort-save-listener")); break;
                 case "memory-error": case "memory-cancel": case "pointer-error": testMemoryFailure(mode); break;
                 case "save-recovery": case "save-assertion": testSaveRecovery(mode); break;
                 case "description-save": testDescriptionSaveRecovery(); break;
@@ -1269,6 +1377,30 @@ fn test_non_atomic_cancelled_script_retains_cancellation_and_saved_changes_diagn
 #[serial]
 fn test_non_atomic_cancelled_script_save_failure_keeps_cancellation_and_pending_edits() {
     run_transaction_probe("non-atomic-cancel-save");
+}
+
+#[test]
+#[serial]
+fn test_non_atomic_script_native_abort_reports_rollback_and_preserves_saved_state() {
+    run_transaction_probe("script-native-abort");
+}
+
+#[test]
+#[serial]
+fn test_non_atomic_analysis_native_abort_reports_rollback_and_preserves_saved_state() {
+    run_transaction_probe("analysis-native-abort");
+}
+
+#[test]
+#[serial]
+fn test_native_abort_explicit_save_preserves_earlier_pending_edits() {
+    run_transaction_probe("native-abort-save");
+}
+
+#[test]
+#[serial]
+fn test_native_abort_explicit_save_listener_failure_preserves_earlier_pending_edits() {
+    run_transaction_probe("native-abort-save-listener");
 }
 
 #[test]

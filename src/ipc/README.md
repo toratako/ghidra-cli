@@ -703,6 +703,8 @@ is returned without an implicit retry, leaving pending edits for explicit save.
 
 Ordinary failures roll back the request's Program changes and report
 `detail.rolled_back: true`; cancellation adds `detail.cancelled: true`.
+Native aborts also fail non-atomic analysis/script requests. A successful handler
+response later rolled back remains under `detail.command_response`.
 Earlier requests and pending unsaved edits remain intact. The
 [non-atomic exceptions and transaction ownership rules](../ghidra/scripts/ghidracli/README.md#execution-and-ownership)
 are owned by `ProgramSession`. Errors report `detail.partial_changes_saved: true`

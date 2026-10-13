@@ -384,8 +384,19 @@ final class CommandDispatcher {
             boolean successful = "success".equals(response.get("status").getAsString());
             ProgramSession.RequestOutcome outcome = session.finishRequest(successful);
             if (outcome.rolledBack() && successful) {
+                JsonObject commandResponse = response;
                 response = errorResponse(outcome.cancelled() ? "Command cancelled"
                     : "Ghidra aborted the command transaction");
+                JsonObject detail = new JsonObject();
+                if ("analysis_run".equals(command)) {
+                    JsonObject receipt = commandResponse.getAsJsonObject("data");
+                    for (String field : new String[] { "mode", "program", "start", "end" }) {
+                        if (receipt.has(field)) detail.add(field, receipt.get(field));
+                    }
+                    detail.addProperty("completed", false);
+                }
+                detail.add("command_response", commandResponse);
+                response.add("detail", detail);
             }
             if ("error".equals(response.get("status").getAsString())) {
                 JsonObject detail = response.has("detail")

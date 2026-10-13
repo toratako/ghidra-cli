@@ -269,9 +269,14 @@ public final class ProgramSession {
                         + "rollback and saving could not complete. Keep the bridge running and close "
                         + "that transaction through its owner before retrying program save.");
                 }
-                rolledBack = atomicRequest
-                    && (!successful || cancelled || requestTransaction.isAborted());
+                boolean aborted = requestTransaction.isAborted();
+                rolledBack = atomicRequest && (!successful || cancelled)
+                    || aborted && requestTransaction.isSoleOwner();
                 endRequestTransaction(!rolledBack);
+                if (aborted && !rolledBack) {
+                    throw transactionFailure("Ghidra aborted the command transaction; "
+                        + "rollback is pending a transaction owned by another script. Changes were not saved.");
+                }
             }
             if (saveFailure != null) throw saveFailure;
             // A rejected edit must not save unrelated, pending edits from an
@@ -291,6 +296,13 @@ public final class ProgramSession {
         if (requestActive && saveFailure != null) throw saveFailure;
         if (requestActive && atomicRequest && requestTransaction != null) {
             throw transactionFailure("Cannot save before an atomic request has finished");
+        }
+        if (requestTransaction != null && requestTransaction.isAborted()) {
+            // Explicit export/selection saves must not publish an aborted
+            // request or flush unrelated edits retained from an earlier failure.
+            requestFailure = transactionFailure("Ghidra aborted the command transaction. Changes were not saved.");
+            endRequestTransaction(!requestTransaction.isSoleOwner());
+            throw requestFailure;
         }
         try {
             endRequestTransaction(true);

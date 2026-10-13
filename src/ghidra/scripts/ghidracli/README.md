@@ -170,6 +170,10 @@ can outlive failure or cancellation. Retained Program changes are saved through
 the session boundary and reported as `partial_changes_saved` on errors when saved;
 external effects are not rolled back. A batch has one boundary per request, never
 one transaction covering every command.
+Native transaction aborts fail even these non-atomic requests: an owned root is
+rolled back, and explicit saves cannot flush earlier pending edits through an
+aborted request. A successful handler response later rolled back is retained
+under `detail.command_response`, including script output.
 
 `type_archive_list` reads an external file on the same script lane without a
 Program request boundary. It neither selects nor saves the current Program.
