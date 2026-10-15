@@ -54,16 +54,36 @@ fn jar_metadata_uses_official_layout_and_manifest_continuations() {
 #[test]
 fn jar_validation_uses_the_effective_main_class() {
     let temp = tempfile::tempdir().unwrap();
+    for manifest in [
+        "Manifest-Version: 1.0\nMain-Class: ghidra.JarRun\nmAiN-cLaSs: unrelated.Main\n\n",
+        // Java ignores an unterminated physical line and any attribute whose
+        // continuation is unterminated, retaining the earlier Main-Class.
+        "Main-Class: unrelated.Main\nMain-Class: ghidra.JarRun",
+        "Main-Class: unrelated.Main\nMain-Class: ghidra.\n JarRun",
+    ] {
+        let path = standalone_jar(
+            &temp.path().join("ghidra.jar"),
+            manifest,
+            "application.version=12.1.4\n",
+            None,
+        );
+        assert!(inspect(&path, InstallationKind::Jar)
+            .unwrap_err()
+            .to_string()
+            .contains("Main-Class must be ghidra.JarRun"));
+    }
+}
+
+#[test]
+fn jar_manifest_accepts_carriage_return_line_terminators() {
+    let temp = tempfile::tempdir().unwrap();
     let path = standalone_jar(
         &temp.path().join("ghidra.jar"),
-        "Manifest-Version: 1.0\nMain-Class: ghidra.JarRun\nmAiN-cLaSs: unrelated.Main\n\n",
+        "Main-Class: ghidra.\r JarRun\r\rName: ignored\rMain-Class: unrelated.Main\r",
         "application.version=12.1.4\n",
         None,
     );
-    assert!(inspect(&path, InstallationKind::Jar)
-        .unwrap_err()
-        .to_string()
-        .contains("Main-Class must be ghidra.JarRun"));
+    assert!(inspect(&path, InstallationKind::Jar).is_ok());
 }
 
 #[test]

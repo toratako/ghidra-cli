@@ -54,21 +54,37 @@ fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> std::result::Result
     Ok(text)
 }
 
-fn main_class(manifest: &str) -> Option<String> {
+fn main_class(mut manifest: &str) -> Option<String> {
     // Only main-section attributes apply to the JAR. Manifest lines beginning
     // with a space continue the preceding attribute, including Main-Class.
-    let mut attributes: Vec<String> = Vec::new();
-    for line in manifest.lines().take_while(|line| !line.is_empty()) {
+    let mut attribute = String::new();
+    let mut main_class = None;
+    while let Some(end) = manifest.find(['\r', '\n']) {
+        let line = &manifest[..end];
+        let remaining = &manifest[end..];
+        manifest = remaining.strip_prefix("\r\n").unwrap_or(&remaining[1..]);
+        if line.is_empty() {
+            break;
+        }
         if let Some(continuation) = line.strip_prefix(' ') {
-            attributes.last_mut()?.push_str(continuation);
+            if attribute.is_empty() {
+                return None;
+            }
+            attribute.push_str(continuation);
         } else {
-            attributes.push(line.into());
+            attribute = line.into();
+        }
+        // java.util.jar.Attributes ignores unterminated physical lines and
+        // commits an attribute only after all its continuation lines complete.
+        if manifest.starts_with(' ') {
+            continue;
+        }
+        // Duplicate names retain their final complete value.
+        if let Some((name, value)) = attribute.split_once(": ") {
+            if name.eq_ignore_ascii_case("Main-Class") {
+                main_class = Some(value.to_owned());
+            }
         }
     }
-    // java.util.jar.Attributes keeps the final value of duplicate names.
-    attributes.iter().rev().find_map(|attribute| {
-        let (name, value) = attribute.split_once(": ")?;
-        name.eq_ignore_ascii_case("Main-Class")
-            .then(|| value.to_owned())
-    })
+    main_class
 }
