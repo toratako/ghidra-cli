@@ -107,6 +107,10 @@ impl ImportProgress {
                         program.into(),
                     ]
                 } else {
+                    // The failed selection can still identify the previous
+                    // program after saving it. Resume the import workflow on
+                    // its saved file, rather than that previous selection.
+                    let program = detail["imported_program"].as_str().unwrap_or(program);
                     let mut command = vec!["ghidra-cli".to_owned()];
                     if detail["analysis_status"] == "completed"
                         || detail["analysis_status"] == "skipped"
@@ -381,7 +385,7 @@ mod tests {
                     "--project",
                     "project",
                     "--program",
-                    "saved-name",
+                    "/saved-name",
                 ])
             );
             assert!(detail.get("job_id").is_none());

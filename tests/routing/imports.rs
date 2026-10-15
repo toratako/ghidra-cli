@@ -280,6 +280,46 @@ fn import_followup_save_failures_retain_the_import_and_the_previous_save_target(
 }
 
 #[test]
+fn cancelled_import_selection_recovers_analysis_for_the_imported_program() {
+    let bridge = RecordedBridge::with_info(json!({
+        "protocol_version": 4, "auto_save": true, "atomic_edits": true,
+        "explicit_addresses": true,
+        "test_import_followup_error": {
+            "command": "analysis_run", "selected_program": "/previous",
+            "detail": {
+                "cancelled": true, "program": "/previous",
+                "partial_changes_saved": true, "saved_programs": ["/previous"],
+            },
+        },
+    }));
+    std::fs::write(bridge.root.path().join("binary"), "test input").unwrap();
+    let output = bridge
+        .command()
+        .args(["program", "import", "binary"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{output:?}");
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    let detail = &error["detail"];
+    assert_eq!(detail["import_status"], "saved", "{error}");
+    assert_eq!(detail["program"], "/previous", "{error}");
+    assert_eq!(detail["imported_program"], "/imported", "{error}");
+    assert_eq!(detail["saved_programs"], json!(["/previous"]));
+    assert_eq!(
+        detail["recovery"],
+        json!([
+            "ghidra-cli",
+            "analysis",
+            "run",
+            "--project",
+            bridge.project,
+            "--program",
+            "/imported",
+        ])
+    );
+}
+
+#[test]
 fn lost_import_followup_responses_recover_the_exact_job_without_reimporting() {
     for command in ["analysis_run", "open_program"] {
         let bridge = RecordedBridge::with_info(json!({
