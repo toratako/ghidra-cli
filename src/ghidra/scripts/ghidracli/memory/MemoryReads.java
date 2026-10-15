@@ -73,8 +73,7 @@ public final class MemoryReads {
             // spans every residue of the shift, extend through all
             // hops at once instead of one byte per fixed-point pass.
             if (scheme.isPresent()
-                && scheme.get().getMappedByteCount() == 1
-                && scheme.get().getMappedSourceByteCount() == 1
+                && scheme.get().getMappedByteCount() == scheme.get().getMappedSourceByteCount()
                 && origin.getAddressSpace().equals(source.getMinAddress().getAddressSpace())) {
               long shift = origin.subtract(source.getMinAddress());
               if (shift > 0 && shift < source.getLength() && last - first + 1 >= shift) first = 0;

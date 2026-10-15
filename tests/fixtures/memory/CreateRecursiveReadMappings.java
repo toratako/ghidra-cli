@@ -1,4 +1,5 @@
 import ghidra.app.script.GhidraScript;
+import ghidra.program.database.mem.ByteMappingScheme;
 
 public class CreateRecursiveReadMappings extends GhidraScript {
   public void run() throws Exception {
@@ -9,8 +10,14 @@ public class CreateRecursiveReadMappings extends GhidraScript {
         "shifted_source", toAddr(0x14000), 1, (byte) 0x5a, monitor, false);
     memory.createByteMappedBlock("cycle", toAddr(0x20000), toAddr(0x20000), 1, false);
     memory.createInitializedBlock("before_cycle", toAddr(0x1ffff), 1, (byte) 0x24, monitor, false);
+    // Equal byte counts still form a one-to-one mapping.
     memory.createByteMappedBlock(
-        "large_self_shifted", toAddr(0x1000000), toAddr(0x1000001), 16 * 1024 * 1024, false);
+        "large_self_shifted",
+        toAddr(0x1000000),
+        toAddr(0x1000001),
+        16 * 1024 * 1024,
+        new ByteMappingScheme(2, 2),
+        false);
     memory.createInitializedBlock(
         "large_shifted_source", toAddr(0x2000000), 1, (byte) 0x5a, monitor, false);
     memory.createInitializedBlock("bit_source", toAddr(0x4000000), 1, (byte) 0x5a, monitor, false);
