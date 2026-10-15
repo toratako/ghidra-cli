@@ -554,7 +554,7 @@ public final class SymbolCommands {
     JsonArray exports = new JsonArray();
     SymbolTable symbolTable = session.program().getSymbolTable();
 
-    SymbolIterator symIter = symbolTable.getSymbolIterator();
+    SymbolIterator symIter = symbolTable.getAllSymbols(true);
     int count = 0;
     while (symIter.hasNext()) {
       if (limit > 0 && count >= limit) break;

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.data.AbstractFloatDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.TypeDef;
@@ -130,11 +131,11 @@ public final class VariableStorageCodec {
         var stack = program.getCompilerSpec().getStackSpace();
         if (stack == null || !stack.isStackSpace())
           throw new IllegalArgumentException("Compiler specification has no stack space");
-        long last = (long) piece.stackOffset() + piece.size() - 1;
-        if (last > Integer.MAX_VALUE)
-          throw new IllegalArgumentException("Stack interval exceeds signed stack offsets");
         Address start = stack.getAddress(piece.stackOffset());
-        start.addNoWrap(piece.size() - 1L);
+        if (start.getOffset() != piece.stackOffset())
+          throw new IllegalArgumentException(
+              "Stack offset exceeds this program's signed stack offsets");
+        requireStackInterval(start, piece.size());
         nodes.add(new Varnode(start, piece.size()));
       }
     }
@@ -151,6 +152,14 @@ public final class VariableStorageCodec {
           "Storage size " + end + " does not match type size " + type.getLength());
     }
     return new VariableStorage(program, nodes);
+  }
+
+  static void requireStackInterval(Address start, int size) throws AddressOverflowException {
+    if (!start.isStackAddress()) return;
+    long offset = start.getOffset();
+    if (offset < Integer.MIN_VALUE || offset > (long) Integer.MAX_VALUE - size + 1)
+      throw new IllegalArgumentException("Stack interval exceeds signed stack offsets");
+    start.addNoWrap(size - 1L);
   }
 
   private static boolean floatType(DataType type) {

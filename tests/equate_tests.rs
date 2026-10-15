@@ -306,6 +306,46 @@ fn native_dynamic_hash_collisions_preserve_other_operands_and_dynamic_only_uses(
 
 #[test]
 #[serial]
+fn native_data_references_are_not_instruction_selectable() {
+    require_ghidra!();
+    fixture(|client, program| {
+        client
+            .script_run_source(
+                include_str!("fixtures/equates/CreateDataEquateUse.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let before = get(client, "NATIVE_DATA");
+        assert_eq!(before["reference_count"], 1);
+        assert_eq!(
+            before["references"],
+            json!([{
+                "address": "0x00001800",
+                "operand_index": 0,
+                "dynamic_hash": "0x0",
+                "operand_selectable": false
+            }])
+        );
+        rejected(
+            client,
+            "equate_detach",
+            json!({"name":"NATIVE_DATA","address":"0x1800","operand_index":0}),
+        );
+        assert_eq!(get(client, "NATIVE_DATA"), before);
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(get(client, "NATIVE_DATA"), before);
+        assert_eq!(
+            run(client, "equate_delete", json!({"name":"NATIVE_DATA"}))["references_removed"],
+            1
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn exact_detach_keeps_definition_and_other_uses_while_global_delete_survives_reopen() {
     require_ghidra!();
     fixture(|client, program| {

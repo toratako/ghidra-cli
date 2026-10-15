@@ -202,6 +202,9 @@ public final class FunctionVariableCommands {
         throw new IllegalStateException(
             "Ghidra did not retain the requested variable name: " + newName);
       }
+      for (var node : updated.getVariableStorage().getVarnodes()) {
+        VariableStorageCodec.requireStackInterval(node.getAddress(), node.getSize());
+      }
 
       JsonObject result = context(function);
       result.addProperty("status", "updated");
@@ -236,9 +239,9 @@ public final class FunctionVariableCommands {
         errorResult(
             message
                 + ". THIS is generated from the function's class namespace and calling convention."
-                + " Choose the intended class; create it with namespace create --kind class if needed,"
-                + " then move this function with symbol set-namespace using --namespace and --address."
-                + " Inspect the resulting THIS type with function var get.");
+                + " Choose the intended class; create it with namespace create --kind class if"
+                + " needed, then move this function with symbol set-namespace using --namespace and"
+                + " --address. Inspect the resulting THIS type with function var get.");
     error.add("detail", detail);
     return error;
   }

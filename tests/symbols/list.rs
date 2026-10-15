@@ -72,3 +72,40 @@ fn symbol_list_includes_non_address_symbols_and_pages_without_duplicates() {
         std::panic::resume_unwind(error);
     }
 }
+
+#[test]
+#[serial]
+fn symbol_entry_points_include_dynamic_labels_and_persist_after_reopen() {
+    require_ghidra!();
+    let program = create_symbol_fixture_program();
+    let client = harness().client().unwrap();
+    crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                include_str!("../fixtures/symbols/CreateDynamicEntryPoints.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let dynamic = client.symbol_get("0x1010").unwrap()["symbols"][0].clone();
+        assert_eq!(dynamic["source"], "DEFAULT");
+        let named = client.symbol_get("0x1020").unwrap()["symbols"][0].clone();
+        let expected = json!([
+            {"name": dynamic["name"], "address": dynamic["address"]},
+            {"name": named["name"], "address": named["address"]},
+        ]);
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(&program).unwrap();
+            }
+            let all = client.symbol_entry_points(None).unwrap();
+            assert_eq!(all["entry_points"], expected);
+            assert_eq!(all["count"], 2);
+            let first = client.symbol_entry_points(Some(1)).unwrap();
+            assert_eq!(first["entry_points"], json!([expected[0]]));
+            assert_eq!(first["count"], 1);
+        }
+    });
+}

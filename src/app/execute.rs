@@ -592,8 +592,8 @@ pub(super) fn execute_via_bridge(
                 client.define_code(&args.target, args.end.as_deref())
             }
             cli::ListingCommands::Undefine(args) => client.clear_range(
-                args.start.trim(),
-                args.end.trim(),
+                args.start.trim_matches(|c| c <= ' '),
+                args.end.trim_matches(|c| c <= ' '),
                 args.disasm_at.as_deref(),
             ),
         },

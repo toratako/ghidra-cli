@@ -578,3 +578,54 @@ fn memory_mapped_register_storage_keeps_register_pieces_after_reopen() {
         assert_eq!(function("entry"), saved);
     });
 }
+
+#[test]
+#[serial]
+fn storage_stack_offsets_preserve_signed_identity_on_narrow_stacks() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = create_type_edit_program("x86:LE:16:Real Mode");
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CreateStorageFunction.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        command(
+            &program,
+            &[
+                "set-signature",
+                "entry",
+                "--signature",
+                "void entry(short value)",
+                "--param-stack",
+                "value",
+                "-32",
+            ],
+        )
+        .assert_success();
+
+        // Native stack addresses accept unsigned aliases: 65520 becomes -16.
+        assert_rejected(
+            &program,
+            "entry",
+            &["--param-stack", "value", "65520"],
+            "signed stack offsets",
+        );
+        for offset in ["-32768", "32766"] {
+            command(
+                &program,
+                &["set-storage", "entry", "--param-stack", "value", offset],
+            )
+            .assert_success();
+            assert_eq!(
+                function("entry")["signature_details"]["params"][0]["storage_pieces"][0]
+                    ["stack_offset"],
+                offset.parse::<i32>().unwrap()
+            );
+        }
+    });
+}

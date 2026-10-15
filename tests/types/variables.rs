@@ -790,3 +790,56 @@ fn parameter_edits_roll_back_when_native_naming_changes_the_requested_name() {
         assert_eq!(state(), before);
     });
 }
+
+#[test]
+#[serial]
+fn variable_resize_rejects_stack_intervals_past_the_signed_boundary() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::create_type_edit_program("x86:LE:32:default");
+    super::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                include_str!("../fixtures/types/CreateBoundaryStackParameter.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let state = || {
+            client
+                .send_command(
+                    "get_function",
+                    Some(json!({"address":"entry", "with_signature":true})),
+                )
+                .unwrap()
+        };
+        let before = state();
+        let failed = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"entry", "var_name":"value", "type_name":"undefined8"})),
+            )
+            .unwrap_err();
+        let error = failed
+            .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+            .unwrap();
+        assert!(
+            error.to_string().contains("signed stack offsets"),
+            "{error:?}"
+        );
+        assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        assert_eq!(state(), before);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(state(), before);
+
+        let edit = client
+            .send_command(
+                "function_var_set",
+                Some(json!({"target":"entry", "var_name":"value", "type_name":"undefined2"})),
+            )
+            .unwrap();
+        assert_eq!(edit["after"]["size"], 2);
+    });
+}

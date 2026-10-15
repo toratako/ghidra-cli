@@ -32,9 +32,15 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
     var signedWord =
         new ghidra.program.model.address.GenericAddressSpace(
             "signed_word", 63, 2, ghidra.program.model.address.AddressSpace.TYPE_CONSTANT, 4);
+    var signedNarrow =
+        new ghidra.program.model.address.GenericAddressSpace(
+            "signed_narrow", 16, 2, ghidra.program.model.address.AddressSpace.TYPE_CONSTANT, 7);
     var factory =
         new ghidra.program.model.address.DefaultAddressFactory(
-            new ghidra.program.model.address.AddressSpace[] {ram, word, wide, signedWord}, ram);
+            new ghidra.program.model.address.AddressSpace[] {
+              ram, word, wide, signedWord, signedNarrow
+            },
+            ram);
     for (long offset : new long[] {0, 0x401000, Long.MIN_VALUE, -1L}) {
       roundtrip(factory, ram.getAddress(offset));
     }
@@ -45,6 +51,25 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
       roundtrip(factory, wide.getAddress(offset));
     for (long offset : new long[] {Long.MIN_VALUE, -3, -1, 1, Long.MAX_VALUE}) {
       roundtrip(factory, signedWord.getAddress(offset));
+    }
+
+    for (long offset :
+        new long[] {
+          signedNarrow.getMinAddress().getOffset(),
+          -3,
+          -1,
+          0,
+          signedNarrow.getMaxAddress().getOffset()
+        }) {
+      roundtrip(factory, signedNarrow.getAddress(offset));
+    }
+    for (String input : new String[] {"signed_narrow:0x8000", "signed_narrow:0xffff.1"}) {
+      try {
+        AddressCodec.parse(factory, input);
+        throw new AssertionError("Signed narrow word offset silently changed sign: " + input);
+      } catch (IllegalArgumentException expected) {
+        // Native makeValidOffset also accepts unsigned bit patterns; CLI word offsets stay signed.
+      }
     }
 
     var picLanguage =
@@ -94,7 +119,18 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
         AddressCodec.format(ghidra.program.model.address.Address.NO_ADDRESS) == null,
         "NO_ADDRESS must not become an input address");
     var programFactory = currentProgram.getAddressFactory();
-    roundtrip(programFactory, programFactory.getStackSpace().getAddress(-16));
+    var programStack = programFactory.getStackSpace();
+    roundtrip(programFactory, programStack.getAddress(-16));
+    roundtrip(programFactory, programStack.getMinAddress());
+    roundtrip(programFactory, programStack.getMaxAddress());
+    String stackSignChange = programStack.getName() + ":0x80000000";
+    try {
+      AddressCodec.parse(programFactory, stackSignChange);
+      throw new AssertionError(
+          "Native 32-bit stack offset silently changed sign: " + stackSignChange);
+    } catch (IllegalArgumentException expected) {
+      // The fixture's x86 stack is signed even though the offset fits its unsigned bit width.
+    }
     roundtrip(programFactory, programFactory.getAddressSpace("join").getAddress(1));
     var block =
         currentProgram

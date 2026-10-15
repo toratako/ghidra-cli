@@ -76,6 +76,63 @@ fn zero_effects() -> Value {
 
 #[test]
 #[serial]
+fn function_rename_matches_qualified_names_at_an_explicit_entry() {
+    require_ghidra!();
+    with_fixture("x86:LE:32:default", |client, program| {
+        client
+            .script_run_source(
+                include_str!("fixtures/function_body/CreateQualifiedRenameFixture.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let left = get(client, "left::subject");
+        let right = get(client, "right::subject");
+        client
+            .send_command(
+                "rename_function",
+                Some(json!({
+                    "old_name":"right::subject", "new_name":"wrong_target",
+                    "address":left["address"]
+                })),
+            )
+            .expect_err("The qualified name must match the function at the selected entry");
+        assert_eq!(get(client, "left::subject"), left);
+        assert_eq!(get(client, "right::subject"), right);
+
+        let result = common::ghidra(harness())
+            .arg("--json")
+            .args([
+                "function",
+                "rename",
+                "left::subject",
+                "renamed",
+                "--address",
+                left["address"].as_str().unwrap(),
+            ])
+            .with_project(test_project(), program)
+            .run();
+        result.assert_success();
+        let receipt: Value = result.data();
+        assert_eq!(receipt["old_name"], "subject");
+        assert_eq!(receipt["new_name"], "renamed");
+        assert_eq!(receipt["address"], left["address"]);
+        for reopen in [false, true] {
+            if reopen {
+                client.program_close().unwrap();
+                client.open_program(program).unwrap();
+            }
+            let renamed = get(client, "left::renamed");
+            assert_eq!(renamed["name"], "renamed");
+            assert_eq!(renamed["address"], left["address"]);
+            assert_eq!(get(client, "right::subject"), right);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn function_creation_retains_the_requested_name_when_native_creation_detects_a_thunk() {
     require_ghidra!();
     with_fixture("x86:LE:32:default", |client, program| {

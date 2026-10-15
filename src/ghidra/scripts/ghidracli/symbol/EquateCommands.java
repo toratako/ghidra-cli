@@ -80,7 +80,13 @@ public final class EquateCommands {
       session.monitor().checkCancelled();
       JsonObject row = reference.toJson();
       int selected = counts.get(reference.address).get(reference.operand);
-      row.addProperty("operand_selectable", reference.operand >= 0 && selected == 1);
+      Instruction instruction = session.program().getListing().getInstructionAt(reference.address);
+      row.addProperty(
+          "operand_selectable",
+          reference.operand >= 0
+              && instruction != null
+              && reference.operand < instruction.getNumOperands()
+              && selected == 1);
       rows.add(row);
     }
     result.add("references", rows);

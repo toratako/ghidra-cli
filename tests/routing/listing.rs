@@ -137,6 +137,35 @@ fn listing_undefine_preserves_independently_qualified_addresses() {
 }
 
 #[test]
+fn listing_undefine_preserves_unicode_space_names_in_standalone_and_batch() {
+    let bridge = RecordedBridge::new();
+    let start = "\u{2002}bank:0x1000";
+    let end = "\u{2002}bank:0x1010";
+    let args = ["listing", "undefine", start, "--end", end];
+    for batch in [false, true] {
+        bridge.requests.lock().unwrap().clear();
+        if batch {
+            std::fs::write(bridge.root.path().join("batch.txt"), batch_arguments(&args)).unwrap();
+            let report = bridge.run(&["batch", "batch.txt"]);
+            assert_eq!(report["failed"], 0, "{report}");
+        } else {
+            bridge.run(&args);
+        }
+        let requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|request| request["command"] != "bridge_info")
+            .collect();
+        assert_eq!(edits.len(), 1, "{requests:?}");
+        assert_eq!(edits[0]["command"], "clear_range");
+        assert_eq!(
+            edits[0]["args"],
+            json!({"start": start, "end": end, "disasm_at": null}),
+        );
+    }
+}
+
+#[test]
 fn listing_undefine_rejects_invalid_or_missing_bounds_before_dispatch() {
     let bridge = RecordedBridge::new();
     for (bounds, message, exit) in [

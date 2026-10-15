@@ -155,7 +155,8 @@ public final class FunctionCommands {
         if (func == null) {
           return errorResult("No function at address " + addressArg);
         }
-        if (!func.getName().equals(oldTarget)) {
+        if (!func.getName().equals(oldTarget)
+            && !func.getSymbol().getName(true).equals(oldTarget)) {
           return errorResult(
               "Function at address "
                   + addressArg
@@ -348,8 +349,8 @@ public final class FunctionCommands {
               + owner.getName()
               + "@"
               + AddressCodec.format(owner.getEntryPoint())
-              + " (likely shared code reached by a tail jump, "
-              + "not a call) -- consider `symbol create-label` for a label instead of a new function");
+              + " (likely shared code reached by a tail jump, not a call) -- consider `symbol"
+              + " create-label` for a label instead of a new function");
     }
 
     CodeUnit cu = listing.getCodeUnitContaining(addr);
