@@ -18,12 +18,16 @@ mod windows_jar;
 pub(super) fn headless_command(
     installation: &Installation,
     arguments: &[OsString],
+    java_home_override: Option<&Path>,
 ) -> Result<Command> {
     validate_launch_value(installation.path.as_os_str(), "Ghidra installation path")?;
     for argument in arguments {
         validate_launch_value(argument, "Ghidra launch argument")?;
     }
-    let explicit_java = crate::config::Config::load()?.get_java_home();
+    let explicit_java = match java_home_override {
+        Some(home) => Some(home.to_owned()),
+        None => crate::config::Config::load()?.get_java_home(),
+    };
     let jdk = resolve_launch_jdk(installation, explicit_java)?;
     let mut command = command_with_jdk(
         installation,

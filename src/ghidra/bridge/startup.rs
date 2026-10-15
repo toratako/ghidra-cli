@@ -21,6 +21,7 @@ pub fn start_bridge(
     project_path: &Path,
     installation: &Installation,
     mode: BridgeStartMode,
+    java_home_override: Option<&Path>,
 ) -> Result<u16> {
     info!("Starting Ghidra bridge...");
 
@@ -68,7 +69,7 @@ pub fn start_bridge(
         arguments.push(program_name.into());
     }
 
-    let mut cmd = headless_command(installation, &arguments)?;
+    let mut cmd = headless_command(installation, &arguments, java_home_override)?;
     let executable = std::path::PathBuf::from(cmd.get_program());
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())

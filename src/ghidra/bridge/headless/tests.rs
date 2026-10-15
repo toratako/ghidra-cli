@@ -31,7 +31,7 @@ fn launch_rejects_unrepresentable_project_parent_before_java_selection() {
         "-noanalysis".into(),
     ];
 
-    let error = headless_command(&install, &arguments).unwrap_err();
+    let error = headless_command(&install, &arguments, None).unwrap_err();
     assert!(
         error
             .to_string()

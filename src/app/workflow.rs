@@ -122,6 +122,9 @@ impl BridgeExecution {
             if sub_cli.projects_dir.is_none() {
                 sub_cli.projects_dir = cli.projects_dir.clone();
             }
+            if sub_cli.java_home.is_none() {
+                sub_cli.java_home = cli.java_home.clone();
+            }
             if let Commands::Batch(nested) = &mut sub_cli.command {
                 nested.on_error.get_or_insert(on_error);
             }
@@ -207,7 +210,12 @@ fn execute_single(
         };
 
         output.progress("Starting Ghidra bridge...");
-        let port = bridge::ensure_bridge_running(project_path, &installation, mode)?;
+        let port = bridge::start_bridge_with_java(
+            project_path,
+            &installation,
+            mode,
+            cli.java_home.as_deref(),
+        )?;
         output.progress("Bridge ready.");
         connect_program_bridge(port)?
     };

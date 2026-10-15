@@ -71,6 +71,63 @@ fn stopped_bridge_operations_still_require_a_local_installation() {
 }
 
 #[test]
+fn batch_java_home_overrides_follow_line_and_nested_scope() {
+    for command in ["program info", "program import binary --no-analyze"] {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("installation");
+        super::installation_fixture::write(&install);
+        let project = temp.path().join("stopped");
+        std::fs::write(project.with_added_extension("gpr"), "fixture").unwrap();
+        std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+        std::fs::write(temp.path().join("binary"), "fixture").unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(&config, "{}\n").unwrap();
+        std::fs::write(
+            temp.path().join("batch.txt"),
+            format!(
+                "{command} --java-home line-jdk\n{command}\nbatch nested.txt --java-home nested-jdk\n{command}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            temp.path().join("nested.txt"),
+            format!("{command}\n{command} --java-home inner-jdk\n{command}\n"),
+        )
+        .unwrap();
+        let output = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
+            .current_dir(temp.path())
+            .env("GHIDRA_CLI_CONFIG", &config)
+            .env("XDG_DATA_HOME", temp.path().join("data"))
+            .env("XDG_CONFIG_HOME", temp.path().join("configuration"))
+            .env_remove("GHIDRA_JAR")
+            .env("GHIDRA_INSTALL_DIR", &install)
+            .env("GHIDRA_CLI_JAVA_HOME", "environment-jdk")
+            .arg("--project")
+            .arg(&project)
+            .args(["--java-home", "outer-jdk", "batch", "batch.txt"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{command}: {output:?}");
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["commands_executed"], 4, "{command}: {report}");
+        for (index, expected) in [(0, "line-jdk"), (1, "outer-jdk"), (3, "outer-jdk")] {
+            let error = report["results"][index]["error"].as_str().unwrap();
+            assert!(error.contains(expected), "{command} {index}: {error}");
+        }
+        let nested = &report["results"][2]["detail"];
+        assert_eq!(nested["commands_executed"], 3, "{command}: {nested}");
+        for (index, expected) in [(0, "nested-jdk"), (1, "inner-jdk"), (2, "nested-jdk")] {
+            let error = nested["results"][index]["error"].as_str().unwrap();
+            assert!(
+                error.contains(expected),
+                "{command} nested {index}: {error}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(config).unwrap(), "{}\n");
+    }
+}
+
+#[test]
 fn empty_project_targets_do_not_edit_the_project_directory() {
     let bridge = RecordedBridge::new();
     let old_port = super::bridge::port_file_path(&bridge.project).unwrap();

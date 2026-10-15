@@ -72,8 +72,13 @@ fn run_import_steps(
         } else {
             "unknown"
         };
-        let receipt: bridge::OneShotImportReceipt =
-            bridge::import_oneshot(project_path, &binary_path, installation, &options)?;
+        let receipt: bridge::OneShotImportReceipt = bridge::import_oneshot_with_java(
+            project_path,
+            &binary_path,
+            installation,
+            &options,
+            cli.java_home.as_deref(),
+        )?;
         let name = receipt.program.clone();
         progress.receipt = Some(serde_json::to_value(receipt)?);
         progress.imported = "saved";
@@ -85,12 +90,13 @@ fn run_import_steps(
         progress.program = Some(name.clone());
         progress.stage = "bridge.start";
         output.progress("Import saved. Starting Ghidra bridge...");
-        let port = bridge::ensure_bridge_running(
+        let port = bridge::start_bridge_with_java(
             project_path,
             installation,
             BridgeStartMode::Process {
                 program_name: name.clone(),
             },
+            cli.java_home.as_deref(),
         )?;
         (
             super::connect_program_bridge(port)?.with_selection(selection.clone()),
@@ -101,10 +107,11 @@ fn run_import_steps(
         let client = if let Some(port) = running {
             super::connect_program_bridge(port)?
         } else {
-            super::connect_program_bridge(bridge::ensure_bridge_running(
+            super::connect_program_bridge(bridge::start_bridge_with_java(
                 project_path,
                 installation,
                 BridgeStartMode::Project,
+                cli.java_home.as_deref(),
             )?)?
         }
         .with_selection(selection.clone());

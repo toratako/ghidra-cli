@@ -45,15 +45,26 @@ pub struct OneShotImportReceipt {
 /// Load with the requested name/options, analyze, save, release, and exit before
 /// returning the saved program and loader diagnostics. A private JSON receipt confirms script success;
 /// a zero headless exit status alone does not establish that the script succeeded.
+#[allow(dead_code)] // Public library entry point; the CLI carries per-command Java selection.
 pub fn import_oneshot(
     project_path: &Path,
     binary_path: &Path,
     installation: &Installation,
     options: &OneShotImportOptions,
 ) -> Result<OneShotImportReceipt> {
+    import_oneshot_with_java(project_path, binary_path, installation, options, None)
+}
+
+pub(crate) fn import_oneshot_with_java(
+    project_path: &Path,
+    binary_path: &Path,
+    installation: &Installation,
+    options: &OneShotImportOptions,
+    java_home_override: Option<&Path>,
+) -> Result<OneShotImportReceipt> {
     let mut args = serde_json::to_value(options)?;
     args["binary_path"] = json!(binary_path);
-    let result = run_bootstrap(project_path, installation, &args, None)?;
+    let result = run_bootstrap(project_path, installation, &args, None, java_home_override)?;
     serde_json::from_value(result).context("Invalid import completion receipt")
 }
 
@@ -62,6 +73,7 @@ pub(super) fn run_bootstrap(
     installation: &Installation,
     args: &Value,
     timeout: Option<Duration>,
+    java_home_override: Option<&Path>,
 ) -> Result<Value> {
     let project_path = std::path::absolute(project_path)?;
     let scripts = sources::install()?;
@@ -91,7 +103,7 @@ pub(super) fn run_bootstrap(
         request.as_os_str().to_owned(),
         receipt.as_os_str().to_owned(),
     ];
-    let mut cmd = headless_command(installation, &arguments)?;
+    let mut cmd = headless_command(installation, &arguments, java_home_override)?;
     execute_bootstrap(&mut cmd, &receipt, timeout)
 }
 

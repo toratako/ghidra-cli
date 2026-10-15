@@ -105,6 +105,7 @@ fn bootstrap(
         &json!({"archive_operation": operation, "project_path": project, "file": file,
             "workspace": work.path()}),
         None,
+        None,
     );
     let path: PathBuf = work.path().to_owned();
     if let Err(cleanup) = work.close() {

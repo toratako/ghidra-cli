@@ -34,7 +34,8 @@ fn startup_rejects_non_utf8_name_before_selecting_a_lossy_collision() {
     .unwrap();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    let error = start_bridge(&requested, &installation, BridgeStartMode::Project).unwrap_err();
+    let error =
+        start_bridge(&requested, &installation, BridgeStartMode::Project, None).unwrap_err();
 
     assert!(error.to_string().contains("UTF-8"), "{error:#}");
     assert!(!launcher.with_added_extension("launched").exists());

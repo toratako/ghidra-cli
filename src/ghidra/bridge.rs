@@ -23,10 +23,15 @@ mod startup;
 pub use headless::compile_check;
 #[allow(unused_imports)] // The CLI preflights restart with the launcher's JDK policy.
 pub(crate) use headless::resolve_launch_jdk;
+#[allow(unused_imports)]
+// Public library entry point; the CLI supplies per-command Java selection.
+pub use import::import_oneshot;
+#[allow(unused_imports)] // The CLI carries batch-scoped Java selection to imports.
+pub(crate) use import::import_oneshot_with_java;
 // This type is part of the library's import receipt API; the CLI reads it through the receipt.
 #[allow(unused_imports)]
 pub use import::LoaderDiagnostics;
-pub use import::{import_oneshot, OneShotImportOptions, OneShotImportReceipt};
+pub use import::{OneShotImportOptions, OneShotImportReceipt};
 
 /// Which program, if any, the bridge opens before reporting readiness.
 pub enum BridgeStartMode {
@@ -384,6 +389,15 @@ pub fn start_bridge(
     installation: &Installation,
     mode: BridgeStartMode,
 ) -> Result<u16> {
+    start_bridge_with_java(project_path, installation, mode, None)
+}
+
+pub(crate) fn start_bridge_with_java(
+    project_path: &Path,
+    installation: &Installation,
+    mode: BridgeStartMode,
+    java_home_override: Option<&Path>,
+) -> Result<u16> {
     let _lock = acquire_startup_lock(project_path)?;
 
     // Re-check under the lock: another process may have started the bridge
@@ -398,7 +412,7 @@ pub fn start_bridge(
 
     // Clean up stale discovery files before starting fresh.
     cleanup_stale_files_locked(project_path)?;
-    startup::start_bridge(project_path, installation, mode)
+    startup::start_bridge(project_path, installation, mode, java_home_override)
 }
 
 /// Stop the bridge for a project.
@@ -456,6 +470,7 @@ pub fn delete_project(project_path: &Path, installation: &Installation) -> Resul
             &work.path().join("deletion"),
             installation,
             &serde_json::json!({"delete_project": project}),
+            None,
             None,
         )?;
         result["deleted"]

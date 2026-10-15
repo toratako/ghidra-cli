@@ -134,6 +134,7 @@ pub fn runtime_check(config: &Config, install: &Installation) -> Result<Value> {
         install,
         &json!({"create_project": true}),
         Some(config.get_launch_timeout()),
+        None,
     )?;
     let port = super::ensure_bridge_running(&project, install, BridgeStartMode::Project)?;
     let ping = BridgeClient::new(port).ping();

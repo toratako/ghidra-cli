@@ -226,6 +226,9 @@ pub(crate) fn add_recovery(
             && same_project(batch, recovery.location.line, project, &cli.projects_dir);
         if let Some(program) = recovery.program.as_ref().filter(|_| same_target) {
             let mut argv = command(cli, &["batch"], project);
+            if let Some(java_home) = &cli.java_home {
+                argv.push(format!("--java-home={}", java_home.display()));
+            }
             argv.extend([
                 "--from-line".to_owned(),
                 recovery.location.line.to_string(),

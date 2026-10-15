@@ -188,6 +188,35 @@ fn batch_recovery_restores_selected_program_and_does_not_replay_prefix() {
 }
 
 #[test]
+fn batch_resume_preserves_the_explicit_jdk_for_remaining_imports() {
+    use clap::Parser;
+
+    let bridge = RecordedBridge::new();
+    let java_home = bridge.root.path().join("selected JDK's home");
+    std::fs::write(
+        bridge.root.path().join("batch.txt"),
+        "comment set 0x1000 --text test-rollback\nprogram import binary --no-analyze\n",
+    )
+    .unwrap();
+    let (report, _) = failed_report(
+        &bridge,
+        &[
+            "--java-home",
+            java_home.to_str().unwrap(),
+            "batch",
+            "batch.txt",
+            "--on-error",
+            "stop",
+        ],
+    );
+    assert_eq!(report["recovery"]["action"], "resume_from_line");
+    assert_eq!(report["not_executed"], 1);
+    let argv: Vec<String> = serde_json::from_value(report["recovery"]["argv"].clone()).unwrap();
+    let resumed = ghidra_cli::cli::Cli::try_parse_from(argv).unwrap();
+    assert_eq!(resumed.java_home.as_ref(), Some(&java_home));
+}
+
+#[test]
 fn batch_recovery_does_not_replay_completed_later_or_nested_commands() {
     let bridge = RecordedBridge::new();
     std::fs::write(
