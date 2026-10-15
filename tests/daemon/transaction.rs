@@ -138,6 +138,18 @@ fn test_native_abort_explicit_save_listener_failure_preserves_earlier_pending_ed
 
 #[test]
 #[serial]
+fn test_explicit_save_commit_failure_is_not_retried_during_request_completion() {
+    run_transaction_probe("explicit-save-commit-failure");
+}
+
+#[test]
+#[serial]
+fn test_preview_rollback_listener_failures_preserve_earlier_pending_edits() {
+    run_transaction_probe("preview-rollback-listener-failure");
+}
+
+#[test]
+#[serial]
 fn test_native_false_rolls_back_changes_before_the_failure() {
     run_transaction_probe("native-false");
 }

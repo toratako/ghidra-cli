@@ -48,6 +48,7 @@ public class RequestTransactionProbe extends GhidraScript {
   private boolean cancelAfterSave;
   private Throwable selectionFailureAfterSave;
   private int saveCalls;
+  private int transactionEnds;
   private int commentWrites;
   private int memoryWrites;
   private int statsEntriesRead;
@@ -295,6 +296,7 @@ public class RequestTransactionProbe extends GhidraScript {
                   if (method.getName().equals("getFunctionManager")) return functions;
                   if (method.getName().equals("getMemory")) return memory;
                   if (method.getName().equals("getReferenceManager")) return references;
+                  if (method.getName().equals("endTransaction")) transactionEnds++;
                   if (method.getName().equals("startTransaction") && failNextTransaction) {
                     failNextTransaction = false;
                     throw new IllegalStateException("injected transaction start failure");
@@ -589,6 +591,149 @@ public class RequestTransactionProbe extends GhidraScript {
     success(command("comment_set", comment("after-native-abort-save", "PRE")));
     savedComment(CodeUnit.EOL_COMMENT, prior);
     savedComment(CodeUnit.PRE_COMMENT, "after-native-abort-save");
+  }
+
+  private void testExplicitSaveCommitFailure() throws Exception {
+    String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+    int pending = real.startTransaction("pending edit before explicit close");
+    try {
+      real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "pending-before-close");
+    } finally {
+      real.endTransaction(pending, true);
+    }
+    int previousEnds = transactionEnds;
+    int previousSaveCalls = saveCalls;
+    boolean[] delivered = {false};
+    TransactionListener listener =
+        new TransactionListener() {
+          private TransactionInfo owned;
+
+          public void transactionStarted(DomainObjectAdapterDB program, TransactionInfo info) {
+            if ("ghidra-cli: program_close".equals(info.getDescription())) owned = info;
+          }
+
+          public void transactionEnded(DomainObjectAdapterDB program) {
+            if (owned == null || delivered[0]) return;
+            check(
+                owned.getStatus() == TransactionInfo.Status.COMMITTED
+                    && owned.getOpenSubTransactions().isEmpty(),
+                "Explicit-save assertion preceded native commit");
+            delivered[0] = true;
+            throw new AssertionError("injected explicit-save commit listener failure");
+          }
+
+          public void undoStackChanged(DomainObjectAdapterDB program) {}
+
+          public void undoRedoOccurred(DomainObjectAdapterDB program) {}
+        };
+    real.addTransactionListener(listener);
+    JsonObject response;
+    try {
+      response = command("program_close", new JsonObject());
+    } finally {
+      real.removeTransactionListener(listener);
+    }
+    check(delivered[0], "Explicit-save native commit failure was not exercised");
+    check(
+        transactionEnds == previousEnds + 1,
+        "Request completion ended failed native commit "
+            + (transactionEnds - previousEnds)
+            + " times: "
+            + response);
+    saveFailed(response, "error");
+    check(
+        response
+            .get("message")
+            .getAsString()
+            .contains("injected explicit-save commit listener failure"),
+        "Request completion lost first explicit-save failure: " + response);
+    check(
+        selected != null && real.isChanged() && saveCalls == previousSaveCalls,
+        "Failed explicit save released the selected Program or wrote pending edits");
+    check(
+        "pending-before-close".equals(liveComment(CodeUnit.PRE_COMMENT)),
+        "Failed explicit save discarded pending edits");
+    savedComment(CodeUnit.EOL_COMMENT, prior);
+    savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+  }
+
+  private void testPreviewRollbackListenerFailure() throws Exception {
+    Class<?> type = session.getClass();
+    Method begin = type.getMethod("beginRequest", String.class);
+    Method preview = type.getMethod("preview", String.class, Callable.class);
+    Method finish = type.getMethod("finishRequest", boolean.class);
+    for (boolean initial : new boolean[] {true, false}) {
+      String previouslySaved = liveComment(CodeUnit.PRE_COMMENT);
+      String pending = "pending-before-preview-rollback-" + initial;
+      savesToFail = 1;
+      saveFailed(command("comment_set", comment(pending, "PRE")), "success");
+      int previousSaveCalls = saveCalls;
+      boolean[] delivered = {false};
+      boolean[] previewRan = {false};
+      TransactionListener listener =
+          new TransactionListener() {
+            private boolean armed;
+
+            public void transactionStarted(DomainObjectAdapterDB program, TransactionInfo info) {
+              armed =
+                  (initial ? "ghidra-cli: define_code" : "preview rollback listener")
+                      .equals(info.getDescription());
+            }
+
+            public void transactionEnded(DomainObjectAdapterDB program) {
+              if (!armed) return;
+              armed = false;
+              check(program.getCurrentTransactionInfo() == null, "Preview rollback is incomplete");
+              delivered[0] = true;
+              throw new AssertionError("injected preview rollback listener failure");
+            }
+
+            public void undoStackChanged(DomainObjectAdapterDB program) {}
+
+            public void undoRedoOccurred(DomainObjectAdapterDB program) {}
+          };
+      real.addTransactionListener(listener);
+      Throwable previewFailure = null;
+      try {
+        begin.invoke(session, "define_code");
+        try {
+          preview.invoke(
+              session,
+              "preview rollback listener",
+              (Callable<Void>)
+                  () -> {
+                    previewRan[0] = true;
+                    real.getListing().setComment(address, CodeUnit.PRE_COMMENT, "preview-only");
+                    return null;
+                  });
+        } catch (InvocationTargetException failure) {
+          previewFailure = failure.getCause();
+        }
+      } finally {
+        real.removeTransactionListener(listener);
+      }
+      check(
+          delivered[0] && previewFailure instanceof AssertionError && previewRan[0] == !initial,
+          "Preview rollback listener failure was not exercised: " + previewFailure);
+      Throwable finishFailure = null;
+      try {
+        finish.invoke(session, false);
+      } catch (InvocationTargetException failure) {
+        finishFailure = failure.getCause();
+      }
+      check(
+          saveCalls == previousSaveCalls
+              && real.getCurrentTransactionInfo() == null
+              && real.isChanged()
+              && pending.equals(liveComment(CodeUnit.PRE_COMMENT)),
+          "Failed preview saved or discarded pending edits");
+      savedComment(CodeUnit.PRE_COMMENT, previouslySaved);
+      check(finishFailure != null, "Request completion forgot failed preview rollback");
+      rollbackPending(finishFailure);
+      success(command("program_save", new JsonObject()));
+      savedComment(CodeUnit.PRE_COMMENT, pending);
+    }
+    savedComment(CodeUnit.EOL_COMMENT, prior);
   }
 
   private void testMemoryFailure(String mode) throws Exception {
@@ -1587,6 +1732,12 @@ public class RequestTransactionProbe extends GhidraScript {
         case "native-abort-save-listener":
           testNativeAbortBeforeSave(mode.equals("native-abort-save-listener"));
           break;
+        case "explicit-save-commit-failure":
+          testExplicitSaveCommitFailure();
+          break;
+        case "preview-rollback-listener-failure":
+          testPreviewRollbackListenerFailure();
+          break;
         case "memory-error":
         case "memory-cancel":
         case "pointer-error":
@@ -1649,7 +1800,8 @@ public class RequestTransactionProbe extends GhidraScript {
       requestMonitor.clearCancelled();
       try {
         if (session != null) {
-          if (mode.equals("selector-commit-assertion")) {
+          if (mode.equals("selector-commit-assertion")
+              || mode.equals("explicit-save-commit-failure")) {
             // The injected listener leaves native commit cleanup
             // interrupted after the DB transaction has ended. Do
             // not retry it; discard only this probe's own consumer

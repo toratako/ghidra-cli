@@ -254,6 +254,16 @@ public final class ProgramSession {
     if (requestTransaction != null) {
       try {
         requestTransaction.end(commit);
+      } catch (RuntimeException | Error failure) {
+        if (failure instanceof Error error && JsonProtocol.isFatalError(error)) throw error;
+        if (!commit && requestFailure == null) {
+          // A native listener can throw after rollback has closed the root.
+          // Preview completion must not then save earlier pending edits.
+          requestFailure =
+              transactionFailure(
+                  "Could not roll back command transaction: " + JsonProtocol.errorMessage(failure));
+        }
+        throw failure;
       } finally {
         if (requestTransaction.isEnded()) requestTransaction = null;
       }
@@ -308,6 +318,9 @@ public final class ProgramSession {
   public RequestOutcome finishRequest(boolean successful) throws Exception {
     try {
       if (requestFailure != null) throw requestFailure;
+      // An explicit save can fail while ending its native transaction.
+      // Preserve that failure instead of retrying the same transaction entry.
+      if (saveFailure != null) throw saveFailure;
       boolean cancelled = monitor().isCancelled();
       boolean rolledBack = false;
       if (requestTransaction != null) {
@@ -331,7 +344,6 @@ public final class ProgramSession {
                   + "rollback is pending a transaction owned by another script. Changes were not saved.");
         }
       }
-      if (saveFailure != null) throw saveFailure;
       // A rejected edit must not save unrelated, pending edits from an
       // earlier save failure. They remain available for explicit recovery.
       boolean saved = !requestSavedPrograms.isEmpty();
