@@ -126,6 +126,33 @@ fn stdout_keeps_draining_after_ready_and_end_marker() {
 }
 
 #[test]
+fn encoded_launcher_output_does_not_hide_later_bridge_signals() {
+    let output = concat!(
+        "launcher caf",
+        "\n",
+        "{\"status\":\"ready\",\"port\":12345}\r\n",
+        "GHIDRA_CLI_STARTUP_ERROR {\"message\":\"open failed\",",
+        "\"detail\":{\"stage\":\"bridge.program_open\"}}\n",
+        "last output line\r",
+    );
+    let mut bytes = output.as_bytes().to_vec();
+    bytes.insert("launcher caf".len(), 0xe9);
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (_, stdout) = capture_stdout(bytes.as_slice(), ready_tx);
+    let stderr = capture_stderr(bytes.as_slice());
+
+    assert_eq!(ready_rx.into_iter().count(), 1);
+    for captured in [stdout, stderr] {
+        assert_eq!(captured.tail.front().unwrap(), "launcher caf\u{fffd}");
+        assert_eq!(captured.tail.back().unwrap(), "last output line\r");
+        assert_eq!(
+            captured.startup_error.unwrap().detail["stage"],
+            "bridge.program_open"
+        );
+    }
+}
+
+#[test]
 fn ready_when_socket_binds_while_alive() {
     // Becomes ready on the 3rd poll; process stays alive throughout.
     let polls = Cell::new(0);

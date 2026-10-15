@@ -286,7 +286,7 @@ impl CapturedOutput {
 
 fn capture_stderr(stream: impl std::io::Read) -> CapturedOutput {
     let mut captured = CapturedOutput::default();
-    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+    for line in output_lines(stream) {
         info!("[Ghidra stderr] {}", line);
         captured.push(line);
     }
@@ -300,7 +300,7 @@ fn capture_stdout(
     let mut last_error = String::new();
     let mut captured = CapturedOutput::default();
     let mut signaled = false;
-    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+    for line in output_lines(stream) {
         info!("[Ghidra stdout] {}", line);
         if line.contains("ERROR") || line.contains("Exception") || line.contains("SEVERE") {
             last_error = line.clone();
@@ -315,6 +315,28 @@ fn capture_stdout(
         // would break later JVM writes and discard startup failure diagnostics.
     }
     (last_error, captured)
+}
+
+pub(super) fn output_lines(stream: impl std::io::Read) -> impl Iterator<Item = String> {
+    let mut reader = BufReader::new(stream);
+    std::iter::from_fn(move || {
+        let mut bytes = Vec::new();
+        match reader.read_until(b'\n', &mut bytes) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => {
+                if bytes.last() == Some(&b'\n') {
+                    bytes.pop();
+                    if bytes.last() == Some(&b'\r') {
+                        bytes.pop();
+                    }
+                }
+                // Native launchers and Java console streams can use the host
+                // code page. A diagnostic byte must not close the pipe or
+                // discard a later readiness signal or structured error.
+                Some(String::from_utf8_lossy(&bytes).into_owned())
+            }
+        }
+    })
 }
 
 fn startup_diagnostic(line: &str) -> Option<crate::ipc::protocol::BridgeCommandError> {

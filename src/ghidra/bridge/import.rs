@@ -6,7 +6,6 @@ use crate::ghidra::installation::Installation;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -122,7 +121,7 @@ fn execute_bootstrap(
     fn drain(stream: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
         std::thread::spawn(move || {
             let mut tail = std::collections::VecDeque::new();
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+            for line in startup::output_lines(stream) {
                 info!("[Ghidra bootstrap] {line}");
                 if tail.len() == 30 {
                     tail.pop_front();
@@ -224,6 +223,33 @@ fn bootstrap_result(result: Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn encoded_launcher_output_keeps_later_failure_diagnostics() {
+        let work = tempfile::tempdir().unwrap();
+        let receipt = work.path().join("receipt.json");
+        let completion = json!({
+            "status": "success", "program": "saved-name", "import_status": "saved"
+        });
+        std::fs::write(&receipt, serde_json::to_vec(&completion).unwrap()).unwrap();
+        let error = execute_bootstrap(
+            Command::new("sh")
+                .arg("-c")
+                .arg("printf '\\351\\nfinal bootstrap diagnostic\\n' >&2; exit 7"),
+            &receipt,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("final bootstrap diagnostic"),
+            "{error:#}"
+        );
+        assert_eq!(
+            crate::error::diagnostic_detail(&error)["completion"],
+            completion
+        );
+    }
 
     #[cfg(unix)]
     #[test]
