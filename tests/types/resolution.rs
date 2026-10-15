@@ -619,3 +619,28 @@ fn excessive_type_expression_nesting_preserves_program_and_bridge() {
         std::panic::resume_unwind(panic);
     }
 }
+
+#[test]
+#[serial]
+fn overdeep_type_paths_preserve_program_and_running_bridge() {
+    require_ghidra!();
+    let program = create_program(64);
+    let before = get_type(&program, "Holder");
+    let client = harness().client().unwrap();
+    let path = format!("{}/Holder", "/nested".repeat(10_000));
+    for command in ["type_get", "type_delete"] {
+        let error = client
+            .send_command(command, Some(json!({"name": path})))
+            .expect_err("overdeep type path was accepted");
+        assert!(
+            error.to_string().contains("Type path nesting exceeds"),
+            "{error:#}"
+        );
+        // A direct request cannot hide a terminated bridge by restarting it.
+        client.program_info().unwrap();
+        assert_eq!(get_type(&program, "Holder"), before);
+    }
+    client.program_close().unwrap();
+    assert_eq!(get_type(&program, "Holder"), before);
+    client.open_program(TEST_PROGRAM).unwrap();
+}

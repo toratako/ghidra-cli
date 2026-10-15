@@ -39,6 +39,8 @@ public final class TypeResolver {
   // Native wrapper naming and cloning recurse too. Keep expression evaluation
   // comfortably within supported JVM stacks before constructing those objects.
   private static final int MAX_EXPRESSION_DEPTH = 128;
+  // CategoryPath parsing, rendering and manager lookups recurse through parents.
+  private static final int MAX_PATH_DEPTH = 128;
 
   static final class TypeResolutionException extends JsonProtocol.CommandException {
     TypeResolutionException(String message, JsonObject detail) {
@@ -68,6 +70,7 @@ public final class TypeResolver {
     if (name == null || name.trim().isEmpty()) return null;
     String trimmed = name.trim();
     DataTypeManager dtm = session.program().getDataTypeManager();
+    if (trimmed.startsWith("/")) requirePathDepth(trimmed);
     // Deletion needs the stored object, not a detached pointer/array expression.
     DataType registered =
         trimmed.startsWith("/")
@@ -164,12 +167,24 @@ public final class TypeResolver {
   /** Exact registered path lookup, without interpreting pointer/array expressions. */
   public DataType resolveDataTypePath(String path) {
     checkCancelled();
+    requirePathDepth(path);
     DataTypeManager dtm = session.program().getDataTypeManager();
     DataType found = dtm.getDataType(path);
     if (found == null) {
       found = BuiltInDataTypeManager.getDataTypeManager().getDataType(path);
     }
     return found != null ? found.clone(dtm) : null;
+  }
+
+  static void requirePathDepth(String path) {
+    int depth = 0;
+    for (int i = 0; i < path.length(); i++) {
+      // Ghidra escapes slashes within one component with a preceding backslash.
+      if (path.charAt(i) == '/' && (i == 0 || path.charAt(i - 1) != '\\')) {
+        if (++depth > MAX_PATH_DEPTH)
+          throw new IllegalArgumentException("Type path nesting exceeds " + MAX_PATH_DEPTH);
+      }
+    }
   }
 
   private DataType resolveArray(String expression, DataTypeManager dtm, int depth) {

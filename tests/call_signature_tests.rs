@@ -647,3 +647,64 @@ fn failed_native_replacement_rolls_back_removed_marker_and_preserves_saved_proto
         assert_eq!(get(client, "caller", "0x1005"), before);
     });
 }
+
+#[test]
+#[serial]
+fn repeated_function_parameter_lists_cannot_replace_saved_signatures() {
+    require_ghidra!();
+    fixture(|client, program| {
+        set(
+            client,
+            "caller",
+            "0x1005",
+            "int original(Profile (*callback)(Profile *entry, int (*predicate)(Profile *entry)), Profile (other)(Profile *entry))",
+        );
+        let callee = function(client, "callee");
+        let before = get(client, "caller", "0x1005");
+        let original_types = type_inventory(client);
+        // Native CParser overwrites earlier arguments, including valid C
+        // callbacks that return another function pointer.
+        for (command, args) in [
+            (
+                "function_set_signature",
+                json!({"target":"callee","signature":"int rewritten(int first)(char second)"}),
+            ),
+            (
+                "function_set_signature",
+                json!({"target":"callee","signature":"int rewritten(int first)()"}),
+            ),
+            (
+                "function_call_signature_set",
+                json!({"target":"caller","at":"0x1005","signature":"int observed(int first)(char second)"}),
+            ),
+            (
+                "function_call_signature_set",
+                json!({"target":"caller","at":"0x1005","signature":"int observed(int (*callback)(int first)(char second))"}),
+            ),
+            (
+                "function_call_signature_set",
+                json!({"target":"caller","at":"0x1005","signature":"int observed(int (*(*factory)(int first))(char second))"}),
+            ),
+        ] {
+            let error = client.send_command(command, Some(args)).unwrap_err();
+            let error = error.downcast_ref::<BridgeCommandError>().unwrap();
+            assert!(
+                error
+                    .to_string()
+                    .contains("multiple function parameter lists in one declarator"),
+                "{error:?}"
+            );
+            assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+            assert!(error.detail["line"].is_number(), "{error:?}");
+            assert!(error.detail["column"].is_number(), "{error:?}");
+            assert_eq!(function(client, "callee"), callee);
+            assert_eq!(get(client, "caller", "0x1005"), before);
+            assert_eq!(type_inventory(client), original_types);
+        }
+        client.program_close().unwrap();
+        client.open_program(program).unwrap();
+        assert_eq!(function(client, "callee"), callee);
+        assert_eq!(get(client, "caller", "0x1005"), before);
+        assert_eq!(type_inventory(client), original_types);
+    });
+}

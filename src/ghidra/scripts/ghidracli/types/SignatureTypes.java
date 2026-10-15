@@ -10,6 +10,8 @@ import ghidra.program.model.data.StandAloneDataTypeManager;
 import ghidracli.protocol.JsonProtocol;
 import ghidracli.session.ProgramSession;
 import java.io.StringReader;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -18,6 +20,67 @@ import java.util.Set;
 
 /** Isolated C parser types with the same unambiguous lookup as --type edits. */
 public final class SignatureTypes extends StandAloneDataTypeManager {
+  /** Feed declarator tokens, excluding complete expression, attribute, and function-body spans. */
+  public static final class DeclaratorScan {
+    private static final class Group {
+      final boolean parameterList;
+      boolean functionSuffix;
+
+      Group(boolean parameterList) {
+        this.parameterList = parameterList;
+      }
+    }
+
+    private final Deque<Group> groups = new ArrayDeque<>();
+    private Token beforePrevious;
+    private Token previous;
+    private boolean closedFunction;
+
+    public void check(Token token) {
+      if ("(".equals(token.image)) {
+        // Native DirectDeclarator replaces earlier arguments when a declarator
+        // has multiple function suffixes, even across pointer grouping.
+        if (closedFunction) {
+          JsonObject detail = new JsonObject();
+          detail.addProperty("line", token.beginLine);
+          detail.addProperty("column", token.beginColumn);
+          throw new JsonProtocol.CommandException(
+              "Ghidra cannot preserve multiple function parameter lists in one declarator", detail);
+        }
+        groups.push(
+            new Group(
+                previous != null
+                    && (")".equals(previous.image)
+                        || (previous.kind == CParserConstants.IDENTIFIER
+                            && beforePrevious != null
+                            && !"(".equals(beforePrevious.image)
+                            && !",".equals(beforePrevious.image)
+                            && beforePrevious.kind != CParserConstants.STRUCT
+                            && beforePrevious.kind != CParserConstants.UNION
+                            && beforePrevious.kind != CParserConstants.ENUM))));
+        closedFunction = false;
+      } else if (")".equals(token.image)) {
+        Group closed = groups.isEmpty() ? null : groups.pop();
+        closedFunction = closed != null && (closed.parameterList || closed.functionSuffix);
+        if (closedFunction && !groups.isEmpty() && !groups.peek().parameterList) {
+          groups.peek().functionSuffix = true;
+        }
+      } else {
+        closedFunction = false;
+      }
+      beforePrevious = previous;
+      previous = token;
+    }
+
+    /** Start a new declaration after skipping a complete function body. */
+    public void reset() {
+      groups.clear();
+      beforePrevious = null;
+      previous = null;
+      closedFunction = false;
+    }
+  }
+
   private final TypeResolver resolver;
   private final Map<String, DataType> bindings = new HashMap<>();
   private final Map<String, DataType> resolved = new HashMap<>();

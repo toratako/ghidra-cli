@@ -28,6 +28,7 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidracli.session.ProgramSession;
 import java.io.StringReader;
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,7 +68,6 @@ public final class TypeImportCommands {
       parser.setMonitor(session.monitor());
       parsedManager.parse(parser, processedCode);
       String parseMessages = parser.getParseMessages();
-      requireCompleteParse(parseMessages);
 
       Set<String> definedNames = new HashSet<>();
       definedNames.addAll(parser.getComposites().keySet());
@@ -101,6 +101,7 @@ public final class TypeImportCommands {
       CategoryPath lookupPath = CategoryPath.ROOT;
       if (categoryPath != null) {
         String normalizedPath = categoryPath.startsWith("/") ? categoryPath : "/" + categoryPath;
+        TypeResolver.requirePathDepth(normalizedPath);
         lookupPath = new CategoryPath(normalizedPath);
       }
       Map<String, CategoryPath> definitionPaths = new HashMap<>();
@@ -295,6 +296,7 @@ public final class TypeImportCommands {
       this.parser = parser;
       try {
         parser.parse(code);
+        requireCompleteParse(parser.getParseMessages());
         try (ImportTypes evaluated = new ImportTypes(session.program().getDataTypeManager())) {
           evaluated.tags = tags;
           CParser expressions = new CParser(evaluated, false, null);
@@ -304,7 +306,15 @@ public final class TypeImportCommands {
           cloneTypes(parser.getComposites(), expressions.getComposites(), evaluated);
           cloneTypes(parser.getEnums(), expressions.getEnums(), evaluated);
           cloneTypes(parser.getFunctions(), expressions.getFunctions(), evaluated);
-          verifyArrayLengths(expressions, code);
+          // A later definition can make sizeof evaluate differently from the
+          // original parse. Compare native output before trusting reevaluation.
+          expressions.parse(code);
+          requireCompleteParse(expressions.getParseMessages());
+          verifyParsedDefinitions(parser.getTypes(), expressions.getTypes());
+          verifyParsedDefinitions(parser.getComposites(), expressions.getComposites());
+          verifyParsedDefinitions(parser.getEnums(), expressions.getEnums());
+          verifyParsedDefinitions(parser.getFunctions(), expressions.getFunctions());
+          verifyConstantExpressions(expressions, code);
           requireCompleteParse(expressions.getParseMessages());
         }
       } catch (ParseException failure) {
@@ -317,6 +327,24 @@ public final class TypeImportCommands {
       }
     }
 
+    private void verifyParsedDefinitions(Map<String, DataType> source, Map<String, DataType> parsed)
+        throws CancelledException {
+      for (var entry : source.entrySet()) {
+        session.monitor().checkCancelled();
+        DataType reevaluated = parsed.get(entry.getKey());
+        if (reevaluated == null)
+          throw new IllegalArgumentException(
+              "C parser lost definition: " + entry.getValue().getPathName());
+        try {
+          TypeArchiveGraph.requireEquivalent(entry.getValue(), reevaluated, session.monitor());
+        } catch (IllegalArgumentException failure) {
+          throw new IllegalArgumentException(
+              "C parser produced inconsistent definition at " + entry.getValue().getPathName(),
+              failure);
+        }
+      }
+    }
+
     private void cloneTypes(
         Map<String, DataType> source, Map<String, DataType> target, DataTypeManager manager)
         throws CancelledException {
@@ -326,47 +354,146 @@ public final class TypeImportCommands {
       }
     }
 
-    private void verifyArrayLengths(CParser parser, String code)
+    private void verifyConstantExpressions(CParser parser, String code)
         throws ParseException, CancelledException {
-      // Native array declarations substitute zero for unevaluated expressions
-      // and narrow long results to int. Isolate reevaluation: sizeof can declare
-      // types, which must never enter the definitions being imported.
-      parser.ReInit(new StringReader(code));
-      Token previous = null;
-      while (parser.getToken(1).kind != CParserConstants.EOF) {
+      // Keep a separate lexical cursor so declarations nested in sizeof
+      // are checked even when evaluating an outer expression consumes them.
+      // The isolated type maps keep those evaluations out of the import.
+      CParser tokens = new CParser(new StringReader(code));
+      Token first = tokens.getToken(0);
+      while (tokens.getNextToken().kind != CParserConstants.EOF) {
         session.monitor().checkCancelled();
-        Token token = parser.getToken(1);
+      }
+      Token previous = first;
+      Token token = first.next;
+      SignatureTypes.DeclaratorScan declarators = new SignatureTypes.DeclaratorScan();
+      Token resumeDeclarators = null;
+      while (token.kind != CParserConstants.EOF) {
+        session.monitor().checkCancelled();
+        if (token == resumeDeclarators) resumeDeclarators = null;
+        boolean declarationToken = resumeDeclarators == null;
         if (token.kind == CParserConstants.ATTRIBUTE
             || token.kind == CParserConstants.DECLSPEC
             || token.kind == CParserConstants.READABLETO
             || token.kind == CParserConstants.ALIGNAS
             || token.kind == CParserConstants.ASM
-            || "[".equals(token.image) && "[".equals(parser.getToken(2).image)) {
+            || "[".equals(token.image) && "[".equals(token.next.image)) {
+          parseAt(parser, token);
           parser.DeclSpec(new Declaration());
+          token = parser.getToken(0).next;
           continue;
         }
-        if ("{".equals(token.image) && previous != null && ")".equals(previous.image)) {
+        if ("{".equals(token.image) && ")".equals(previous.image)) {
+          parseAt(parser, token);
           parser.CompoundStatement();
           previous = parser.getToken(0);
+          token = previous.next;
+          declarators.reset();
           continue;
         }
-        token = parser.getNextToken();
+        if (declarationToken) declarators.check(token);
         previous = token;
-        if (!"[".equals(token.image) || "]".equals(parser.getToken(1).image)) continue;
-        Object value = parser.ConstantExpression();
-        long length;
-        if (value instanceof Long number) length = number;
-        else if (value instanceof Integer number) length = number;
-        else if (value instanceof Character character) length = character;
-        else
-          throw new IllegalArgumentException(
-              "C parser could not evaluate array length at line "
-                  + token.beginLine
-                  + ", column "
-                  + token.beginColumn);
-        if (length < 0 || length > Integer.MAX_VALUE)
-          throw new IllegalArgumentException("Array length exceeds its supported range");
+        token = token.next;
+        if (declarationToken && ("=".equals(previous.image) || ":".equals(previous.image))) {
+          parseAt(parser, token);
+          if ("=".equals(previous.image)) parser.Initializer();
+          else parser.ConstantExpression();
+          resumeDeclarators = parser.getToken(0).next;
+        }
+        if ("[".equals(previous.image) && !"]".equals(token.image)) {
+          parseAt(parser, token);
+          long length = constantInteger(parser, "array length", previous);
+          if (declarationToken) resumeDeclarators = parser.getToken(0).next;
+          if (length < 0 || length > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("Array length exceeds its supported range");
+        }
+        if (previous.kind != CParserConstants.ENUM) continue;
+        parseAt(parser, token);
+        Token next = parser.getToken(1);
+        while (next.kind == CParserConstants.ATTRIBUTE
+            || next.kind == CParserConstants.ALIGNAS
+            || next.kind == CParserConstants.ASM
+            || "[".equals(next.image) && "[".equals(parser.getToken(2).image)) {
+          parser.DeclSpec(new Declaration());
+          next = parser.getToken(1);
+        }
+        if (next.kind == CParserConstants.IDENTIFIER) parser.getNextToken();
+        if (!"{".equals(parser.getToken(1).image)) continue;
+        parser.getNextToken();
+        long nextValue = 0;
+        while (!"}".equals(parser.getToken(1).image)) {
+          session.monitor().checkCancelled();
+          next = parser.getToken(1);
+          if (next.kind == CParserConstants.LINE || next.kind == CParserConstants.LINEALT) {
+            parser.LineDef();
+            continue;
+          }
+          if (next.kind == CParserConstants.PRAGMA || next.kind == CParserConstants.PRAGMA_FUNC) {
+            parser.PragmaSpec();
+            continue;
+          }
+          if (next.kind == CParserConstants.STATICASSERT) {
+            parser.StaticAssert();
+            continue;
+          }
+          Token member = parser.getNextToken();
+          long value = nextValue;
+          if ("=".equals(parser.getToken(1).image)) {
+            parser.getNextToken();
+            value = constantInteger(parser, "enum value", member);
+          }
+          // Native Enumerator narrows explicit values to int and increments
+          // subsequent members in int arithmetic, without a parse diagnostic.
+          if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("C parser enum value exceeds its supported range");
+          nextValue = value + 1;
+          if (",".equals(parser.getToken(1).image)) parser.getNextToken();
+        }
       }
+    }
+
+    private void parseAt(CParser parser, Token next) {
+      parser.ReInit(new StringReader(""));
+      // ReInit clears native lookahead; the recorded token chain supplies the
+      // expression while retaining its original source positions.
+      parser.getToken(0).next = next;
+    }
+
+    private long constantInteger(CParser parser, String subject, Token token)
+        throws ParseException, CancelledException {
+      Token before = parser.getToken(0);
+      Object value = parser.ConstantExpression();
+      Token after = parser.getToken(0).next;
+      for (Token literal = before.next; literal != after; literal = literal.next) {
+        session.monitor().checkCancelled();
+        if (literal.kind != CParserConstants.INTEGER_LITERAL) continue;
+        String number =
+            literal
+                .image
+                .replaceFirst("(?i)i(?:8|16|32|64)$", "")
+                .replaceFirst("(?i)(?:ull|ll|ul|l|u)$", "");
+        BigInteger magnitude =
+            number.startsWith("0x") || number.startsWith("0X")
+                ? new BigInteger(number.substring(2), 16)
+                : new BigInteger(number);
+        // Native Constant truncates to long before returning the expression.
+        // A wrapped literal can otherwise look like an exact small value.
+        if (magnitude.bitLength() > 63)
+          throw new IllegalArgumentException(
+              "C parser cannot preserve "
+                  + subject
+                  + ": integer literal exceeds its supported range");
+      }
+      if (value instanceof Long number) return number;
+      if (value instanceof Integer number) return number;
+      if (value instanceof Character character) return character;
+      throw new IllegalArgumentException(
+          "C parser could not evaluate "
+              + subject
+              + " at line "
+              + token.beginLine
+              + ", column "
+              + token.beginColumn);
     }
 
     @Override

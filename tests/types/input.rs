@@ -146,6 +146,39 @@ fn type_import_parse_failure_restores_types_and_applied_data_after_reopen() {
 
 #[test]
 #[serial]
+fn type_import_rejects_overdeep_category_without_changing_saved_types() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        let before = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        let category = "/nested".repeat(10_000);
+        let rejected = type_command(
+            &program,
+            &[
+                "import-c",
+                "--category",
+                &category,
+                "--code",
+                "struct Rejected { int value; };",
+            ],
+        );
+        rejected
+            .assert_failure()
+            .assert_stderr_contains("Type path nesting");
+        let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+        assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+            before
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn type_import_rejects_unevaluated_and_narrowed_array_lengths_atomically() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
@@ -162,7 +195,11 @@ fn type_import_rejects_unevaluated_and_narrowed_array_lengths_atomically() {
             "struct MissingLength { int values[UNKNOWN]; };",
             "typedef int MissingLength[UNKNOWN + 1];",
             "typedef int MissingLength[4294967296];",
+            "typedef int MissingLength[18446744073709551617];",
+            "typedef int MissingLength[0x10000000000000001ULL];",
             "struct MissingLength { int values[1ULL << 32]; };",
+            "struct MissingLength { char value[sizeof(struct { int bad[UNKNOWN]; })]; };",
+            "typedef char MissingLength[sizeof(struct Later)]; struct Later { int value; };",
         ] {
             let code = format!("struct Existing {{ char changed; }}; {declaration}");
             let rejected = type_command(&program, &["import-c", "--code", &code]);
@@ -209,6 +246,149 @@ fn type_import_rejects_unevaluated_and_narrowed_array_lengths_atomically() {
         assert_eq!(
             type_command(&program, &["get", "/Calculated"]).data::<serde_json::Value>(),
             calculated
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn type_import_rejects_unevaluated_and_narrowed_enum_values_atomically() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        type_command(
+            &program,
+            &["import-c", "--code", "struct Existing { int original; };"],
+        )
+        .assert_success();
+        let before = type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>();
+        let types = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        for declaration in [
+            "enum MissingValue { FIRST = UNKNOWN };",
+            "enum MissingValue { FIRST = 4, LAST = FIRST + 5 };",
+            "enum MissingValue { FIRST = 4294967296ULL };",
+            "enum MissingValue { FIRST = 18446744073709551617ULL };",
+            "enum MissingValue { FIRST = 0xffffffffffffffffULL };",
+            "enum MissingValue { FIRST = 2147483647, LAST };",
+            "enum MissingValue { FIRST = 1.5 };",
+            "struct Nested { char value[sizeof(enum { FIRST = UNKNOWN })]; };",
+            "enum MissingValue { FIRST = sizeof(enum { NESTED = UNKNOWN }) };",
+            "enum MissingValue { FIRST = sizeof(struct Later) }; struct Later { int value; };",
+        ] {
+            let code = format!("struct Existing {{ char changed; }}; {declaration}");
+            let rejected = type_command(&program, &["import-c", "--code", &code]);
+            rejected.assert_failure().assert_stderr_contains("C parser");
+            let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(&program).unwrap();
+                }
+                assert_eq!(
+                    type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>(),
+                    before
+                );
+                assert_eq!(
+                    type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                    types
+                );
+            }
+        }
+        type_command(
+            &program,
+            &["import-c", "--code", "enum [[gnu::packed]] Calculated { ZERO, NEGATIVE = -2, NEXT, EXPRESSION = (2 + 1) * 2, BYTES = sizeof(struct Existing), MSVC = 1ui64, MINIMUM = -2147483648, MAXIMUM = 2147483647, RESET = 4, FOLLOWING }; enum __attribute__((packed)) { ANONYMOUS = 3 }; int ignored(int *values, int index) { return values[index]; }"],
+        )
+        .assert_success();
+        let calculated =
+            type_command(&program, &["get", "/Calculated"]).data::<serde_json::Value>();
+        let members = calculated["members"].as_array().unwrap();
+        for (name, expected) in [
+            ("ZERO", 0),
+            ("NEGATIVE", -2),
+            ("NEXT", -1),
+            ("EXPRESSION", 6),
+            ("BYTES", 4),
+            ("MSVC", 1),
+            ("MINIMUM", i32::MIN),
+            ("MAXIMUM", i32::MAX),
+            ("RESET", 4),
+            ("FOLLOWING", 5),
+        ] {
+            assert_eq!(
+                members
+                    .iter()
+                    .find(|member| member["name"] == name)
+                    .unwrap()["value"],
+                expected
+            );
+        }
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            type_command(&program, &["get", "/Calculated"]).data::<serde_json::Value>(),
+            calculated
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn type_import_rejects_discarded_function_parameter_lists_atomically() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        type_command(
+            &program,
+            &["import-c", "--code", "struct Existing { int original; };"],
+        )
+        .assert_success();
+        let before = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        for declaration in [
+            "typedef int Broken(int original)(char discarded);",
+            "typedef int (*Broken(int original))(char discarded);",
+            "struct Broken { int (*callback)(int first)(char second); };",
+            "int Broken(int original)(char discarded);",
+        ] {
+            let code = format!("struct Existing {{ char changed; }}; {declaration}");
+            let rejected = type_command(&program, &["import-c", "--code", &code]);
+            rejected
+                .assert_failure()
+                .assert_stderr_contains("multiple function parameter lists");
+            let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            client.program_close().unwrap();
+            client.open_program(&program).unwrap();
+            assert_eq!(
+                type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                before
+            );
+        }
+        type_command(
+            &program,
+            &["import-c", "--code", "typedef int (*Callback)(int input); struct [[gnu::packed]] Holder { Callback named; int (*raw)(int input); int values[1 ? 2 : callback()(1)]; unsigned int bits : 1 ? 3 : callback()(1); }; enum Constants { CALL_SIZE = 1 ? 3 : callback()(1) }; int initialized = sizeof(callback()(1)); int ignored(int index) { callback()(1); return index; }"],
+        )
+        .assert_success();
+        let holder = type_command(&program, &["get", "/Holder"]).data::<serde_json::Value>();
+        let fields = holder["components"].as_array().unwrap();
+        assert_eq!(
+            fields
+                .iter()
+                .find(|field| field["name"] == "values")
+                .unwrap()["size"],
+            8
+        );
+        assert_eq!(
+            fields.iter().find(|field| field["name"] == "bits").unwrap()["bit_size"],
+            3
+        );
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            type_command(&program, &["get", "/Holder"]).data::<serde_json::Value>(),
+            holder
         );
     });
 }

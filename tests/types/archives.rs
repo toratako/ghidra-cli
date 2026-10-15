@@ -595,6 +595,51 @@ fn local_export_owns_fresh_archive_identities_and_preserves_the_saved_program() 
 
 #[test]
 #[serial]
+fn overdeep_archive_selection_paths_leave_program_and_files_unchanged() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("source.gdt");
+    let output = directory.path().join("unchanged.gdt");
+    fixture(&program, "create", &file);
+    let bytes = std::fs::read(&file).unwrap();
+    let before = list(&program);
+    let path = format!("{}/Missing", "/deep".repeat(10_000));
+    let client = harness().client().unwrap();
+    for (operation, target) in [("type_import_gdt", &file), ("type_export_gdt", &output)] {
+        // Native rollback invalidates the prior Program selection guard.
+        let snapshot = candidates(if operation == "type_import_gdt" {
+            Some(&file)
+        } else {
+            None
+        });
+        let error = client
+            .send_command(
+                operation,
+                Some(json!({"file": target, "paths": [path], "source": snapshot["source"]})),
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("Type path nesting exceeds"),
+            "{error:#}"
+        );
+        if operation == "type_import_gdt" {
+            let error = error
+                .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                .unwrap();
+            assert_eq!(error.detail["rolled_back"], true, "{error:?}");
+        }
+        assert_eq!(list(&program), before);
+        assert!(!output.exists());
+    }
+    reopen(&program);
+    assert_eq!(list(&program), before);
+    assert_eq!(std::fs::read(&file).unwrap(), bytes);
+    restore_program();
+}
+
+#[test]
+#[serial]
 fn selection_guards_reject_missing_paths_and_changed_sources_without_mutation() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");

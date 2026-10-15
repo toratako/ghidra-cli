@@ -235,6 +235,7 @@ public final class TypeArchiveCommands {
       if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
         throw new IllegalArgumentException("Selected type paths must be strings");
       String path = value.getAsString();
+      TypeResolver.requirePathDepth(path);
       DataType type = manager.getDataType(path);
       if (!path.startsWith("/")
           || type == null

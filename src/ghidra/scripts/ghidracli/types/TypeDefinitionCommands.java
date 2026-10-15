@@ -206,6 +206,7 @@ public final class TypeDefinitionCommands {
   private static CategoryPath categoryPath(String value) {
     if (value == null || !value.startsWith("/") || value.chars().anyMatch(Character::isISOControl))
       throw new IllegalArgumentException("Category path must be an absolute canonical path");
+    TypeResolver.requirePathDepth(value);
     CategoryPath path = new CategoryPath(value);
     if (!path.getPath().equals(value))
       throw new IllegalArgumentException("Category path must be canonical: " + value);

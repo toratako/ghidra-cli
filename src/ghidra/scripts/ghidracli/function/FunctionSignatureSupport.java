@@ -100,10 +100,12 @@ final class FunctionSignatureSupport {
     parser.ReInit(new StringReader(signature));
     Token previous = null;
     int parentheses = 0;
+    SignatureTypes.DeclaratorScan declarators = new SignatureTypes.DeclaratorScan();
     for (Token token = parser.getNextToken();
         token.kind != CParserConstants.EOF;
         token = parser.getNextToken()) {
       session.monitor().checkCancelled();
+      declarators.check(token);
       if ("(".equals(token.image)) parentheses++;
       else if (")".equals(token.image)) parentheses--;
       if (token.kind == CParserConstants.VOID

@@ -494,3 +494,36 @@ fn categories_and_move_preserve_identity_references_and_reject_destructive_colli
         .open_program(TEST_PROGRAM)
         .unwrap();
 }
+
+#[test]
+#[serial]
+fn overdeep_category_paths_fail_before_native_mutation_and_keep_bridge_running() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    command(&program, &["create", "struct", "Anchor"]);
+    // Escaped slashes belong to one category name, not additional ancestors.
+    let escaped = format!("/{}tail", "part\\/".repeat(160));
+    assert_eq!(
+        command(&program, &["category", "create", &escaped])["path"],
+        escaped
+    );
+    command(&program, &["category", "delete", &escaped]);
+    let before = definition(&program, "/Anchor");
+    let categories = command(&program, &["category", "list", "/"]);
+    let client = harness().client().unwrap();
+    let error = client
+        .send_command(
+            "type_category_create",
+            Some(json!({"path": "/nested".repeat(10_000)})),
+        )
+        .expect_err("overdeep category path was accepted");
+    assert!(
+        error.to_string().contains("Type path nesting exceeds"),
+        "{error:#}"
+    );
+    client.program_info().unwrap();
+    reopen(&program);
+    assert_eq!(definition(&program, "/Anchor"), before);
+    assert_eq!(command(&program, &["category", "list", "/"]), categories);
+    client.open_program(TEST_PROGRAM).unwrap();
+}
