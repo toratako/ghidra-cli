@@ -377,14 +377,21 @@ final class TypeArchiveGraph {
       result.addProperty("signed", ((AbstractIntegerDataType) type).isSigned());
     if (type instanceof Pointer)
       result.addProperty("pointer_shift", type.getDataOrganization().getPointerShift());
-    if (type.getLength() > 1
-        && (type instanceof AbstractIntegerDataType
-            || type instanceof AbstractFloatDataType
-            || type instanceof Pointer
-            || type instanceof ghidra.program.model.data.Enum
-            || type instanceof WideCharDataType
-            || type instanceof WideChar16DataType
-            || type instanceof WideChar32DataType)) {
+    boolean endianDependentString = false;
+    if (type instanceof AbstractStringDataType) {
+      String charset = ((AbstractStringDataType) type).getCharsetName(type.getDefaultSettings());
+      endianDependentString = "UTF-16".equals(charset) || "UTF-32".equals(charset);
+    }
+    if (endianDependentString
+        || type.getLength() > 1
+            && (type instanceof AbstractIntegerDataType
+                || type instanceof AbstractFloatDataType
+                || type instanceof AbstractComplexDataType
+                || type instanceof Pointer
+                || type instanceof ghidra.program.model.data.Enum
+                || type instanceof WideCharDataType
+                || type instanceof WideChar16DataType
+                || type instanceof WideChar32DataType)) {
       int endian = EndianSettingsDefinition.DEF.getChoice(type.getDefaultSettings());
       result.addProperty(
           "big_endian",

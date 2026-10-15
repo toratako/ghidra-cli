@@ -551,6 +551,67 @@ fn incompatible_layout_endianness_and_scalar_semantics_are_rejected_before_impor
 
 #[test]
 #[serial]
+fn endian_dependent_builtin_archives_are_checked_before_import() {
+    require_ghidra!();
+    let source = create_type_edit_program("x86:LE:64:default");
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("endian.gdt");
+    let client = harness().client().unwrap();
+    client.open_program(&source).unwrap();
+    client
+        .script_run_source(
+            include_str!("../fixtures/types/GdtEndianArchiveFixture.java"),
+            &[file.to_string_lossy().into_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    let bytes = std::fs::read(&file).unwrap();
+
+    command(
+        &source,
+        &["archive", "import", file.to_str().unwrap(), "--all"],
+    );
+    assert_eq!(command(&source, &["get", "/Gdt/ComplexValue"])["size"], 8);
+
+    let target = create_type_edit_program("PowerPC:BE:32:default");
+    command(
+        &target,
+        &[
+            "archive",
+            "import",
+            file.to_str().unwrap(),
+            "--where",
+            r#"path="/Gdt/stringValue""#,
+        ],
+    );
+    let before = list(&target);
+    for path in [
+        "/Gdt/ComplexValue",
+        "/Gdt/unicodeValue",
+        "/Gdt/unicode32Value",
+    ] {
+        type_command(
+            &target,
+            &[
+                "archive",
+                "import",
+                file.to_str().unwrap(),
+                "--where",
+                &format!(r#"path="{path}""#),
+            ],
+        )
+        .assert_failure()
+        .assert_stderr_contains("layout");
+        reopen(&target);
+        assert_eq!(list(&target), before);
+    }
+    assert_eq!(std::fs::read(&file).unwrap(), bytes);
+    restore_program();
+}
+
+#[test]
+#[serial]
 fn local_export_owns_fresh_archive_identities_and_preserves_the_saved_program() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
