@@ -29,7 +29,11 @@ public class WaitForCancellationListener extends GhidraScript {
     monitor.setMessage("waiting-for-listener-cancel");
     long deadline = System.currentTimeMillis() + 30000;
     while (!monitor.isCancelled() && System.currentTimeMillis() < deadline) Thread.sleep(10);
-    monitor.checkCancelled();
-    throw new IllegalStateException("Cancellation never arrived");
+    try {
+      monitor.checkCancelled();
+      throw new IllegalStateException("Cancellation never arrived");
+    } finally {
+      monitor.removeCancelledListener(listener);
+    }
   }
 }

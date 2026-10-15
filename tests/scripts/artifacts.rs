@@ -369,3 +369,40 @@ fn test_invalid_allow_empty_fails_before_script_execution() {
     );
     assert!(!artifact.exists(), "script ran with malformed allow_empty");
 }
+
+#[test]
+#[serial]
+fn native_script_cancellation_preserves_cancellation_receipt() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let error = client
+        .script_run_source(
+            include_str!("../fixtures/scripts/NativeCancellationReceipt.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("Script cancelled"), "{error}");
+    let detail = &error
+        .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+        .unwrap()
+        .detail;
+    assert_eq!(detail["cancelled"], true, "{detail}");
+    assert!(detail["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("before native cancellation"));
+    let result = client
+        .script_run_source(
+            include_str!("../fixtures/scripts/EchoArgs.java"),
+            &["after cancellation".to_owned()],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert!(result["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("ARG0=after cancellation"));
+}

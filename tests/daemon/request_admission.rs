@@ -52,6 +52,12 @@ fn malformed_or_duplicate_members_cannot_admit_mutations_or_shutdown() {
             r#"{{"command":"tag_delete","job_id":"ID","args":{{"name":"{name}","unused":"invalid\'escape"}}}}"#
         ),
         format!(
+            r#"{{"command":"tag_create","job_id":"ID","args":{{"name":"{name}\ud800"}}}}"#
+        ),
+        format!(
+            r#"{{"command":"tag_delete","job_id":"ID","args":{{"name":"{name}","unused":{{"\udc00":true}}}}}}"#
+        ),
+        format!(
             "{{\"command\":\"tag_delete\",\"job_id\":\"ID\",\"args\":{{\"name\":\"{name}\",\"unused\":\"raw\tcontrol\"}}}}"
         ),
         format!(
@@ -89,7 +95,7 @@ fn valid_json_accepts_nested_values_and_preserves_escaped_names_and_text() {
     let comment = "quotes: \" slash: \\ controls: \t\r\n";
     let wire = format!(
         " \t{{\"comm\\u0061nd\":\"tag_create\",\"job_id\":\"{id}\",\"args\":{{\"na\\u006de\":{},\"comment\":{},\"unused\":[null,true,false,9007199254740993,-1.25E+3,{{\"name\":\"independent\"}}]}}}} \r",
-        json!(name),
+        json!(name).to_string().replace('😀', "\\ud83d\\ude00"),
         json!(comment)
     );
     let response = request(harness.port(), &wire);

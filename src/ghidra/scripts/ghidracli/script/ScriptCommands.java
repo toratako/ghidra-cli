@@ -294,6 +294,7 @@ public final class ScriptCommands {
     } catch (CancelledException e) {
       out.flush();
       JsonObject err = errorResult("Script cancelled");
+      err.addProperty("cancelled", true);
       err.addProperty("stdout", buffer.toString());
       return err;
     } catch (Exception e) {

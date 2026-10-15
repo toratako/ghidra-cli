@@ -39,6 +39,7 @@ public final class JsonProtocol {
         reader.beginObject();
         while (reader.hasNext()) {
           String name = reader.nextName();
+          validateRequestString(name);
           if (object.has(name)) {
             throw new IllegalArgumentException("Duplicate request member: " + name);
           }
@@ -53,7 +54,9 @@ public final class JsonProtocol {
         reader.endArray();
         return array;
       case STRING:
-        return new JsonPrimitive(reader.nextString());
+        String value = reader.nextString();
+        validateRequestString(value);
+        return new JsonPrimitive(value);
       case NUMBER:
         // Keep the original numeric precision and spelling without narrowing.
         return JsonParser.parseString(reader.nextString());
@@ -64,6 +67,19 @@ public final class JsonProtocol {
         return JsonNull.INSTANCE;
       default:
         throw new IllegalArgumentException("Invalid request JSON value");
+    }
+  }
+
+  /** An unpaired escaped surrogate cannot round-trip through the UTF-8 wire. */
+  private static void validateRequestString(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      char ch = value.charAt(i);
+      if (Character.isHighSurrogate(ch)) {
+        if (++i < value.length() && Character.isLowSurrogate(value.charAt(i))) continue;
+      } else if (!Character.isLowSurrogate(ch)) {
+        continue;
+      }
+      throw new IllegalArgumentException("Unpaired surrogate in request JSON string");
     }
   }
 

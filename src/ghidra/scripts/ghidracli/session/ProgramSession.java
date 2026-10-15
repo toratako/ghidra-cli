@@ -396,8 +396,11 @@ public final class ProgramSession {
   }
 
   public boolean isCurrent(DomainFile domainFile) {
-    return program() != null
-        && program().getDomainFile().getPathname().equals(domainFile.getPathname());
+    // Links can open a Program in another project at the same project-relative path.
+    DomainFile current = programFile();
+    return current != null
+        && current.getProjectLocator().equals(domainFile.getProjectLocator())
+        && current.getPathname().equals(domainFile.getPathname());
   }
 
   public DomainFile findProgram(String name) {

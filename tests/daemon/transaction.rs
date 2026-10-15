@@ -7,6 +7,31 @@ use serial_test::serial;
 // without bridge test switches or nesting under the enclosing script's request.
 const TRANSACTION_PROBE: &str = include_str!("../fixtures/daemon/RequestTransactionProbe.java");
 
+#[test]
+#[serial]
+fn test_program_selection_distinguishes_same_paths_in_different_projects() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let result = harness
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/daemon/CheckCrossProjectSessionIdentity.java"),
+            &[format!("cross-project-session-{}", uuid::Uuid::new_v4())],
+            &[],
+            false,
+        )
+        .unwrap();
+    assert!(
+        result["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("cross-project-session-ok"),
+        "{result}"
+    );
+}
+
 fn run_transaction_probe(mode: &str) {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);

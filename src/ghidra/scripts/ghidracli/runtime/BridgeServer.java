@@ -158,6 +158,7 @@ final class BridgeServer {
   }
 
   private void serveClient(Socket client) {
+    boolean replyOwnsClient = false;
     try {
       // The wire protocol is one JSON request per connection. Parse and
       // enqueue here, but never occupy a connection thread while waiting
@@ -174,13 +175,14 @@ final class BridgeServer {
       String line = readRequestLine(in);
       readingClients.remove(client);
       if (line == null || line.trim().isEmpty()) {
-        closeClient(client);
         return;
       }
 
       BridgeReply reply = requests.apply(line);
       if (!reply.asynchronous) {
-        respondAndClose(client, reply.completion.join().get());
+        JsonObject response = reply.completion.join().get();
+        replyOwnsClient = true;
+        respondAndClose(client, response);
         return;
       }
 
@@ -202,13 +204,16 @@ final class BridgeServer {
               closeClient(client);
             }
           });
+      replyOwnsClient = true;
     } catch (IOException e) {
-      closeClient(client);
       if (!shutdownRequested.getAsBoolean()) {
         errors.accept("Client error: " + e.getMessage());
       }
     } finally {
       readingClients.remove(client);
+      // Parsing may fail with a fatal Error on older supported Gson versions.
+      // Until a reply takes ownership, every exit must release this socket.
+      if (!replyOwnsClient) closeClient(client);
     }
   }
 

@@ -1,9 +1,14 @@
 package ghidracli.runtime;
 
+import ghidra.util.datastruct.WeakDataStructureFactory;
+import ghidra.util.datastruct.WeakSet;
+import ghidra.util.task.CancelledListener;
 import ghidra.util.task.TaskMonitorAdapter;
 
 /** Progress fields are published to control requests while a program job runs. */
 final class JobTaskMonitor extends TaskMonitorAdapter {
+  private final WeakSet<CancelledListener> listeners =
+      WeakDataStructureFactory.createCopyOnReadWeakSet();
   private volatile String message = "";
   private volatile long progress;
   private volatile long maximum;
@@ -37,9 +42,25 @@ final class JobTaskMonitor extends TaskMonitorAdapter {
 
   @Override
   public boolean isCancelEnabled() {
-    // Native cancellation listeners run while holding the adapter lock.
-    // Status must not wait for a listener to finish.
+    // Status must not wait for cancellation delivery.
     return cancelEnabled;
+  }
+
+  @Override
+  public void addCancelledListener(CancelledListener listener) {
+    listeners.add(listener);
+  }
+
+  @Override
+  public void removeCancelledListener(CancelledListener listener) {
+    listeners.remove(listener);
+  }
+
+  @Override
+  protected void notifyChangeListeners() {
+    // Copy-on-read iteration releases the set's lock before callbacks run.
+    // Native cleanup may remove a listener while another waits for this job.
+    for (CancelledListener listener : listeners) listener.cancelled();
   }
 
   @Override
@@ -74,6 +95,7 @@ final class JobTaskMonitor extends TaskMonitorAdapter {
   @Override
   public void setMaximum(long value) {
     maximum = value;
+    if (progress > value) progress = value;
     super.setMaximum(value);
   }
 

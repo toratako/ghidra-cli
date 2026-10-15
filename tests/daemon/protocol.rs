@@ -125,6 +125,24 @@ fn native_failure_without_message_preserves_rollback_and_retained_error() {
 
 #[test]
 #[serial]
+fn failed_admission_releases_socket_without_closing_pending_replies() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    harness
+        .client()
+        .unwrap()
+        .script_run_source(
+            include_str!("../fixtures/runtime/CheckAdmissionSocketOwnership.java"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+}
+
+#[test]
+#[serial]
 fn malformed_mutation_arguments_preserve_saved_tags() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
