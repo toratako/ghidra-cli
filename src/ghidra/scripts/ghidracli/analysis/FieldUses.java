@@ -40,7 +40,7 @@ final class FieldUses {
 
   private record FieldReference(PcodeOp operation, Varnode variable, boolean bitField) {}
 
-  private record PointerValue(Varnode value, long offset, long indexScale) {}
+  private record PointerValue(Varnode value, long offset, Set<Long> indexScales) {}
 
   private final ProgramSession session;
   private final Function function;
@@ -269,7 +269,7 @@ final class FieldUses {
 
   private void pointerUses(PcodeOp origin, String source) throws CancelledException {
     ArrayDeque<PointerValue> pending = new ArrayDeque<>();
-    pending.add(new PointerValue(origin.getOutput(), 0, 0));
+    pending.add(new PointerValue(origin.getOutput(), 0, Set.of()));
     Set<Varnode> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     boolean classified = false;
     while (!pending.isEmpty()) {
@@ -286,7 +286,7 @@ final class FieldUses {
             && use.slot == 0
             && op.getOutput() != null
             && op.getOutput().getSize() == pointer.value().getSize()) {
-          pending.add(new PointerValue(op.getOutput(), pointer.offset(), pointer.indexScale()));
+          pending.add(new PointerValue(op.getOutput(), pointer.offset(), pointer.indexScales()));
           continue;
         }
         if ((opcode == PcodeOp.LOAD || opcode == PcodeOp.STORE) && use.slot == 1) {
@@ -334,9 +334,10 @@ final class FieldUses {
       if (op.getOpcode() == PcodeOp.PTRADD
           && base(field.getDataType()) instanceof Array
           && op.getInput(2).isConstant()
-          && op.getInput(2).getOffset() > 0
-          && (pointer.indexScale() == 0 || pointer.indexScale() == op.getInput(2).getOffset())) {
-        return new PointerValue(op.getOutput(), pointer.offset(), op.getInput(2).getOffset());
+          && op.getInput(2).getOffset() > 0) {
+        Set<Long> scales = new HashSet<>(pointer.indexScales());
+        scales.add(op.getInput(2).getOffset());
+        return new PointerValue(op.getOutput(), pointer.offset(), Set.copyOf(scales));
       }
       return null;
     }
@@ -352,7 +353,7 @@ final class FieldUses {
       // A one-past pointer can return to the field before an access.
       // withinField still excludes dereferencing that boundary itself.
       if (offset < 0 || offset > field.getLength()) return null;
-      return new PointerValue(op.getOutput(), offset, pointer.indexScale());
+      return new PointerValue(op.getOutput(), offset, pointer.indexScales());
     } catch (ArithmeticException e) {
       return null;
     }
@@ -366,14 +367,26 @@ final class FieldUses {
     int unit = addressUnit(memory);
     try {
       long offset = Math.multiplyExact(pointer.offset(), unit);
-      if (pointer.indexScale() != 0
-          && (!(base(field.getDataType()) instanceof Array array)
-              || Math.multiplyExact(pointer.indexScale(), unit) != array.getElementLength()))
-        return false;
+      for (long scale : pointer.indexScales()) {
+        if (!arrayElementScale(Math.multiplyExact(scale, unit))) return false;
+      }
       return width > 0 && offset >= 0 && offset <= (long) field.getLength() - width;
     } catch (ArithmeticException e) {
       return false;
     }
+  }
+
+  private boolean arrayElementScale(long scale) throws CancelledException {
+    DataType type = base(field.getDataType());
+    Set<DataType> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    while (type instanceof Array array && visited.add(type)) {
+      session.monitor().checkCancelled();
+      // Each nested subscript can use a different stride, e.g. 12 then 4
+      // for int matrix[2][3]. Every dynamic stride must name an array level.
+      if (scale == array.getElementLength()) return true;
+      type = base(array.getDataType());
+    }
+    return false;
   }
 
   private int addressUnit(PcodeOp memory) {

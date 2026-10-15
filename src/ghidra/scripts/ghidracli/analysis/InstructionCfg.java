@@ -199,14 +199,18 @@ public final class InstructionCfg {
         Set<Address> known = type.isCall() ? knownCalls : knownJumps;
         if ((type.isCall() || type.isJump()) && !known.contains(site)) {
           boolean resolved = false;
+          boolean indirect = hasIndirectFlow(instruction);
           // getFlows includes inert/nonprimary override references.
-          // Effective p-code supplies only actual direct targets.
-          for (Address target : directTargets(instruction, type.isCall())) {
-            session.monitor().checkCancelled();
-            if (!emit(block, site, target, type, type.isCall() ? "call" : "edge", null)) return;
-            resolved = true;
+          // A conditional indirect transfer can also contain a CBRANCH to
+          // inst_next that guards its execution, not a resolved transfer target.
+          if (!indirect) {
+            for (Address target : directTargets(instruction, type.isCall())) {
+              session.monitor().checkCancelled();
+              if (!emit(block, site, target, type, type.isCall() ? "call" : "edge", null)) return;
+              resolved = true;
+            }
           }
-          if (!resolved && type.isComputed()) {
+          if (!resolved && indirect) {
             resolved = supplementPointer(block, instruction);
             if (!flowsComplete) return;
           }

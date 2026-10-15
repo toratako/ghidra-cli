@@ -5,6 +5,116 @@ use serial_test::serial;
 
 #[test]
 #[serial]
+fn callers_traverse_deep_thunk_chains_without_native_stack_overflow() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("deep-call-thunks-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/readonly/CreateDeepCallThunks.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        // Start at the final target: native loading of an uncached first thunk also
+        // recursively initializes its chain, independently of graph traversal.
+        let incoming = client.graph_callers("deep_root", None, None).unwrap();
+        assert_eq!(incoming["count"], 1, "{incoming}");
+        let outgoing = client.graph_callees("deep_caller", None, None).unwrap();
+        assert_eq!(outgoing["count"], 1, "{outgoing}");
+        assert_eq!(
+            outgoing["calls"],
+            json!([{
+                "call_site": "0x00005000",
+                "caller": "deep_caller",
+                "caller_address": "0x00005000",
+                "callee": "deep_root",
+                "callee_address": "0x00003fff",
+                "destination": "0x00003fff",
+                "via": "0x00002000",
+                "type": "COMPUTED_CALL",
+                "depth": 0
+            }])
+        );
+        assert_eq!(incoming["calls"], outgoing["calls"], "{incoming}");
+        let limited = client.graph_callers("deep_root", Some(0), Some(1)).unwrap();
+        assert_eq!(limited["calls"], outgoing["calls"], "{limited}");
+        let graph = client.graph_calls(Some(1)).unwrap();
+        assert_eq!(graph["node_count"], 1, "{graph}");
+        assert_eq!(graph["nodes"][0]["address"], "0x00002000", "{graph}");
+        assert_eq!(graph["edge_count"], 0, "{graph}");
+
+        let assert_command_error = |error: &anyhow::Error| {
+            let error = error
+                .downcast_ref::<ghidra_cli::ipc::protocol::BridgeCommandError>()
+                .expect("structured command error");
+            assert_eq!(error.detail["rolled_back"], true);
+        };
+        let assert_load_failure = |error: anyhow::Error| {
+            let message = error.to_string();
+            assert!(message.contains("recursive thunk chain"), "{error}");
+            assert!(message.contains("ghidra-cli program close"), "{error}");
+            assert!(message.contains("ghidra-cli program open"), "{error}");
+            assert_command_error(&error);
+        };
+        let missing = client
+            .graph_callees("missing_deep_function", None, None)
+            .expect_err("an unknown target must return a resolution hint");
+        let expected_hint = missing.to_string();
+        assert!(
+            expected_hint.starts_with("Cannot resolve function target: missing_deep_function."),
+            "{missing}"
+        );
+        assert_command_error(&missing);
+
+        // Native cold loads may succeed after JIT compilation or fail at the stack limit.
+        // Both paths must retain the same query contract and keep the bridge usable.
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        match client.graph_callees("deep_caller", None, None) {
+            Ok(cold) => assert_eq!(cold, outgoing),
+            Err(error) => assert_load_failure(error),
+        }
+
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        match client.graph_calls(Some(1)) {
+            Ok(cold) => assert_eq!(cold, graph),
+            Err(error) => assert_load_failure(error),
+        }
+
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        let missing = client
+            .graph_callees("missing_deep_function", None, None)
+            .expect_err("an unknown target must not resolve after reopening");
+        if missing.to_string() == expected_hint {
+            assert_command_error(&missing);
+        } else {
+            assert_load_failure(missing);
+        }
+
+        // A failed native constructor may leave incomplete function cache entries.
+        // Explicitly reopen the Program before querying that metadata again.
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            client.graph_callers("deep_root", None, None).unwrap(),
+            incoming,
+            "the same bridge must recover after explicitly reopening the Program"
+        );
+        assert_eq!(
+            client.graph_callees("deep_caller", None, None).unwrap(),
+            outgoing
+        );
+        assert_eq!(client.graph_calls(Some(1)).unwrap(), graph);
+    });
+}
+
+#[test]
+#[serial]
 fn direct_call_targets_are_not_dereferenced_as_pointer_operands() {
     require_ghidra!();
     let client = harness().client().unwrap();

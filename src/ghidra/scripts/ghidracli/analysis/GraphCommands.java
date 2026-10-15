@@ -39,7 +39,7 @@ public final class GraphCommands {
     FunctionIterator iter = session.program().getFunctionManager().getFunctions(true);
     while (iter.hasNext() && (limit == 0 || nodes.size() < limit)) {
       session.monitor().checkCancelled();
-      Function func = iter.next();
+      Function func = CallReferences.readFunctionMetadata(iter::next);
       String address = AddressCodec.format(func.getEntryPoint());
       JsonObject node = new JsonObject();
       node.addProperty("id", address);
@@ -83,11 +83,16 @@ public final class GraphCommands {
       root = calls.resolveTarget(target);
     } else {
       // Outgoing queries inspect the selected body, including a thunk's own body.
-      Function function = functionQueries.findFunctionByNameOrAddress(target);
+      Function function =
+          CallReferences.readFunctionMetadata(
+              () -> functionQueries.findFunctionByNameOrAddress(target));
       root =
           function == null ? null : new CallReferences.Endpoint(function.getEntryPoint(), function);
     }
-    if (root == null) return errorResult(functionQueries.buildFunctionTargetHint(target));
+    if (root == null)
+      return errorResult(
+          CallReferences.readFunctionMetadata(
+              () -> functionQueries.buildFunctionTargetHint(target)));
     JsonArray rows = new JsonArray();
     visit(root, incoming, depth, limit, rows);
     JsonObject result = new JsonObject();

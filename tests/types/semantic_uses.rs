@@ -283,6 +283,24 @@ fn semantic_field_uses_follow_signed_pointer_arithmetic_within_the_selected_fiel
 
 #[test]
 #[serial]
+fn semantic_field_uses_follow_nested_array_indices() {
+    require_ghidra!();
+    restored(|| {
+        harness()
+            .client()
+            .unwrap()
+            .script_run_source(
+                include_str!("../fixtures/types/CheckSemanticNestedArrayFieldUses.java"),
+                &[],
+                &[],
+                false,
+            )
+            .expect("nested array indices preserve their containing field's identity");
+    });
+}
+
+#[test]
+#[serial]
 fn semantic_scans_distinguish_empty_failed_and_limited_work_and_apply_queries() {
     require_ghidra!();
     restored(|| {

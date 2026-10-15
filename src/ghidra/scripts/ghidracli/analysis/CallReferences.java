@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /** Call-site validation and destination resolution shared by every call graph. */
 final class CallReferences {
@@ -61,6 +62,19 @@ final class CallReferences {
     this.addressResolver = addressResolver;
   }
 
+  static <T> T readFunctionMetadata(Supplier<T> lookup) {
+    try {
+      return lookup.get();
+    } catch (StackOverflowError recursion) {
+      // Cold native lookups recursively initialize thunk targets. Keep this known
+      // failure inside the ordinary request rollback boundary.
+      throw new IllegalArgumentException(
+          "Ghidra could not load function metadata through a recursive thunk chain. Run `ghidra-cli"
+              + " program close`, then `ghidra-cli program open NAME` before continuing.",
+          recursion);
+    }
+  }
+
   Endpoint canonical(Function function) {
     Function target = function.isThunk() ? function.getThunkedFunction(true) : function;
     if (target == null) target = function;
@@ -75,9 +89,10 @@ final class CallReferences {
     for (Address candidate : candidates) {
       // A recorded executable target is stronger evidence than pointer
       // data at the same address, just as an exact Function is.
-      boolean followPointers =
-          session.program().getFunctionManager().getFunctionAt(candidate) == null
-              && !hasCallTargetReference(candidate);
+      Function exact =
+          readFunctionMetadata(
+              () -> session.program().getFunctionManager().getFunctionAt(candidate));
+      boolean followPointers = exact == null && !hasCallTargetReference(candidate);
       for (Endpoint endpoint : destinations(candidate, followPointers).values()) {
         endpoints.put(endpoint.address(), endpoint);
       }
@@ -118,7 +133,7 @@ final class CallReferences {
       session.monitor().checkCancelled();
       Address address = pending.removeFirst();
       if (!visited.add(address)) continue;
-      Function function = fm.getFunctionAt(address);
+      Function function = readFunctionMetadata(() -> fm.getFunctionAt(address));
       if (function != null) {
         Endpoint endpoint = canonical(function);
         endpoints.put(endpoint.address(), endpoint);
@@ -137,7 +152,7 @@ final class CallReferences {
       if (!followed) {
         // Literal pools and pointer tables can lie inside a function body.
         // Resolve typed pointers before using the containing function as metadata.
-        function = fm.getFunctionContaining(address);
+        function = readFunctionMetadata(() -> fm.getFunctionContaining(address));
         Endpoint endpoint = function == null ? new Endpoint(address, null) : canonical(function);
         Address destination = function != null && function.isThunk() ? endpoint.address() : address;
         endpoints.put(destination, endpoint);
@@ -168,7 +183,9 @@ final class CallReferences {
    */
   private Map<Address, Call> callsAt(Address site) throws CancelledException {
     Instruction instruction = session.program().getListing().getInstructionAt(site);
-    Function caller = session.program().getFunctionManager().getFunctionContaining(site);
+    Function caller =
+        readFunctionMetadata(
+            () -> session.program().getFunctionManager().getFunctionContaining(site));
     Map<Address, Call> calls = new LinkedHashMap<>();
     for (Reference ref : session.program().getReferenceManager().getReferencesFrom(site)) {
       session.monitor().checkCancelled();
@@ -226,13 +243,24 @@ final class CallReferences {
     Set<Address> sites = new HashSet<>();
     pending.add(callee.address());
     if (callee.function() != null) {
-      addDestinations(callee.function(), pending);
-      Address[] thunks = callee.function().getFunctionThunkAddresses(true);
-      if (thunks != null) {
-        for (Address address : thunks) {
-          session.monitor().checkCancelled();
-          Function thunk = session.program().getFunctionManager().getFunctionAt(address);
-          if (thunk != null) addDestinations(thunk, pending);
+      Deque<Function> functions = new ArrayDeque<>();
+      functions.addLast(callee.function());
+      while (!functions.isEmpty()) {
+        session.monitor().checkCancelled();
+        Function function = functions.removeLast();
+        addDestinations(function, pending);
+        // Native recursive thunk enumeration can overflow the Java stack on valid chains.
+        // Push direct thunks in reverse order to preserve its depth-first ordering.
+        Address[] thunks = function.getFunctionThunkAddresses(false);
+        if (thunks != null) {
+          for (int i = thunks.length - 1; i >= 0; i--) {
+            session.monitor().checkCancelled();
+            Address address = thunks[i];
+            Function thunk =
+                readFunctionMetadata(
+                    () -> session.program().getFunctionManager().getFunctionAt(address));
+            if (thunk != null) functions.addLast(thunk);
+          }
         }
       }
     }

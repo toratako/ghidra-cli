@@ -325,6 +325,50 @@ fn instruction_cfg_keeps_delay_slot_outside_body_and_branch_origin() {
 
 #[test]
 #[serial]
+fn instruction_cfg_preserves_conditional_indirect_transfers() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = format!("instruction-cfg-conditional-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/readonly/CreateConditionalIndirectCfgFixture.java"),
+            std::slice::from_ref(&program),
+            &[],
+            false,
+        )
+        .unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let indirect = command(&program, "conditional_indirect", &[]);
+        let unresolved = at(&indirect, "boundaries", "0x00001000");
+        assert_eq!(unresolved["kind"], "unresolved", "{indirect}");
+        assert_eq!(unresolved["target_state"], "unresolved", "{indirect}");
+        let fallthrough = at(&indirect, "edges", "0x00001000");
+        assert_eq!(fallthrough["flow_type"], "FALL_THROUGH", "{indirect}");
+        assert_eq!(fallthrough["target"], "0x00001004", "{indirect}");
+        assert_eq!(rows(&indirect, "edges").len(), 1, "{indirect}");
+        check_references(&indirect);
+
+        // An actual direct branch to its own fallthrough remains a branch.
+        let direct = command(&program, "conditional_direct_next", &[]);
+        assert!(
+            rows(&direct, "edges").iter().any(|edge| {
+                edge["site"] == "0x00001100"
+                    && edge["target"] == "0x00001104"
+                    && edge["flow_type"] == "CONDITIONAL_JUMP"
+            }),
+            "{direct}"
+        );
+        assert_eq!(indirect["completion"]["output"]["complete"], true);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&program).unwrap();
+    if let Err(error) = checked {
+        std::panic::resume_unwind(error);
+    }
+}
+
+#[test]
+#[serial]
 fn instruction_cfg_excludes_external_targets_replaced_by_jump_overrides() {
     require_ghidra!();
     let client = harness().client().unwrap();
