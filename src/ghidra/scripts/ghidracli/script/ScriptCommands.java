@@ -28,6 +28,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
@@ -188,16 +189,18 @@ public final class ScriptCommands {
         Class<?> bundleClass = bundle.getClass();
         try {
           bundleClass.getMethod("build", PrintWriter.class).invoke(bundle, out);
-          // Ghidra records source compilation errors instead of throwing.
-          // A previous packaged class can remain in its output tree when
-          // the source sits directly in this bundle root. Never load it
-          // after the explicitly requested source failed to compile.
-          if (bundleClass.getMethod("getErrors", ResourceFile.class).invoke(bundle, source)
-              != null) {
+          // Ghidra records compilation errors and retries without their sources.
+          // Packaged classes can remain in the output tree, letting a successful
+          // script compile against an old helper. Reject the whole failed build
+          // before loading any of its potentially stale classes.
+          Map<?, ?> buildErrors = (Map<?, ?>) bundleClass.getMethod("getAllErrors").invoke(bundle);
+          if (!buildErrors.isEmpty()) {
             out.flush();
             return errorResult(
                 "Script failed to compile: "
                     + scriptFile.getPath()
+                    + "; sources with compilation errors: "
+                    + buildErrors.keySet()
                     + (buffer.getBuffer().length() > 0 ? "\n" + buffer : ""));
           }
           String locationId =

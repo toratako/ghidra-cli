@@ -540,6 +540,80 @@ public class RebuiltScript extends GhidraScript {
 
 #[test]
 #[serial]
+fn java_packaged_helper_compile_failure_never_executes_its_previous_class() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let script = directory.path().join("HelperScript.java");
+    let helper = directory.path().join("ArtifactWriter.java");
+    let artifact = directory.path().join("execution.txt");
+    fs::write(
+        &script,
+        r#"
+package audit.helper;
+import ghidra.app.script.GhidraScript;
+public class HelperScript extends GhidraScript {
+    public void run() throws Exception { ArtifactWriter.write(getScriptArgs()[0]); }
+}
+"#,
+    )
+    .unwrap();
+    let helper_source = r#"
+package audit.helper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+final class ArtifactWriter {
+    static void write(String path) throws Exception {
+        Files.writeString(Path.of(path), "executed");
+    }
+}
+"#;
+    let args = [artifact.to_string_lossy().into_owned()];
+    fs::write(&helper, helper_source).unwrap();
+    client
+        .script_run(script.to_str().unwrap(), &args, &[], false)
+        .unwrap();
+    assert_eq!(fs::read_to_string(&artifact).unwrap(), "executed");
+    fs::remove_file(&artifact).unwrap();
+
+    fs::write(
+        &helper,
+        helper_source.replace("Files.writeString", "Files.missingHelperSymbol"),
+    )
+    .unwrap();
+    for attempt in 0..2 {
+        let result = client.script_run(script.to_str().unwrap(), &args, &[], false);
+        assert!(
+            !artifact.exists(),
+            "A previous compiled helper was executed"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.to_string().contains("Script failed to compile"),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains(helper.to_str().unwrap()),
+            "{error}"
+        );
+        if attempt == 0 {
+            assert!(error.to_string().contains("cannot find symbol"), "{error}");
+        }
+    }
+
+    fs::write(
+        &helper,
+        helper_source.replace("\"executed\"", "\"repaired\""),
+    )
+    .unwrap();
+    client
+        .script_run(script.to_str().unwrap(), &args, &[], false)
+        .unwrap();
+    assert_eq!(fs::read_to_string(&artifact).unwrap(), "repaired");
+}
+
+#[test]
+#[serial]
 fn java_source_on_stdin_reports_invalid_declarations() {
     require_ghidra!();
     let _harness = harness();
