@@ -132,6 +132,9 @@ final class GarFile {
         if (size != entry.getSize() || crc.getValue() != entry.getCrc()) {
           throw new IOException("Corrupt GAR entry: " + name);
         }
+        if (!skipped && !entry.isDirectory() && entry.getLastModifiedTime() != null) {
+          Files.setLastModifiedTime(destination, entry.getLastModifiedTime());
+        }
       }
     }
     if (!Files.isDirectory(data.resolve("idata")) && !Files.isDirectory(data.resolve("data"))) {

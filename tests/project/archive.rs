@@ -121,6 +121,13 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     assert_eq!(receipt["project_path"], restored.to_string_lossy().as_ref());
     assert_eq!(receipt["files"], 3);
     assert!(bridge::read_pid_file(&restored)?.is_none());
+    let restored_timestamped = restored
+        .with_added_extension("rep")
+        .join("timestamp/probe.bin");
+    assert_eq!(
+        std::fs::metadata(&restored_timestamped)?.modified()?,
+        std::fs::metadata(&timestamped)?.modified()?
+    );
     verify(&restored)?;
 
     // Native creation/restoration execute on an unrelated bridge with no open
