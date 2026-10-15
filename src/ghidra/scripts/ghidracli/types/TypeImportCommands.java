@@ -7,6 +7,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import ghidra.app.util.cparser.C.CParser;
 import ghidra.app.util.cparser.C.CParserConstants;
+import ghidra.app.util.cparser.C.Declaration;
 import ghidra.app.util.cparser.C.ParseException;
 import ghidra.app.util.cparser.C.Token;
 import ghidra.app.util.cparser.C.TokenMgrError;
@@ -294,6 +295,18 @@ public final class TypeImportCommands {
       this.parser = parser;
       try {
         parser.parse(code);
+        try (ImportTypes evaluated = new ImportTypes(session.program().getDataTypeManager())) {
+          evaluated.tags = tags;
+          CParser expressions = new CParser(evaluated, false, null);
+          evaluated.parser = expressions;
+          expressions.setMonitor(session.monitor());
+          cloneTypes(parser.getTypes(), expressions.getTypes(), evaluated);
+          cloneTypes(parser.getComposites(), expressions.getComposites(), evaluated);
+          cloneTypes(parser.getEnums(), expressions.getEnums(), evaluated);
+          cloneTypes(parser.getFunctions(), expressions.getFunctions(), evaluated);
+          verifyArrayLengths(expressions, code);
+          requireCompleteParse(expressions.getParseMessages());
+        }
       } catch (ParseException failure) {
         // Native CParser wraps runtime lookup failures without retaining
         // their message or cause. Preserve the ambiguity candidates.
@@ -301,6 +314,58 @@ public final class TypeImportCommands {
         throw failure;
       } finally {
         this.parser = null;
+      }
+    }
+
+    private void cloneTypes(
+        Map<String, DataType> source, Map<String, DataType> target, DataTypeManager manager)
+        throws CancelledException {
+      for (var entry : source.entrySet()) {
+        session.monitor().checkCancelled();
+        target.put(entry.getKey(), entry.getValue().clone(manager));
+      }
+    }
+
+    private void verifyArrayLengths(CParser parser, String code)
+        throws ParseException, CancelledException {
+      // Native array declarations substitute zero for unevaluated expressions
+      // and narrow long results to int. Isolate reevaluation: sizeof can declare
+      // types, which must never enter the definitions being imported.
+      parser.ReInit(new StringReader(code));
+      Token previous = null;
+      while (parser.getToken(1).kind != CParserConstants.EOF) {
+        session.monitor().checkCancelled();
+        Token token = parser.getToken(1);
+        if (token.kind == CParserConstants.ATTRIBUTE
+            || token.kind == CParserConstants.DECLSPEC
+            || token.kind == CParserConstants.READABLETO
+            || token.kind == CParserConstants.ALIGNAS
+            || token.kind == CParserConstants.ASM
+            || "[".equals(token.image) && "[".equals(parser.getToken(2).image)) {
+          parser.DeclSpec(new Declaration());
+          continue;
+        }
+        if ("{".equals(token.image) && previous != null && ")".equals(previous.image)) {
+          parser.CompoundStatement();
+          previous = parser.getToken(0);
+          continue;
+        }
+        token = parser.getNextToken();
+        previous = token;
+        if (!"[".equals(token.image) || "]".equals(parser.getToken(1).image)) continue;
+        Object value = parser.ConstantExpression();
+        long length;
+        if (value instanceof Long number) length = number;
+        else if (value instanceof Integer number) length = number;
+        else if (value instanceof Character character) length = character;
+        else
+          throw new IllegalArgumentException(
+              "C parser could not evaluate array length at line "
+                  + token.beginLine
+                  + ", column "
+                  + token.beginColumn);
+        if (length < 0 || length > Integer.MAX_VALUE)
+          throw new IllegalArgumentException("Array length exceeds its supported range");
       }
     }
 

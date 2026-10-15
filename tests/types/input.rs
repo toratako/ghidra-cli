@@ -146,6 +146,75 @@ fn type_import_parse_failure_restores_types_and_applied_data_after_reopen() {
 
 #[test]
 #[serial]
+fn type_import_rejects_unevaluated_and_narrowed_array_lengths_atomically() {
+    require_ghidra!();
+    let program = create_type_edit_program("x86:LE:64:default");
+    let client = harness().client().unwrap();
+    common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        type_command(
+            &program,
+            &["import-c", "--code", "struct Existing { int original; };"],
+        )
+        .assert_success();
+        let before = type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>();
+        let types = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        for declaration in [
+            "struct MissingLength { int values[UNKNOWN]; };",
+            "typedef int MissingLength[UNKNOWN + 1];",
+            "typedef int MissingLength[4294967296];",
+            "struct MissingLength { int values[1ULL << 32]; };",
+        ] {
+            let code = format!("struct Existing {{ char changed; }}; {declaration}");
+            let rejected = type_command(&program, &["import-c", "--code", &code]);
+            rejected.assert_failure();
+            let error: serde_json::Value = serde_json::from_str(&rejected.stderr).unwrap();
+            assert_eq!(error["detail"]["rolled_back"], true, "{error}");
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(&program).unwrap();
+                }
+                assert_eq!(
+                    type_command(&program, &["get", "/Existing"]).data::<serde_json::Value>(),
+                    before
+                );
+                assert_eq!(
+                    type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>(),
+                    types
+                );
+            }
+        }
+        type_command(
+            &program,
+            &["import-c", "--code", "struct [[gnu::packed]] Calculated { int values[(2 + 1) * 2]; char bytes[sizeof(struct Existing)]; char inline_enum[sizeof(enum { INLINE = 3 })]; int tail[]; }; int ignored(int *values, int index) { return values[index]; }"],
+        )
+        .assert_success();
+        let calculated =
+            type_command(&program, &["get", "/Calculated"]).data::<serde_json::Value>();
+        assert_eq!(calculated["size"], 32);
+        let imported =
+            type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
+        assert_eq!(
+            imported
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|ty| ty["kind"] == "enum")
+                .count(),
+            1,
+            "{imported}"
+        );
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(
+            type_command(&program, &["get", "/Calculated"]).data::<serde_json::Value>(),
+            calculated
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn type_import_rejects_discarded_enum_members_and_base_structures() {
     require_ghidra!();
     let program = create_type_edit_program("x86:LE:64:default");
