@@ -122,6 +122,24 @@ public final class ProgramRebaseCommands {
     Address end = space.getAddressInThisSpaceOnly(last.longValue());
     AddressSet wrapping = new AddressSet(start, end);
 
+    // Mapped sources use relocatable keys too, even when the destination block
+    // stays in an overlay or the source addresses are not backed by memory.
+    for (MemoryBlock block : program.getMemory().getBlocks()) {
+      session.monitor().checkCancelled();
+      if (!block.isMapped()) continue;
+      for (var source : block.getSourceInfos()) {
+        session.monitor().checkCancelled();
+        var mapped = source.getMappedRange();
+        if (mapped.isEmpty()) continue;
+        var range = mapped.get();
+        if (wrapping.intersects(range.getMinAddress(), range.getMaxAddress())) {
+          throw metadataWrap(
+              "mapped source for block '" + block.getName() + "'",
+              wrapping.contains(range.getMinAddress()) ? range.getMinAddress() : start);
+        }
+      }
+    }
+
     // Relocatable address-map keys also move when they refer to unmapped memory.
     // Restrict queries to the interval that would wrap, without rejecting unused
     // portions of Ghidra's coarsely allocated address-map key buckets.

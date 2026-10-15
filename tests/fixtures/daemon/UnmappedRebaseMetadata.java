@@ -59,6 +59,24 @@ public class UnmappedRebaseMetadata extends GhidraScript {
         body.add(high);
         function.setBody(body);
         break;
+      case "byte-mapped source":
+        p.getMemory().createByteMappedBlock("mapped", space.getAddress(0x8000), high, 0x10, false);
+        break;
+      case "bit-mapped source":
+        p.getMemory().createBitMappedBlock("mapped", space.getAddress(0x8000), high, 0x10, false);
+        break;
+      case "overlay mapped source":
+        p.getMemory().createByteMappedBlock("mapped", space.getAddress(0x8000), high, 0x10, true);
+        break;
+      case "byte-mapped source end":
+        p.getMemory()
+            .createByteMappedBlock(
+                "mapped",
+                space.getAddress(0x8000),
+                space.getAddress(0xffffffffffffbff8L),
+                0x10,
+                false);
+        break;
       case "pinned":
         p.getSymbolTable().createLabel(high, "pinned", SourceType.USER_DEFINED).setPinned(true);
         break;

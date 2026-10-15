@@ -207,6 +207,10 @@ fn rebase_rejects_wrapping_unmapped_metadata_while_blocks_fit() {
         "relocation",
         "equate reference",
         "function body",
+        "byte-mapped source",
+        "bit-mapped source",
+        "overlay mapped source",
+        "byte-mapped source end",
     ] {
         let name = create_fixture(&client, "x86:LE:64:default");
         client
@@ -216,12 +220,17 @@ fn rebase_rejects_wrapping_unmapped_metadata_while_blocks_fit() {
         if kind == "symbol" {
             assert_eq!(rebase(&client, "0x1000")["moved_blocks"], json!([]));
         }
-        reject_rebase(&client, "0x5000", kind);
+        let expected = if kind.contains("mapped source") {
+            "mapped source"
+        } else {
+            kind
+        };
+        reject_rebase(&client, "0x5000", expected);
         assert_eq!(client.memory_block_list().unwrap(), before);
         assert_eq!(client.program_info().unwrap()["image_base"], "0x00001000");
         client.program_close().unwrap();
         client.open_program(&name).unwrap();
-        reject_rebase(&client, "0x5000", kind);
+        reject_rebase(&client, "0x5000", expected);
         client.open_program(TEST_PROGRAM).unwrap();
         client.program_delete(&name).unwrap();
     }
@@ -236,6 +245,31 @@ fn rebase_rejects_wrapping_unmapped_metadata_while_blocks_fit() {
     check_fixture(&client, "5000");
     client
         .script_run_source(METADATA, &["check pinned".into()], &[], false)
+        .unwrap();
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+}
+
+#[test]
+#[serial]
+fn rebase_preserves_mapped_sources_in_moving_and_stationary_blocks() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    let name = create_fixture(&client, "x86:LE:64:default");
+    const MAPPINGS: &str = include_str!("../fixtures/daemon/RebaseMappedSources.java");
+    client
+        .script_run_source(MAPPINGS, &["create".into()], &[], false)
+        .unwrap();
+    rebase(&client, "0x5000");
+    client
+        .script_run_source(MAPPINGS, &["check".into()], &[], false)
+        .unwrap();
+    client.program_close().unwrap();
+    client.open_program(&name).unwrap();
+    client
+        .script_run_source(MAPPINGS, &["check".into()], &[], false)
         .unwrap();
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();
