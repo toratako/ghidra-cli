@@ -44,8 +44,6 @@ fn evaluate_compare(field: &str, op: CompareOp, value: &Value, data: &JsonValue)
             GhidraError::InvalidFilter(format!("Cannot compare number with {:?}", val))
         }),
         (JsonValue::String(s), val) if val.as_f64().is_some() => {
-            // Explicit address offsets keep all integer bits. Other numeric
-            // string fields retain their existing comparison semantics.
             match parse_numeric_field(field, s) {
                 Some(field_num) => Ok(compare_numbers(&field_num, val, op).unwrap()),
                 None => Err(GhidraError::InvalidFilter(format!(
@@ -130,12 +128,11 @@ fn compare_numbers(left: &Value, right: &Value, op: CompareOp) -> Option<bool> {
             CompareOp::LessEqual => left <= right,
         });
     }
-    // Retain the existing tolerance for non-integral floating point values.
     let left = left.as_f64()?;
     let right = right.as_f64()?;
     Some(match op {
-        CompareOp::Equal => (left - right).abs() < f64::EPSILON,
-        CompareOp::NotEqual => (left - right).abs() >= f64::EPSILON,
+        CompareOp::Equal => left == right,
+        CompareOp::NotEqual => left != right,
         CompareOp::Greater => left > right,
         CompareOp::GreaterEqual => left >= right,
         CompareOp::Less => left < right,
@@ -149,11 +146,9 @@ fn compare_numbers(left: &Value, right: &Value, op: CompareOp) -> Option<bool> {
 fn scalar_equals(field: &str, elem: &JsonValue, val: &Value) -> bool {
     match (elem, val) {
         (JsonValue::String(s), Value::String(v)) => strings_equal(field, s, v),
-        (JsonValue::String(s), Value::Hex(_)) if is_address_field(field) => {
-            parse_numeric_field(field, s)
-                .and_then(|n| compare_numbers(&n, val, CompareOp::Equal))
-                .unwrap_or(false)
-        }
+        (JsonValue::String(s), val) if val.as_f64().is_some() => parse_numeric_field(field, s)
+            .and_then(|n| compare_numbers(&n, val, CompareOp::Equal))
+            .unwrap_or(false),
         (JsonValue::Number(n), v) => {
             compare_numbers(&json_number(n), v, CompareOp::Equal).unwrap_or(false)
         }
@@ -194,8 +189,30 @@ pub(super) fn is_address_field(field: &str) -> bool {
             | "call_site"
             | "caller_address"
             | "callee_address"
+            | "function_address"
+            | "thunk_address"
+            | "effective_address"
             | "string_address"
             | "instruction_address"
+            | "field_instruction_address"
+            | "target_address"
+            | "code_address"
+            | "table_address"
+            | "slot_address"
+            | "slot_load_sites"
+            | "index_address"
+            | "switch_address"
+            | "destination"
+            | "site"
+            | "relative_base"
+            | "source_at"
+            | "block_start"
+            | "old_start"
+            | "old_end"
+            | "new_start"
+            | "new_end"
+            | "old_base"
+            | "new_base"
             | "via"
             | "disasm_at"
             | "first_use"
@@ -217,18 +234,23 @@ fn parse_numeric_field(field: &str, s: &str) -> Option<Value> {
             .ok()
             .map(Value::Hex);
     }
-    // Preserve existing numeric-string semantics outside address fields.
-    let hex_part = s.rsplit(':').next().unwrap_or(s);
-    let hex_part = hex_part
-        .strip_prefix("0x")
-        .or_else(|| hex_part.strip_prefix("0X"))
-        .unwrap_or(hex_part);
-    if !hex_part.is_empty() {
-        if let Ok(n) = u64::from_str_radix(hex_part, 16) {
-            return Some(Value::Hex(n));
-        }
+    // IDs and other numeric strings follow the CLI's decimal/explicit-hex
+    // grammar. Keep integers exact instead of rounding them through f64.
+    if let Ok(n) = crate::cli::numeric::ranged::<i128>(s, i64::MIN as i128, u64::MAX as i128) {
+        return Some(if n < 0 {
+            Value::Integer(n as i64)
+        } else {
+            Value::Hex(n as u64)
+        });
     }
-    s.parse::<f64>().ok().map(Value::Number)
+    // Do not reinterpret an out-of-range integer as a rounded float.
+    if !s.contains(['.', 'e', 'E']) {
+        return None;
+    }
+    s.parse::<f64>()
+        .ok()
+        .filter(|n| n.is_finite())
+        .map(Value::Number)
 }
 
 fn evaluate_string_op(field: &str, op: StringOp, value: &str, data: &JsonValue) -> Result<bool> {
@@ -372,22 +394,20 @@ fn evaluate_in(field: &str, values: &[Value], data: &JsonValue) -> Result<bool> 
     if let JsonValue::Array(elems) = field_value {
         return Ok(elems
             .iter()
-            .any(|elem| values.iter().any(|v| scalar_matches_in(elem, v))));
+            .any(|elem| values.iter().any(|v| scalar_matches_in(field, elem, v))));
     }
 
-    Ok(values.iter().any(|v| scalar_matches_in(field_value, v)))
+    Ok(values
+        .iter()
+        .any(|v| scalar_matches_in(field, field_value, v)))
 }
 
 /// `IN`-list membership for one scalar. Strings compare case-insensitively,
 /// matching the operator's pre-existing scalar semantics.
-fn scalar_matches_in(field_value: &JsonValue, val: &Value) -> bool {
+fn scalar_matches_in(field: &str, field_value: &JsonValue, val: &Value) -> bool {
     match (field_value, val) {
         (JsonValue::String(s), Value::String(v)) => s.eq_ignore_ascii_case(v),
-        (JsonValue::Number(n), v) => {
-            compare_numbers(&json_number(n), v, CompareOp::Equal).unwrap_or(false)
-        }
-        (JsonValue::Bool(b), Value::Boolean(v)) => *b == *v,
-        _ => false,
+        _ => scalar_equals(field, field_value, val),
     }
 }
 

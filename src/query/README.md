@@ -25,7 +25,9 @@ configured default; single values and their nested arrays are never paginated.
 | `find string PATTERN` | `value` (in addition to the positional pattern) |
 | `comment list` | `text` |
 
-Only a single `field~value` expression on the listed field is pushed down.
+Only a single `field~value` expression on the listed field with an ASCII value
+is pushed down. Non-ASCII filter values remain in Rust because JDK and Rust
+Unicode lowercase behavior can differ.
 The bridge receives the literal value, never the filter DSL. Java `ListQuery`
 applies locale-independent lowercase contains, then skips matching rows, then
 caps returned rows, before constructing their JSON. Function tag/untagged
@@ -138,9 +140,6 @@ and `default_limit` does not apply. Use `disassemble` for subsequent reads.
 - There is no query-specific capability negotiation, restart or old-server
   fallback. CLI and bridge must be updated together; see
   [upgrade instructions](../../docs/runtime.md#upgrading).
-- Java and Rust lowercase some Unicode contexts differently (e.g. `AΣ_A`),
-  so contains pushdown can miss matches or shift pages. This known limitation
-  is expected to have little impact on typical ASCII-based RE queries.
 - Planner tests compare pushed and full-fetch results; routing tests check wire
   arguments and standalone/batch equivalence. `tests/readonly/query.rs` covers
   list/search paging, including Unicode samples under a Turkish JVM locale.

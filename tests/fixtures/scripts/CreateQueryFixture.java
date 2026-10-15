@@ -26,7 +26,19 @@ public class CreateQueryFixture extends GhidraScript {
             .createInitializedBlock(
                 "code", space.getAddress(0x1000), 0x1000, (byte) 0, monitor, false);
         String[] names = {
-          "FILE_A", "skip", "FILE_B", "file_C", "ÄPFEL", "İSTANBUL", "ΟΣ", "Σ", "東京"
+          "FILE_A",
+          "skip",
+          "FILE_B",
+          "file_C",
+          "ÄPFEL",
+          "İSTANBUL",
+          "ΟΣ",
+          "Σ",
+          "東京",
+          "AΣ_A",
+          "A_Σ",
+          "AΣ0A",
+          "A0Σ"
         };
         for (int i = 0; i < names.length; i++) {
           var entry = space.getAddress(0x1000 + 0x10 * i);

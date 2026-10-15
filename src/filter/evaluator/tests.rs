@@ -205,6 +205,36 @@ fn address_membership_uses_equality_rules_for_spaces_segments_and_padding() {
 }
 
 #[test]
+fn related_address_fields_preserve_location_identity() {
+    let data = json!({
+        "function_address": "Bank:0x0020000000000001",
+        "destination": "Bank:0x00001000",
+        "evidence": {"field_instruction_address": "Bank:0x00002000"},
+        "slot_load_sites": ["Bank:0x00003000", "Bank:0x00004000"],
+    });
+    for (input, expected) in [
+        ("function_address='Bank:0X20000000000001'", true),
+        ("function_address IN ['bank:0x0020000000000001']", false),
+        ("function_address>0x20000000000000", true),
+        ("destination='Bank:0x1000'", true),
+        ("destination IN ['bank:0x00001000']", false),
+        ("evidence.field_instruction_address='Bank:0x2000'", true),
+        ("slot_load_sites='Bank:0x3000'", true),
+        ("slot_load_sites IN ['bank:0x00003000']", false),
+        ("slot_load_sites[1]='Bank:0X4000'", true),
+    ] {
+        assert_eq!(
+            crate::filter::Filter::parse(input)
+                .unwrap()
+                .evaluate(&data)
+                .unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
 fn test_evaluate_regex_is_case_insensitive() {
     // Uppercase patterns retain the regex filter's case-insensitive default.
     let data = json!({ "name": "PK_APPITEM_ask" });
@@ -464,18 +494,87 @@ fn numeric_equality_is_consistent_for_scalars_arrays_and_in() {
 }
 
 #[test]
-fn numeric_string_and_fractional_semantics_are_preserved() {
+fn distinct_fractions_do_not_compare_equal_in_scalars_arrays_or_membership() {
+    let data = json!({"n": 0, "values": [0], "fraction": 0.00000000000000001});
+    for (input, expected) in [
+        ("n=0.00000000000000001", false),
+        ("n!=0.00000000000000001", true),
+        ("n<0.00000000000000001", true),
+        ("values=0.00000000000000001", false),
+        ("values!=0.00000000000000001", true),
+        ("values IN [0.00000000000000001]", false),
+        ("n IN [0.00000000000000001]", false),
+        ("fraction=0", false),
+        ("fraction=0.00000000000000001", true),
+    ] {
+        assert_eq!(
+            crate::filter::Filter::parse(input)
+                .unwrap()
+                .evaluate(&data)
+                .unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn numeric_string_ids_preserve_decimal_identity_across_operators() {
+    let data = json!({
+        "id": "16", "ids": ["10", "016"], "hex": "0X10",
+        "large": "9007199254740993", "negative": "-9007199254740993",
+        "unsigned": "18446744073709551615", "minimum": "-9223372036854775808",
+    });
+    for (input, expected) in [
+        ("id=16", true),
+        ("id=22", false),
+        ("id!=22", true),
+        ("id<20", true),
+        ("id=0x10", true),
+        ("id IN [16]", true),
+        ("id IN [22]", false),
+        ("ids=16", true),
+        ("ids=22", false),
+        ("ids!=16", false),
+        ("ids IN [16]", true),
+        ("ids IN [22]", false),
+        ("hex=16", true),
+        ("large=9007199254740993", true),
+        ("large=9007199254740992", false),
+        ("large IN [9007199254740993]", true),
+        ("negative=-9007199254740993", true),
+        ("negative=-9007199254740992", false),
+        ("unsigned=0xffffffffffffffff", true),
+        ("unsigned=0xfffffffffffffffe", false),
+        ("minimum=-9223372036854775808", true),
+        ("minimum=-9223372036854775807", false),
+    ] {
+        assert_eq!(
+            crate::filter::Filter::parse(input)
+                .unwrap()
+                .evaluate(&data)
+                .unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn numeric_strings_and_fractions_use_explicit_radices() {
     let data =
         json!({"value": "10", "fraction": "1.5", "n": 1.5, "name": "word", "values": ["10"]});
     for (input, expected) in [
-        ("value=10", false),
-        ("value=0x10", true),
+        ("value=10", true),
+        ("value=0x10", false),
         ("value='10'", true),
         ("fraction=1.5", true),
         ("n>1.4", true),
         ("n<1.6", true),
         ("values=0x10", false),
+        ("values=10", true),
         ("value IN [0x10]", false),
+        ("value IN [10]", true),
     ] {
         assert_eq!(
             crate::filter::Filter::parse(input)

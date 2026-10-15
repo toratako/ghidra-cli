@@ -59,6 +59,9 @@ impl QueryPlan {
                 offset: post.offset.unwrap_or(0),
                 limit: post.limit.filter(|&n| n != 0),
             };
+            // Non-ASCII casing can differ between the JDK and Rust,
+            // including contextual final sigma. Keep those filters and
+            // their page selection together in Rust.
             fetch.filter = match (list_field, post.filter.as_ref().map(|f| &f.expr)) {
                 (
                     Some(list_field),
@@ -67,7 +70,7 @@ impl QueryPlan {
                         op: StringOp::Contains,
                         value,
                     }),
-                ) if field == list_field => Some(value.clone()),
+                ) if field == list_field && value.is_ascii() => Some(value.clone()),
                 _ => None,
             };
             let can_page = list_field.is_some()
@@ -246,6 +249,53 @@ mod tests {
                                 assert_eq!(actual, expected, "{opts:?}, support={support:?}");
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unicode_contains_keeps_selection_consistent_with_rust() {
+        // Java ROOT lowercase and Rust lowercase disagree on final sigma
+        // around punctuation, so Java can both admit and discard other rows.
+        let rows = [
+            (json!({"name": "AΣ-A", "size": 1}), "aσ-a"),
+            (json!({"name": "A-Σ", "size": 2}), "a-ς"),
+            (json!({"name": "BΣ-B", "size": 3}), "bσ-b"),
+            (json!({"name": "B-Σ", "size": 4}), "b-ς"),
+        ];
+        for needle in ["σ", "ς"] {
+            for sort in [None, Some("-size")] {
+                for count in [false, true] {
+                    for offset in [None, Some(1)] {
+                        let mut opts = options();
+                        opts.filter = Some(format!("name~'{needle}'"));
+                        opts.sort = sort.map(str::to_string);
+                        opts.count = count;
+                        opts.skip = offset;
+                        opts.limit = Some(1);
+                        opts.fields = Some("name".into());
+                        let plan = plan(&opts, FetchSupport::Paged("name"));
+                        let fetched = rows
+                            .iter()
+                            .filter(|(_, java_lower)| {
+                                plan.fetch
+                                    .filter
+                                    .as_ref()
+                                    .is_none_or(|value| java_lower.contains(value))
+                            })
+                            .skip(plan.fetch.offset.unwrap_or(0))
+                            .take(plan.fetch.limit.unwrap_or(usize::MAX))
+                            .map(|(row, _)| row.clone())
+                            .collect();
+                        let actual = plan.post.unwrap().apply(fetched).unwrap();
+                        let expected = Query::from_options(&opts)
+                            .unwrap()
+                            .unwrap()
+                            .apply(rows.iter().map(|(row, _)| row.clone()).collect())
+                            .unwrap();
+                        assert_eq!(actual, expected, "{opts:?}");
                     }
                 }
             }

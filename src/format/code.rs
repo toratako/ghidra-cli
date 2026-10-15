@@ -18,7 +18,10 @@ pub(super) fn format_code<T: Serialize>(data: &[T], format: OutputFormat) -> Res
                     decompile::AddressStyle::Comments,
                 ));
             }
-            OutputFormat::Asm if row.get("mnemonic").and_then(JsonValue::as_str).is_some() => {
+            OutputFormat::Asm
+                if row.get("mnemonic").and_then(JsonValue::as_str).is_some()
+                    && row.get("operands").and_then(JsonValue::as_array).is_some() =>
+            {
                 let address = row
                     .get("address")
                     .and_then(JsonValue::as_str)
@@ -51,4 +54,24 @@ pub(super) fn format_code<T: Serialize>(data: &[T], format: OutputFormat) -> Res
         }
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn asm_keeps_raw_pcode_results_as_json() {
+        let rows = [json!({
+            "address": "0x1000", "mnemonic": "MOV", "instruction": "MOV EAX,EDX",
+            "count": 1, "pcode": [{"mnemonic": "COPY", "output": {"register": "EAX"},
+                "inputs": [{"register": "EDX"}]}]
+        })];
+        let rendered = format_code(&rows, OutputFormat::Asm).unwrap();
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&rendered).unwrap(),
+            json!(rows)
+        );
+    }
 }

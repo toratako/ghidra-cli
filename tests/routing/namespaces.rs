@@ -207,6 +207,29 @@ fn namespace_selection_never_broadens_paths_or_sends_ambiguous_edits() {
 }
 
 #[test]
+fn namespace_numeric_id_selection_preserves_decimal_identity() {
+    let target = row("16", "app", "namespace");
+    let bridge = RecordedBridge::with_info(json!({
+        "protocol_version":4, "auto_save":true, "atomic_edits":true,
+        "explicit_addresses":true,
+        "namespace_rows":[row("10", "app", "namespace"), target],
+    }));
+    let args = ["namespace", "rename", "app", "core", "--where", "id=16"];
+    for batch in [false, true] {
+        bridge.requests.lock().unwrap().clear();
+        let output = invoke(&bridge, &args, batch);
+        assert!(output.status.success(), "{output:?}");
+        let requests = bridge.requests.lock().unwrap();
+        let edits: Vec<_> = requests
+            .iter()
+            .filter(|request| request["command"] == "namespace_rename")
+            .collect();
+        assert_eq!(edits.len(), 1, "{requests:?}");
+        assert_eq!(edits[0]["args"]["target"], target);
+    }
+}
+
+#[test]
 fn namespace_where_is_validated_before_any_standalone_or_batch_bridge_work() {
     let bridge = bridge();
     for args in [

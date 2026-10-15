@@ -348,7 +348,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_address_literals_before_evaluating_any_rows() {
-        for field in ["address", "entry_point", "items[0].call_site", "address[0]"] {
+        for field in [
+            "address",
+            "entry_point",
+            "function_address",
+            "items[0].call_site",
+            "address[0]",
+        ] {
             for literal in [
                 "16",
                 "16.0",
