@@ -188,6 +188,27 @@ public final class ScriptCommands {
         // that ambiguity altogether.
         Class<?> bundleClass = bundle.getClass();
         try {
+          Map<?, ?> previousErrors =
+              (Map<?, ?>) bundleClass.getMethod("getAllErrors").invoke(bundle);
+          if (previousErrors.keySet().stream()
+              .map(ResourceFile.class::cast)
+              .anyMatch(failedSource -> !failedSource.isFile())) {
+            // Native builds retain errors for deleted sources. Rebuild cleanly
+            // so their old packaged classes cannot satisfy surviving sources.
+            Path compiledRoot = (Path) bundleClass.getMethod("getCompiledBundlesDir").invoke(null);
+            String hash =
+                (String)
+                    bundleClass
+                        .getMethod("sourceDirHash", ResourceFile.class)
+                        .invoke(null, sourceDir);
+            Path compiledDirectory = compiledRoot.resolve(hash);
+            bundleClass.getMethod("clean").invoke(bundle);
+            // Native clean() catches its own failures; do not compile against
+            // any classes left behind by an unsuccessful cleanup.
+            if (!Files.notExists(compiledDirectory, LinkOption.NOFOLLOW_LINKS)) {
+              return errorResult("Failed to clean script bundle: " + compiledDirectory);
+            }
+          }
           bundleClass.getMethod("build", PrintWriter.class).invoke(bundle, out);
           // Ghidra records compilation errors and retries without their sources.
           // Packaged classes can remain in the output tree, letting a successful

@@ -614,6 +614,95 @@ final class ArtifactWriter {
 
 #[test]
 #[serial]
+fn deleted_failed_java_sources_do_not_poison_later_builds() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let script = directory.path().join("RecoveredBuild.java");
+    let helper = directory.path().join("BrokenHelper.java");
+    fs::write(
+        &script,
+        r#"
+package audit.deleted;
+import ghidra.app.script.GhidraScript;
+public class RecoveredBuild extends GhidraScript {
+    public void run() { println("recovered after source removal"); }
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &helper,
+        r#"
+package audit.deleted;
+final class BrokenHelper {
+    void broken() { missingDeletedHelperSymbol(); }
+}
+"#,
+    )
+    .unwrap();
+    let error = client
+        .script_run(script.to_str().unwrap(), &[], &[], false)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("missingDeletedHelperSymbol"),
+        "{error}"
+    );
+    fs::remove_file(helper).unwrap();
+    let result = client
+        .script_run(script.to_str().unwrap(), &[], &[], false)
+        .unwrap();
+    assert!(result["stdout"]
+        .as_str()
+        .unwrap()
+        .contains("recovered after source removal"));
+
+    // A helper that compiled before failing must not remain available after
+    // its source is deleted, even though Ghidra retains its packaged class.
+    fs::write(
+        &script,
+        r#"
+package audit.deleted;
+import ghidra.app.script.GhidraScript;
+public class RecoveredBuild extends GhidraScript {
+    public void run() { println(BrokenHelper.text()); }
+}
+"#,
+    )
+    .unwrap();
+    let helper = directory.path().join("BrokenHelper.java");
+    let helper_source = r#"
+package audit.deleted;
+final class BrokenHelper {
+    static String text() { return "stale helper must not execute"; }
+}
+"#;
+    fs::write(&helper, helper_source).unwrap();
+    client
+        .script_run(script.to_str().unwrap(), &[], &[], false)
+        .unwrap();
+    fs::write(
+        &helper,
+        helper_source.replace("return ", "missingHelperSymbol(); return "),
+    )
+    .unwrap();
+    let error = client
+        .script_run(script.to_str().unwrap(), &[], &[], false)
+        .unwrap_err();
+    assert!(error.to_string().contains("missingHelperSymbol"), "{error}");
+    fs::remove_file(helper).unwrap();
+    let error = client
+        .script_run(script.to_str().unwrap(), &[], &[], false)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Script failed to compile"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("cannot find symbol"), "{error}");
+}
+
+#[test]
+#[serial]
 fn java_source_on_stdin_reports_invalid_declarations() {
     require_ghidra!();
     let _harness = harness();
