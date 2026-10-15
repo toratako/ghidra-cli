@@ -247,6 +247,52 @@ fn unknown_command_is_rejected_before_loading_config() {
         .contains("unrecognized subcommand"));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn gar_non_unicode_paths_return_structured_errors_without_mutation() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("installation");
+    super::installation_fixture::write(&install);
+    let project = temp.path().join("source");
+    std::fs::write(project.with_added_extension("gpr"), b"source marker").unwrap();
+    std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+    let archive = temp
+        .path()
+        .join(std::ffi::OsString::from_vec(b"archive-\xff.gar".to_vec()));
+    std::fs::write(&archive, b"preserved archive").unwrap();
+    let restored = temp.path().join("restored");
+    for operation in ["archive", "restore"] {
+        let mut command = isolated_command(&temp);
+        command
+            .env("GHIDRA_INSTALL_DIR", &install)
+            .args(["--json", "project", operation]);
+        if operation == "archive" {
+            command.arg(&project).arg("--output").arg(&archive);
+        } else {
+            command.arg(&archive).arg(&restored);
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"].as_str().unwrap().contains("UTF-8"),
+            "{error}"
+        );
+        assert_eq!(error["detail"]["operation"], operation, "{error}");
+        assert_eq!(std::fs::read(&archive).unwrap(), b"preserved archive");
+        assert_eq!(
+            std::fs::read(project.with_added_extension("gpr")).unwrap(),
+            b"source marker"
+        );
+        assert!(project.with_added_extension("rep").is_dir());
+        assert!(!restored.with_added_extension("gpr").exists());
+        assert!(!restored.with_added_extension("rep").exists());
+    }
+}
+
 #[test]
 fn gar_directory_outputs_fail_before_launching() {
     let temp = tempfile::tempdir().unwrap();

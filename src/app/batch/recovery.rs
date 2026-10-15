@@ -1,5 +1,5 @@
 use super::PreparedBatch;
-use crate::app::recovery::render_command;
+use crate::app::recovery::{render_command, working_directory};
 use crate::app::{options, project};
 use crate::cli::Cli;
 use crate::ipc::protocol::BridgeCommandError;
@@ -55,7 +55,7 @@ struct Recovery {
     project: PathBuf,
     #[serde(skip_serializing_if = "Option::is_none")]
     program: Option<String>,
-    working_directory: PathBuf,
+    working_directory: Option<PathBuf>,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     argv: Option<Vec<String>>,
@@ -159,7 +159,7 @@ fn describe(report: &Value, project: &Path) -> Option<Recovery> {
             .as_str()
             .filter(|name| !name.is_empty())
             .map(str::to_owned),
-        working_directory: std::env::current_dir().ok()?,
+        working_directory: working_directory(),
         message: message.to_owned(),
         argv: None,
         job_id: failure.row["detail"]["job_id"].as_str().map(str::to_owned),
@@ -221,7 +221,11 @@ pub(crate) fn add_recovery(
     let Some(mut recovery) = describe(&report.detail, project) else {
         return error;
     };
-    if recovery.action == "resume_from_line" {
+    if recovery.action == "resume_from_line" && recovery.working_directory.is_none() {
+        recovery.action = "review_results";
+        recovery.reason = "working_directory";
+        recovery.message = "Changes from the failed command were rolled back. The working directory could not be recorded in recovery arguments. Restore the original working directory and verify relative paths before resuming.".to_owned();
+    } else if recovery.action == "resume_from_line" {
         let same_target = recovery.project == project
             && same_project(batch, recovery.location.line, project, &cli.projects_dir);
         if let Some(program) = recovery.program.as_ref().filter(|_| same_target) {
@@ -261,11 +265,12 @@ pub(crate) fn add_recovery(
         report.message, recovery.location.file, recovery.location.line, recovery.message
     );
     if let Some(argv) = &recovery.argv {
-        message.push_str(&format!(
-            "\nRun from {}:\n{}",
-            recovery.working_directory.display(),
-            render_command(argv)
-        ));
+        let location = recovery
+            .working_directory
+            .as_ref()
+            .map(|path| format!(" from {}", path.display()))
+            .unwrap_or_default();
+        message.push_str(&format!("\nRun{location}:\n{}", render_command(argv)));
     }
     let mut detail = report.detail.clone();
     detail["recovery"] = serde_json::to_value(recovery).expect("batch recovery is serializable");

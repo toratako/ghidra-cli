@@ -33,7 +33,7 @@ pub(super) fn job_result(
         project.to_string_lossy().into_owned(),
     ]);
     let mut detail = crate::error::diagnostic_detail(&error);
-    let working_directory = std::env::current_dir().ok();
+    let working_directory = working_directory();
     detail["recovery"] = json!({
         "action": "retrieve_result",
         "argv": argv,
@@ -48,6 +48,13 @@ pub(super) fn job_result(
         render_command(&argv)
     );
     error.context(BridgeCommandError { message, detail })
+}
+
+/// Recovery JSON cannot retain a non-Unicode path without changing its identity.
+pub(super) fn working_directory() -> Option<std::path::PathBuf> {
+    std::env::current_dir()
+        .ok()
+        .filter(|path| path.to_str().is_some())
 }
 
 pub(super) fn render_command(argv: &[String]) -> String {

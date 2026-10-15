@@ -30,6 +30,11 @@ pub fn archive_project(
         project = resolve_parent(&project)?;
         output = resolve_parent(&output)?;
         crate::ghidra::project::validate_project_path(&project)?;
+        anyhow::ensure!(
+            output.to_str().is_some(),
+            "Archive output path cannot be represented as UTF-8: {}",
+            output.display()
+        );
         let paths = crate::ghidra::project::ProjectPaths::new(&project)
             .context("Project must have a name")?;
         anyhow::ensure!(
@@ -69,6 +74,11 @@ pub fn restore_project(
             archive.display()
         );
         archive = dunce::canonicalize(&archive)?;
+        anyhow::ensure!(
+            archive.to_str().is_some(),
+            "Archive path cannot be represented as UTF-8: {}",
+            archive.display()
+        );
         // Resolve the destination before choosing its lifecycle lock, including
         // new parent directories that the bootstrap previously created.
         std::fs::create_dir_all(project.parent().context("Project has no parent")?)?;
@@ -109,17 +119,32 @@ fn bootstrap(
     operation: &str,
     installation: &Installation,
 ) -> Result<Value> {
+    #[derive(serde::Serialize)]
+    struct Request<'a> {
+        archive_operation: &'a str,
+        project_path: &'a Path,
+        file: &'a Path,
+        workspace: &'a Path,
+    }
     let work = tempfile::Builder::new()
         .prefix("ghidra-cli-archive-")
         .tempdir()?;
-    let result = import::run_bootstrap(
-        &work.path().join("bootstrap"),
-        installation,
-        &json!({"archive_operation": operation, "project_path": project, "file": file,
-            "workspace": work.path()}),
-        None,
-        None,
-    );
+    let result = (|| {
+        let args = serde_json::to_value(Request {
+            archive_operation: operation,
+            project_path: project,
+            file,
+            workspace: work.path(),
+        })
+        .context("GAR bootstrap paths cannot be represented as UTF-8")?;
+        import::run_bootstrap(
+            &work.path().join("bootstrap"),
+            installation,
+            &args,
+            None,
+            None,
+        )
+    })();
     let path: PathBuf = work.path().to_owned();
     if let Err(cleanup) = work.close() {
         let mut detail = result
@@ -133,7 +158,7 @@ fn bootstrap(
         detail["remaining_paths"]
             .as_array_mut()
             .unwrap()
-            .push(json!(path));
+            .push(json!(path.to_string_lossy()));
         detail["cleanup_error"] = json!(cleanup.to_string());
         if let Ok(value) = &result {
             detail["completion"] = value.clone();
@@ -155,12 +180,12 @@ fn annotate(result: Result<Value>, project: &Path, file: &Path, operation: &str)
     result.map_err(|error| {
         let mut detail = crate::error::diagnostic_detail(&error);
         detail["operation"] = json!(operation);
-        detail["project_path"] = json!(project);
+        detail["project_path"] = json!(project.to_string_lossy());
         detail[if operation == "archive" {
             "output"
         } else {
             "archive"
-        }] = json!(file);
+        }] = json!(file.to_string_lossy());
         detail["bridge_state"] = json!(match super::read_pid_file(project) {
             Ok(Some(pid)) if super::is_pid_alive(pid) => "running",
             Ok(_) => "stopped",

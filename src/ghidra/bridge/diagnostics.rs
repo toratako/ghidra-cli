@@ -84,9 +84,10 @@ pub fn storage_checks(config: &Config) -> Vec<Value> {
             Err(error) => return json!({"name": name, "ok": false, "source": source, "message": format!("{error:#}")}),
         };
         let directory = if file { path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")) } else { &path };
+        let display_path = path.to_string_lossy();
         match probe_directory(directory) {
-            Ok(()) => json!({"name": name, "path": path, "source": source, "ok": true}),
-            Err(error) => json!({"name": name, "path": path, "source": source, "ok": false,
+            Ok(()) => json!({"name": name, "path": display_path, "source": source, "ok": true}),
+            Err(error) => json!({"name": name, "path": display_path, "source": source, "ok": false,
                 "message": format!("{error:#}"), "detail": crate::error::diagnostic_detail(&error)}),
         }
     }).collect()

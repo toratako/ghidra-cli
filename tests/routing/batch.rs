@@ -507,3 +507,73 @@ fn batch_resume_hint_is_visible_in_human_diagnostics() {
     assert!(diagnostic.contains("--from-line 1"), "{diagnostic}");
     assert!(diagnostic.contains("--program A"), "{diagnostic}");
 }
+
+// APFS can reject non-UTF-8 names; this exercises Linux's actual CWD bytes.
+#[cfg(target_os = "linux")]
+#[test]
+fn failures_preserve_results_and_recovery_in_a_non_utf8_working_directory() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let bridge = RecordedBridge::new();
+    let directory = bridge
+        .root
+        .path()
+        .join(std::ffi::OsString::from_vec(b"batch-\xff".to_vec()));
+    std::fs::create_dir(&directory).unwrap();
+    for marker in ["test-rollback", "test-lost-response"] {
+        std::fs::write(
+            directory.join("batch.txt"),
+            format!(
+                "comment set 0x1000 --text before\ncomment set 0x1001 --text {marker}\ncomment set 0x1002 --text must-not-run\n"
+            ),
+        )
+        .unwrap();
+        let output = bridge
+            .command()
+            .current_dir(&directory)
+            .args(["batch", "batch.txt", "--on-error", "stop"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let report: Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(report["commands_executed"], 2);
+        assert_eq!(report["not_executed"], 1);
+        assert_eq!(
+            report["results"][0]["result"]["data"]["observed_program"],
+            "A"
+        );
+        let recovery = &report["recovery"];
+        assert_eq!(recovery, &diagnostic["detail"]["recovery"]);
+        assert!(recovery["working_directory"].is_null(), "{recovery}");
+        if marker == "test-rollback" {
+            assert_eq!(recovery["action"], "review_results");
+            assert_eq!(recovery["reason"], "working_directory");
+            assert!(recovery.get("argv").is_none());
+        } else {
+            assert_eq!(recovery["action"], "retrieve_result");
+            assert_eq!(
+                recovery["argv"][3],
+                report["results"][1]["detail"]["job_id"]
+            );
+        }
+    }
+
+    let output = bridge
+        .command()
+        .current_dir(&directory)
+        .args(["comment", "set", "0x1003", "--text", "test-lost-response"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(
+        diagnostic["detail"]["recovery"]["action"],
+        "retrieve_result"
+    );
+    assert!(diagnostic["detail"]["recovery"]["working_directory"].is_null());
+    assert_eq!(
+        diagnostic["detail"]["recovery"]["argv"][3],
+        diagnostic["detail"]["job_id"]
+    );
+}

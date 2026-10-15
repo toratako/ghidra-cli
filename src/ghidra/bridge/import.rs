@@ -63,7 +63,8 @@ pub(crate) fn import_oneshot_with_java(
     java_home_override: Option<&Path>,
 ) -> Result<OneShotImportReceipt> {
     let mut args = serde_json::to_value(options)?;
-    args["binary_path"] = json!(binary_path);
+    args["binary_path"] =
+        serde_json::to_value(binary_path).context("Binary path cannot be represented as UTF-8")?;
     let result = run_bootstrap(project_path, installation, &args, None, java_home_override)?;
     serde_json::from_value(result).context("Invalid import completion receipt")
 }
@@ -282,6 +283,26 @@ mod tests {
             );
             assert!(project.with_added_extension("rep").is_dir());
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn import_rejects_non_unicode_binary_paths_without_panicking() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let work = tempfile::tempdir().unwrap();
+        let binary = work
+            .path()
+            .join(std::ffi::OsString::from_vec(b"binary-\xff".to_vec()));
+        let error = import_oneshot(
+            &work.path().join("uncreated/project"),
+            &binary,
+            &unavailable_installation(work.path()),
+            &OneShotImportOptions::default(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("UTF-8"), "{error:#}");
+        assert!(!work.path().join("uncreated").exists());
     }
 
     #[cfg(unix)]

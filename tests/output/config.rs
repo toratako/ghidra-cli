@@ -314,6 +314,58 @@ fn non_unicode_project_environment_path_selects_only_requested_projects() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn doctor_reports_non_unicode_storage_paths_without_changing_the_probed_path() {
+    use std::os::unix::ffi::OsStrExt;
+
+    for writable in [true, false] {
+        let temp = tempfile::tempdir().unwrap();
+        let requested = temp
+            .path()
+            .join(std::ffi::OsStr::from_bytes(b"projects-\xff"));
+        let replacement = temp.path().join("projects-\u{fffd}");
+        if writable {
+            std::fs::create_dir(&requested).unwrap();
+            std::fs::write(&replacement, "retain replacement").unwrap();
+        } else {
+            std::fs::write(&requested, "retain requested").unwrap();
+            std::fs::create_dir(&replacement).unwrap();
+        }
+
+        let output = isolated_command(&temp)
+            .env("GHIDRA_INSTALL_DIR", temp.path().join("missing-ghidra"))
+            .env("XDG_CONFIG_HOME", temp.path().join("platform-config"))
+            .env("GHIDRA_PROJECT_DIR", &requested)
+            .args(["doctor", "--json"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let report: serde_json::Value = crate::json_output::from_slice(&output.stdout).unwrap();
+        let projects = report["storage"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["name"] == "projects")
+            .unwrap();
+        assert_eq!(projects["path"], requested.to_string_lossy().as_ref());
+        assert_eq!(projects["ok"], writable);
+        if writable {
+            assert_eq!(std::fs::read_dir(&requested).unwrap().count(), 0);
+            assert_eq!(
+                std::fs::read_to_string(&replacement).unwrap(),
+                "retain replacement"
+            );
+        } else {
+            assert_eq!(
+                std::fs::read_to_string(&requested).unwrap(),
+                "retain requested"
+            );
+            assert_eq!(std::fs::read_dir(&replacement).unwrap().count(), 0);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn non_unicode_project_paths_return_structured_errors_before_management() {
     use std::os::unix::ffi::OsStrExt;
 
