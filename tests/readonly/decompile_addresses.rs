@@ -119,6 +119,10 @@ fn native_line_addresses_preserve_code_and_distinguish_call_sites_from_callees()
             "{code}"
         );
         assert!(code.contains("second comment line"), "{code}");
+        assert!(
+            code.contains("{@addr 0x1000\nwrapped annotation}"),
+            "{code}"
+        );
 
         let mapped = mappings(&with);
         let call_line = line_containing(&with, "address_sink(");

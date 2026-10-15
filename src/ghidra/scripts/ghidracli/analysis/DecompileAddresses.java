@@ -2,6 +2,7 @@ package ghidracli.analysis;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import ghidra.app.decompiler.ClangCommentToken;
 import ghidra.app.decompiler.ClangLine;
 import ghidra.app.decompiler.ClangToken;
 import ghidra.app.decompiler.ClangTokenGroup;
@@ -26,11 +27,22 @@ final class DecompileAddresses {
 
     // PrettyPrinter uses the same grouping, including leading blank lines.
     // Keep getC() as the text source so Ghidra still normalizes symbol names.
+    int embeddedLineBreaks = 0;
     for (ClangLine line : DecompilerUtils.toLines(markup)) {
       session.monitor().checkCancelled();
+      int lineNumber = line.getLineNumber() + embeddedLineBreaks;
       TreeSet<Address> addresses = new TreeSet<>();
       for (ClangToken token : line.getAllTokens()) {
         session.monitor().checkCancelled();
+        // Multiline annotations stay in one comment token. PrettyPrinter
+        // writes their newlines literally, outside the ClangBreak grouping.
+        if (token instanceof ClangCommentToken) {
+          String text = token.getText();
+          for (int i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) {
+            session.monitor().checkCancelled();
+            embeddedLineBreaks++;
+          }
+        }
         PcodeOp op = token.getPcodeOp();
         if (op == null) continue;
         Address address = op.getSeqnum().getTarget();
@@ -46,7 +58,7 @@ final class DecompileAddresses {
         values.add(AddressCodec.format(address));
       }
       JsonObject row = new JsonObject();
-      row.addProperty("line", line.getLineNumber());
+      row.addProperty("line", lineNumber);
       row.add("addresses", values);
       rows.add(row);
     }

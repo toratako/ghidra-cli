@@ -84,12 +84,13 @@ public class CreateDecompileAddressesFixture extends GhidraScript {
                 0x07,
                 0xc3);
         function(program, "address-caller", caller, IntegerDataType.dataType);
+        // The annotation's internal newline remains inside one native token.
         program
             .getListing()
             .setComment(
                 address(program, 0x1004),
                 CodeUnit.PRE_COMMENT,
-                "Japanese 日本語\nsecond comment line");
+                "Japanese 日本語\nsecond comment line\n{@addr 0x1000\nwrapped annotation}");
         var sink =
             code(program, address(program, 0x1100), 0x8b, 0x44, 0x24, 0x04, 0x83, 0xc0, 0x01, 0xc3);
         function(program, "address-sink", sink, IntegerDataType.dataType);
