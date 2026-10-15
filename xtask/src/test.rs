@@ -35,7 +35,14 @@ fn run_command(command: &mut Command) -> Result<ExitCode> {
     run_dir
         .close()
         .context("Failed to remove test run fixtures")?;
-    Ok(ExitCode::from(status.code().unwrap_or(1) as u8))
+    Ok(exit_code(status.code()))
+}
+
+fn exit_code(code: Option<i32>) -> ExitCode {
+    // Windows exit statuses are 32-bit. Never truncate a failure such as 256
+    // into success; stable ExitCode can only forward values that fit in u8.
+    code.and_then(|code| u8::try_from(code).ok())
+        .map_or(ExitCode::FAILURE, ExitCode::from)
 }
 
 #[cfg(test)]
@@ -80,7 +87,12 @@ mod tests {
 
     #[test]
     fn cargo_status_and_fixture_lifetime_are_preserved() {
-        for exit in [0, 7] {
+        for (exit, expected) in [
+            (0, ExitCode::SUCCESS),
+            (7, ExitCode::from(7)),
+            #[cfg(windows)]
+            (256, ExitCode::FAILURE),
+        ] {
             let args = [
                 "--exact",
                 "test::tests::cargo_child",
@@ -105,7 +117,7 @@ mod tests {
                 .env(RUN_DIR_ENV, "must-be-replaced")
                 .stdin(Stdio::null());
 
-            assert_eq!(run_command(&mut command).unwrap(), ExitCode::from(exit));
+            assert_eq!(run_command(&mut command).unwrap(), expected);
             assert!(!run_dir(&command).exists(), "Run fixture leaked after exit");
         }
     }
@@ -120,6 +132,16 @@ mod tests {
             !run_dir(&command).exists(),
             "Run fixture leaked on spawn failure"
         );
+    }
+
+    #[test]
+    fn wide_or_missing_exit_codes_cannot_become_success() {
+        for code in [0, 7, 101, 255] {
+            assert_eq!(exit_code(Some(code)), ExitCode::from(code as u8));
+        }
+        for code in [None, Some(256), Some(65_536), Some(-1_073_741_819)] {
+            assert_eq!(exit_code(code), ExitCode::FAILURE, "status: {code:?}");
+        }
     }
 
     #[test]

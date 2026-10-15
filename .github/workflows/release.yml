@@ -115,14 +115,14 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ghidra-cli
+          tar -czvf "../../../ghidra-cli-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" ghidra-cli
           cd ../../..
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../ghidra-cli-${{ github.ref_name }}-${{ matrix.target }}.zip ghidra-cli.exe
+          7z a "../../../ghidra-cli-${env:GITHUB_REF_NAME}-${{ matrix.target }}.zip" ghidra-cli.exe
           cd ../../..
 
       # Attest the final archive bytes, before upload-artifact wraps them for transport.
