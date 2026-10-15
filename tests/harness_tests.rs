@@ -227,6 +227,13 @@ fn doctor_accepts_successful_headless_and_compile_checks() {
 }
 
 #[test]
+fn doctor_accepts_failure_words_in_successful_report_paths() {
+    let healthy =
+        format!("{HEALTHY}  Location: /opt/FAILED/Ghidra\n  JDK 21 at /opt/NOT FOUND/jdk\n");
+    common::assert_doctor_ready(&doctor_output(true, &healthy, ""));
+}
+
+#[test]
 fn doctor_rejects_failed_exit_even_with_healthy_stdout() {
     let output = doctor_output(false, HEALTHY, "startup failed");
     assert!(std::panic::catch_unwind(|| common::assert_doctor_ready(&output)).is_err());

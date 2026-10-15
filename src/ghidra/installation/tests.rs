@@ -87,6 +87,39 @@ fn jar_manifest_accepts_carriage_return_line_terminators() {
 }
 
 #[test]
+fn jar_manifest_rejects_malformed_headers_in_all_sections() {
+    let temp = tempfile::tempdir().unwrap();
+    for manifest in [
+        "Main-Class: ghidra.JarRun\nInvalid header\n\n",
+        "Main-Class: ghidra.JarRun\nInvalid header\n unfinished",
+        "Main-Class: ghidra.JarRun\nBad Header: value\n\n",
+        "Main-Class: ghidra.JarRun\n\nOther: section\n\n",
+        "Main-Class: ghidra.JarRun\n\nName: section\nInvalid header\n",
+    ] {
+        let path = standalone_jar(
+            &temp.path().join("ghidra.jar"),
+            manifest,
+            "application.version=12.1.4\n",
+            None,
+        );
+        let error = inspect(&path, InstallationKind::Jar).unwrap_err();
+        assert!(error.to_string().contains("manifest"), "{error}");
+    }
+}
+
+#[test]
+fn jar_manifest_main_class_uses_java_launcher_whitespace_rules() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = standalone_jar(
+        &temp.path().join("ghidra.jar"),
+        "Main-Class:  ghidra.JarRun \t\n\nName: section\nCustom-Attribute: value\n\n",
+        "application.version=12.1.4\n",
+        None,
+    );
+    assert!(inspect(&path, InstallationKind::Jar).is_ok());
+}
+
+#[test]
 fn jar_selection_rejects_plus_in_canonical_path_only() {
     let temp = tempfile::tempdir().unwrap();
     let directory = distribution(&temp.path().join("jar+path"), Platform::native(), "12.1");

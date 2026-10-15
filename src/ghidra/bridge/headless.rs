@@ -58,6 +58,7 @@ pub(crate) fn resolve_launch_jdk(
     installation: &Installation,
     explicit_java: Option<PathBuf>,
 ) -> Result<Option<JdkInfo>> {
+    java::validate_command_locale().map_err(anyhow::Error::msg)?;
     let allow_wrapper_fallback = explicit_java.is_none();
     let jdk = match java::resolve_for_ghidra(installation, explicit_java) {
         Ok(jdk) => {
@@ -92,7 +93,7 @@ fn command_with_jdk(
     }
     let mut cmd = match installation.kind {
         InstallationKind::Directory => {
-            Command::new(installation.launcher().expect("directory launcher"))
+            java::command(installation.launcher().expect("directory launcher"))
         }
         InstallationKind::Jar => {
             let jdk = jdk
@@ -107,7 +108,7 @@ fn command_with_jdk(
                 .unwrap_or_else(|| "2G".into());
             let mut max_heap = OsString::from("-Xmx");
             max_heap.push(heap);
-            let mut command = Command::new(java);
+            let mut command = java::command(java);
             // Headless defaults from the official analyzeHeadless and
             // launch.properties. JarRun supplies its own application layout;
             // it does not need Ghidra's distribution class loader.
@@ -157,6 +158,7 @@ pub fn compile_check(
     installation: &Installation,
     jdk_home: &Path,
 ) -> std::result::Result<(), String> {
+    java::validate_command_locale()?;
     let javac_name = if cfg!(windows) { "javac.exe" } else { "javac" };
 
     // Resolve caller-relative paths before changing the compiler's directory.
@@ -194,7 +196,7 @@ pub fn compile_check(
         .map_err(|e| format!("Failed to write javac argument file: {e}"))?;
     // Windows javac can lose characters outside the system code page in argv.
     // Pass only an ASCII filename; Unicode paths stay in the UTF-8 argument file.
-    let out = Command::new(&javac)
+    let out = java::command(&javac)
         .current_dir(tmp.path())
         .arg("@javac.args")
         .output()

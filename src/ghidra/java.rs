@@ -14,12 +14,62 @@
 //! The selected JDK supplies `JAVA_HOME` for the `analyzeHeadless` wrapper or
 //! the Java executable used to launch a standalone Ghidra JAR directly.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The default Java floor when installation metadata omits a minimum.
 /// Ghidra 12.x sets `application.java.min=21`.
 pub const DEFAULT_MIN_JAVA: u32 = 21;
+
+/// Keep Java's native filename and argument conversions consistent with the wire protocol.
+pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(target_os = "linux")]
+    if require_utf8_locale(c"").is_err() {
+        command.env("LC_ALL", "C.UTF-8");
+    }
+    command
+}
+
+pub(crate) fn validate_command_locale() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if require_utf8_locale(c"").is_err() {
+        require_utf8_locale(c"C.UTF-8").map_err(|error| {
+            format!(
+                "Java requires a UTF-8 locale on Linux to preserve Unicode file paths; configure one or install C.UTF-8: {error}"
+            )
+        })?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn require_utf8_locale(name: &std::ffi::CStr) -> std::io::Result<()> {
+    // newlocale creates an independent object and never changes the process's
+    // global locale. Validate every category because LC_ALL selects all of them.
+    // SAFETY: name is a valid C string and a null base requests a new object.
+    let locale = unsafe { libc::newlocale(libc::LC_ALL_MASK, name.as_ptr(), std::ptr::null_mut()) };
+    if locale.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: locale is live and CODESET returns a NUL-terminated locale string.
+    let utf8 = unsafe {
+        std::ffi::CStr::from_ptr(libc::nl_langinfo_l(libc::CODESET, locale))
+            .to_bytes()
+            .eq_ignore_ascii_case(b"UTF-8")
+    };
+    // SAFETY: newlocale returned this independent object, which is no longer used.
+    unsafe { libc::freelocale(locale) };
+    if !utf8 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "locale does not use UTF-8",
+        ));
+    }
+    Ok(())
+}
 
 /// Details about a validated JDK.
 #[derive(Debug, Clone)]
@@ -68,7 +118,7 @@ fn home_from_java_exe(java_exe: &Path) -> Option<PathBuf> {
 
 /// Parse the major version from `java -version` output (goes to stderr).
 fn detect_major(java_exe: &Path) -> Option<u32> {
-    let out = Command::new(java_exe).arg("-version").output().ok()?;
+    let out = command(java_exe).arg("-version").output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -92,7 +142,7 @@ fn detect_major(java_exe: &Path) -> Option<u32> {
 /// Does this runtime have the `jdk.compiler` module (the actual `javac`
 /// implementation that backs `getSystemJavaCompiler()`)?
 fn has_jdk_compiler_module(java_exe: &Path) -> bool {
-    match Command::new(java_exe).arg("--list-modules").output() {
+    match command(java_exe).arg("--list-modules").output() {
         Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);
             text.lines()
@@ -122,7 +172,7 @@ pub fn inspect_home(home: &Path, min: u32, source: &str) -> JavaStatus {
     };
 
     let javac = bin(&home, "javac");
-    let has_compiler = javac.exists() && has_jdk_compiler_module(&java_exe);
+    let has_compiler = which::which(&javac).is_ok() && has_jdk_compiler_module(&java_exe);
 
     if !has_compiler {
         return JavaStatus::JreNoCompiler { home, major };
@@ -296,6 +346,16 @@ pub fn resolve_for_ghidra(
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn java_native_locale_rejects_missing_and_non_utf8_definitions() {
+        assert_eq!(
+            require_utf8_locale(c"C").unwrap_err().kind(),
+            std::io::ErrorKind::Unsupported
+        );
+        assert!(require_utf8_locale(c"ghidra_cli_missing_locale").is_err());
+    }
+
     #[test]
     fn java_home_uses_a_launcher_compatible_path() {
         let root = tempfile::Builder::new()
@@ -374,7 +434,9 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(bin(&home, "javac"), []).unwrap();
+        let javac = bin(&home, "javac");
+        std::fs::write(&javac, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&javac, std::fs::Permissions::from_mode(0o755)).unwrap();
         let alias = root.path().join("selected-jdk");
         symlink(&home, &alias).unwrap();
 
@@ -395,6 +457,41 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn java_home_requires_an_executable_compiler_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("jdk");
+        let java = bin(&home, "java");
+        let javac = bin(&home, "javac");
+        std::fs::create_dir_all(java.parent().unwrap()).unwrap();
+        std::fs::write(
+            &java,
+            "#!/bin/sh\necho 'openjdk version \"27\"' >&2\necho 'jdk.compiler@27'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(&javac, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&javac, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(matches!(
+            inspect_home(&home, 21, "test"),
+            JavaStatus::JreNoCompiler { .. }
+        ));
+
+        std::fs::set_permissions(&javac, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(inspect_home(&home, 21, "test"), JavaStatus::Ok(_)));
+
+        std::fs::remove_file(&javac).unwrap();
+        std::fs::create_dir(&javac).unwrap();
+        assert!(matches!(
+            inspect_home(&home, 21, "test"),
+            JavaStatus::JreNoCompiler { .. }
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn failed_java_probes_do_not_validate_a_broken_jdk() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -403,7 +500,8 @@ mod tests {
         let java = bin(&home, "java");
         let javac = bin(&home, "javac");
         std::fs::create_dir_all(java.parent().unwrap()).unwrap();
-        std::fs::write(&javac, "").unwrap();
+        std::fs::write(&javac, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&javac, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         std::fs::write(
             &java,

@@ -90,7 +90,7 @@ fn directory_launch_keeps_the_official_wrapper_and_its_java_fallback() {
     let command = command_with_jdk(&install, None, None, None).unwrap();
     assert_eq!(command.get_program(), install.launcher().unwrap());
     assert_eq!(command.get_args().count(), 0);
-    assert_eq!(command.get_envs().count(), 0);
+    assert!(!command.get_envs().any(|(name, _)| name == "JAVA_HOME"));
 }
 
 #[cfg(unix)]

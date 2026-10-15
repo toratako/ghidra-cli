@@ -102,6 +102,56 @@ fn doctor_compiles_from_quoted_temporary_directory() {
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+#[serial_test::serial]
+fn ascii_locale_preserves_unicode_compilation_and_import_paths() {
+    require_ghidra!();
+    let project = super::Project::new();
+    let binary = project.root.path().join("日本語.bin");
+    let ascii_neighbor = project.root.path().join("???.bin");
+    std::fs::write(&binary, [0x31, 0xc0, 0xc3]).unwrap();
+    std::fs::write(&ascii_neighbor, [0x90, 0x90, 0xc3]).unwrap();
+    let mut import = project.command(&[
+        "program",
+        "import",
+        binary.to_str().unwrap(),
+        "--name",
+        "unicode-input",
+        "--loader",
+        "BinaryLoader",
+        "--language",
+        "x86:LE:32:default",
+        "--no-analyze",
+    ]);
+    import.env("LC_ALL", "C");
+    let output =
+        crate::common::run_command_with_output(&mut import, Duration::from_secs(240)).unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let bytes = project.ok(&["memory", "read", "0x0", "--size", "3"]);
+    assert_eq!(bytes["hex"], "31c0c3", "{bytes}");
+    let info = project.ok(&["program", "info"]);
+    assert_eq!(
+        dunce::canonicalize(info["executable_path"].as_str().unwrap()).unwrap(),
+        dunce::canonicalize(&binary).unwrap(),
+        "{info}"
+    );
+
+    let temporary = tempfile::Builder::new()
+        .prefix("javac 日本語 ")
+        .tempdir()
+        .unwrap();
+    let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("ghidra-cli"));
+    doctor
+        .args(["doctor", "--json"])
+        .env("LC_ALL", "C")
+        .env("TMPDIR", temporary.path());
+    let output =
+        crate::common::run_command_with_output(&mut doctor, Duration::from_secs(120)).unwrap();
+    crate::common::assert_doctor_ready(&output);
+    assert_eq!(std::fs::read_dir(temporary.path()).unwrap().count(), 0);
+}
+
 #[test]
 fn bridge_compiles_with_long_relative_classpath_and_quoted_paths() {
     require_ghidra!();

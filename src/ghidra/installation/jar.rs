@@ -24,7 +24,14 @@ pub(super) fn properties(path: &Path) -> Result<String> {
     };
     let mut archive = ZipArchive::new(file).map_err(|e| invalid(e.to_string()))?;
     let manifest = read_entry(&mut archive, "META-INF/MANIFEST.MF").map_err(invalid)?;
-    if main_class(&manifest).as_deref() != Some("ghidra.JarRun") {
+    let main_class = main_class(&manifest).map_err(|message| invalid(message.into()))?;
+    // The Java launcher applies String.trim(), which removes ASCII control
+    // characters and spaces rather than all Unicode whitespace.
+    if main_class
+        .as_deref()
+        .map(|value| value.trim_matches(|c| c <= '\u{20}'))
+        != Some("ghidra.JarRun")
+    {
         return Err(invalid("manifest Main-Class must be ghidra.JarRun".into()));
     }
     // These establish the official single-JAR layout and headless entry point.
@@ -54,24 +61,36 @@ fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> std::result::Result
     Ok(text)
 }
 
-fn main_class(mut manifest: &str) -> Option<String> {
-    // Only main-section attributes apply to the JAR. Manifest lines beginning
-    // with a space continue the preceding attribute, including Main-Class.
+fn main_class(mut manifest: &str) -> std::result::Result<Option<String>, &'static str> {
+    // Java parses every manifest section before launching the main class.
+    // Only main-section attributes supply Main-Class; later sections start
+    // with Name. A leading space continues the preceding attribute.
     let mut attribute = String::new();
     let mut main_class = None;
+    let mut main_section = true;
+    let mut section_started = false;
     while let Some(end) = manifest.find(['\r', '\n']) {
         let line = &manifest[..end];
         let remaining = &manifest[end..];
         manifest = remaining.strip_prefix("\r\n").unwrap_or(&remaining[1..]);
         if line.is_empty() {
-            break;
+            attribute.clear();
+            main_section = false;
+            section_started = false;
+            continue;
         }
         if let Some(continuation) = line.strip_prefix(' ') {
             if attribute.is_empty() {
-                return None;
+                return Err("invalid manifest continuation");
             }
             attribute.push_str(continuation);
         } else {
+            // Header syntax is checked even when a following continuation
+            // never completes; name validity is checked when committed below.
+            let (name, _) = manifest_attribute(line)?;
+            if !main_section && !section_started && !name.eq_ignore_ascii_case("Name") {
+                return Err("manifest section must begin with Name");
+            }
             attribute = line.into();
         }
         // java.util.jar.Attributes ignores unterminated physical lines and
@@ -79,12 +98,27 @@ fn main_class(mut manifest: &str) -> Option<String> {
         if manifest.starts_with(' ') {
             continue;
         }
-        // Duplicate names retain their final complete value.
-        if let Some((name, value)) = attribute.split_once(": ") {
-            if name.eq_ignore_ascii_case("Main-Class") {
-                main_class = Some(value.to_owned());
-            }
+        let (name, value) = manifest_attribute(&attribute)?;
+        if name.is_empty()
+            || name.len() > 70
+            || !name
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        {
+            return Err("invalid manifest attribute name");
         }
+        // Duplicate names retain their final complete value.
+        if main_section && name.eq_ignore_ascii_case("Main-Class") {
+            main_class = Some(value.to_owned());
+        }
+        section_started = true;
+        attribute.clear();
     }
-    main_class
+    Ok(main_class)
+}
+
+fn manifest_attribute(line: &str) -> std::result::Result<(&str, &str), &'static str> {
+    line.split_once(':')
+        .and_then(|(name, value)| value.strip_prefix(' ').map(|value| (name, value)))
+        .ok_or("invalid manifest header")
 }
