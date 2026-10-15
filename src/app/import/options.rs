@@ -26,10 +26,12 @@ pub(super) fn build_oneshot_import_options(
         || args.length.is_some();
 
     if binary_loader_fields
-        && args
-            .loader
-            .as_deref()
-            .is_some_and(|loader| loader != "BinaryLoader")
+        && args.loader.as_deref().is_some_and(|loader| {
+            !matches!(
+                loader,
+                "BinaryLoader" | "ghidra.app.util.opinion.BinaryLoader"
+            )
+        })
     {
         anyhow::bail!(
             "--base-address/--block-name/--file-offset/--length are BinaryLoader options"
@@ -55,7 +57,9 @@ pub(super) fn build_oneshot_import_options(
         if let Some(value) = value {
             let count = crate::cli::numeric::ranged::<i64>(value, 0, i64::MAX as i128)
                 .map_err(|reason| anyhow::anyhow!("Invalid {flag} '{value}': {reason}"))?;
-            loader_options.push((name.to_string(), count.to_string()));
+            // BinaryLoader uses HexLong options, whose native parser treats
+            // even unprefixed digits as hexadecimal.
+            loader_options.push((name.to_string(), format!("0x{count:x}")));
         }
     }
 
@@ -142,8 +146,8 @@ mod tests {
         assert_eq!(
             options.loader_options,
             [
-                ("fileOffset".to_string(), "10".to_string()),
-                ("length".to_string(), "64".to_string()),
+                ("fileOffset".to_string(), "0xa".to_string()),
+                ("length".to_string(), "0x40".to_string()),
                 ("blockName".to_string(), "010".to_string()),
             ]
         );

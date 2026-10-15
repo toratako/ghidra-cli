@@ -326,6 +326,36 @@ fn unsupported_loader_options_never_save_a_program() {
 
 #[test]
 #[serial_test::serial]
+fn binary_loader_counts_keep_the_cli_integer_values() {
+    require_ghidra!();
+    let project = Project::new();
+    let raw = project.raw();
+    std::fs::write(&raw, (0u8..128).collect::<Vec<_>>()).unwrap();
+    project.ok(&[
+        "program",
+        "import",
+        raw.to_str().unwrap(),
+        "--name",
+        "integer-counts",
+        "--loader",
+        "ghidra.app.util.opinion.BinaryLoader",
+        "--language",
+        "x86:LE:32:default",
+        "--file-offset",
+        "010",
+        "--length",
+        "0x40",
+        "--no-analyze",
+    ]);
+    let bytes = project.ok(&["memory", "read", "0x0", "--size", "1"]);
+    assert_eq!(bytes["hex"], "0a", "{bytes}");
+    let info = project.ok(&["program", "info"]);
+    assert_eq!(info["min_address"], "0x00000000", "{info}");
+    assert_eq!(info["max_address"], "0x0000003f", "{info}");
+}
+
+#[test]
+#[serial_test::serial]
 fn native_loader_diagnostics_survive_success_and_failure_in_both_pipelines() {
     require_ghidra!();
     let project = Project::new();
