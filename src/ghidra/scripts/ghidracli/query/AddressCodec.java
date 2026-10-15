@@ -89,6 +89,8 @@ public final class AddressCodec {
       }
       BigInteger byteOffset = word.multiply(BigInteger.valueOf(unit)).add(remainder);
       if (byteOffset.bitLength() > 64
+          || (space.hasSignedOffset()
+              && byteOffset.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0)
           || byteOffset.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) throw invalid(text);
       long validatedOffset = space.makeValidOffset(byteOffset.longValue());
       // In particular, OverlayAddressSpace.getAddress(long) may substitute

@@ -46,13 +46,47 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
     for (long offset : new long[] {Long.MIN_VALUE, -3, -1, 1, Long.MAX_VALUE}) {
       roundtrip(factory, signedWord.getAddress(offset));
     }
+
+    var picLanguage =
+        ghidra.program.util.DefaultLanguageService.getLanguageService()
+            .getLanguage(new ghidra.program.model.lang.LanguageID("PIC-12:LE:16:PIC-12C5xx"));
+    var picCompiler =
+        picLanguage.getCompilerSpecByID(new ghidra.program.model.lang.CompilerSpecID("default"));
+    var picProgram =
+        new ghidra.program.database.ProgramDB("codec_pic_stack", picLanguage, picCompiler, this);
+    try {
+      var picFactory = picProgram.getAddressFactory();
+      var picStack = picFactory.getStackSpace();
+      require(picStack.getAddressableUnitSize() == 2, "PIC hardware stack must use word addresses");
+      for (long offset :
+          new long[] {
+            picStack.getMinAddress().getOffset(), -3, -1, 0, picStack.getMaxAddress().getOffset()
+          }) {
+        roundtrip(picFactory, picStack.getAddress(offset));
+      }
+      String stackOverflow = picStack.getName() + ":0x7fffffffffffffff.1";
+      try {
+        AddressCodec.parse(picFactory, stackOverflow);
+        throw new AssertionError("Signed stack overflow silently wrapped: " + stackOverflow);
+      } catch (IllegalArgumentException expected) {
+        // A positive word offset cannot wrap into a valid negative stack byte.
+      }
+    } finally {
+      picProgram.release(this);
+    }
+
     for (String input :
-        new String[] {"signed_word:0x8000000000000000", "signed_word:0xbfffffffffffffff.1"}) {
+        new String[] {
+          "signed_word:0x4000000000000000",
+          "signed_word:0x7fffffffffffffff.1",
+          "signed_word:0x8000000000000000",
+          "signed_word:0xbfffffffffffffff.1"
+        }) {
       try {
         AddressCodec.parse(factory, input);
         throw new AssertionError("Signed word overflow silently wrapped: " + input);
       } catch (IllegalArgumentException expected) {
-        // Negative word offsets must fit in the signed byte-offset range.
+        // Word offsets must fit in the signed byte-offset range.
       }
     }
     require(AddressCodec.format(null) == null, "Null address must stay null");
@@ -78,8 +112,8 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
         outsideOverlayBlock.getAddressSpace().equals(block.getStart().getAddressSpace()),
         "Overlay address must not substitute the physical space outside its block");
     roundtrip(programFactory, outsideOverlayBlock);
-    for (String name : new String[] {"0xbank", "0x1234"}) {
-      var hexNamedBlock =
+    for (String name : new String[] {"0xbank", "0x1234", "\u2002bank", "bank"}) {
+      var namedBlock =
           currentProgram
               .getMemory()
               .createInitializedBlock(
@@ -89,7 +123,10 @@ public class CheckAddressCodec extends ghidra.app.script.GhidraScript {
                   (byte) 0,
                   monitor,
                   true);
-      roundtrip(programFactory, hexNamedBlock.getStart());
+      require(
+          namedBlock.getStart().getAddressSpace().getName().equals(name),
+          "Overlay address-space name was changed: " + name);
+      roundtrip(programFactory, namedBlock.getStart());
     }
     var segmented = new ghidra.program.model.address.SegmentedAddressSpace("segmented", 2);
     var segmentedFactory =

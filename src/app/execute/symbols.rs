@@ -202,7 +202,7 @@ fn address_matches(symbol: &serde_json::Value, requested: &str) -> bool {
         is_default: bool,
     ) -> Option<ExplicitAddress<'a>> {
         let prefix = format!("{space}:");
-        let value = value.trim();
+        let value = value.trim_matches(|c| c <= ' ');
         let (value, qualified) = match value.strip_prefix(&prefix) {
             Some(offset) => (offset, true),
             None if is_default => (value, false),
@@ -298,5 +298,15 @@ mod tests {
         let segmented = json!({"address":"ram:0x1234:0x0010", "address_space":"ram", "is_default_address_space":true});
         assert!(!address_matches(&segmented, "0x1234:0x10"));
         assert!(address_matches(&segmented, "ram:0x1234:0x10"));
+    }
+
+    #[test]
+    fn unicode_space_names_retain_their_identity_during_selection() {
+        let unicode = json!({"address":"\u{2002}bank:0x0005", "address_space":"\u{2002}bank", "is_default_address_space":false});
+        let plain = json!({"address":"bank:0x0005", "address_space":"bank", "is_default_address_space":false});
+        assert!(address_matches(&unicode, "\u{2002}bank:0x5"));
+        assert!(address_matches(&unicode, " \t\u{2002}bank:0x5\r\n"));
+        assert!(!address_matches(&unicode, "bank:0x5"));
+        assert!(!address_matches(&plain, "\u{2002}bank:0x5"));
     }
 }

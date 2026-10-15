@@ -9,7 +9,8 @@ pub(crate) struct ExplicitAddress<'a> {
 
 impl<'a> ExplicitAddress<'a> {
     pub fn parse(value: &'a str) -> Option<Self> {
-        let parts: Vec<_> = value.trim().split(':').collect();
+        // Match Java's String.trim(): Unicode whitespace can belong to a space name.
+        let parts: Vec<_> = value.trim_matches(|c| c <= ' ').split(':').collect();
         if Self::valid_components(&parts) {
             return Some(Self {
                 space: None,
@@ -30,7 +31,7 @@ impl<'a> ExplicitAddress<'a> {
     }
 
     fn parse_qualified(value: &'a str) -> Option<Self> {
-        let (space, offset) = value.trim().split_once(':')?;
+        let (space, offset) = value.trim_matches(|c| c <= ' ').split_once(':')?;
         let components: Vec<_> = offset.split(':').collect();
         if space.is_empty()
             || space.chars().any(|c| c <= ' ')
@@ -155,5 +156,15 @@ mod tests {
         assert!(!parse("0xAB:0x5").same_location(&parse("0xab:0x5")));
         assert!(!parse("0x1234:0x5").same_location(&parse("0x001234:0x5")));
         assert!(!parse("0x1234:0x5").same_location(&parse("ram:0x1234:0x5")));
+    }
+
+    #[test]
+    fn legal_unicode_whitespace_in_space_names_is_preserved() {
+        let text = "\u{2002}bank:0x5";
+        let address = ExplicitAddress::parse(text).unwrap();
+        assert_eq!(address.space, Some("\u{2002}bank"));
+        let address = ExplicitAddress::parse_canonical(text).unwrap();
+        assert_eq!(address.space, Some("\u{2002}bank"));
+        assert!(!address.same_location(&ExplicitAddress::parse_canonical("bank:0x5").unwrap()));
     }
 }
