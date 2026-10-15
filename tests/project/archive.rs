@@ -279,6 +279,71 @@ fn gar_resolves_symlinks_before_parent_components_for_every_path() -> anyhow::Re
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+#[serial]
+fn gar_rejects_project_paths_that_ghidra_redirects() -> anyhow::Result<()> {
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra gar identity ")
+        .tempdir()?;
+    let root_path = dunce::canonicalize(root.path())?;
+    let requested = root_path.join("literal\\parent/project");
+    let redirected = root_path.join("literal/parent/project");
+    for project in [&requested, &redirected] {
+        std::fs::create_dir_all(project.with_added_extension("rep"))?;
+        std::fs::write(project.with_added_extension("gpr"), b"retain marker")?;
+        std::fs::write(
+            project.with_added_extension("rep").join("saved.bin"),
+            b"retain project data",
+        )?;
+    }
+    let output = root_path.join("snapshot.gar");
+    let input = root_path.join("input.gar");
+    std::fs::write(&input, b"unread archive")?;
+    for result in [
+        archive(&requested, &output)?,
+        restore(&input, &requested.with_file_name("restored"))?,
+    ] {
+        assert!(!result.status.success(), "{result:?}");
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("Project path cannot contain backslashes on Unix"),
+            "{result:?}"
+        );
+    }
+
+    // Exercise the Java entry point directly so Rust preflight cannot hide a
+    // native locator redirect before the Ghidra project lock is acquired.
+    let worker = root_path.join("worker/project");
+    common::fixture::copy_analyzed_project(&worker)?;
+    let worker = common::DaemonTestHarness::new(worker.to_str().unwrap(), common::FIXTURE_PROGRAM)?;
+    worker.client()?.script_run_source(
+        include_str!("../fixtures/project/CheckGarProjectIdentity.java"),
+        &[root_path.to_string_lossy().into_owned()],
+        &[],
+        false,
+    )?;
+    assert!(!output.exists());
+    for project in [&requested, &redirected] {
+        assert_eq!(
+            std::fs::read(project.with_added_extension("gpr"))?,
+            b"retain marker"
+        );
+        assert_eq!(
+            std::fs::read(project.with_added_extension("rep").join("saved.bin"))?,
+            b"retain project data"
+        );
+        for extension in ["gpr", "rep"] {
+            assert!(!project
+                .with_file_name("restored")
+                .with_added_extension(extension)
+                .exists());
+        }
+    }
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn gar_conflicts_preserve_live_bridge_and_save_failure_remains_recoverable() -> anyhow::Result<()> {

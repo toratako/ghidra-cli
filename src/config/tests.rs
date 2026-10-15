@@ -99,6 +99,44 @@ fn lock_file_cannot_be_replaced_by_configuration() {
 }
 
 #[test]
+fn directory_only_config_paths_never_create_or_replace_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let original = "default_project: keep-me\n";
+    for exists in [false, true] {
+        let target = temp.path().join(if exists {
+            "existing.yaml"
+        } else {
+            "missing.yaml"
+        });
+        if exists {
+            fs::write(&target, original).unwrap();
+        }
+        for suffix in [
+            std::path::MAIN_SEPARATOR.to_string(),
+            format!("{}.", std::path::MAIN_SEPARATOR),
+        ] {
+            let mut path = target.as_os_str().to_owned();
+            path.push(suffix);
+            let path = PathBuf::from(path);
+            assert!(
+                Config::default().save_at(&path).is_err(),
+                "{}",
+                path.display()
+            );
+            assert!(Config::update_at(&path, |_| {
+                panic!("directory-only config path reached the update callback")
+            })
+            .is_err());
+            if exists {
+                assert_eq!(fs::read_to_string(&target).unwrap(), original);
+            } else {
+                assert!(!target.exists());
+            }
+        }
+    }
+}
+
+#[test]
 fn failed_update_preserves_config() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("config.yaml");

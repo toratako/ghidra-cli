@@ -50,6 +50,12 @@ pub fn start_bridge(
         "Ghidra project not found: {}",
         project_path.display()
     );
+    // Resolve symlinks before parent components. Ghidra rejects a literal
+    // `..` in the project location, and lexical normalization can select a
+    // different project when a preceding component is a symlink.
+    let ghidra_project_dir = dunce::canonicalize(&ghidra_project_dir)
+        .map_err(|e| crate::error::path_io("bridge.project_directory", &ghidra_project_dir, e))?;
+    crate::ghidra::project::validate_project_path(&ghidra_project_dir.join(ghidra_project_name))?;
 
     // Run only the bridge script, without -process/-import. Otherwise the
     // headless analyzer retains its own Program consumer until the bridge exits,

@@ -14,10 +14,22 @@ pub fn archive_project(
     installation: &Installation,
 ) -> Result<Value> {
     let mut project = std::path::absolute(project)?;
+    let names_file = output.file_name().is_some_and(|name| {
+        output
+            .as_os_str()
+            .as_encoded_bytes()
+            .ends_with(name.as_encoded_bytes())
+    });
     let mut output = std::path::absolute(output)?;
     let result = (|| {
+        anyhow::ensure!(
+            names_file,
+            "Archive output path must name a file: {}",
+            output.display()
+        );
         project = resolve_parent(&project)?;
         output = resolve_parent(&output)?;
+        crate::ghidra::project::validate_project_path(&project)?;
         let paths = crate::ghidra::project::ProjectPaths::new(&project)
             .context("Project must have a name")?;
         anyhow::ensure!(
@@ -61,6 +73,7 @@ pub fn restore_project(
         // new parent directories that the bootstrap previously created.
         std::fs::create_dir_all(project.parent().context("Project has no parent")?)?;
         project = resolve_parent(&project)?;
+        crate::ghidra::project::validate_project_path(&project)?;
         let paths = crate::ghidra::project::ProjectPaths::new(&project)
             .context("Project must have a name")?;
         require_absent(&paths.descriptor)?;

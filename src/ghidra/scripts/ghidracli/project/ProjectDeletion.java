@@ -26,6 +26,12 @@ public final class ProjectDeletion {
     if (!locator.getName().equals(project.getName())) {
       throw new IOException("Use a project base path without the .gpr suffix: " + project);
     }
+    // ProjectLocator also treats backslashes as separators on Unix. Check
+    // the native location before taking a lock or deleting any artifacts.
+    if (!Files.isSameFile(
+        project.toPath().getParent(), locator.getProjectDir().toPath().getParent())) {
+      throw new IOException("Ghidra changes the requested project directory: " + project);
+    }
     FileLocker lock = LockFactory.createFileLocker(locator.getProjectLockFile());
     if (!lock.lock()) {
       JsonObject detail = new JsonObject();

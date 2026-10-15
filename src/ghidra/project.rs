@@ -2,6 +2,32 @@
 
 use std::path::{Path, PathBuf};
 
+/// Reject paths that cannot retain their filesystem identity in Ghidra.
+pub(crate) fn validate_project_path(project: &Path) -> anyhow::Result<()> {
+    let path = project.to_str().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Project path cannot be represented as UTF-8: {}",
+            project.display()
+        )
+    })?;
+    #[cfg(unix)]
+    anyhow::ensure!(
+        !path.contains('\\'),
+        "Project path cannot contain backslashes on Unix: {}",
+        project.display()
+    );
+    #[cfg(not(unix))]
+    let _ = path;
+    anyhow::ensure!(
+        !project
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().ends_with(".gpr")),
+        "Use a project base path without the .gpr suffix: {}",
+        project.display()
+    );
+    Ok(())
+}
+
 pub(crate) struct ProjectPaths {
     pub descriptor: PathBuf,
     pub data: PathBuf,

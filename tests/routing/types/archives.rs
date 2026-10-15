@@ -258,6 +258,8 @@ fn gdt_paths_reject_invalid_input_and_existing_output_before_archive_requests() 
         vec!["type", "archive", "export", "directory.gdt", "--all"],
         vec!["type", "archive", "export", "missing/new.gdt", "--all"],
         vec!["type", "archive", "export", "without-extension", "--all"],
+        vec!["type", "archive", "export", "new.gdt/", "--all"],
+        vec!["type", "archive", "export", "new.gdt/.", "--all"],
     ] {
         bridge.requests.lock().unwrap().clear();
         bridge.command().args(&args).assert().failure();
@@ -276,6 +278,7 @@ fn gdt_paths_reject_invalid_input_and_existing_output_before_archive_requests() 
         "preserve"
     );
     assert!(!bridge.root.path().join("without-extension.gdt").exists());
+    assert!(!bridge.root.path().join("new.gdt").exists());
 }
 
 #[cfg(unix)]

@@ -95,6 +95,18 @@ impl Config {
         let mut followed_link = false;
         let mut seen = HashSet::new();
         loop {
+            // Path components discard trailing separators and `.`. Preserve
+            // their directory-only meaning before rebuilding the target path.
+            let name = path
+                .file_name()
+                .filter(|name| {
+                    path.as_os_str()
+                        .as_encoded_bytes()
+                        .ends_with(name.as_encoded_bytes())
+                })
+                .ok_or_else(|| {
+                    GhidraError::ConfigError("Configuration path must name a file".into())
+                })?;
             let parent = path
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -104,9 +116,6 @@ impl Config {
             }
             let parent =
                 dunce::canonicalize(parent).map_err(|e| path_io("config.resolve", parent, e))?;
-            let name = path.file_name().ok_or_else(|| {
-                GhidraError::ConfigError("Configuration path must name a file".into())
-            })?;
             let candidate = parent.join(name);
             let lock_path = parent.join(CONFIG_LOCK_FILE);
             if candidate == lock_path {

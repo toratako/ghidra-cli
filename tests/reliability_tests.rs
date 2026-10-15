@@ -55,6 +55,46 @@ fn test_graceful_restart_reopens_project() {
     }
 }
 
+#[test]
+#[serial]
+fn bridge_start_resolves_parent_components_after_symlinks() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let project = std::path::Path::new(test_project());
+    ghidra_cli::ghidra::bridge::stop_bridge(project).unwrap();
+    let nested = tempfile::Builder::new()
+        .prefix("launch 'nested' ")
+        .tempdir_in(project.parent().unwrap())
+        .unwrap();
+    let root = tempfile::Builder::new()
+        .prefix("launch 'alias' ")
+        .tempdir()
+        .unwrap();
+    let alias = root.path().join("project-parent");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(nested.path(), &alias).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(nested.path(), &alias)
+        .expect("directory symlink creation requires Developer Mode or symlink privileges");
+    let aliased_project = alias.join("..").join(project.file_name().unwrap());
+
+    let harness = DaemonTestHarness::new(aliased_project.to_str().unwrap(), TEST_PROGRAM)
+        .expect("start existing project through a symlink followed by a parent component");
+    let client = harness.client().unwrap();
+    assert!(client.ping().unwrap());
+    assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
+    assert_eq!(
+        ghidra_cli::ghidra::bridge::is_bridge_running(project),
+        Some(harness.port())
+    );
+    assert_eq!(
+        ghidra_cli::ghidra::bridge::read_pid_file(project).unwrap(),
+        ghidra_cli::ghidra::bridge::read_pid_file(&aliased_project).unwrap()
+    );
+    drop(harness);
+    assert!(ghidra_cli::ghidra::bridge::is_bridge_running(project).is_none());
+}
+
 /// A test child publishes startup/discovery state and waits for its owner to
 /// terminate it. No process discovered outside this test is ever signalled.
 #[test]

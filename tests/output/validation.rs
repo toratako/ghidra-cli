@@ -246,3 +246,40 @@ fn unknown_command_is_rejected_before_loading_config() {
         .unwrap()
         .contains("unrecognized subcommand"));
 }
+
+#[test]
+fn gar_directory_outputs_fail_before_launching() {
+    let temp = tempfile::tempdir().unwrap();
+    let install = temp.path().join("installation");
+    super::installation_fixture::write(&install);
+    let project = temp.path().join("source");
+    std::fs::write(project.with_added_extension("gpr"), b"source marker").unwrap();
+    std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+    let file = temp.path().join("snapshot.gar");
+    let mut separator = file.as_os_str().to_owned();
+    separator.push(std::path::MAIN_SEPARATOR_STR);
+    for output_path in [std::path::PathBuf::from(separator), file.join(".")] {
+        let output = isolated_command(&temp)
+            .env("GHIDRA_INSTALL_DIR", &install)
+            .args(["--json", "project", "archive"])
+            .arg(&project)
+            .arg("--output")
+            .arg(output_path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Archive output path must name a file"),
+            "{error}"
+        );
+        assert!(!file.exists());
+        assert_eq!(
+            std::fs::read(project.with_added_extension("gpr")).unwrap(),
+            b"source marker"
+        );
+    }
+}

@@ -484,3 +484,46 @@ fn loader_log_snapshot_bounds_empty_and_unicode_text() {
     }
     assert!(result[2]["text"].as_str().unwrap().ends_with('🚀'));
 }
+
+#[test]
+#[serial_test::serial]
+fn import_resolves_project_parent_without_changing_filesystem_target() {
+    require_ghidra!();
+    let mut project = Project::new();
+    let root = dunce::canonicalize(project.root.path()).unwrap();
+    let real = root.join("real");
+    std::fs::create_dir_all(real.join("nested")).unwrap();
+    project.path = real.join("new-parent/project");
+    let raw = project.raw();
+    let installation = ghidra_cli::config::Config::load()
+        .unwrap()
+        .get_ghidra_installation()
+        .unwrap();
+    let options = ghidra_cli::ghidra::bridge::OneShotImportOptions {
+        program: Some("resolved-parent".into()),
+        language: Some("x86:LE:32:default".into()),
+        ..Default::default()
+    };
+    #[cfg(unix)]
+    let alias = {
+        let alias = root.join("alias");
+        std::os::unix::fs::symlink(real.join("nested"), &alias).unwrap();
+        alias
+    };
+    #[cfg(not(unix))]
+    let alias = real.join("nested");
+    let receipt = ghidra_cli::ghidra::bridge::import_oneshot(
+        &alias.join("../new-parent/project"),
+        &raw,
+        &installation,
+        &options,
+    )
+    .unwrap();
+    assert_eq!(receipt.program, "resolved-parent");
+    assert_eq!(receipt.import_status, "saved");
+    assert!(!root.join("new-parent").exists());
+    let programs = project.ok(&["program", "list"]);
+    assert_eq!(programs.as_array().unwrap().len(), 1, "{programs}");
+    project.ok(&["program", "open", "resolved-parent"]);
+    project.assert_program_identity("resolved-parent");
+}

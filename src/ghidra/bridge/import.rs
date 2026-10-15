@@ -76,6 +76,17 @@ pub(super) fn run_bootstrap(
     java_home_override: Option<&Path>,
 ) -> Result<Value> {
     let project_path = std::path::absolute(project_path)?;
+    let directory = project_path
+        .parent()
+        .context("Project has no parent directory")?;
+    std::fs::create_dir_all(directory)
+        .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
+    // ProjectLocator rejects `..` path components. Resolve the existing parent
+    // through the filesystem so aliases followed by `..` keep their target.
+    let directory = dunce::canonicalize(directory)
+        .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
+    let project_path = directory.join(project_path.file_name().context("Project has no name")?);
+    crate::ghidra::project::validate_project_path(&project_path)?;
     let scripts = sources::install()?;
     let work = tempfile::tempdir().map_err(|e| {
         crate::error::path_io("import.temporary_directory", &std::env::temp_dir(), e)
@@ -84,11 +95,6 @@ pub(super) fn run_bootstrap(
     let receipt = work.path().join("receipt.json");
     std::fs::write(&request, serde_json::to_vec(args)?)
         .map_err(|e| crate::error::path_io("import.request_write", &request, e))?;
-    let directory = project_path
-        .parent()
-        .context("Project has no parent directory")?;
-    std::fs::create_dir_all(directory)
-        .map_err(|e| crate::error::path_io("import.project_directory", directory, e))?;
     let arguments = [
         directory.as_os_str().to_owned(),
         project_path
@@ -235,6 +241,48 @@ fn bootstrap_result(result: Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unavailable_installation(directory: &Path) -> Installation {
+        Installation {
+            path: directory.join("unavailable-ghidra"),
+            kind: crate::ghidra::installation::InstallationKind::Directory,
+            min_java: 21,
+            version: "test".into(),
+            source: "test".into(),
+        }
+    }
+
+    #[test]
+    fn bootstrap_rejects_a_native_project_name_rewrite_before_launching() {
+        let work = tempfile::tempdir().unwrap();
+        let original = work.path().join("original");
+        let requested = work.path().join("original.gpr");
+        for project in [&original, &requested] {
+            std::fs::write(project.with_added_extension("gpr"), b"preserved marker").unwrap();
+            std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+        }
+        let error = run_bootstrap(
+            &requested,
+            &unavailable_installation(work.path()),
+            &json!({}),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("base path without the .gpr suffix"),
+            "{error:#}"
+        );
+        for project in [&original, &requested] {
+            assert_eq!(
+                std::fs::read(project.with_added_extension("gpr")).unwrap(),
+                b"preserved marker"
+            );
+            assert!(project.with_added_extension("rep").is_dir());
+        }
+    }
 
     #[cfg(unix)]
     #[test]

@@ -59,6 +59,39 @@ fn project_delete_rejects_names_that_native_ghidra_would_change() {
 #[cfg(unix)]
 #[test]
 #[serial]
+fn project_delete_rejects_parent_paths_that_native_ghidra_would_redirect() {
+    require_ghidra!();
+    let root = tempfile::Builder::new()
+        .prefix("ghidra-deletion-parent-identity-")
+        .tempdir()
+        .unwrap();
+    let requested = root.path().join("parent\\child/project");
+    let redirected = root.path().join("parent/child/project");
+    for project in [&requested, &redirected] {
+        std::fs::create_dir_all(project.parent().unwrap()).unwrap();
+        std::fs::write(project.with_added_extension("gpr"), b"preserved marker").unwrap();
+        let data = project.with_added_extension("rep");
+        std::fs::create_dir(&data).unwrap();
+        std::fs::write(data.join("preserved"), b"preserved project contents").unwrap();
+    }
+
+    let output = delete(&requested, root.path());
+    assert!(!output.status.success(), "{output:?}");
+    for project in [&requested, &redirected] {
+        assert_eq!(
+            std::fs::read(project.with_added_extension("gpr")).unwrap(),
+            b"preserved marker"
+        );
+        assert_eq!(
+            std::fs::read(project.with_added_extension("rep").join("preserved")).unwrap(),
+            b"preserved project contents"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
 fn project_delete_removes_links_without_following_them() {
     require_ghidra!();
     let root = tempfile::Builder::new()

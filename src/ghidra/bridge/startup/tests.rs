@@ -1,6 +1,89 @@
 use super::*;
 use std::cell::Cell;
 
+fn unavailable_installation(root: &Path) -> Installation {
+    Installation {
+        path: root.join("unavailable-ghidra"),
+        kind: crate::ghidra::installation::InstallationKind::Directory,
+        version: "test".into(),
+        source: "test".into(),
+        min_java: 21,
+    }
+}
+
+fn assert_project_artifacts_untouched(projects: &[&Path]) {
+    for project in projects {
+        assert_eq!(
+            std::fs::read(project.with_added_extension("gpr")).unwrap(),
+            b"untouched project"
+        );
+        assert_eq!(
+            std::fs::read_dir(project.with_added_extension("rep"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert!(!pid_file_path(project).unwrap().exists());
+        assert!(!port_file_path(project).unwrap().exists());
+    }
+}
+
+#[test]
+fn startup_rejects_native_project_name_rewrites_before_launch() {
+    let root = tempfile::tempdir().unwrap();
+    let original = root.path().join("project");
+    let requested = root.path().join("project.gpr");
+    for project in [&original, &requested] {
+        std::fs::write(project.with_added_extension("gpr"), b"untouched project").unwrap();
+        std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+    }
+
+    let error = crate::ghidra::bridge::start_bridge(
+        &requested,
+        &unavailable_installation(root.path()),
+        BridgeStartMode::Project,
+    )
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("base path without the .gpr suffix"),
+        "{error:#}"
+    );
+    assert_project_artifacts_untouched(&[&original, &requested]);
+}
+
+#[cfg(unix)]
+#[test]
+fn startup_rejects_native_project_location_rewrites_after_resolving_symlinks() {
+    let root = tempfile::tempdir().unwrap();
+    let requested = root.path().join("project\\location/project");
+    let collision = root.path().join("project/location/project");
+    for project in [&requested, &collision] {
+        std::fs::create_dir_all(project.parent().unwrap()).unwrap();
+        std::fs::write(project.with_added_extension("gpr"), b"untouched project").unwrap();
+        std::fs::create_dir(project.with_added_extension("rep")).unwrap();
+    }
+    let alias = root.path().join("alias");
+    std::os::unix::fs::symlink(requested.parent().unwrap(), &alias).unwrap();
+
+    for project in [&requested, &alias.join("project")] {
+        let error = crate::ghidra::bridge::start_bridge(
+            project,
+            &unavailable_installation(root.path()),
+            BridgeStartMode::Project,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("backslashes on Unix"),
+            "{error:#}"
+        );
+    }
+
+    assert_project_artifacts_untouched(&[&requested, &collision]);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn startup_rejects_non_utf8_name_before_selecting_a_lossy_collision() {

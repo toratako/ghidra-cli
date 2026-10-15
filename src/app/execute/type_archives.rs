@@ -123,6 +123,16 @@ fn input_path(file: &Path) -> Result<PathBuf> {
 
 fn output_path(file: &Path) -> Result<PathBuf> {
     validate_extension(file)?;
+    // Rebuilding a path from components discards a final separator or `.`.
+    // Reject that directory-only spelling before it can become a file target.
+    anyhow::ensure!(
+        file.file_name().is_some_and(|name| file
+            .as_os_str()
+            .as_encoded_bytes()
+            .ends_with(name.as_encoded_bytes())),
+        "Archive output must end with a file name: {}",
+        file.display()
+    );
     let file = std::path::absolute(file)?;
     let name = file
         .file_name()

@@ -454,6 +454,7 @@ pub fn delete_project(project_path: &Path, installation: &Installation) -> Resul
         },
         _ => absolute,
     };
+    super::project::validate_project_path(&project)?;
     stop_bridge_then(&project, shutdown_timeout(), || {
         let Some(paths) = super::project::ProjectPaths::new(&project) else {
             return Ok(false);

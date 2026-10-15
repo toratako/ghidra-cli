@@ -268,6 +268,11 @@ public final class ProjectArchive {
     if (!locator.getName().equals(project.getFileName().toString())) {
       throw new IOException("Use a project base path without the .gpr suffix: " + project);
     }
+    // ProjectLocator also rewrites backslashes in its parent on Unix. Check
+    // filesystem identity before taking a lock or touching either artifact.
+    if (!Files.isSameFile(project.getParent(), locator.getProjectDir().toPath().getParent())) {
+      throw new IOException("Ghidra resolves a different project directory for path: " + project);
+    }
     return locator;
   }
 

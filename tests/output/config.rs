@@ -186,6 +186,39 @@ fn unknown_config_keys_fail_without_changing_the_file() {
     }
 }
 
+#[test]
+fn config_updates_reject_directory_only_paths_without_changing_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("config.yaml");
+    let original = "default_project: keep-me\ndefault_limit: 7\n";
+    std::fs::write(&target, original).unwrap();
+    for suffix in [
+        std::path::MAIN_SEPARATOR.to_string(),
+        format!("{}.", std::path::MAIN_SEPARATOR),
+    ] {
+        let mut requested = target.as_os_str().to_owned();
+        requested.push(suffix);
+        for args in [
+            vec!["config", "set", "default_limit", "37"],
+            vec!["config", "reset"],
+        ] {
+            let output = isolated_command(&temp)
+                .env("GHIDRA_CLI_CONFIG", &requested)
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(!output.status.success(), "{args:?}: {output:?}");
+            assert!(output.stdout.is_empty(), "{output:?}");
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert!(error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Configuration path must name a file"));
+            assert_eq!(std::fs::read_to_string(&target).unwrap(), original);
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn unavailable_file_logging_does_not_prevent_commands() {
