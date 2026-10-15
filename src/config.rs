@@ -216,7 +216,7 @@ impl Config {
 
     pub fn config_path() -> Result<PathBuf> {
         // Check for override via environment variable
-        if let Ok(path) = std::env::var("GHIDRA_CLI_CONFIG") {
+        if let Some(path) = std::env::var_os("GHIDRA_CLI_CONFIG") {
             return Ok(PathBuf::from(path));
         }
 
@@ -236,7 +236,7 @@ impl Config {
             return Ok(dir.clone());
         }
         // Environment overrides the persisted setting.
-        if let Ok(dir) = std::env::var("GHIDRA_PROJECT_DIR") {
+        if let Some(dir) = std::env::var_os("GHIDRA_PROJECT_DIR") {
             return Ok(PathBuf::from(dir));
         }
 

@@ -47,7 +47,15 @@ pub(super) fn resolve_project_path(
     } else {
         project_dir.join(project_name)
     };
-    Ok(std::path::absolute(path)?)
+    let path = std::path::absolute(path)?;
+    // Results and recovery arguments must retain the same project identity.
+    // A lossy string would point at a different path.
+    anyhow::ensure!(
+        path.to_str().is_some(),
+        "Project path cannot be represented as UTF-8: {}",
+        path.display()
+    );
+    Ok(path)
 }
 
 #[cfg(test)]

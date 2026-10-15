@@ -203,6 +203,128 @@ fn unavailable_file_logging_does_not_prevent_commands() {
     assert_eq!(std::fs::read_to_string(not_a_directory).unwrap(), "keep");
 }
 
+// APFS can reject non-UTF-8 filenames, so these fixtures require Linux.
+#[cfg(target_os = "linux")]
+#[test]
+fn non_unicode_config_environment_path_updates_only_the_requested_file() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let requested = temp
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"config-\xff.yaml"));
+    std::fs::write(
+        &requested,
+        "default_program: requested-program\ndefault_limit: 7\n",
+    )
+    .unwrap();
+    let platform_config = temp.path().join("platform-config");
+    let fallback = platform_config.join("ghidra-cli").join("config.yaml");
+    std::fs::create_dir_all(fallback.parent().unwrap()).unwrap();
+    let original_fallback = "default_program: fallback-program\ndefault_limit: 11\n";
+    std::fs::write(&fallback, original_fallback).unwrap();
+
+    let output = isolated_command(&temp)
+        .env("GHIDRA_CLI_CONFIG", &requested)
+        .env("XDG_CONFIG_HOME", &platform_config)
+        .args(["config", "set", "default_limit", "37"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let saved: serde_json::Value =
+        serde_yaml::from_str(&std::fs::read_to_string(&requested).unwrap()).unwrap();
+    assert_eq!(saved["default_limit"], 37);
+    assert_eq!(saved["default_program"], "requested-program");
+    assert_eq!(
+        std::fs::read_to_string(&fallback).unwrap(),
+        original_fallback
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn non_unicode_project_environment_path_selects_only_requested_projects() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let requested = temp
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"projects-\xff"));
+    let configured = temp.path().join("configured-projects");
+    std::fs::create_dir(&requested).unwrap();
+    std::fs::create_dir(&configured).unwrap();
+    std::fs::write(requested.join("requested.gpr"), "requested").unwrap();
+    std::fs::write(configured.join("fallback.gpr"), "fallback").unwrap();
+    let config = ghidra_cli::config::Config {
+        ghidra_project_dir: Some(configured),
+        ..Default::default()
+    };
+    std::fs::write(
+        temp.path().join("config.yaml"),
+        serde_yaml::to_string(&config).unwrap(),
+    )
+    .unwrap();
+
+    let output = isolated_command(&temp)
+        .env("GHIDRA_PROJECT_DIR", &requested)
+        .args(["project", "list"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    assert_eq!(
+        crate::json_output::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!(["requested"])
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn non_unicode_project_paths_return_structured_errors_before_management() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let requested = temp
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"projects-\xff"));
+    let replacement = temp.path().join("projects-\u{fffd}");
+    for directory in [&requested, &replacement] {
+        std::fs::create_dir(directory).unwrap();
+        std::fs::write(directory.join("target.gpr"), "retain").unwrap();
+    }
+    for from_environment in [true, false] {
+        for args in [
+            vec!["project", "info", "target"],
+            vec!["bridge", "status", "--project", "target"],
+            vec!["program", "save", "--project", "target"],
+        ] {
+            let mut command = isolated_command(&temp);
+            if from_environment {
+                command.env("GHIDRA_PROJECT_DIR", &requested);
+            } else {
+                command
+                    .env("GHIDRA_PROJECT_DIR", &replacement)
+                    .arg("--projects-dir")
+                    .arg(&requested);
+            }
+            let output = command.args(&args).output().unwrap();
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+            assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["status"], "error");
+            assert!(error["message"].as_str().unwrap().contains("UTF-8"));
+            assert!(error["detail"].get("recovery").is_none());
+        }
+    }
+    for directory in [&requested, &replacement] {
+        assert_eq!(
+            std::fs::read_to_string(directory.join("target.gpr")).unwrap(),
+            "retain"
+        );
+    }
+}
+
 #[test]
 fn config_io_failure_retains_operation_path_and_os_cause() {
     let temp = tempfile::tempdir().unwrap();
