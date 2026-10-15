@@ -217,6 +217,37 @@ fn test_symbol_targets_revalidate_every_member_and_namespace() {
 
 #[test]
 #[serial]
+fn symbol_rename_rejects_replaced_dynamic_targets() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let program = super::deletion::create_symbol_fixture_program();
+    crate::common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
+        client
+            .script_run_source(
+                include_str!("../fixtures/symbols/CreateDynamicSymbol.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        let target = client.symbol_get("0x1010").unwrap()["symbols"][0].clone();
+        let name = target["name"].as_str().unwrap();
+        client.symbol_create_label("0x1010", "replacement").unwrap();
+        let before = client.symbol_get("0x1010").unwrap();
+        let error = client
+            .symbol_rename_targets(name, "must_not_recreate", std::slice::from_ref(&target))
+            .expect_err("a replaced dynamic symbol cannot remain a valid rename target");
+        assert!(error.to_string().contains("Stale"), "{error:#}");
+        assert!(client.symbol_get_by_name("must_not_recreate").is_err());
+        assert_eq!(client.symbol_get("0x1010").unwrap(), before);
+        client.program_close().unwrap();
+        client.open_program(&program).unwrap();
+        assert_eq!(client.symbol_get("0x1010").unwrap(), before);
+    });
+}
+
+#[test]
+#[serial]
 fn symbol_rename_rolls_back_native_generated_name_substitutions() {
     require_ghidra!();
     let client = harness().client().unwrap();

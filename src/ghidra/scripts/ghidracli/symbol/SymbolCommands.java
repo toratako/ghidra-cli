@@ -219,6 +219,10 @@ public final class SymbolCommands {
       JsonObject expected = element.getAsJsonObject();
       long id = Long.parseLong(expected.get("id").getAsString());
       Symbol symbol = table.getSymbol(id);
+      // ID lookup can reconstruct dynamic symbols that no longer exist.
+      if (symbol != null && symbol.isDynamic()) {
+        symbol = table.getPrimarySymbol(symbol.getAddress());
+      }
       if (!ids.add(id)
           || symbol == null
           || !symbol.getName().equals(name)
