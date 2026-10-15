@@ -274,3 +274,71 @@ fn rebase_preserves_mapped_sources_in_moving_and_stationary_blocks() {
     client.open_program(TEST_PROGRAM).unwrap();
     client.program_delete(&name).unwrap();
 }
+
+#[test]
+#[serial]
+fn rebase_rejects_wrapping_range_property_maps_while_blocks_fit() {
+    require_ghidra!();
+    ensure_test_project(test_project(), TEST_PROGRAM);
+    let harness = start_daemon();
+    let client = harness.client().unwrap();
+    const RANGE_MAP: &str = include_str!("../fixtures/daemon/RebaseRangePropertyMaps.java");
+    for kind in ["address set", "integer range"] {
+        // Both ranges straddle the edge of the wrapping interval, rather than
+        // starting within it. Native range iterators must detect that overlap.
+        for (offset, base) in [("ffffffffffffbff8", "0x5000"), ("7f8", "0x800")] {
+            let name = create_fixture(&client, "x86:LE:64:default");
+            client
+                .script_run_source(
+                    RANGE_MAP,
+                    &[kind.into(), offset.into(), "create".into()],
+                    &[],
+                    false,
+                )
+                .unwrap();
+            let before = client.memory_block_list().unwrap();
+            for reopen in [false, true] {
+                if reopen {
+                    client.program_close().unwrap();
+                    client.open_program(&name).unwrap();
+                }
+                reject_rebase(&client, base, "range property");
+                assert_eq!(client.memory_block_list().unwrap(), before);
+                assert_eq!(client.program_info().unwrap()["image_base"], "0x00001000");
+                client
+                    .script_run_source(
+                        RANGE_MAP,
+                        &[kind.into(), offset.into(), "check".into()],
+                        &[],
+                        false,
+                    )
+                    .unwrap();
+            }
+            client.open_program(TEST_PROGRAM).unwrap();
+            client.program_delete(&name).unwrap();
+        }
+
+        let name = create_fixture(&client, "x86:LE:64:default");
+        client
+            .script_run_source(
+                RANGE_MAP,
+                &[kind.into(), "8000".into(), "create".into()],
+                &[],
+                false,
+            )
+            .unwrap();
+        rebase(&client, "0x5000");
+        client.program_close().unwrap();
+        client.open_program(&name).unwrap();
+        client
+            .script_run_source(
+                RANGE_MAP,
+                &[kind.into(), "c000".into(), "check".into()],
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.program_delete(&name).unwrap();
+    }
+}

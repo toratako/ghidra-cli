@@ -43,6 +43,7 @@ final class MemoryPatch {
           PascalUnicodeDataType.class);
 
   private final ProgramSession session;
+  private final MemoryReads reads;
   private final Address address;
   private final byte[] bytes;
   private final AddressSet changed = new AddressSet();
@@ -52,6 +53,7 @@ final class MemoryPatch {
 
   private MemoryPatch(ProgramSession session, Address address, byte[] bytes) {
     this.session = session;
+    this.reads = new MemoryReads(session);
     this.address = address;
     this.bytes = bytes;
   }
@@ -67,7 +69,7 @@ final class MemoryPatch {
     address.addNoWrap(bytes.length - 1);
     byte[] before = new byte[bytes.length];
     try {
-      if (new MemoryReads(session).read(address, before, 0, before.length) != before.length)
+      if (reads.read(address, before, 0, before.length) != before.length)
         throw new MemoryAccessException("Incomplete patch range");
     } catch (MemoryAccessException unreadable) {
       throw new IllegalArgumentException(
@@ -233,7 +235,11 @@ final class MemoryPatch {
         data.getDataType() instanceof TypeDef
             ? PointerTypedefInspector.getPointerComponentOffset((TypeDef) data.getDataType())
             : 0;
-    AutoReference before = AutoReference.from(data.getValue(), offset);
+    // Data's byte cache reads the whole root through native recursive mappings.
+    AutoReference before =
+        AutoReference.from(
+            data.getDataType().getValue(reads.buffer(data.getMinAddress()), data, data.getLength()),
+            offset);
     Object value = data.getDataType().getValue(new PatchedBuffer(data), data, data.getLength());
     AutoReference after = AutoReference.from(value, offset);
     if (Objects.equals(before, after)) return;
@@ -331,7 +337,7 @@ final class MemoryPatch {
     private final long patchOffset;
 
     PatchedBuffer(Data data) {
-      super(data, 0);
+      super(reads.buffer(data.getMinAddress()), 0);
       length = data.getLength();
       patchOffset = address.subtract(data.getMinAddress());
     }

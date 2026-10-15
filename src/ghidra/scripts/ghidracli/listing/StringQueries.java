@@ -13,6 +13,8 @@ import ghidracli.memory.MemoryReads;
 import ghidracli.query.AddressCodec;
 import ghidracli.query.ListQuery;
 import ghidracli.session.ProgramSession;
+import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
 import java.util.Locale;
 import java.util.concurrent.CancellationException;
 
@@ -69,6 +71,13 @@ public final class StringQueries {
       var string =
           StringDataInstance.getStringDataInstance(
               data.getBaseDataType(), buffer, data, data.getLength());
+      // Native decoding substitutes "??..." for an unavailable charset.
+      // Exclude undecodable data without mistaking that actual text for an error.
+      try {
+        if (!Charset.isSupported(string.getCharsetName())) return null;
+      } catch (IllegalCharsetNameException invalid) {
+        return null;
+      }
       int length = string.getStringLength();
       // A char array can terminate before its uninitialized trailing storage.
       // Check only the bytes consumed by the native string interpretation.

@@ -791,6 +791,14 @@ fn memory_sources_preserve_imported_bytes_and_file_mapping_boundaries() {
             false,
         )
         .expect("mapping traversal must propagate cancellation");
+    client
+        .script_run_source(
+            include_str!("fixtures/memory/CheckOriginalSourcesWithOverflowMapping.java"),
+            &[],
+            &[],
+            false,
+        )
+        .expect("an overflowing indirect source must not block direct preserved-file queries");
     let output = common::ghidra(&harness)
         .args([
             "memory", "read", "0x1000", "--size", "8", "--source", "original",

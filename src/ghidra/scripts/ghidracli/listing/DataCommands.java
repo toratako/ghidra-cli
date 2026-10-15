@@ -15,6 +15,7 @@ import ghidra.program.model.data.BitFieldDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.EndianSettingsDefinition;
 import ghidra.program.model.data.Enum;
+import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.Symbol;
@@ -180,10 +181,7 @@ public final class DataCommands {
 
   private void readValue(Data data, JsonObject result) throws Exception {
     if (data.getLength() > MAX_VALUE_BYTES) {
-      result.addProperty("state", "unavailable");
-      result.addProperty("reason", "value_size_limit");
-      result.addProperty("value_byte_limit", MAX_VALUE_BYTES);
-      truncate(result, "value_size_limit");
+      valueSizeLimit(result);
       return;
     }
     // Data components delegate reads to their root's whole-object byte cache.
@@ -197,6 +195,13 @@ public final class DataCommands {
     if (data.hasStringValue()) {
       // The native interpretation can consume more (patched Pascal prefixes)
       // or less (terminated char arrays) than the stored data-unit length.
+      var string =
+          StringDataInstance.getStringDataInstance(
+              data.getBaseDataType(), buffer, data, data.getLength());
+      if (string.getStringLength() > MAX_VALUE_BYTES) {
+        valueSizeLimit(result);
+        return;
+      }
       String value = stringQueries.value(data);
       result.addProperty("state", value == null ? "unavailable" : "available");
       if (value == null) result.addProperty("reason", "unreadable_memory");
@@ -265,6 +270,13 @@ public final class DataCommands {
       result.addProperty(
           "representation", data.getDataType().getRepresentation(buffer, data, data.getLength()));
     }
+  }
+
+  private static void valueSizeLimit(JsonObject result) {
+    result.addProperty("state", "unavailable");
+    result.addProperty("reason", "value_size_limit");
+    result.addProperty("value_byte_limit", MAX_VALUE_BYTES);
+    truncate(result, "value_size_limit");
   }
 
   private JsonObject metadata(Data data) {

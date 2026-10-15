@@ -5,6 +5,8 @@ import static ghidracli.protocol.JsonProtocol.errorResult;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.database.util.AddressRangeMapDB;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.AddressSet;
@@ -196,6 +198,33 @@ public final class ProgramRebaseCommands {
       throw metadataWrap(
           "function body '" + function.getName() + "'",
           function.getBody().intersect(wrapping).getMinAddress());
+    }
+    // Program's address-set and integer-range properties are separate from
+    // UsrPropertyManager and may cover unmapped addresses. Program exposes no
+    // iterator over their names; use the database's native range-map readers.
+    // These readers register weak listeners, and dispose() would delete the map.
+    // Live sessions use ProgramDB; interface-only Program adapters expose no
+    // database range maps and retain the model-level checks above.
+    if (program instanceof ProgramDB database) {
+      String prefix = AddressRangeMapDB.RANGE_MAP_TABLE_PREFIX;
+      for (var table : database.getDBHandle().getTables()) {
+        session.monitor().checkCancelled();
+        if (!table.getName().startsWith(prefix)) continue;
+        String name = table.getName().substring(prefix.length());
+        var map =
+            new AddressRangeMapDB(
+                database.getDBHandle(),
+                database.getAddressMap(),
+                database.getLock(),
+                name,
+                database,
+                table.getSchema().getFields()[1],
+                false);
+        var ranges = map.getAddressRanges(start, end);
+        if (ranges.hasNext()) {
+          throw metadataWrap("range property '" + name + "'", ranges.next().getMinAddress());
+        }
+      }
     }
     // Listing definitions and source-map entries are constrained by native APIs
     // to mapped memory, whose complete ranges have already passed preflight.

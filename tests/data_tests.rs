@@ -144,6 +144,14 @@ fn applied_data_values_and_bounded_traversal() {
             false,
         )
         .expect("apply strings with partial initialized storage");
+    client
+        .script_run_source(
+            include_str!("fixtures/data/CreatePatchedUnicodeStringValues.java"),
+            &[],
+            &[],
+            false,
+        )
+        .expect("apply string with patched Unicode length prefix");
 
     let root = read(&client, "data_record", 4, 100);
     assert_eq!(root["kind"], "structure");
@@ -272,6 +280,13 @@ fn applied_data_values_and_bounded_traversal() {
     assert_eq!(long_string["truncated"], true);
     assert_eq!(long_string["reason"], "value_size_limit");
     assert!(long_string["value"].is_null());
+    let patched_string = read(&client, "0x30000", 0, 0);
+    assert_eq!(patched_string["size"], 4);
+    assert_eq!(patched_string["state"], "unavailable");
+    assert_eq!(patched_string["reason"], "value_size_limit");
+    assert_eq!(patched_string["value_byte_limit"], 65536);
+    assert_eq!(patched_string["truncated"], true);
+    assert!(patched_string["value"].is_null());
 
     assert_reference_counts(&harness, &client);
 

@@ -1,6 +1,87 @@
 use super::{ghidra, harness, test_project, DaemonTestHarness, TEST_PROGRAM};
 use serial_test::serial;
 
+#[test]
+#[serial]
+fn define_code_recovers_from_recursive_memory_decode() {
+    use ghidra_cli::ipc::protocol::BridgeCommandError;
+    use serde_json::json;
+
+    require_ghidra!();
+    let harness = harness();
+    let client = harness.client().unwrap();
+    let name = format!("recursive-code-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/patch/CreateRecursiveCodeFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        client
+            .script_run_source(
+                include_str!("../fixtures/patch/CreateRecursiveCodeFixture.java"),
+                &[],
+                &[],
+                false,
+            )
+            .unwrap();
+        client
+            .comment_set("0x2000", "preserve after decoder failure", None)
+            .unwrap();
+        let retained = client.disasm_range("0x2000", "0x2000", None).unwrap();
+        let comment = client.comment_get("0x2000").unwrap();
+        for (command, args) in [
+            ("define_code", json!({"target":"0x1000"})),
+            ("define_code", json!({"target":"0x1000", "end":"0x1010"})),
+            (
+                "clear_range",
+                json!({"start":"0x2000", "end":"0x2000", "disasm_at":"0x1000"}),
+            ),
+        ] {
+            let error = client.send_command(command, Some(args)).unwrap_err();
+            let failure = error.downcast_ref::<BridgeCommandError>().unwrap();
+            assert_eq!(failure.detail["rolled_back"], true, "{error}");
+            assert!(
+                error.to_string().contains("recursive memory mappings"),
+                "{error}"
+            );
+            assert_eq!(
+                client.disasm_range("0x1000", "0x1010", None).unwrap()["count"],
+                0
+            );
+            assert_eq!(
+                client.disasm_range("0x2000", "0x2000", None).unwrap(),
+                retained
+            );
+            assert_eq!(client.comment_get("0x2000").unwrap(), comment);
+        }
+        client
+            .script_run_source(
+                include_str!("../fixtures/patch/CreateRecursiveCodeFixture.java"),
+                &["remove-cycle".to_owned()],
+                &[],
+                false,
+            )
+            .unwrap();
+        client.open_program(TEST_PROGRAM).unwrap();
+        client.open_program(&name).unwrap();
+        assert_eq!(
+            client.disasm_range("0x2000", "0x2000", None).unwrap(),
+            retained
+        );
+        assert_eq!(client.comment_get("0x2000").unwrap(), comment);
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 /// Disassembly failures retain diagnostics, stop dependent edits, and roll back clearing.
 #[test]
 #[serial]

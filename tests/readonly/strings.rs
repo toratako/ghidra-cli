@@ -3,6 +3,46 @@ use serde_json::{json, Value};
 
 #[test]
 #[serial]
+fn unsupported_string_charsets_do_not_become_values() {
+    require_ghidra!();
+    let client = harness().client().unwrap();
+    let name = format!("unsupported-string-charsets-{}", uuid::Uuid::new_v4());
+    client
+        .script_run_source(
+            include_str!("../fixtures/readonly/CreateUnsupportedStringCharsetFixture.java"),
+            std::slice::from_ref(&name),
+            &[],
+            false,
+        )
+        .unwrap();
+    client.open_program(&name).unwrap();
+    let checked = std::panic::catch_unwind(|| {
+        let expected = json!([
+            {"address":"0x00001200", "value":"live", "char_length":4, "byte_length":5},
+            {"address":"0x00001300", "value":"??...", "char_length":5, "byte_length":6}
+        ]);
+        assert_eq!(
+            client.list_strings(None, None, None).unwrap()["strings"],
+            expected
+        );
+        assert_eq!(client.find_string("").unwrap()["results"], expected);
+        assert_eq!(client.find_string("??...").unwrap()["count"], 1);
+        let references = client.string_refs("live".into()).unwrap();
+        assert_eq!(references["count"], 1, "{references}");
+        assert_eq!(references["results"][0]["string_value"], "live");
+        let references = client.string_refs("??...".into()).unwrap();
+        assert_eq!(references["count"], 1, "{references}");
+        assert_eq!(references["results"][0]["string_address"], "0x00001300");
+    });
+    client.open_program(TEST_PROGRAM).unwrap();
+    client.program_delete(&name).unwrap();
+    if let Err(panic) = checked {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[serial]
 fn unreadable_pascal_extent_does_not_abort_string_reference_search() {
     require_ghidra!();
     let client = harness().client().unwrap();

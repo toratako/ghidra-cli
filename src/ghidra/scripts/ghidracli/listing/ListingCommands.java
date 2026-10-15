@@ -71,7 +71,7 @@ public final class ListingCommands {
       // Mirror listing applicability and sizing before any destructive clear.
       if (dataType instanceof FactoryDataType factory) {
         dataType =
-            nativeDefinition(
+            nativeListing(
                 () ->
                     factory.getDataType(new MemoryBufferImpl(session.program().getMemory(), addr)));
         if (dataType == null) return errorResult("Failed to resolve data type: " + typeName);
@@ -85,7 +85,7 @@ public final class ListingCommands {
         dataType = new PointerDataType(dataType, session.program().getDataTypeManager());
       int length =
           dataType instanceof Dynamic dynamic
-              ? nativeDefinition(
+              ? nativeListing(
                   () ->
                       dynamic.getLength(
                           new MemoryBufferImpl(session.program().getMemory(), addr), -1))
@@ -114,7 +114,7 @@ public final class ListingCommands {
           listing.clearCodeUnits(addr, clearEnd, false, session.monitor());
         }
         session.monitor().checkCancelled();
-        if (nativeDefinition(() -> listing.createData(addr, definitionType, length)) == null) {
+        if (nativeListing(() -> listing.createData(addr, definitionType, length)) == null) {
           throw new IllegalStateException(
               "Ghidra did not create data at " + AddressCodec.format(addr));
         }
@@ -154,18 +154,19 @@ public final class ListingCommands {
   }
 
   @FunctionalInterface
-  private interface DefinitionOperation<T> {
+  private interface ListingOperation<T> {
     T run() throws Exception;
   }
 
-  private static <T> T nativeDefinition(DefinitionOperation<T> operation) throws Exception {
+  private static <T> T nativeListing(ListingOperation<T> operation) throws Exception {
     try {
       return operation.run();
     } catch (StackOverflowError recursion) {
-      // Native datatype sizing and insertion read Memory recursively.
+      // Native decoding, datatype sizing, and insertion read Memory recursively.
       // Keep that known failure inside the ordinary rollback boundary.
       throw new IllegalArgumentException(
-          "Ghidra could not define data through recursive memory mappings", recursion);
+          "Ghidra could not complete the listing operation through recursive memory mappings",
+          recursion);
     }
   }
 
@@ -323,7 +324,7 @@ public final class ListingCommands {
       if (!alreadyPresent && (permitted == null || permitted.contains(addr))) {
         DisassembleCommand command = new DisassembleCommand(addr, permitted, true);
         command.enableCodeAnalysis(false);
-        ok = command.applyTo(session.program(), session.monitor());
+        ok = nativeListing(() -> command.applyTo(session.program(), session.monitor()));
         changed = !command.getDisassembledAddressSet().isEmpty();
       }
       session.monitor().checkCancelled();
@@ -382,7 +383,7 @@ public final class ListingCommands {
               () -> {
                 DisassembleCommand command = new DisassembleCommand(start, permitted, true);
                 command.enableCodeAnalysis(false);
-                command.applyTo(session.program(), session.monitor());
+                nativeListing(() -> command.applyTo(session.program(), session.monitor()));
                 session.monitor().checkCancelled();
                 AddressSet rejected = new AddressSet();
                 Listing listing = session.program().getListing();
@@ -455,7 +456,8 @@ public final class ListingCommands {
       result.addProperty("end", AddressCodec.format(end));
 
       if (disasmAt != null) {
-        boolean ok = session.disassemble(disasmAt);
+        Address decodeAt = disasmAt;
+        boolean ok = nativeListing(() -> session.disassemble(decodeAt));
         boolean landed = session.program().getListing().getInstructionAt(disasmAt) != null;
         result.addProperty("disasm_at", AddressCodec.format(disasmAt));
         result.addProperty("ok", ok);

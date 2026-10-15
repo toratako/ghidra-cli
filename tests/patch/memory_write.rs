@@ -290,6 +290,30 @@ fn memory_write_allows_unchanged_bytes_through_nested_mappings() {
 
 #[test]
 #[serial]
+fn memory_write_preserves_pointers_spanning_recursive_mapped_bytes() {
+    fixture("x86:LE:64:default", |client| {
+        let source = include_str!("../fixtures/patch/MemoryPatchMappedPointerFixture.java");
+        client
+            .script_run_source(source, &["create".to_owned()], &[], false)
+            .unwrap();
+        let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.memory_write("0x7000", "19").unwrap();
+            assert_eq!(read(client, "0x7000", 8), "1900000000000000");
+            client
+                .script_run_source(source, &["verify".to_owned()], &[], false)
+                .unwrap();
+        }));
+        client
+            .script_run_source(source, &["remove".to_owned()], &[], false)
+            .unwrap();
+        if let Err(panic) = checked {
+            std::panic::resume_unwind(panic);
+        }
+    });
+}
+
+#[test]
+#[serial]
 fn memory_write_rejects_shared_file_bytes_and_preserves_alias_metadata() {
     fixture("x86:LE:64:default", |client| {
         client

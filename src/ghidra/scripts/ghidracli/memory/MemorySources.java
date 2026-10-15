@@ -200,7 +200,9 @@ final class MemorySources {
       long relative = source.getFileBytesOffset();
       String problem = null;
       // Indirect sources can transform or skip bytes, so never infer a direct correspondence.
-      if (source.getMappedRange().isPresent()) {
+      // Native block copies can retain an indirect source extending past its address space.
+      // Classify those blocks without evaluating a source range that cannot be represented.
+      if (block.isMapped()) {
         problem = "Indirect bit/byte memory mapping";
       } else if (file != null) {
         try {
