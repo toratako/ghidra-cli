@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Split release tests into independent groups on each platform so cumulative
+  Windows test time cannot exhaust a single all-suite timeout. Check complete
+  integration suite coverage and exercise release CI changes on pull requests
+  while keeping artifact builds and publication restricted to tag pushes.
+
 ## [0.10.2] - 2026-10-17
 
 ### Added
