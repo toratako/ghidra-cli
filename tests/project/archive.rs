@@ -78,11 +78,13 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let backups = root.path().join(".backups");
     std::fs::create_dir(&backups)?;
     let gar = backups.join("snapshot 'quoted'.gar");
-    let alias = root.path().join(if cfg!(windows) {
-        "original.v1/./PROJECT"
-    } else {
-        "original.v1/./project"
-    });
+    let alias = root
+        .path()
+        .join(if root.path().join("original.v1/PROJECT.rep").is_dir() {
+            "original.v1/./PROJECT"
+        } else {
+            "original.v1/./project"
+        });
     let receipt = success(archive(&alias, &gar)?)?;
     assert_eq!(receipt["bridge_state"], "stopped");
     assert_eq!(receipt["snapshot"], "saved_local_contents");

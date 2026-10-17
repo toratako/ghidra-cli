@@ -57,7 +57,7 @@ fn test_graceful_restart_reopens_project() {
 
 #[test]
 #[serial]
-fn bridge_start_resolves_parent_components_after_symlinks() {
+fn bridge_start_resolves_native_symlink_and_parent_components() {
     require_ghidra!();
     ensure_test_project(test_project(), TEST_PROGRAM);
     let project = std::path::Path::new(test_project());
@@ -74,12 +74,25 @@ fn bridge_start_resolves_parent_components_after_symlinks() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(nested.path(), &alias).unwrap();
     #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(nested.path(), &alias)
+    std::os::windows::fs::symlink_dir(project.parent().unwrap(), &alias)
         .expect("directory symlink creation requires Developer Mode or symlink privileges");
+    #[cfg(unix)]
     let aliased_project = alias.join("..").join(project.file_name().unwrap());
+    // Win32 removes `..` lexically before following symlinks. Put it after a
+    // real child so normalization retains the link to the project directory.
+    #[cfg(windows)]
+    let aliased_project = alias
+        .join(nested.path().file_name().unwrap())
+        .join("..")
+        .join(project.file_name().unwrap());
+    assert_eq!(
+        dunce::canonicalize(aliased_project.with_added_extension("rep")).unwrap(),
+        dunce::canonicalize(project.with_added_extension("rep")).unwrap(),
+        "test alias must resolve to the original project repository"
+    );
 
     let harness = DaemonTestHarness::new(aliased_project.to_str().unwrap(), TEST_PROGRAM)
-        .expect("start existing project through a symlink followed by a parent component");
+        .expect("start existing project through native symlink and parent components");
     let client = harness.client().unwrap();
     assert!(client.ping().unwrap());
     assert_eq!(client.program_info().unwrap()["name"], TEST_PROGRAM);
