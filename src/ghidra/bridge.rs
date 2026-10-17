@@ -297,14 +297,30 @@ fn acquire_lifecycle_lock(
     project_path: &Path,
     deadline: Option<std::time::Instant>,
 ) -> Result<StartupLockGuard> {
+    acquire_lifecycle_lock_with_clock(
+        project_path,
+        deadline,
+        std::time::Instant::now,
+        std::thread::sleep,
+    )
+}
+
+fn acquire_lifecycle_lock_with_clock(
+    project_path: &Path,
+    deadline: Option<std::time::Instant>,
+    now: impl FnMut() -> std::time::Instant,
+    sleep: impl FnMut(Duration),
+) -> Result<StartupLockGuard> {
     let lock_path =
         get_data_dir()?.join(format!("bridge-{}.starting", project_hash(project_path)?));
-    acquire_file_lock(&lock_path, deadline)
+    acquire_file_lock(&lock_path, deadline, now, sleep)
 }
 
 fn acquire_file_lock(
     path: &Path,
     deadline: Option<std::time::Instant>,
+    mut now: impl FnMut() -> std::time::Instant,
+    mut sleep: impl FnMut(Duration),
 ) -> Result<StartupLockGuard> {
     let file = std::fs::OpenOptions::new()
         .read(true)
@@ -315,17 +331,17 @@ fn acquire_file_lock(
         .map_err(|e| crate::error::path_io("bridge.lifecycle_lock", path, e))?;
     loop {
         anyhow::ensure!(
-            deadline.is_none_or(|end| std::time::Instant::now() < end),
+            deadline.is_none_or(|end| now() < end),
             "Timed out waiting for bridge lifecycle lock"
         );
         match file.try_lock() {
             Ok(()) => return Ok(StartupLockGuard { _file: file }),
             Err(std::fs::TryLockError::WouldBlock) => {
                 let wait = deadline.map_or(Duration::from_millis(100), |end| {
-                    end.saturating_duration_since(std::time::Instant::now())
+                    end.saturating_duration_since(now())
                         .min(Duration::from_millis(100))
                 });
-                std::thread::sleep(wait);
+                sleep(wait);
             }
             Err(std::fs::TryLockError::Error(error)) => {
                 return Err(crate::error::path_io("bridge.lifecycle_lock", path, error).into());
@@ -505,7 +521,7 @@ fn stop_bridge_with<T>(
             Ok(())
         }
     };
-    let _lock = acquire_lifecycle_lock(project_path, deadline).map_err(|error| {
+    let _lock = acquire_lifecycle_lock_with_clock(project_path, deadline, &mut now, &mut sleep).map_err(|error| {
         if deadline.is_some_and(|end| now() >= end) {
             timeout_error().context("Shutdown deadline expired waiting for the lifecycle lock; preserving project state")
         } else { error }
