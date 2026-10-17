@@ -5,6 +5,26 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-17
+
+### Added
+
+- Add `cargo xtask fmt-java [--check]` with checksum-verified
+  google-java-format 1.37.0, apply Google formatting to Java sources, and check
+  formatting in CI on Linux, Windows, and macOS.
+
+### Changed
+
+- Consolidate Java test fixtures by domain, move embedded test programs and
+  probes into fixture files, and keep source fixtures read-only by running
+  generated or modified copies in temporary storage.
+- Run Clippy across the full workspace in CI.
+- Update `zip` to 9.0.1, `proptest` to 1.12.0, `pest`/`pest_derive` to 2.9.3,
+  and `uuid` to 1.28.0, with refreshed transitive dependencies.
+- Update `actions/upload-artifact` to 7.0.2, `actions/download-artifact` to
+  8.0.2, and the pinned `dtolnay/rust-toolchain` revision.
+- Ignore repository-local `.agents/` files in Git.
+
 ### Fixed
 
 - Reuse running bridges without requiring a local Ghidra installation, and
@@ -26,6 +46,117 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   contains an unusable Java runtime.
 - Validate the effective JAR manifest entry point and report project-directory
   read failures instead of returning an empty project list.
+- Honor native filesystem paths in `GHIDRA_CLI_CONFIG` and `GHIDRA_PROJECT_DIR`
+  overrides without silently falling back when their values are non-Unicode.
+- Preserve filesystem target identity through symlinks and parent components
+  during startup and import, and reject project names or locations that Ghidra
+  would rewrite before startup, bootstrap, archive, restore, or deletion.
+- Reject directory-only configuration and GAR/GDT output paths before path
+  normalization can turn them into file targets.
+- Return structured errors for non-Unicode project, import, and GAR paths
+  without panicking. Keep doctor storage diagnostics and job recovery usable
+  from non-Unicode paths, and withhold batch resume commands when the original
+  working directory cannot be represented faithfully.
+- Preserve readiness signals, structured startup errors, and bootstrap
+  diagnostics after launcher output containing invalid UTF-8 bytes.
+- Match Java's manifest line endings, continuations, duplicate attributes, and
+  launcher whitespace rules, and reject malformed headers in every JAR section.
+- Require an executable Java compiler and preserve Unicode launch paths on Linux
+  by selecting a UTF-8 locale or reporting an unavailable locale before launch.
+- Carry explicit `--java-home` selections through nested batches, imports,
+  bridge startup, and batch recovery commands.
+- Honor total IPC deadlines across retries and partial or interrupted I/O,
+  reject responses received after expiry, and avoid advertising unknown outcomes
+  or recovery jobs for failures before any request write was attempted.
+- Validate bridge response job identity, successful program selection receipts,
+  and object-valued error details before updating selection or handling errors.
+- Require complete LF-terminated UTF-8 bridge requests, rejecting malformed JSON,
+  duplicate object members, and unpaired Unicode surrogates before admission,
+  program selection, mutation, or shutdown.
+- Close request sockets when admission fails before a reply takes ownership,
+  including parser failures on supported older Gson versions.
+- Deliver cancellation callbacks outside the monitor listener lock so native
+  listener cleanup cannot deadlock a running job, and keep reported progress
+  within a reduced maximum.
+- Retain cancellation metadata and script output when a native script throws
+  `CancelledException` without cancelling its monitor.
+- Distinguish selected programs by project identity as well as program path,
+  including links to programs in other projects.
+- Fail and roll back owned transactions after native aborts, including
+  non-atomic script and analysis requests, and retain completed handler output
+  in `detail.command_response` when request completion rolls it back.
+- Preserve explicit save and preview rollback failures during request completion
+  without retrying transaction closure or saving unrelated pending edits.
+- Include generated parameter and local names when resolving exact targets,
+  rejecting collisions with indexed symbols before reads or edits.
+- Apply declared function names consistently during signature edits, reject
+  native name substitutions, and allow qualified function names when renaming
+  at an explicit entry address.
+- Reject native coercion of requested function return types while preserving
+  saved inputs and valid indirect ABI returns.
+- Preserve valid saved return, parameter, and local storage during type growth,
+  including external and unmapped functions. Validate dormant thunk definitions
+  before type mutations so their declared type identities and storage survive.
+- Reject C imports that discard definitions, enum members, or base structures,
+  or clip declared bitfield widths.
+- Reject unevaluated or overflowing C array lengths and enum values, including
+  narrowed literals, implicit enum increments, and definitions that change when
+  `sizeof` expressions are reevaluated.
+- Reject C declarators whose repeated function parameter lists would be lost
+  during type imports, function signature edits, or call-site signature edits.
+- Bound type and category path nesting before native recursive lookup or mutation,
+  including GDT root selection.
+- Validate endianness for complex numeric and UTF-16/UTF-32 string builtins
+  before importing GDT archives.
+- Preserve decimal and hexadecimal `--file-offset` and `--length` values in
+  native BinaryLoader options, including the fully qualified loader name.
+- Preserve Unicode whitespace in address-space names throughout parsing, symbol
+  selection, and listing edits, and reject signed word-address overflow before
+  native offset narrowing can select another address.
+- Revalidate captured dynamic symbol targets against the current primary symbol
+  before editing, and include dynamic labels in `symbol entry-points` results.
+- Reject stack storage offsets and resized variable intervals that wrap or exceed
+  the program's signed stack boundaries.
+- Mark equate references as operand-selectable only when they identify a unique,
+  existing instruction operand.
+- Use readable mapped ranges for byte, string, regex, and address-table searches,
+  function candidate selection, and instruction bytes. Preserve overlapping
+  matches across adjacent blocks and avoid recursive native memory reads.
+- Resolve equal-width recursive memory mappings efficiently, including 2:2
+  schemes, without byte-by-byte fixed-point iteration.
+- Recover from recursive native memory failures during data definition and
+  disassembly through the ordinary rollback boundary, preserving the bridge
+  and existing listing state.
+- Preserve pointer data and automatic references when patches span recursive
+  memory mappings, and report indirect original-byte sources without evaluating
+  overflowing mapped source ranges.
+- Enforce data-value size limits against decoded string extents and exclude
+  unsupported string charsets without replacing values with decoder placeholders.
+- Reject rebases that wrap mapped source ranges or native address-set and
+  integer-range properties, including metadata outside mapped memory.
+- Traverse deep thunk chains without recursive caller enumeration and return
+  recoverable errors when native function metadata loading overflows the stack.
+- Preserve conditional indirect CFG transfers without treating their guard's
+  fallthrough branch as a resolved call or jump target.
+- Follow each valid nested array stride when reporting semantic field accesses.
+- Account for embedded comment newlines in decompile address-to-line mappings.
+- Reject Java script bundles with failed helper compilation before stale cached
+  classes can execute. Cleanly rebuild after failed sources are removed, and
+  report incomplete cleanup before compiling against remaining classes.
+- Compare numeric string fields using decimal or explicit hexadecimal values
+  without losing integer precision, keep scalar/array/`IN` comparisons consistent,
+  and distinguish unequal fractional values without an epsilon tolerance.
+- Preserve address-space identity in comparisons across related address fields,
+  and keep non-ASCII contains filtering and pagination together in Rust so Java
+  Unicode casing differences cannot change matches or pages.
+- Preserve raw P-code result fields in `--format asm` output instead of treating
+  rows with a mnemonic as disassembly instructions.
+- Restore file modification times after GAR payload size and checksum validation.
+- Preserve failing Windows test exit statuses that cannot fit in eight bits,
+  and quote release archive names so tag text remains literal in shell commands.
+- Keep tests portable with explicit LF response frames, native filesystem case
+  and symlink semantics, bounded Windows fixture arguments, fallible ZIP entry
+  names, and standalone JAR script sources isolated from runtime-generated code.
 
 ## [0.10.1] - 2026-10-12
 
@@ -1531,7 +1662,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.1...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/toratako/ghidra-cli/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/toratako/ghidra-cli/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/toratako/ghidra-cli/compare/v0.8.0...v0.9.0
