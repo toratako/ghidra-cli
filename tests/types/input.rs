@@ -152,7 +152,8 @@ fn type_import_rejects_overdeep_category_without_changing_saved_types() {
     let client = harness().client().unwrap();
     common::with_temporary_program(&client, &program, TEST_PROGRAM, || {
         let before = type_command(&program, &["list", "--limit", "0"]).data::<serde_json::Value>();
-        let category = "/nested".repeat(10_000);
+        // Exceed the 128-level limit without exceeding Windows' command-line limit.
+        let category = "/nested".repeat(129);
         let rejected = type_command(
             &program,
             &[
