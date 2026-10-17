@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-18
+
+This release also includes all changes documented for
+[0.10.2](https://github.com/toratako/ghidra-cli/blob/v0.10.2/CHANGELOG.md),
+which was not published because release validation timed out.
+
 ### Fixed
 
 - Split release tests into independent groups on each platform so cumulative
@@ -1669,7 +1675,8 @@ selected nonsleepr and encounter changes, and subsequent work in this repository
   running bridge first so the project lock is released. `ghidra-cli project info`
   likewise reports `Exists` based on those artifacts.
 
-[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.2...HEAD
+[unreleased]: https://github.com/toratako/ghidra-cli/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/toratako/ghidra-cli/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/toratako/ghidra-cli/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/toratako/ghidra-cli/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/toratako/ghidra-cli/compare/v0.9.0...v0.10.0
