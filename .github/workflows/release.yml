@@ -24,6 +24,9 @@ jobs:
     name: Unit and CLI ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-unit-and-cli-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,6 +71,9 @@ jobs:
     name: Test ${{ matrix.os }} (${{ matrix.suite }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-test-${{ github.ref }}-${{ matrix.os }}-${{ matrix.suite }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:

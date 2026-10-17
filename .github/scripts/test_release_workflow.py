@@ -16,7 +16,8 @@ class ReleaseTestCoverageTests(unittest.TestCase):
     def test_every_integration_target_runs_in_exactly_one_release_group(self):
         root = Path(__file__).resolve().parents[2]
         metadata = json.loads(subprocess.check_output(
-            [os.environ.get("CARGO", "cargo"), "metadata", "--locked", "--no-deps", "--format-version", "1"],
+            [os.environ.get("CARGO", "cargo"), "metadata", "--locked", "--offline",
+             "--no-deps", "--format-version", "1"],
             cwd=root,
             text=True,
         ))
