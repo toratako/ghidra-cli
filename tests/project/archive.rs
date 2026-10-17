@@ -96,11 +96,12 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     assert!(zip.by_name(&marker).is_ok());
     let archived_time = zip.by_name("timestamp/probe.bin")?.last_modified().unwrap();
     assert_eq!(archived_time.year(), 2001);
-    assert!(!zip.file_names().any(|name| {
-        name.rsplit('/')
+    for name in zip.file_names() {
+        assert!(!name?
+            .rsplit('/')
             .next()
-            .is_some_and(|name| name.starts_with("tmp") && name.ends_with(".tmp"))
-    }));
+            .is_some_and(|name| name.starts_with("tmp") && name.ends_with(".tmp")));
+    }
     drop(zip);
     drop(harness);
     let restored = dunce::canonicalize(root.path())?.join("restored.v2");
@@ -175,6 +176,8 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
     let mut native_zip = zip::ZipArchive::new(std::fs::File::open(&native_gar)?)?;
     let native_timestamp_index = native_zip
         .file_names()
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
         .position(|name| name.replace('\\', "/") == "timestamp/probe.bin")
         .expect("native archive timestamp fixture");
     assert_eq!(
@@ -196,7 +199,7 @@ fn gar_round_trip_preserves_project_and_interoperates_with_native_ghidra() -> an
         if entry.is_dir() {
             continue;
         }
-        windows.start_file(entry.name().replace('/', "\\"), options)?;
+        windows.start_file(entry.name()?.replace('/', "\\"), options)?;
         std::io::copy(&mut entry, &mut windows)?;
     }
     for excluded in ["save\\ignored", "idata\\00\\.properties"] {
