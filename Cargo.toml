@@ -50,7 +50,7 @@ md5 = "0.8.1"
 dirs = "7.0.0"
 tempfile = "3.27.0"
 walkdir = "2.5.0"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 
 # Process management
 which = "8.0.6"
