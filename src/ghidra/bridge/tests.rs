@@ -47,18 +47,17 @@ fn shutdown_deadline_expiring_after_lock_acquisition_never_runs_project_operatio
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("expired-after-lock");
     let started = std::time::Instant::now();
-    let first_check = Cell::new(true);
+    // Deadline creation and the unlocked file check still have budget.
+    let mut clock = [started, started, started + Duration::from_secs(2)].into_iter();
     let error = stop_bridge_with(
         &project,
         Some(Duration::from_secs(1)),
         |_| panic!("there is no recorded process"),
         |_, _| panic!("there is no recorded bridge"),
         || {
-            if first_check.replace(false) {
-                started
-            } else {
-                started + Duration::from_secs(2)
-            }
+            clock
+                .next()
+                .expect("shutdown must stop at the expired check")
         },
         |_| panic!("expired shutdown must not sleep"),
         || -> Result<()> { panic!("expired shutdown must not run project operations") },
@@ -212,14 +211,14 @@ fn shutdown_deadline_expiring_during_pid_check_preserves_discovery_and_timeout_t
 
     let started = std::time::Instant::now();
     let elapsed = Cell::new(Duration::ZERO);
-    let timeout = Duration::from_millis(100);
+    let timeout = Duration::from_nanos(1);
     let error = stop_bridge_with(
         &project,
         Some(timeout),
         |observed_pid| {
             assert_eq!(observed_pid, pid);
-            // Model a Windows tasklist invocation outlasting the budget.
-            elapsed.set(elapsed.get() + Duration::from_millis(150));
+            // Only the injected clock advances, independent of filesystem latency.
+            elapsed.set(elapsed.get() + timeout + Duration::from_nanos(1));
             true
         },
         |_, _| panic!("an expired shutdown must not contact the bridge"),
@@ -228,9 +227,13 @@ fn shutdown_deadline_expiring_during_pid_check_preserves_discovery_and_timeout_t
         || Ok(()),
     )
     .unwrap_err();
-    assert!(error
-        .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
-        .is_some());
+    assert!(
+        error
+            .downcast_ref::<crate::ipc::protocol::BridgeTimeoutError>()
+            .is_some(),
+        "{error:#}"
+    );
+    assert_eq!(elapsed.get(), timeout + Duration::from_nanos(1));
     assert_eq!(read_pid_file(&project).unwrap(), Some(pid));
     assert_eq!(read_port_file(&project).unwrap(), Some(port));
     std::fs::remove_file(pid_path).unwrap();
@@ -242,18 +245,34 @@ fn lifecycle_lock_recovers_empty_file_and_excludes_waiters() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("bridge.starting");
     std::fs::write(&path, []).unwrap();
-    let holder = acquire_file_lock(&path, None).unwrap();
-    assert!(acquire_file_lock(
-        &path,
-        Some(std::time::Instant::now() + Duration::from_millis(30))
-    )
-    .is_err());
+    let started = std::time::Instant::now();
+    let elapsed = Cell::new(Duration::ZERO);
+    let now = || started + elapsed.get();
+    let holder = acquire_file_lock(&path, None, now, |_| {
+        panic!("an unlocked lifecycle file must not require waiting")
+    })
+    .unwrap();
+    let timeout = Duration::from_millis(30);
+    assert!(
+        acquire_file_lock(&path, Some(started + timeout), now, |wait| {
+            assert!(
+                !wait.is_zero(),
+                "lock acquisition must stop at the deadline"
+            );
+            elapsed.set(elapsed.get() + wait);
+        })
+        .is_err()
+    );
+    assert_eq!(elapsed.get(), timeout);
     drop(holder);
     assert!(
         path.exists(),
         "the inode must remain stable for waiting callers"
     );
-    let _next = acquire_file_lock(&path, None).unwrap();
+    let _next = acquire_file_lock(&path, None, now, |_| {
+        panic!("a released lifecycle lock must not require waiting")
+    })
+    .unwrap();
 }
 
 #[test]
