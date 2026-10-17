@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/scripts/**'
 
 permissions:
   contents: read
@@ -15,14 +20,76 @@ jobs:
   audit:
     uses: ./.github/workflows/audit.yml
 
-  test:
-    name: Test ${{ matrix.os }}
+  unit-and-cli:
+    name: Unit and CLI ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-unit-and-cli-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-26]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Build
+        run: cargo build --locked --verbose
+
+      - name: Run unit tests
+        run: cargo test --locked --lib --bin ghidra-cli --verbose
+
+      - name: Run documentation tests
+        run: cargo test --locked --doc --verbose
+
+      - name: Run xtask tests
+        run: cargo test --locked -p xtask --verbose
+
+      - name: Check generated command tree
+        run: cargo run --locked --quiet --package xtask -- gen-tree --check
+
+      - name: Test CI archive extraction
+        run: python -m unittest discover -s .github/actions/install-ghidra -v
+
+      - name: Test release publication guards
+        run: python -m unittest discover -s .github/scripts -v
+
+      - name: Run CLI tests
+        run: cargo test --locked --no-fail-fast --test e2e --test output_format_integration --test routing_tests --test harness_tests --verbose
+
+  test:
+    name: Test ${{ matrix.os }} (${{ matrix.suite }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-test-${{ github.ref }}-${{ matrix.os }}-${{ matrix.suite }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-26]
+        suite: [readonly, mutation, daemon, project, standalone-jar]
+        include:
+          - suite: readonly
+            tests: --test readonly_tests --test memory_tests --test vtable_tests --test virtual_callers_tests --test address_table_tests --test function_candidates_tests --test data_tests --test export_coverage_tests --test command_tests
+          - suite: mutation
+            tests: --test address_tests --test comment_tests --test symbol_tests --test patch_tests --test tag_tests --test type_tests --test script_tests --test stack_purge_tests --test thunk_tests --test xref_tests --test equate_tests --test bookmark_tests --test namespace_tests --test memory_block_tests --test function_body_tests --test call_signature_tests --test listing_flow_tests
+          - suite: daemon
+            tests: --test daemon_tests
+          - suite: project
+            tests: --test reliability_tests --test project_tests --test bootstrap_tests --test fixture_tests
+          - suite: standalone-jar
+            tests: --test standalone_jar_tests
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,18 +111,6 @@ jobs:
       - name: Build
         run: cargo build --locked --verbose
 
-      - name: Run xtask tests
-        run: cargo test --locked -p xtask --verbose
-
-      - name: Check generated command tree
-        run: cargo run --locked --quiet --package xtask -- gen-tree --check
-
-      - name: Test CI archive extraction
-        run: python -m unittest discover -s .github/actions/install-ghidra -v
-
-      - name: Test release publication guards
-        run: python -m unittest discover -s .github/scripts -v
-
       - name: Install Ghidra
         uses: ./.github/actions/install-ghidra
         timeout-minutes: 20
@@ -65,18 +120,19 @@ jobs:
         run: cargo run --locked -- doctor --runtime
         timeout-minutes: 5
 
-      - name: Run all tests
-        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast --verbose -- --nocapture
+      - name: Run integration tests
+        run: cargo run --locked --quiet --package xtask -- test --locked --no-fail-fast ${{ matrix.tests }} --verbose -- --nocapture
         timeout-minutes: 80
         env:
           RUST_LOG: info
 
   build:
     name: Build ${{ matrix.target }}
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     # Gate all release artifacts on tests and a fresh dependency audit. Because
     # `release` and `publish` both `needs: build`, this transitively blocks the
     # GitHub release and crates.io publish if either gate fails.
-    needs: [test, audit]
+    needs: [unit-and-cli, test, audit]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -140,6 +196,7 @@ jobs:
 
   release:
     name: Create GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
@@ -217,7 +274,7 @@ jobs:
   publish:
     name: Publish to crates.io
     # Enable explicitly with this repository variable and CARGO_REGISTRY_TOKEN.
-    if: ${{ vars.PUBLISH_CRATES_IO == 'true' }}
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_CRATES_IO == 'true'
     needs: build
     runs-on: ubuntu-latest
     steps:

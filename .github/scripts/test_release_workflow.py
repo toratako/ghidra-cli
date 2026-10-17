@@ -1,13 +1,34 @@
-"""Run release archive steps locally without publishing or credentials."""
+"""Check release test coverage and archive steps without publishing or credentials."""
 
+import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tarfile
 import tempfile
 import textwrap
 import unittest
 import zipfile
+
+
+class ReleaseTestCoverageTests(unittest.TestCase):
+    def test_every_integration_target_runs_in_exactly_one_release_group(self):
+        root = Path(__file__).resolve().parents[2]
+        metadata = json.loads(subprocess.check_output(
+            [os.environ.get("CARGO", "cargo"), "metadata", "--locked", "--offline",
+             "--no-deps", "--format-version", "1"],
+            cwd=root,
+            text=True,
+        ))
+        package = next(package for package in metadata["packages"]
+                       if package["name"] == "ghidra-cli")
+        targets = [target["name"] for target in package["targets"]
+                   if "test" in target["kind"]]
+        workflow = (root / ".github/workflows/release.yml").read_text()
+        test_jobs = workflow.split("\n  build:\n", 1)[0]
+        selected = re.findall(r"--test ([\w-]+)", test_jobs)
+        self.assertCountEqual(selected, targets)
 
 
 def archive_script(name, target, tag):

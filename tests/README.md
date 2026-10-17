@@ -10,6 +10,7 @@ cargo fmt --all -- --check
 cargo xtask fmt-java --check
 cargo clippy --workspace -- -D warnings
 python -m unittest discover -s .github/actions/install-ghidra -v
+python -m unittest discover -s .github/scripts -v
 ```
 
 Ghidra-dependent tests must fail if Ghidra is unavailable. `require_ghidra!()`
@@ -89,6 +90,14 @@ Markdown-only changes skip Ghidra setup and integration jobs; unit/CLI tests,
 the command tree check, and lint still run. Other changes run every suite on
 Linux, Windows, and macOS 26 ARM64. Infrastructure tests run in two parallel groups
 per OS: `daemon_tests`, and the project/bootstrap/reliability/fixture suites.
+
+The [release workflow](../.github/workflows/release.yml) runs unit/CLI tests and
+five integration groups independently on each OS: read-only, mutation, daemon,
+project/bootstrap, and standalone JAR. It also runs documentation tests and checks
+the selected integration targets against Cargo metadata to catch missing or
+duplicated suites. All groups and the dependency audit must pass before release
+builds start. Pull requests changing the release workflow or its scripts run
+these checks; artifact builds and publication require a `v*` tag push.
 
 Suite roots own fixture lifetimes and serial locks; domain modules remain in the
 original test executables. `routing_tests.rs` owns the recorded bridge's TCP worker,
