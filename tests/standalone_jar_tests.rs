@@ -171,7 +171,11 @@ fn official_jar_runs_detached_with_native_tools_and_durable_project_operations()
         .unwrap();
     assert!(found["count"].as_u64().unwrap() > 0, "{found}");
 
-    let script = runtime.root.path().join("PersistJarComment.java");
+    // Ghidra compiles the script's parent directory recursively. Keep runtime
+    // settings and their generated OSGi Java sources outside this source tree.
+    let scripts = runtime.root.path().join("scripts");
+    std::fs::create_dir(&scripts).unwrap();
+    let script = scripts.join("PersistJarComment.java");
     std::fs::write(
         &script,
         include_str!("fixtures/runtime/PersistJarComment.java"),
