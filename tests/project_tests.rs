@@ -214,11 +214,13 @@ fn test_project_delete_stops_bridge_for_equivalent_paths() -> anyhow::Result<()>
     let pid = bridge::read_pid_file(&project)?.expect("bridge PID");
     let port_file = bridge::port_file_path(&project)?;
     let pid_file = bridge::pid_file_path(&project)?;
-    let alias = root.path().join(if cfg!(windows) {
-        "nested/../nested/PROJECT"
-    } else {
-        "nested/../nested/project"
-    });
+    let alias = root
+        .path()
+        .join(if root.path().join("nested/PROJECT.rep").is_dir() {
+            "nested/../nested/PROJECT"
+        } else {
+            "nested/../nested/project"
+        });
     assert_eq!(bridge::is_bridge_running(&alias), Some(harness.port()));
 
     let output = common::run_command_with_output(

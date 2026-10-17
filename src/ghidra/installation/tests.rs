@@ -792,22 +792,28 @@ fn custom_homebrew_prefix_uses_opt_link_and_deduplicates_aliases() {
     );
 }
 
-#[cfg(windows)]
 #[test]
-fn windows_case_aliases_do_not_create_distinct_candidates() {
+fn candidate_identity_respects_filesystem_case_sensitivity() {
     let temp = tempfile::tempdir().unwrap();
-    let installed = distribution(
-        &temp.path().join("Ghidra space's"),
-        Platform::Windows,
-        "12.1",
-    );
-    let alias = PathBuf::from(installed.to_str().unwrap().to_uppercase());
+    let platform = Platform::native();
+    let installed = distribution(&temp.path().join("Ghidra space's"), platform, "12.1");
+    let alias = temp.path().join("GHIDRA SPACE'S");
+    let same_directory = alias.is_dir();
+    if !same_directory {
+        distribution(&alias, platform, "12.1");
+    }
     let roots = vec![
         SearchRoot::exact(&installed, "original"),
         SearchRoot::exact(alias, "case alias"),
     ];
-    assert_eq!(
-        resolve_inputs(Inputs { roots, ..inputs() }).unwrap().path,
-        installed
-    );
+    let selected = resolve_inputs(Inputs { roots, ..inputs() });
+    if same_directory {
+        assert_eq!(selected.unwrap().path, installed);
+    } else {
+        let GhidraError::Installation(error) = selected.unwrap_err() else {
+            panic!("expected distinct installation candidates");
+        };
+        assert_eq!(error.status, "ambiguous");
+        assert_eq!(error.candidates.len(), 2);
+    }
 }
