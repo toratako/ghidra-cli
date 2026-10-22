@@ -125,7 +125,11 @@ fn verify_jar(path: &Path, expected_sha256: &str) -> Result<()> {
         }
         digest.update(&buffer[..count]);
     }
-    let actual = format!("{:x}", digest.finalize());
+    let actual: String = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     ensure!(
         actual == expected_sha256,
         "formatter JAR SHA-256 mismatch for {}: expected {expected_sha256}, got {actual}",
@@ -206,6 +210,7 @@ mod tests {
     use std::ffi::OsString;
 
     const TEST_JAR: &[u8] = b"verified formatter fixture";
+    const TEST_SHA256: &str = "f33b8ca26daae25933ceef4a79631b9a0bed6b8cc2c77f235398f0fa4d21656d";
     const CHILD_EXIT: &str = "XTASK_FMT_JAVA_CHILD_EXIT";
 
     fn workspace() -> tempfile::TempDir {
@@ -216,10 +221,6 @@ mod tests {
         fs::create_dir(root.path().join("src")).unwrap();
         fs::create_dir(root.path().join("tests")).unwrap();
         root
-    }
-
-    fn checksum() -> String {
-        format!("{:x}", Sha256::digest(TEST_JAR))
     }
 
     fn cached_path(root: &Path) -> PathBuf {
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn cache_publishes_verified_download_and_verifies_it_again_before_reuse() {
         let root = workspace();
-        let jar = cached_jar(root.path(), &checksum(), |pending| {
+        let jar = cached_jar(root.path(), TEST_SHA256, |pending| {
             assert!(!cached_path(root.path()).exists());
             let lock = OpenOptions::new().read(true).write(true).open(
                 pending
@@ -290,12 +291,12 @@ mod tests {
         .unwrap();
         assert_eq!(fs::read(&jar).unwrap(), TEST_JAR);
         assert_eq!(
-            cached_jar(root.path(), &checksum(), |_| panic!("cache must be reused")).unwrap(),
+            cached_jar(root.path(), TEST_SHA256, |_| panic!("cache must be reused")).unwrap(),
             jar
         );
 
         fs::write(&jar, b"corrupt cache").unwrap();
-        let error = cached_jar(root.path(), &checksum(), |_| {
+        let error = cached_jar(root.path(), TEST_SHA256, |_| {
             panic!("corrupt cache must fail before a JAR is returned")
         })
         .unwrap_err();
@@ -307,7 +308,7 @@ mod tests {
     fn failed_or_corrupt_downloads_never_publish_a_cached_jar() {
         for fail_download in [true, false] {
             let root = workspace();
-            let result = cached_jar(root.path(), &checksum(), |pending| {
+            let result = cached_jar(root.path(), TEST_SHA256, |pending| {
                 fs::write(pending, b"incomplete download")?;
                 if fail_download {
                     bail!("download interrupted");
