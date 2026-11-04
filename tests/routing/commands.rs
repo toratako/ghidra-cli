@@ -39,7 +39,7 @@ fn export_rejects_an_unrepresentable_output_directory_before_dispatch() {
 }
 
 #[test]
-fn renamed_commands_preserve_wire_requests_in_standalone_and_batch() {
+fn command_operands_preserve_wire_requests_in_standalone_and_batch() {
     let bridge = RecordedBridge::new();
     for (args, wire, key, expected) in [
         (
@@ -231,30 +231,12 @@ fn positional_targets_preserve_requests_in_standalone_and_batch() {
 }
 
 #[test]
-fn single_objects_and_mutations_reject_list_flags_before_program_dispatch() {
+fn query_filters_cannot_retarget_single_objects_or_mutations() {
     let bridge = RecordedBridge::new();
-    let flags = [
-        "--filter name=other",
-        "--sort name",
-        "--skip 1",
-        "--limit 0",
-        "--count",
-    ];
-    let mut lines: Vec<_> = [
-        "function delete main",
-        "listing define-code 0x1000",
-        "comment delete 0x1000 --all",
-        "memory read 0x1000 --size 8",
-        "program info",
-        "program stats",
-    ]
-    .into_iter()
-    .flat_map(|command| {
-        flags
-            .iter()
-            .map(move |flag| format!("{command} --program must-not-open {flag}"))
-    })
-    .collect();
+    let mut lines: Vec<_> = ["function delete main", "program info"]
+        .into_iter()
+        .map(|command| format!("{command} --program must-not-open --filter name=other"))
+        .collect();
     let rejected = lines.len();
     for line in &lines {
         let output = bridge

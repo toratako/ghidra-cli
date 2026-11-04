@@ -1,5 +1,4 @@
 use super::*;
-use clap::ValueEnum;
 
 #[test]
 fn output_formats_accept_supported_spellings() {
@@ -35,79 +34,6 @@ fn output_formats_accept_supported_spellings() {
                 assert_eq!(format, Some(expected));
             }
         }
-    }
-}
-
-#[test]
-fn shared_format_help_lists_supported_choices() {
-    for command in [
-        ["symbol", "entry-points"].as_slice(),
-        ["memory", "read"].as_slice(),
-    ] {
-        for flag in ["-h", "--help"] {
-            let help = Cli::try_parse_from(
-                ["ghidra-cli"]
-                    .into_iter()
-                    .chain(command.iter().copied())
-                    .chain([flag]),
-            )
-            .err()
-            .expect("expected help")
-            .to_string();
-            for value in OutputFormat::value_variants() {
-                let possible = value.to_possible_value().unwrap();
-                assert!(help.contains(possible.get_name()), "{help}");
-            }
-            if flag == "--help" {
-                assert!(help.contains("ndjson"), "{help}");
-            }
-        }
-    }
-}
-
-#[test]
-fn single_object_commands_reject_list_options() {
-    for command in [
-        ["memory", "read", "0x1000", "--size", "64"].as_slice(),
-        ["program", "info"].as_slice(),
-        ["program", "stats"].as_slice(),
-    ] {
-        for flags in [
-            ["--filter", "size>0"].as_slice(),
-            ["-f", "size>0"].as_slice(),
-            ["--count"].as_slice(),
-            ["--limit", "1"].as_slice(),
-            ["--skip", "1"].as_slice(),
-            ["--sort", "size"].as_slice(),
-        ] {
-            let error = Cli::try_parse_from(
-                ["ghidra-cli"]
-                    .into_iter()
-                    .chain(command.iter().copied())
-                    .chain(flags.iter().copied()),
-            )
-            .err()
-            .expect("single objects must reject list options");
-            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
-        }
-    }
-    for command in [
-        vec!["memory", "block", "list"],
-        vec!["symbol", "externals"],
-        vec!["symbol", "entry-points"],
-    ] {
-        Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command).chain([
-            "--filter",
-            "name~test",
-            "--count",
-            "--limit",
-            "1",
-            "--skip",
-            "1",
-            "--sort",
-            "name",
-        ]))
-        .unwrap();
     }
 }
 

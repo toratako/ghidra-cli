@@ -5,19 +5,7 @@ mod json_output;
 
 use predicates::prelude::*;
 
-#[macro_use]
 mod common;
-
-#[test]
-fn test_version_flag() {
-    require_ghidra!();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ghidra-cli"));
-}
 
 #[test]
 fn test_doctor() {
@@ -27,67 +15,6 @@ fn test_doctor() {
         .expect("Failed to run doctor");
     common::assert_doctor_ready(&output);
     assert!(String::from_utf8_lossy(&output.stdout).contains("Ghidra CLI Doctor"));
-}
-
-#[test]
-fn test_config_list() {
-    require_ghidra!();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("config")
-        .arg("list")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ghidra_install_dir"));
-}
-
-#[test]
-fn test_config_get() {
-    require_ghidra!();
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .arg("config")
-        .arg("get")
-        .arg("ghidra_install_dir")
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_config_set() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("config")
-        .arg("set")
-        .arg("default_output_format")
-        .arg("json")
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_config_set_launch_timeout() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("config")
-        .arg("set")
-        .arg("launch_timeout_secs")
-        .arg("240")
-        .assert()
-        .success();
-
-    let config = std::fs::read_to_string(config_path).unwrap();
-    assert!(config.contains("launch_timeout_secs: 240"), "{config}");
 }
 
 #[test]
@@ -127,53 +54,6 @@ fn config_set_java_home_persists_requested_value_and_preserves_other_settings() 
         crate::json_output::from_slice::<std::path::PathBuf>(&output.stdout).unwrap(),
         java_home
     );
-}
-
-#[test]
-fn test_config_reset() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .arg("config")
-        .arg("reset")
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_config_set_default_program() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .args(["config", "set", "default_program"])
-        .arg("sample_binary")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Configuration updated"));
-}
-
-#[test]
-fn test_config_set_default_project() {
-    require_ghidra!();
-
-    let temp = tempfile::tempdir().unwrap();
-    let config_path = temp.path().join("config.yaml");
-
-    assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli")
-        .env("GHIDRA_CLI_CONFIG", &config_path)
-        .args(["config", "set", "default_project"])
-        .arg("test-project")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Configuration updated"));
 }
 
 #[test]

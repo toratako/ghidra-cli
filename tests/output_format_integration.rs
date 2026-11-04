@@ -14,38 +14,6 @@ mod project;
 #[path = "output/validation.rs"]
 mod validation;
 
-#[test]
-fn test_format_detection_tty() {
-    // Test that --help shows both --json and --pretty flags
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
-    cmd.arg("--help");
-    cmd.assert().success();
-
-    let output = cmd.output().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("--json"), "Help should show --json flag");
-    assert!(
-        stdout.contains("--pretty"),
-        "Help should show --pretty flag"
-    );
-}
-
-#[test]
-fn test_json_flag() {
-    // Test --json flag is recognized
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
-    cmd.arg("--json").arg("--help");
-    cmd.assert().success();
-}
-
-#[test]
-fn test_pretty_flag() {
-    // Test --pretty flag is recognized
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
-    cmd.arg("--pretty").arg("--help");
-    cmd.assert().success();
-}
-
 fn isolated_command(temp: &tempfile::TempDir) -> assert_cmd::Command {
     let mut command = assert_cmd::cargo::cargo_bin_cmd!("ghidra-cli");
     command

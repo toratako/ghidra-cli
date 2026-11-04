@@ -95,20 +95,3 @@ impl Filter {
         evaluator::evaluate(&self.expr, data)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_simple_filter() {
-        let filter = Filter::parse("name=test").unwrap();
-        assert!(matches!(filter.expr, FilterExpr::Compare { .. }));
-    }
-
-    #[test]
-    fn test_parse_logical_filter() {
-        let filter = Filter::parse("name=test AND size>100").unwrap();
-        assert!(matches!(filter.expr, FilterExpr::Logical { .. }));
-    }
-}

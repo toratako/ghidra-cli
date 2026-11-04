@@ -140,10 +140,10 @@ read-only inputs, with generated or modified copies kept in temporary storage.
 | `comment_tests`, `symbol_tests`, `patch_tests`, `tag_tests`, `type_tests`, `script_tests` | Domain mutations and scripts |
 | `xref_tests`, `equate_tests`, `bookmark_tests`, `namespace_tests` | Operand/source-safe reference edits, exact constant associations, bookmark identity, guarded namespace hierarchy edits/deletion, and primary mutations |
 | `fixture_tests` | Relocated analyzed projects, durable edits, isolated copies, and temporary program cleanup after assertion failures |
-| `command_tests` | Version flags, doctor, config |
+| `command_tests` | Doctor and config persistence |
 | `bootstrap_tests` | Named imports across startup routes, durable import failure checkpoints, doctor runtime lifecycle |
 | `standalone_jar_tests` | Relocated official default JAR, doctor, imports, bridge operations, and project lifecycle |
-| `e2e`, `output_format_integration`, `harness_tests` | CLI smoke/output behavior and test infrastructure |
+| `e2e`, `output_format_integration`, `harness_tests` | Version/output behavior and test infrastructure |
 | `routing_tests` | Recorded bridge requests: management/jobs, batch targets, list pagination, and client file paths without Ghidra |
 | `src/ghidra/bridge/sources.rs` | Embedded Java inventory, package/path consistency, acyclic package imports, and source publication |
 

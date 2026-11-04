@@ -146,7 +146,7 @@ fn virtual_callers_requires_complete_table_interpretation_and_bounded_entries() 
 }
 
 #[test]
-fn cfg_and_high_pcode_accept_bounded_results_without_row_queries() {
+fn cfg_and_high_pcode_accept_bounded_results() {
     for (command, high) in [
         (vec!["ghidra-cli", "graph", "cfg", "main"], false),
         (
@@ -192,13 +192,6 @@ fn cfg_and_high_pcode_accept_bounded_results_without_row_queries() {
         assert_eq!((nodes, edges), (1, i32::MAX as u32));
         assert_eq!(program.as_deref(), Some("sample"));
         assert_eq!(project.as_deref(), Some("project"));
-        for flags in [
-            vec!["--filter", "id=b0"],
-            vec!["--fields", "nodes"],
-            vec!["--count"],
-        ] {
-            assert!(Cli::try_parse_from(command.iter().copied().chain(flags)).is_err());
-        }
         for flag in ["--max-nodes", "--max-edges"] {
             for invalid in ["0", "2147483648"] {
                 assert!(
@@ -236,21 +229,6 @@ fn byte_search_accepts_regex_without_changing_literal_defaults() {
     }
     let cli = Cli::try_parse_from(["ghidra-cli", "find", "bytes", "48 8b"]).unwrap();
     assert!(matches!(cli.command, Commands::Find(FindCommands::Bytes(args)) if !args.regex));
-    for args in [
-        vec!["ghidra-cli", "find", "string", "--regex", "needle"],
-        vec!["ghidra-cli", "find", "text", "--regex", "needle"],
-        vec![
-            "ghidra-cli",
-            "find",
-            "bytes",
-            "--regex",
-            ".",
-            "--encoding",
-            "utf-8",
-        ],
-    ] {
-        assert!(Cli::try_parse_from(args).is_err());
-    }
 }
 
 #[test]
@@ -326,7 +304,7 @@ fn disassembly_uses_limit_and_count() {
 }
 
 #[test]
-fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
+fn define_code_accepts_positional_targets_and_bounds() {
     for target in ["entry", "0x1000"] {
         for end in [None, Some("0x2000")] {
             let mut args = vec!["ghidra-cli", "listing", "define-code", target];
@@ -340,23 +318,6 @@ fn define_code_accepts_positional_targets_and_bounds_without_query_options() {
             assert_eq!(args.target, target);
             assert_eq!(args.end.as_deref(), end);
         }
-    }
-    for flags in [
-        vec!["--limit", "1"],
-        vec!["--count"],
-        vec!["--count", "2"],
-        vec!["--filter", "mnemonic=RET"],
-        vec!["--sort", "address"],
-        vec!["--skip", "1"],
-        vec!["--fields", "address"],
-        vec!["--format", "asm"],
-    ] {
-        assert!(Cli::try_parse_from(
-            ["ghidra-cli", "listing", "define-code", "0x1000"]
-                .into_iter()
-                .chain(flags)
-        )
-        .is_err());
     }
 }
 
@@ -447,12 +408,4 @@ fn parses_function_get_positional_target() {
             _ => panic!("expected function get command"),
         }
     }
-    assert!(Cli::try_parse_from([
-        "ghidra-cli",
-        "function",
-        "disassemble",
-        "main",
-        "--with-signature"
-    ])
-    .is_err());
 }

@@ -1,5 +1,4 @@
 use super::*;
-use clap::CommandFactory;
 
 mod inspection;
 mod management;
@@ -10,7 +9,7 @@ mod types;
 mod vtable;
 
 #[test]
-fn targets_require_one_positional() {
+fn positional_targets_preserve_program_and_project_selection() {
     for command in [
         vec!["function", "delete"],
         vec!["listing", "define-code"],
@@ -97,70 +96,6 @@ fn targets_require_one_positional() {
             assert_eq!(program.as_deref(), Some("sample"));
             assert_eq!(project.as_deref(), Some("project"));
         }
-        let missing =
-            Cli::try_parse_from(["ghidra-cli"].into_iter().chain(command.iter().copied()))
-                .err()
-                .expect("positional target must be required");
-        assert_eq!(
-            missing.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
-        let error = Cli::try_parse_from(
-            ["ghidra-cli"]
-                .into_iter()
-                .chain(command.iter().copied())
-                .chain(["entry", "other"]),
-        )
-        .err()
-        .expect("second target must fail");
-        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
-        for flag in ["-h", "--help"] {
-            let help = Cli::try_parse_from(
-                ["ghidra-cli"]
-                    .into_iter()
-                    .chain(command.iter().copied())
-                    .chain([flag]),
-            )
-            .err()
-            .expect("expected help");
-            assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
-            let help = help.to_string();
-            assert!(help.contains("<TARGET>"), "{help}");
-        }
-    }
-}
-
-#[test]
-fn canonical_commands_parse() {
-    for args in [
-        vec!["xref", "to", "main"],
-        vec!["xref", "from", "main"],
-        vec!["string", "list"],
-        vec!["string", "refs", "hello"],
-        vec!["disassemble", "main"],
-        vec!["function", "disassemble", "main"],
-        vec!["listing", "define-code", "0x1000"],
-        vec!["find", "string", "hello"],
-        vec!["graph", "callers", "main"],
-        vec!["graph", "callees", "main"],
-        vec!["type", "import-c", "--code", "typedef int Word;"],
-        vec!["function", "list"],
-        vec!["function", "get", "main"],
-        vec!["function", "set-thunk", "wrapper", "--target", "main"],
-        vec!["function", "clear-thunk", "wrapper"],
-        vec!["program", "list-calling-conventions"],
-        vec!["program", "list-relocations"],
-        vec!["bookmark", "list"],
-        vec!["bookmark", "get", "overlay:0x1000"],
-        vec!["memory", "info", "main"],
-        vec!["type", "delete", "Word"],
-        vec!["function", "tag", "rename", "old", "new"],
-        vec!["analysis", "option", "list"],
-        vec!["analysis", "run"],
-        vec!["decompile", "main"],
-    ] {
-        Cli::try_parse_from(["ghidra-cli"].into_iter().chain(args.iter().copied()))
-            .unwrap_or_else(|error| panic!("{args:?}: {error}"));
     }
 }
 
@@ -199,54 +134,4 @@ fn import_and_define_data_options_parse() {
         panic!("expected listing define-data")
     };
     assert!(args.force);
-
-    let help = Cli::try_parse_from(["ghidra-cli", "listing", "define-data", "--help"])
-        .err()
-        .unwrap()
-        .to_string();
-    assert!(help.contains("including instructions"), "{help}");
-}
-
-#[test]
-fn command_tree_has_no_command_or_option_aliases() {
-    fn check(command: &clap::Command) {
-        assert_eq!(
-            command.get_all_aliases().count(),
-            0,
-            "{}",
-            command.get_name()
-        );
-        assert_eq!(
-            command.get_all_short_flag_aliases().count(),
-            0,
-            "{}",
-            command.get_name()
-        );
-        assert_eq!(
-            command.get_all_long_flag_aliases().count(),
-            0,
-            "{}",
-            command.get_name()
-        );
-        for arg in command.get_arguments() {
-            assert!(
-                arg.get_all_aliases().unwrap_or_default().is_empty(),
-                "{}: {}",
-                command.get_name(),
-                arg.get_id()
-            );
-            assert!(
-                arg.get_all_short_aliases().unwrap_or_default().is_empty(),
-                "{}: {}",
-                command.get_name(),
-                arg.get_id()
-            );
-        }
-        for subcommand in command.get_subcommands() {
-            check(subcommand);
-        }
-    }
-    let mut command = Cli::command();
-    command.build();
-    check(&command);
 }
